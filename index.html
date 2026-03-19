@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BOX - Fiches de r&eacute;vision | Coll&egrave;ge Albert Roussel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css?v=20">
+</head>
+<body>
+
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="navbar__brand" onclick="App.goHome()">
+      <img src="img/logo-roussel.png" alt="Coll&egrave;ge Roussel" class="navbar__logo-img">
+      <span class="navbar__title">BOX</span>
+    </div>
+    <div class="navbar__stats" id="navStats"></div>
+  </nav>
+
+  <!-- ===================== ECRAN MENU ===================== -->
+  <div id="screenMenu" style="display:none">
+
+    <!-- Hero -->
+    <section class="hero">
+      <div class="hero__content">
+        <img src="img/logo-roussel.png" alt="Coll&egrave;ge Albert Roussel - Tourcoing" class="hero__logo-img">
+        <div class="hero__text">
+          <h1 class="hero__title">R&eacute;vise malin,<br>retiens mieux.</h1>
+          <p class="hero__subtitle">Les fiches de r&eacute;vision du coll&egrave;ge, cr&eacute;&eacute;es par tes profs.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Avantages -->
+    <section class="section-panel section-panel--rose">
+      <h2 class="section-title">Pourquoi &ccedil;a marche ?</h2>
+      <div class="method__grid">
+        <div class="method__card">
+          <div class="method__icon">&#129504;</div>
+          <h3 class="method__title">R&eacute;p&eacute;tition espac&eacute;e</h3>
+          <p class="method__desc">Les cartes que tu ne connais pas reviennent automatiquement. Ton cerveau les revoit jusqu'&agrave; ce qu'elles soient acquises.</p>
+        </div>
+        <div class="method__card">
+          <div class="method__icon">&#9889;</div>
+          <h3 class="method__title">Rappel actif</h3>
+          <p class="method__desc">Chercher la r&eacute;ponse avant de la voir renforce ta m&eacute;moire bien plus que relire un cours.</p>
+        </div>
+        <div class="method__card">
+          <div class="method__icon">&#127919;</div>
+          <h3 class="method__title">Fait par tes profs</h3>
+          <p class="method__desc">Chaque fiche est con&ccedil;ue &agrave; partir de ton cours. Tu r&eacute;vises exactement ce qui sera &eacute;valu&eacute;.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Guide -->
+    <section class="section-panel section-panel--blue">
+      <h2 class="section-title">Mode d'emploi</h2>
+      <button class="guide-toggle" onclick="App.toggleGuide()" id="guideToggle">
+        <span>Comment bien utiliser BOX ?</span>
+        <svg class="guide-toggle__arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div class="guide" id="guidePanel" style="display:none">
+        <div class="guide__steps">
+          <div class="guide__step">
+            <div class="guide__number">1</div>
+            <div>
+              <strong>Choisis un jeu de fiches</strong>
+              <p>S&eacute;lectionne la mati&egrave;re et le chapitre que tu veux r&eacute;viser ci-dessous.</p>
+            </div>
+          </div>
+          <div class="guide__step">
+            <div class="guide__number">2</div>
+            <div>
+              <strong>Lis la question, cherche la r&eacute;ponse dans ta t&ecirc;te</strong>
+              <p>Ne retourne pas la carte tout de suite ! Prends quelques secondes pour r&eacute;fl&eacute;chir.</p>
+            </div>
+          </div>
+          <div class="guide__step">
+            <div class="guide__number">3</div>
+            <div>
+              <strong>Retourne la carte</strong>
+              <p>Clique sur la carte pour voir la r&eacute;ponse. Compare avec ce que tu avais en t&ecirc;te.</p>
+            </div>
+          </div>
+          <div class="guide__step">
+            <div class="guide__number">4</div>
+            <div>
+              <strong>Sois honn&ecirc;te avec toi-m&ecirc;me</strong>
+              <p>Clique <span style="color:#16a34a;font-weight:700">&#10003; Je savais</span> seulement si tu avais vraiment la bonne r&eacute;ponse. Sinon, clique <span style="color:#dc2626;font-weight:700">&#10007; Je ne savais pas</span> &mdash; la carte reviendra plus tard.</p>
+            </div>
+          </div>
+          <div class="guide__step">
+            <div class="guide__number">5</div>
+            <div>
+              <strong>Recommence les cartes rat&eacute;es</strong>
+              <p>&Agrave; la fin, tu peux relancer uniquement les cartes que tu n'avais pas. C'est comme &ccedil;a que tu progresses vraiment.</p>
+            </div>
+          </div>
+        </div>
+        <div class="guide__tip">
+          <strong>&#128161; Astuce :</strong> 10 minutes par jour avec BOX, c'est plus efficace que 2 heures la veille du contr&ocirc;le.
+        </div>
+      </div>
+    </section>
+
+    <!-- Catalogue -->
+    <section class="section-panel section-panel--amber">
+      <h2 class="section-title">Fiches disponibles</h2>
+      <div class="filters">
+        <select id="filterMatiere" onchange="App.applyFilters()"><option value="">Toutes les mati&egrave;res</option></select>
+        <select id="filterNiveau" onchange="App.applyFilters()"><option value="">Tous les niveaux</option></select>
+        <select id="filterProf" onchange="App.applyFilters()"><option value="">Tous les profs</option></select>
+      </div>
+      <div class="sets-grid" id="setsGrid">
+        <div class="loading"><div class="loading__spinner"></div>Chargement...</div>
+      </div>
+    </section>
+
+    <div style="height:32px"></div>
+  </div>
+
+  <!-- ===================== ECRAN REVISION ===================== -->
+  <div id="screenReview" style="display:none">
+    <div class="review-screen">
+
+      <!-- Header -->
+      <div class="review-header">
+        <button class="review-back" onclick="App.goHome()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+          Retour
+        </button>
+        <div class="review-meta" id="reviewMeta"></div>
+        <div class="review-timer" id="reviewTimer">0:00</div>
+      </div>
+
+      <!-- Barre de progression -->
+      <div class="progress-bar">
+        <div class="progress-bar__fill" id="progressFill" style="width:0%"></div>
+      </div>
+      <div class="progress-info">
+        <span class="progress-info__count" id="progressCount">0 / 0</span>
+        <span class="progress-info__encourage" id="encourageText">C'est parti !</span>
+        <span class="progress-info__scores">
+          <span class="score-ok" id="liveScoreOk">0</span> ma&icirc;tris&eacute;
+          &nbsp;&middot;&nbsp;
+          <span class="score-ko" id="liveScoreKo">0</span> &agrave; revoir
+        </span>
+      </div>
+
+      <!-- Zone principale : carte a gauche + logo a droite -->
+      <div class="review-main">
+
+        <!-- Colonne carte (a gauche) -->
+        <div class="review-card-col">
+          <div class="nlm-card" onclick="App.flipCard()">
+            <div class="nlm-card__inner">
+              <div class="nlm-card__front">
+                <div class="nlm-card__badge">QUESTION</div>
+                <div class="nlm-card__content">
+                  <div class="nlm-card__text" id="cardQuestion"></div>
+                </div>
+                <div class="nlm-card__hint">&#9757; Clique pour voir la r&eacute;ponse</div>
+              </div>
+              <div class="nlm-card__back">
+                <div class="nlm-card__badge nlm-card__badge--answer">R&Eacute;PONSE</div>
+                <div class="nlm-card__content">
+                  <div class="nlm-card__answer-text" id="cardAnswer"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="nlm-notice" id="nlmNotice">
+            Retourne la carte, puis indique si tu connaissais la r&eacute;ponse.
+          </div>
+
+          <div class="nlm-toolbar">
+            <button class="nlm-btn nlm-btn--wrong" onclick="App.answer(false)">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              <span class="nlm-btn__label">Je ne savais pas</span>
+            </button>
+            <button class="nlm-btn nlm-btn--skip" onclick="App.skipCard()" title="Passer">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
+            <button class="nlm-btn nlm-btn--right" onclick="App.answer(true)">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+              <span class="nlm-btn__label">Je savais</span>
+            </button>
+          </div>
+
+          <div class="question-link" id="questionLink">
+            <a href="#" onclick="App.openQuestionForm(); return false;">Je ne comprends pas cette fiche</a>
+          </div>
+          <div class="question-form" id="questionForm" style="display:none">
+            <textarea id="questionText" rows="3" placeholder="Qu'est-ce que tu ne comprends pas ?"></textarea>
+            <div class="question-form__actions">
+              <button class="btn btn--ghost" onclick="App.closeQuestionForm()">Annuler</button>
+              <button class="btn btn--primary" onclick="App.sendQuestion()">Envoyer</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Logo complet a droite (chemin&eacute;e + b&acirc;timent) -->
+        <div class="review-logo" id="reviewChimney">
+          <div class="review-logo__smoke" id="logoSmoke"></div>
+          <svg class="review-logo__svg" viewBox="0 0 440 400" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <pattern id="brickGhost" x="0" y="0" width="20" height="12" patternUnits="userSpaceOnUse">
+                <rect width="20" height="12" fill="#d4a0a0"/>
+                <line x1="0" y1="6" x2="20" y2="6" stroke="#c08080" stroke-width="1"/>
+                <line x1="0" y1="0" x2="0" y2="6" stroke="#c08080" stroke-width="0.7"/>
+                <line x1="10" y1="0" x2="10" y2="6" stroke="#c08080" stroke-width="0.7"/>
+                <line x1="5" y1="6" x2="5" y2="12" stroke="#c08080" stroke-width="0.7"/>
+                <line x1="15" y1="6" x2="15" y2="12" stroke="#c08080" stroke-width="0.7"/>
+              </pattern>
+            </defs>
+
+            <!-- CHEMINEE fantome -->
+            <path d="M48,8 L48,100 L28,108 L28,370 Q28,385 40,385 L80,385 Q92,385 92,370 L92,108 L72,100 L72,8 Z"
+                  fill="url(#brickGhost)"/>
+            <path d="M48,8 L48,100 L28,108 L28,370 Q28,385 40,385 L80,385 Q92,385 92,370 L92,108 L72,100 L72,8 Z"
+                  fill="none" stroke="#b71e1d" stroke-width="2" opacity="0.5"/>
+            <!-- Briques construites -->
+            <g id="brickRows"></g>
+            <!-- Courbes blanches -->
+            <path d="M50,28 Q60,16 70,28" stroke="#fff" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.85"/>
+            <path d="M50,52 Q60,40 70,52" stroke="#fff" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.85"/>
+            <path d="M50,76 Q60,64 70,76" stroke="#fff" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.85"/>
+            <!-- "A." -->
+            <text x="60" y="340" text-anchor="middle" font-family="Inter, sans-serif" font-size="52" font-weight="900" fill="#fff" opacity="0.9">A.</text>
+            <!-- % -->
+            <text id="svgPct" x="60" y="240" text-anchor="middle" font-family="Inter, sans-serif" font-size="24" font-weight="800" fill="#fff">0%</text>
+
+            <!-- BATIMENT (partie droite du logo, accol&eacute;e) -->
+            <path d="M92,255 L92,195 L180,172 L210,192 L290,172 L340,178 L410,195 L410,385 L92,385"
+                  fill="none" stroke="#f3902d" stroke-width="3" stroke-linejoin="round"/>
+            <!-- Barres verticales -->
+            <rect x="120" y="240" width="10" height="28" fill="#f3902d" rx="1"/>
+            <rect x="138" y="230" width="10" height="38" fill="#f3902d" rx="1"/>
+            <rect x="156" y="220" width="10" height="48" fill="#f3902d" rx="1"/>
+            <!-- Texte logo -->
+            <text x="200" y="260" font-family="Inter, sans-serif" font-size="20" font-weight="500" fill="#f3902d" letter-spacing="1">Coll&egrave;ge</text>
+            <text x="190" y="315" font-family="Inter, sans-serif" font-size="44" font-weight="800" fill="#f3902d">Roussel</text>
+            <text x="270" y="370" text-anchor="middle" font-family="Inter, sans-serif" font-size="18" font-weight="500" fill="#f3902d" letter-spacing="2">Tourcoing</text>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== ECRAN TERMINE ===================== -->
+  <div id="screenDone" style="display:none">
+    <div class="done-screen">
+      <!-- Logo avec fum&eacute;e conditionnelle -->
+      <div class="done-logo">
+        <div class="done-logo__smoke" id="doneSmoke"></div>
+        <img src="img/logo-roussel.png" alt="Coll&egrave;ge Roussel" class="done-logo__img">
+      </div>
+
+      <div class="done-result">
+        <h2 class="done-result__title" id="doneTitle"></h2>
+        <div class="done-result__score" id="doneScore">0 / 0</div>
+        <div class="done-result__pct" id="donePct">0 %</div>
+        <div class="done-result__time" id="doneTime"></div>
+      </div>
+
+      <div class="done-stats">
+        <div class="done-stat done-stat--ok">
+          <span class="done-stat__value" id="statRight">0</span>
+          <span class="done-stat__label">Ma&icirc;tris&eacute;</span>
+        </div>
+        <div class="done-stats__sep"></div>
+        <div class="done-stat done-stat--ko">
+          <span class="done-stat__value" id="statWrong">0</span>
+          <span class="done-stat__label">&Agrave; revoir</span>
+        </div>
+      </div>
+
+      <div class="done-actions">
+        <div class="done-actions__dropdown">
+          <button class="btn btn--primary btn--lg done-actions__toggle" onclick="App.toggleRetryMenu()">
+            S'entra&icirc;ner de nouveau &#9660;
+          </button>
+          <div class="done-actions__menu" id="retryMenu" style="display:none">
+            <button onclick="App.restart()">Toutes les flashcards</button>
+            <button onclick="App.restartWrongOnly()">Uniquement celles rat&eacute;es</button>
+          </div>
+        </div>
+        <button class="btn btn--ghost btn--lg" onclick="App.goHome()">Retour au menu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ecrans admin/erreur -->
+  <div id="screenDelete" style="display:none">
+    <div class="admin-screen">
+      <h2>Supprimer un jeu de fiches</h2>
+      <div class="form-group"><label for="deleteId">Identifiant du jeu</label><input type="text" id="deleteId" placeholder="box_a1b2c3d4"></div>
+      <div class="form-group"><label for="deleteCode">Code de suppression</label><input type="text" id="deleteCode" placeholder="SUP-XXXXXXXX"></div>
+      <button class="btn btn--danger" onclick="App.deleteSet()">Supprimer</button>
+      <div id="deleteResult"></div>
+    </div>
+  </div>
+  <div id="screenError" style="display:none">
+    <div class="error-screen"><div class="error-screen__icon">&#128533;</div><p id="errorMessage">Une erreur est survenue.</p><button class="btn btn--primary" onclick="App.goHome()">Retour au menu</button></div>
+  </div>
+
+  <div class="toast-container" id="toastContainer"></div>
+  <footer class="footer"><span>BOX &mdash; Coll&egrave;ge Albert Roussel, Tourcoing</span><a href="#" onclick="App.showScreen('delete'); return false;">Administration</a></footer>
+
+  <script src="js/config.js?v=20"></script>
+  <script src="js/app.js?v=20"></script>
+</body>
+</html>
