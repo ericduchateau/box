@@ -28,7 +28,7 @@ const BOX_CONFIG = {
   NIVEAUX: ['6e', '5e', '4e', '3e'],
 
   // Mode demo : si true, utilise des donnees fictives
-  DEMO_MODE: true
+  DEMO_MODE: false
 };
 
 // --- Donnees de demo (a retirer en production) ---
