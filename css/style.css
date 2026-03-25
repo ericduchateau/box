@@ -396,18 +396,27 @@ a:hover { text-decoration: underline; }
    ============================================= */
 .done-screen {
   text-align: center; padding: 24px 24px 64px;
-  max-width: 520px; margin: 0 auto;
+  max-width: 620px; margin: 0 auto;
 }
-.done-logo {
-  position: relative; width: 200px;
-  margin: 0 auto 24px; overflow: visible;
+.done-chimney {
+  position: relative; width: 100px; height: 80px;
+  margin: 0 auto 8px; overflow: visible;
 }
 .done-logo__smoke {
-  position: absolute; top: -30px; left: 10%;
+  position: absolute; top: 0; left: 10%;
   width: 80px; height: 80px; pointer-events: none;
   opacity: 0; transition: opacity 0.8s; z-index: 10; overflow: visible;
 }
 .done-logo__smoke.active { opacity: 1; }
+.done-hero {
+  display: flex; align-items: center; gap: 32px;
+  justify-content: center; margin-bottom: 28px;
+}
+.done-hero__logo {
+  width: 180px; height: auto; flex-shrink: 0;
+  border-radius: 14px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+}
+.done-hero__results { text-align: left; }
 
 /* Fumee SPECTACULAIRE (bleu sombre) */
 .smoke-particle {
@@ -436,10 +445,6 @@ a:hover { text-decoration: underline; }
 }
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-
-.done-logo__img {
-  width: 180px; height: auto; display: block; margin: 0 auto;
-}
 
 .done-result { margin-bottom: 24px; }
 .done-result__title { font-size: 30px; font-weight: 800; margin-bottom: 8px; }
@@ -572,7 +577,9 @@ a:hover { text-decoration: underline; }
   .nlm-card__answer-text { font-size: 17px; }
   .nlm-btn--wrong, .nlm-btn--right { width: 68px; height: 68px; }
 
-  .done-logo { width: 280px; }
+  .done-hero { flex-direction: column; gap: 16px; }
+  .done-hero__logo { width: 150px; }
+  .done-hero__results { text-align: center; }
   .done-result__score { font-size: 40px; }
   .done-stats { gap: 20px; padding: 14px 24px; }
   .done-stat__value { font-size: 26px; }
