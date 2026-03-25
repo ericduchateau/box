@@ -53,7 +53,7 @@ a:hover { text-decoration: underline; }
   height: 56px; position: sticky; top: 0; z-index: 100;
 }
 .navbar__brand { display: flex; align-items: center; gap: 12px; cursor: pointer; }
-.navbar__logo-img { height: 36px; width: auto; }
+.navbar__logo-img { height: 40px; width: auto; border-radius: 6px; }
 .navbar__title { font-size: 22px; font-weight: 800; letter-spacing: 2px; color: var(--text); }
 .navbar__stats { font-size: 13px; color: var(--text-muted); font-weight: 500; }
 
@@ -93,6 +93,7 @@ a:hover { text-decoration: underline; }
   display: flex; align-items: center; gap: 48px;
 }
 .hero__logo-img { width: 220px; height: auto; flex-shrink: 0; }
+.hero__logo-box { width: 260px; height: auto; flex-shrink: 0; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); }
 .hero__title { font-size: 48px; font-weight: 900; line-height: 1.1; letter-spacing: -0.5px; }
 .hero__subtitle { font-size: 22px; color: var(--text-secondary); margin-top: 12px; line-height: 1.5; }
 
@@ -552,6 +553,7 @@ a:hover { text-decoration: underline; }
   .hero { padding: 32px 20px 40px; }
   .hero__content { flex-direction: column; text-align: center; gap: 20px; }
   .hero__logo-img { width: 180px; }
+  .hero__logo-box { width: 200px; }
   .hero__title { font-size: 28px; }
   .section-panel { margin: 16px 12px 0; padding: 24px 20px; border-radius: 16px; }
   .method__grid { grid-template-columns: 1fr; gap: 12px; }
@@ -582,5 +584,6 @@ a:hover { text-decoration: underline; }
   .navbar__title { font-size: 16px; }
   .hero__title { font-size: 24px; }
   .hero__logo-img { width: 140px; }
+  .hero__logo-box { width: 160px; }
   .section-title { font-size: 18px; }
 }
