@@ -6,7 +6,7 @@
   <title>BOX - Fiches de r&eacute;vision | Coll&egrave;ge Albert Roussel</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=21">
+  <link rel="stylesheet" href="css/style.css?v=22">
 </head>
 <body>
 
@@ -28,6 +28,7 @@
         <div class="hero__text">
           <h1 class="hero__title">R&eacute;vise malin,<br>retiens mieux.</h1>
           <p class="hero__subtitle">Les fiches de r&eacute;vision du coll&egrave;ge, cr&eacute;&eacute;es par tes profs.</p>
+          <a href="#filtersSection" class="hero__cta" onclick="document.getElementById('filtersSection').scrollIntoView({behavior:'smooth'}); return false;">Voir les fiches &#8594;</a>
         </div>
       </div>
     </section>
@@ -106,12 +107,13 @@
     </section>
 
     <!-- Catalogue -->
-    <section class="section-panel section-panel--amber">
+    <section class="section-panel section-panel--amber" id="filtersSection">
       <h2 class="section-title">Fiches disponibles</h2>
-      <div class="filters">
-        <select id="filterMatiere" onchange="App.applyFilters()"><option value="">Toutes les mati&egrave;res</option></select>
-        <select id="filterNiveau" onchange="App.applyFilters()"><option value="">Tous les niveaux</option></select>
-        <select id="filterProf" onchange="App.applyFilters()"><option value="">Tous les profs</option></select>
+      <div class="filters" id="filtersContainer">
+        <div class="filter-row" id="filterMatiereRow"><span class="filter-group-label">Mati&egrave;re</span><div class="filter-pills" id="filterMatiereGroup"></div></div>
+        <div class="filter-row" id="filterNiveauRow"><span class="filter-group-label">Niveau</span><div class="filter-pills" id="filterNiveauGroup"></div></div>
+        <div class="filter-row" id="filterProfRow"><span class="filter-group-label">Professeur</span><div class="filter-pills" id="filterProfGroup"></div></div>
+        <div class="filter-actions"><span class="filter-count" id="filterCount"></span><button class="filter-reset" id="filterReset" onclick="App.resetFilters()" style="display:none">&#10005; Tout effacer</button></div>
       </div>
       <div class="sets-grid" id="setsGrid">
         <div class="loading"><div class="loading__spinner"></div>Chargement...</div>
@@ -157,7 +159,10 @@
           <div class="nlm-card" onclick="App.flipCard()">
             <div class="nlm-card__inner">
               <div class="nlm-card__front">
-                <div class="nlm-card__badge">QUESTION</div>
+                <div class="nlm-card__top-bar">
+                  <div class="nlm-card__badge">QUESTION</div>
+                  <span class="nlm-card__difficulty" id="cardDifficulty"></span>
+                </div>
                 <div class="nlm-card__content">
                   <div class="nlm-card__text" id="cardQuestion"></div>
                 </div>
@@ -247,6 +252,12 @@
           </svg>
         </div>
       </div>
+
+      <div class="mobile-bar" id="mobileBar">
+        <button class="mobile-bar__btn mobile-bar__btn--wrong" onclick="App.answer(false)">&#10007;</button>
+        <button class="mobile-bar__btn mobile-bar__btn--skip" onclick="App.skipCard()">&#8594;</button>
+        <button class="mobile-bar__btn mobile-bar__btn--right" onclick="App.answer(true)">&#10003;</button>
+      </div>
     </div>
   </div>
 
@@ -313,7 +324,7 @@
   <div class="toast-container" id="toastContainer"></div>
   <footer class="footer"><span>BOX &mdash; Coll&egrave;ge Albert Roussel, Tourcoing</span><a href="#" onclick="App.showScreen('delete'); return false;">Administration</a></footer>
 
-  <script src="js/config.js?v=21"></script>
-  <script src="js/app.js?v=21"></script>
+  <script src="js/config.js?v=22"></script>
+  <script src="js/app.js?v=22"></script>
 </body>
 </html>

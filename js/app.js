@@ -8,6 +8,7 @@ const App = {
   completed: 0, totalCards: 0, rightCount: 0, wrongCount: 0,
   startTime: null, isFlipped: false, timerInterval: null,
   lastBrickCount: 0,
+  activeFilters: { matiere: null, niveau: null, prof: null },
 
   // Chemin de la cheminee pour le clipPath
   CHIMNEY_PATH: 'M48,8 L48,100 L28,108 L28,370 Q28,385 40,385 L80,385 Q92,385 92,370 L92,108 L72,100 L72,8 Z',
@@ -30,6 +31,7 @@ const App = {
     if (params.get('set')) { this.loadAndReview(params.get('set')); return; }
     this.loadCatalogue();
     this.initKeyboard();
+    this.initTouch();
   },
 
   showScreen(name) {
@@ -82,24 +84,83 @@ const App = {
 
   buildFilters() {
     const sets = this.catalogue.sets;
-    this.fillSelect('filterMatiere', [...new Set(sets.map(s => s.matiere))].sort());
-    this.fillSelect('filterNiveau', [...new Set(sets.map(s => s.niveau))].sort((a, b) => BOX_CONFIG.NIVEAUX.indexOf(a) - BOX_CONFIG.NIVEAUX.indexOf(b)));
-    this.fillSelect('filterProf', [...new Set(sets.map(s => s.prof_nom))].sort());
+    const matieres = [...new Set(sets.map(s => s.matiere))].sort();
+    const niveaux = [...new Set(sets.map(s => s.niveau))].sort((a, b) => BOX_CONFIG.NIVEAUX.indexOf(a) - BOX_CONFIG.NIVEAUX.indexOf(b));
+    const profs = [...new Set(sets.map(s => s.prof_nom))].sort();
+    this._buildPillGroup('filterMatiereGroup', matieres, 'matiere');
+    this._buildPillGroup('filterNiveauGroup', niveaux, 'niveau');
+    this._buildPillGroup('filterProfGroup', profs, 'prof');
   },
 
-  fillSelect(id, values) {
-    const sel = document.getElementById(id); const current = sel.value;
-    while (sel.options.length > 1) sel.remove(1);
-    values.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o); });
-    sel.value = current;
+  _buildPillGroup(containerId, values, filterKey) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = '';
+    const row = document.getElementById(containerId.replace('Group', 'Row'));
+    if (row) row.style.display = values.length < 2 ? 'none' : '';
+    values.forEach(v => {
+      const btn = document.createElement('button');
+      btn.className = 'filter-pill';
+      btn.textContent = v;
+      btn.dataset.value = v;
+      if (filterKey === 'matiere') {
+        const c = BOX_CONFIG.MATIERES[v] || BOX_CONFIG.MATIERES['Autre'];
+        btn.dataset.bg = c.bg; btn.dataset.color = c.color; btn.dataset.border = c.border;
+      }
+      btn.onclick = () => this.toggleFilter(filterKey, v, btn);
+      container.appendChild(btn);
+    });
+  },
+
+  toggleFilter(key, value, btn) {
+    const group = btn.closest('.filter-pills');
+    if (this.activeFilters[key] === value) {
+      this.activeFilters[key] = null;
+      btn.classList.remove('active');
+      btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = '';
+    } else {
+      if (group) group.querySelectorAll('.filter-pill').forEach(p => {
+        p.classList.remove('active');
+        p.style.background = ''; p.style.color = ''; p.style.borderColor = '';
+      });
+      this.activeFilters[key] = value;
+      btn.classList.add('active');
+      if (key === 'matiere') {
+        btn.style.background = btn.dataset.bg;
+        btn.style.color = btn.dataset.color;
+        btn.style.borderColor = btn.dataset.border;
+      }
+    }
+    this.applyFilters();
+  },
+
+  resetFilters() {
+    this.activeFilters = { matiere: null, niveau: null, prof: null };
+    document.querySelectorAll('.filter-pill.active').forEach(p => {
+      p.classList.remove('active');
+      p.style.background = ''; p.style.color = ''; p.style.borderColor = '';
+    });
+    this.applyFilters();
   },
 
   applyFilters() {
-    const m = document.getElementById('filterMatiere').value;
-    const n = document.getElementById('filterNiveau').value;
-    const p = document.getElementById('filterProf').value;
-    this.filteredSets = this.catalogue.sets.filter(s => (!m || s.matiere === m) && (!n || s.niveau === n) && (!p || s.prof_nom === p));
+    const { matiere, niveau, prof } = this.activeFilters;
+    this.filteredSets = this.catalogue.sets.filter(s =>
+      (!matiere || s.matiere === matiere) &&
+      (!niveau || s.niveau === niveau) &&
+      (!prof || s.prof_nom === prof)
+    );
+    this._updateFilterCount();
     this.renderGrid();
+  },
+
+  _updateFilterCount() {
+    const count = document.getElementById('filterCount');
+    const reset = document.getElementById('filterReset');
+    const total = this.catalogue.sets.length;
+    const filtered = this.filteredSets.length;
+    if (count) count.textContent = filtered + ' / ' + total + ' jeu' + (total > 1 ? 'x' : '');
+    if (reset) reset.style.display = Object.values(this.activeFilters).some(Boolean) ? '' : 'none';
   },
 
   renderGrid() {
@@ -267,8 +328,15 @@ const App = {
     const card = this.remaining[0];
     document.getElementById('cardQuestion').textContent = card.question;
     document.getElementById('cardAnswer').textContent = card.reponse;
+    const diffEl = document.getElementById('cardDifficulty');
+    if (diffEl) {
+      const d = (card.difficulte || '').toLowerCase();
+      diffEl.textContent = d || '';
+      diffEl.className = 'nlm-card__difficulty' + (d ? ' nlm-card__difficulty--' + d : '');
+    }
+    const cardEl = document.querySelector('.nlm-card');
     this.isFlipped = false;
-    document.querySelector('.nlm-card').classList.remove('flipped');
+    cardEl.classList.remove('flipped', 'nlm-card--flash-ok', 'nlm-card--flash-ko');
     document.getElementById('questionLink').style.display = 'block';
     document.getElementById('questionForm').style.display = 'none';
     if (this.completed >= 2) {
@@ -284,6 +352,12 @@ const App = {
 
   answer(knew) {
     if (!this.isFlipped) { this.flipCard(); return; }
+    const cardEl = document.querySelector('.nlm-card');
+    if (cardEl) {
+      cardEl.classList.remove('nlm-card--flash-ok', 'nlm-card--flash-ko');
+      void cardEl.offsetWidth;
+      cardEl.classList.add(knew ? 'nlm-card--flash-ok' : 'nlm-card--flash-ko');
+    }
     const card = this.remaining.shift();
     if (knew) { this.completed++; this.rightCount++; }
     else {
@@ -502,6 +576,21 @@ const App = {
         case 'Escape': e.preventDefault(); this.goHome(); break;
       }
     });
+  },
+
+  // --- Swipe tactile ---
+  initTouch() {
+    const card = document.querySelector('.nlm-card');
+    if (!card) return;
+    let startX = 0;
+    card.addEventListener('touchstart', e => { startX = e.changedTouches[0].clientX; }, { passive: true });
+    card.addEventListener('touchend', e => {
+      if (!this.currentSet) return;
+      const dx = e.changedTouches[0].clientX - startX;
+      if (Math.abs(dx) < 60) return;
+      if (!this.isFlipped) { this.flipCard(); return; }
+      this.answer(dx > 0);
+    }, { passive: true });
   },
 
   toast(msg, err) {
