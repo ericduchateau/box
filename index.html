@@ -6,7 +6,7 @@
   <title>BOX - Fiches de r&eacute;vision | Coll&egrave;ge Albert Roussel</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=22">
+  <link rel="stylesheet" href="css/style.css?v=23">
 </head>
 <body>
 
@@ -207,50 +207,10 @@
           </div>
         </div>
 
-        <!-- Logo complet a droite (chemin&eacute;e + b&acirc;timent) -->
-        <div class="review-logo" id="reviewChimney">
-          <div class="review-logo__smoke" id="logoSmoke"></div>
-          <svg class="review-logo__svg" viewBox="0 0 440 400" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-              <pattern id="brickGhost" x="0" y="0" width="20" height="12" patternUnits="userSpaceOnUse">
-                <rect width="20" height="12" fill="#d4a0a0"/>
-                <line x1="0" y1="6" x2="20" y2="6" stroke="#c08080" stroke-width="1"/>
-                <line x1="0" y1="0" x2="0" y2="6" stroke="#c08080" stroke-width="0.7"/>
-                <line x1="10" y1="0" x2="10" y2="6" stroke="#c08080" stroke-width="0.7"/>
-                <line x1="5" y1="6" x2="5" y2="12" stroke="#c08080" stroke-width="0.7"/>
-                <line x1="15" y1="6" x2="15" y2="12" stroke="#c08080" stroke-width="0.7"/>
-              </pattern>
-            </defs>
-
-            <!-- CHEMINEE fantome -->
-            <path d="M48,8 L48,100 L28,108 L28,370 Q28,385 40,385 L80,385 Q92,385 92,370 L92,108 L72,100 L72,8 Z"
-                  fill="url(#brickGhost)"/>
-            <path d="M48,8 L48,100 L28,108 L28,370 Q28,385 40,385 L80,385 Q92,385 92,370 L92,108 L72,100 L72,8 Z"
-                  fill="none" stroke="#b71e1d" stroke-width="2" opacity="0.5"/>
-            <!-- Briques construites -->
-            <g id="brickRows"></g>
-            <!-- Courbes blanches -->
-            <path d="M50,28 Q60,16 70,28" stroke="#fff" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.85"/>
-            <path d="M50,52 Q60,40 70,52" stroke="#fff" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.85"/>
-            <path d="M50,76 Q60,64 70,76" stroke="#fff" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.85"/>
-            <!-- "A." -->
-            <text x="60" y="340" text-anchor="middle" font-family="Inter, sans-serif" font-size="52" font-weight="900" fill="#fff" opacity="0.9">A.</text>
-            <!-- % -->
-            <text id="svgPct" x="60" y="240" text-anchor="middle" font-family="Inter, sans-serif" font-size="24" font-weight="800" fill="#fff">0%</text>
-
-            <!-- BATIMENT (partie droite du logo, accol&eacute;e) -->
-            <path d="M92,255 L92,195 L180,172 L210,192 L290,172 L340,178 L410,195 L410,385 L92,385"
-                  fill="none" stroke="#f3902d" stroke-width="3" stroke-linejoin="round"/>
-            <!-- Barres verticales -->
-            <rect x="120" y="240" width="10" height="28" fill="#f3902d" rx="1"/>
-            <rect x="138" y="230" width="10" height="38" fill="#f3902d" rx="1"/>
-            <rect x="156" y="220" width="10" height="48" fill="#f3902d" rx="1"/>
-            <!-- Texte logo -->
-            <text x="200" y="260" font-family="Inter, sans-serif" font-size="20" font-weight="500" fill="#f3902d" letter-spacing="1">Coll&egrave;ge</text>
-            <text x="190" y="315" font-family="Inter, sans-serif" font-size="44" font-weight="800" fill="#f3902d">Roussel</text>
-            <text x="270" y="370" text-anchor="middle" font-family="Inter, sans-serif" font-size="18" font-weight="500" fill="#f3902d" letter-spacing="2">Tourcoing</text>
-          </svg>
-        </div>
+        <!-- Chimin&eacute;e Tetris (composant ChimneyTetris) -->
+        <div class="review-logo" id="chimneyHost"
+             role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"
+             aria-label="Progression de r&eacute;vision"></div>
       </div>
 
       <div class="mobile-bar" id="mobileBar">
@@ -324,7 +284,8 @@
   <div class="toast-container" id="toastContainer"></div>
   <footer class="footer"><span>BOX &mdash; Coll&egrave;ge Albert Roussel, Tourcoing</span><a href="#" onclick="App.showScreen('delete'); return false;">Administration</a></footer>
 
-  <script src="js/config.js?v=22"></script>
-  <script src="js/app.js?v=22"></script>
+  <script src="js/chimney.js?v=1"></script>
+  <script src="js/config.js?v=23"></script>
+  <script src="js/app.js?v=23"></script>
 </body>
 </html>

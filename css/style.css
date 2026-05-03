@@ -254,21 +254,17 @@ a:hover { text-decoration: underline; }
 /* Layout principal : carte a gauche, cheminee a droite */
 .review-main { display: flex; align-items: flex-start; gap: 32px; width: 100%; }
 
-/* Logo complet a droite (cheminee + batiment) */
+/* Container ChimneyTetris */
 .review-logo {
-  position: relative; width: 340px; flex-shrink: 0;
+  width: 340px; flex-shrink: 0;
   position: sticky; top: 80px;
   order: 2;
+  min-height: 460px;
+  aspect-ratio: 4/5;
+  border-radius: 18px;
+  overflow: hidden;
 }
 .review-card-col { order: 1; }
-.review-logo__svg { width: 100%; height: auto; overflow: visible; }
-.review-logo__smoke {
-  position: absolute; top: -40px; left: 4%;
-  width: 120px; height: 100px;
-  pointer-events: none; opacity: 0;
-  transition: opacity 0.8s; z-index: 10; overflow: visible;
-}
-.review-logo__smoke.active { opacity: 1; }
 
 /* Ancien sélecteur conservé pour compat */
 .review-chimney {
@@ -635,8 +631,7 @@ a:hover { text-decoration: underline; }
   .review-screen { padding-bottom: 96px; }
 
   .review-main { flex-direction: column; align-items: center; gap: 12px; }
-  .review-logo { width: 240px; position: static; }
-  .review-chimney { width: 80px; position: static; }
+  .review-logo { width: 100%; max-width: 320px; min-height: 320px; position: static; }
   .review-screen { padding: 0 16px 24px; }
   .nlm-card { min-height: 280px; }
   .nlm-card__inner { min-height: 280px; }

@@ -7,13 +7,8 @@ const App = {
   remaining: [], wrongCards: [],
   completed: 0, totalCards: 0, rightCount: 0, wrongCount: 0,
   startTime: null, isFlipped: false, timerInterval: null,
-  lastBrickCount: 0,
+  chimney: null,
   activeFilters: { matiere: null, niveau: null, prof: null },
-
-  // Chemin de la cheminee pour le clipPath
-  CHIMNEY_PATH: 'M48,8 L48,100 L28,108 L28,370 Q28,385 40,385 L80,385 Q92,385 92,370 L92,108 L72,100 L72,8 Z',
-  CHIMNEY_PATH_DONE: 'M48,8 L48,100 L28,108 L28,335 Q28,348 38,348 L82,348 Q92,348 92,335 L92,108 L72,100 L72,8 Z',
-  TOTAL_BRICK_ROWS: 20,
 
   getEncouragement(pct, total) {
     if (total === 0) return "C'est parti !";
@@ -32,6 +27,10 @@ const App = {
     this.loadCatalogue();
     this.initKeyboard();
     this.initTouch();
+    const host = document.getElementById('chimneyHost');
+    if (host && typeof ChimneyTetris !== 'undefined') {
+      this.chimney = new ChimneyTetris(host, { logoSrc: 'img/logo-no-chimney.png' });
+    }
   },
 
   showScreen(name) {
@@ -203,59 +202,7 @@ const App = {
     }, 1000);
   },
 
-  // --- Briques ---
-  buildBrickRows(containerId, progress, totalRows, yStart, yEnd, xLeft, xRight) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-    const targetRows = Math.round(progress * totalRows);
-    const existing = container.children.length;
-    if (targetRows <= existing) return;
-
-    const rowHeight = (yEnd - yStart) / totalRows;
-    // Largeur de la cheminee varie (haut = etroit, bas = large)
-    for (let i = existing; i < targetRows; i++) {
-      const rowIndex = totalRows - 1 - i; // de bas en haut
-      const y = yStart + rowIndex * rowHeight;
-      // Interpolation largeur cheminee
-      let lx, rx;
-      if (y < 100) { lx = 48; rx = 72; } // haut etroit
-      else if (y < 108) { const t = (y - 100) / 8; lx = 48 - t * 20; rx = 72 + t * 20; } // transition
-      else { lx = 28; rx = 92; } // corps large
-
-      const row = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      row.classList.add('brick-row');
-      row.style.animationDelay = ((i - existing) * 0.05) + 's';
-
-      // Dessiner les briques de la rangee
-      const brickW = 10;
-      const brickH = rowHeight - 1;
-      const isOdd = i % 2 === 1;
-      const startX = lx + (isOdd ? brickW / 2 : 0);
-
-      for (let bx = startX; bx < rx; bx += brickW + 1) {
-        const w = Math.min(brickW, rx - bx);
-        if (w < 2) continue;
-        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        rect.setAttribute('x', bx);
-        rect.setAttribute('y', y);
-        rect.setAttribute('width', w);
-        rect.setAttribute('height', brickH);
-        rect.setAttribute('fill', '#b71e1d');
-        rect.setAttribute('rx', '0.5');
-        row.appendChild(rect);
-
-        // Joint horizontal
-        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        line.setAttribute('x1', bx); line.setAttribute('x2', bx + w);
-        line.setAttribute('y1', y + brickH); line.setAttribute('y2', y + brickH);
-        line.setAttribute('stroke', '#8b1615'); line.setAttribute('stroke-width', '0.8');
-        row.appendChild(line);
-      }
-      container.appendChild(row);
-    }
-  },
-
-  // --- Fumee spectaculaire ---
+  // --- Fumee spectaculaire (ecran termine) ---
   createSmoke(containerId, count) {
     const container = document.getElementById(containerId);
     if (!container) return;
@@ -296,11 +243,7 @@ const App = {
       }
       this.currentSet = setData;
       this.totalCards = setData.cartes.length;
-      this.lastBrickCount = 0;
-
-      // Reset briques
-      const br = document.getElementById('brickRows');
-      if (br) br.innerHTML = '';
+      if (this.chimney) this.chimney.updateChimney(0, this.totalCards);
 
       const meta = document.getElementById('reviewMeta');
       if (meta) meta.textContent = (setData.matiere || '') + ' — ' + (setData.notion || '');
@@ -395,20 +338,12 @@ const App = {
     const ko = document.getElementById('liveScoreKo');
     if (ko) ko.textContent = this.wrongCount;
 
-    const pctEl = document.getElementById('svgPct');
-    if (pctEl) pctEl.textContent = deckPct + '%';
-
     const enc = document.getElementById('encourageText');
     if (enc) enc.textContent = this.getEncouragement(accuracy, total);
 
-    // Construction brique par brique
-    this.buildBrickRows('brickRows', deckProgress, this.TOTAL_BRICK_ROWS, 8, 385, 28, 92);
-
-    // Fumee quand complet
-    const smoke = document.getElementById('logoSmoke');
-    if (smoke && deckProgress >= 1 && !smoke.classList.contains('active')) {
-      this.createSmoke('logoSmoke', 8);
-    }
+    if (this.chimney) this.chimney.updateChimney(this.completed, this.totalCards);
+    const host = document.getElementById('chimneyHost');
+    if (host) host.setAttribute('aria-valuenow', deckPct);
   },
 
   // --- Ecran termine ---
@@ -421,15 +356,11 @@ const App = {
     const pct = total > 0 ? Math.round((this.rightCount / total) * 100) : 0;
     const endTime = Date.now();
 
-    // Compléter les briques à 100% sur la page de revision
-    this.buildBrickRows('brickRows', 1, this.TOTAL_BRICK_ROWS, 8, 385, 28, 92);
-    const pctEl = document.getElementById('svgPct');
-    if (pctEl) pctEl.textContent = '100%';
+    // Compléter la cheminée à 100% et lancer le feu d'artifice
+    if (this.chimney) this.chimney.updateChimney(this.totalCards, this.totalCards);
+    setTimeout(() => { if (this.chimney) this.chimney.launchFireworks(5200); }, 600);
 
-    // Lancer la fumee sur la cheminee de revision
-    this.createSmoke('logoSmoke', 12);
-
-    // Masquer carte + boutons pendant la fumee
+    // Masquer carte + boutons pendant le feu d'artifice
     const cardCol = document.querySelector('.review-card-col');
     if (cardCol) { cardCol.style.opacity = '0.3'; cardCol.style.pointerEvents = 'none'; }
 
@@ -480,11 +411,8 @@ const App = {
     this.remaining = this.shuffle([...this.currentSet.cartes]);
     this.totalCards = this.currentSet.cartes.length;
     this.completed = 0; this.rightCount = 0; this.wrongCount = 0;
-    this.wrongCards = []; this.startTime = Date.now(); this.lastBrickCount = 0;
-    const br = document.getElementById('brickRows');
-    if (br) br.innerHTML = '';
-    const smoke = document.getElementById('logoSmoke');
-    if (smoke) { smoke.innerHTML = ''; smoke.classList.remove('active'); }
+    this.wrongCards = []; this.startTime = Date.now();
+    if (this.chimney) this.chimney.updateChimney(0, this.totalCards);
     this.showScreen('review');
     this.startTimer();
     this.updateProgress(); this.showCard();
@@ -496,11 +424,8 @@ const App = {
     this.remaining = this.shuffle(this.wrongCards.map(n => this.currentSet.cartes.find(c => c.numero === n)).filter(Boolean));
     this.totalCards = this.remaining.length;
     this.completed = 0; this.rightCount = 0; this.wrongCount = 0;
-    this.wrongCards = []; this.startTime = Date.now(); this.lastBrickCount = 0;
-    const br = document.getElementById('brickRows');
-    if (br) br.innerHTML = '';
-    const smoke = document.getElementById('logoSmoke');
-    if (smoke) { smoke.innerHTML = ''; smoke.classList.remove('active'); }
+    this.wrongCards = []; this.startTime = Date.now();
+    if (this.chimney) this.chimney.updateChimney(0, this.totalCards);
     this.showScreen('review');
     this.startTimer();
     this.updateProgress(); this.showCard();
