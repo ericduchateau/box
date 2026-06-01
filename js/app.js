@@ -23,14 +23,14 @@ const App = {
   init() {
     const params = new URLSearchParams(window.location.search);
     if (params.get('action') === 'delete') { this.showScreen('delete'); return; }
-    if (params.get('set')) { this.loadAndReview(params.get('set')); return; }
-    this.loadCatalogue();
     this.initKeyboard();
     this.initTouch();
     const host = document.getElementById('chimneyHost');
     if (host && typeof ChimneyTetris !== 'undefined') {
       this.chimney = new ChimneyTetris(host, { logoSrc: 'img/logo-no-chimney.png' });
     }
+    if (params.get('set')) { this.loadAndReview(params.get('set')); return; }
+    this.loadCatalogue();
   },
 
   showScreen(name) {
