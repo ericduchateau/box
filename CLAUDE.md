@@ -1,3 +1,5 @@
+@AGENTS.md
+
 # BOX — Flashcards de révision pour Devoirs Faits
 
 ## Architecture
@@ -29,12 +31,19 @@ Prof remplit Google Form (PDF du cours)
 | BOX - Question Eleve | `0lo2EJjYDUh0ouKp` | Envoie la question d'un élève au prof par email |
 | BOX - Suppression | `lCSOkYDaQt46u96y` | Supprime un jeu de fiches (code de suppression) |
 | BOX - Generation Flashcards | `7UfpOH5oBBzxSM2g` | Génère les flashcards depuis le PDF via Claude Haiku |
+| BOX - Generation Tally | `aKRunzvTw7Y3WnTT` | Idem, voie Tally (profs sans compte Google) |
+| BOX - Validation Prof | `PGnB14t4JJ0j7HKn` | Ancien lien "Valider" (emails envoyés avant le 2026-10-01) |
+| BOX - Rejet Prof | `PQhg6g4vsfC3KHRN` | Ancien lien "Rejeter" (emails envoyés avant le 2026-10-01) |
+| BOX - Selection Prof | `HdDyacN45SPMyZoJ` | Relecture carte par carte avant publication (lien envoyé depuis le 2026-10-01) |
 
 ## Webhooks n8n
 - `/box-catalogue` — Liste des jeux disponibles
 - `/box-set` — Contenu d'un jeu de fiches
 - `/box-question` — Question d'élève vers le prof
 - `/box-delete` — Suppression d'un jeu
+- `/box-tally` — Réception d'une soumission Tally
+- `/box-validate`, `/box-reject` — Anciens liens de validation (encore actifs, pour compat)
+- `/box-select` (GET), `/box-select-confirm` (POST) — Nouvelle relecture carte par carte
 
 ## URLs
 - Form profs : `https://docs.google.com/forms/d/e/1FAIpQLSfJqn4AyDaJJocITESsLRgLzqv1Qp0V-U7rMqowKRjArgzaGw/viewform`
