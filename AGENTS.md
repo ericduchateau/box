@@ -18,10 +18,21 @@ Contexte : dépôt à l'AAP **CARDIE-SEPIA 2026-2027** (échéance **21/10/2026*
 
 - **Front** : site **statique** (GitHub Pages). Pas de backend. Les pages lisent des **JSON commités**.
 - **Collecte** (seul composant dynamique) : **webhook n8n → Google Sheet / Drive**.
-- **Calcul** : **GitHub Action en cron hebdomadaire** (script du dépôt) ; exécutable aussi à la main.
+- **Calcul** : **GitHub Action en cron hebdomadaire** (script du dépôt) ; exécutable aussi à la main. *(Cible Box-FONDA — n'existe pas encore dans ce repo, voir constats ci-dessous.)*
 - **Dépôt prof** : **Tally** + **Google Form** (deux voies parallèles — couvrir avec/sans compte Google).
 - **Stockage fiches** : Google Drive. Catalogue public via `?set=...`.
-- **8 workflows n8n** existants (génération ×2, catalogue, fiche, suppression, question, sélection + anciens liens validation/rejet **conservés pour compat**) → **ne pas les casser**.
+- **9 workflows n8n** existants (génération ×2, catalogue, fiche, suppression, question, sélection + anciens liens validation/rejet **conservés pour compat**) → **ne pas les casser**.
+
+### Constats de la cartographie (2026-10-03, lecture seule du repo)
+
+- `box/` est la **racine du dépôt Git** (`github.com/ericduchateau/box`, branches `main`/`design`), pas un sous-dossier d'un monorepo. C'est ici que `AGENTS.md`/`CLAUDE.md` doivent rester pour être lus par les deux outils.
+- **Front 100 % statique, zéro framework, zéro build** : `index.html` (291 lignes) + `js/app.js` (catalogue, révision, suppression, question élève→prof) + `js/chimney.js` (animation de fin d'écran) + `js/config.js` (URLs webhooks, couleurs par matière, `DEMO_MODE: false`) + `css/style.css`. Pas de `package.json`.
+- **`catalogue.json` à la racine du repo est un fichier mort** (`{"total_sets":0,"sets":[]}`, jamais lu par le front — vérifié par grep sur `js/`). Le vrai catalogue vit sur Google Drive, servi en direct par le webhook `/box-catalogue`. Ne pas le confondre avec un futur fichier `catalogue.json` fonctionnel au sens du PRD §3.4 (Box-FONDA) : ce serait un fichier différent, à committer.
+- **Correction du décompte** : 9 workflows n8n actifs, pas 8 (`BOX - Selection Prof` ajouté le 2026-10-01, cf. `AVANCEMENT.md`). `Validation Prof` et `Rejet Prof` restent actifs uniquement pour que les emails envoyés avant cette date restent cliquables — toute nouvelle génération pointe vers `/box-select`.
+- **Aucun code serveur dans ce repo** : toute la logique dynamique (génération Claude, validation, calcul) vit dans n8n, hébergé hors dépôt (`n8n.srv868991.hstgr.cloud`). Le **Calcul en GitHub Action cron** du PRD (§2) est donc entièrement **à construire** — rien d'équivalent n'existe aujourd'hui dans `.github/` (le dossier n'existe pas).
+- `design_handoff_chimney_tetris/` : bundle de handoff (Claude Design) à l'origine de `js/chimney.js` — conservé en référence, ne pas le supprimer sans vérifier qu'il n'est plus référencé ailleurs.
+- `notice-box.md` : notice papier à destination des collègues (mode d'emploi), distincte de la doc technique.
+- `AVANCEMENT.md` existait déjà avant cette cartographie (incident Tally, bugs Drive, workflow Selection Prof) — continué, pas recréé.
 
 ---
 
