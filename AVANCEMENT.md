@@ -125,12 +125,14 @@ Règles de travail (rappel) :
 - Branche `feat/fonda-lot1-contrats`, commit `4555b20`, PR vers `design` ouverte (lien ci-dessous). Pas de merge sans feu vert explicite.
 - Codex : non (pas demandé sur ce ticket).
 
-### ☐ T2 — Carte « réponse produite » + correction par profil
+### ☑ T2 — Carte « réponse produite » + correction par profil — implémenté le 2026-10-05, **Codex critique en attente avant fusion**
 - But : composant saisie courte + moteur 4 profils (sens/orthographe/numerique/exact, PRD §5.1). Tests d'abord.
 - Impact prod : nul (développé isolé, non branché).
-- DoD : suite de tests verte (accents, pluriels, 6/8=3/4, « presque ») ; profils pilotés par les données de carte.
-- Décisions ouvertes : tolérances exactes par profil ; rendu de l'état « presque ».
-- Codex : OUI (une faute peut-elle être validée ? la mesure peut-elle être faussée ?).
+- DoD : suite de tests verte ✅ (`node --test fonda/engine/correction.test.js` — 31/31, écrite avant `correction.js`, tous les cas du ticket couverts : accents, pluriels, 6/8=3/4, unité, arrondi, « presque », Levenshtein off) ; profils pilotés par les données de carte ✅.
+- Fichiers : `fonda/engine/correction.js` (moteur pur, UMD — `require()` en Node, `window.FondaCorrection` en navigateur, zéro dépendance), `correction.test.js`, `carte-reponse-produite.js` (composant vanilla JS, **non branché à `index.html`**, câblage = T4), `README.md`.
+- Décisions prises : 2 champs carte non détaillés par le PRD, ajoutés et **documentés dans `fonda/engine/README.md` pour validation Éric** : `unite` (numerique, défaut `null`) et `arrondi` (numerique, défaut `null` = exact). Règle « presque » : jamais en sens/exact (déjà tout pardonné / tout strict) ; en orthographe = matche seulement si on pardonne accent+pluriel ; en numerique = valeur correcte mais unité manquante.
+- **Codex : requis avant fusion (cf. Plan Lot 1)** — pas encore lancé. Question à poser : une faute peut-elle être validée à tort ? la mesure de rétention peut-elle être faussée par le comptage "presque" ?
+- Branche `feat/fonda-lot1-reponse-produite`. **Pas de PR/fusion tant que la critique Codex n'a pas eu lieu et sans feu vert explicite d'Éric.**
 
 ### ☐ T3 — Tags grp/ctx + verrou de vote
 - But : émettre les événements avec `grp` (choisi par le prof, jamais un élève) et `ctx` ; un vote par item et par occurrence (verrou local).
