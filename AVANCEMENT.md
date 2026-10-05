@@ -163,7 +163,21 @@ Corrections passe 2 (tests d'abord, 21 nouveaux tests) :
 
 Corrigé (tests d'abord, 2 nouveaux tests, 92/92) : la détection d'incohérence repose maintenant sur « le reliquat contient-il une lettre (ou `°`/`%`) » — présent et conforme à l'unité déclarée → pas une incohérence (même avec un chiffre) ; absent → toujours incohérent (fraction/forme malformée), qu'il y ait un chiffre ou pas.
 
-**État final T2** : 92/92 tests verts, T1 revalidé, rien touché hors `/fonda/`. Branche `feat/fonda-lot1-reponse-produite`. **Prêt pour fusion vers `design` — en attente du feu vert explicite d'Éric** (pas de merge sans accord).
+**Consigne d'Éric avant la 5e passe** : garder côte à côte les deux tests cœur (unité contradictoire → `carte_invalide` ; unité valide avec chiffre → `juste`), et étendre la table de fractions malformées à l'attendu ET à la saisie élève (`1/`, `1/2/`, `/3`, dénominateur nul `1/0`) — `carte_invalide` si c'est l'attendu, `faux` jamais `juste` si c'est la saisie élève.
+
+**5e critique Codex** (ciblée sur ces deux points) → 1 défaut hors limites connues : une fraction malformée **suivie d'un texte d'unité**, sans `unite` déclarée (`"1/ cm²"`, `"0,5/1,5 cm²"`), échappait encore — le reliquat contenait une lettre donc passait le test, et sans unité déclarée rien ne le comparait. Corrigé : un `/` qui subsiste dans le reliquat est toujours un résidu malformé (une fraction propre comme `3/4` absorbe entièrement son `/` dans la valeur). 93/93 tests, commit `ed7c6de`.
+
+**6e critique Codex** (même points) → 2 nouveaux défauts, le fix précédent ayant été trop large :
+1. **Faux positif** : une unité composée légitime contenant elle-même un `/` (`m/s`, `km/h`) était signalée `carte_invalide` — le "tout `/` restant = malformé" ne distinguait pas un `/` d'unité d'un `/` de fraction cassée.
+2. **Faux négatif** : une fraction décimale tronquée par le parseur (`"1/2,5"` → seul `1/2` est reconnu comme fraction entière, le reliquat `.5 cm²` commence par un chiffre/point) passait encore, car ce reliquat contenait une lettre et pas de `/`.
+
+Remplacé par une **grammaire explicite** (`RE_UNITE_PLAUSIBLE`) : un reliquat est une unité plausible seulement s'il est une suite de tokens lettres/symboles (`°`, `%`, `µ`, `Ω`), chacun avec exposant optionnel, enchaînés par `/` pour une unité composée. Tout le reste (vide avant `/`, commence par un chiffre/point, `/` mal placé) est malformé. 95/95 tests, commit `6edcdef`.
+
+**7e critique Codex** (même points) → 1 défaut : une unité à 2+ facteurs avec exposant sur un facteur du milieu séparé par un **point médian** (`m²·s⁻¹`, `kg·m²/s²`) était rejetée — le `·` était inclus dans le token lui-même au lieu d'être un joineur, donc bloquait la suite après un exposant. Corrigé : `·` traité comme joineur au même titre que `/`. 96/96 tests, commit `c378924`.
+
+**8e critique Codex** (vérification exhaustive, 180 000+ cas générés : unités à 2-3 facteurs toutes combinaisons `/`/`·`/exposant-à-toute-position, fractions malformées avec séparateurs multiples/signes/espaces/virgule-point mélangés) → **aucune faille, rien au-delà des limites connues du README**. Conforme à la règle d'arrêt fixée par Éric avant la 5e passe — reste à confirmer explicitement le feu vert de fusion.
+
+**État final T2** : 96/96 tests verts, T1 revalidé, rien touché hors `/fonda/`. Branche `feat/fonda-lot1-reponse-produite` (8 commits de révision). **Prêt pour fusion vers `design` — en attente du feu vert explicite d'Éric** (pas de merge sans accord).
 
 ### ☐ T3 — Tags grp/ctx + verrou de vote
 - But : émettre les événements avec `grp` (choisi par le prof, jamais un élève) et `ctx` ; un vote par item et par occurrence (verrou local).
