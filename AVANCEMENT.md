@@ -122,10 +122,10 @@ Règles de travail (rappel) :
   - id de notion `{fr|maths}.{slug-kebab}` ; 11 notions (éclatement de la ligne groupée PRD §14 "Proportionnalité · Grandeurs & mesures · Espace & géométrie" en 3 notions distinctes, regroupables via le nouveau champ `categorie`) ;
   - validation maison en Node natif, zéro dépendance, pas de `package.json` (cohérent avec la règle racine "pas de npm pour le front").
   - ajout non prévu au schéma minimal du PRD, documenté dans `fonda/data/README.md` : `categorie` (regroupement dashboard) et `palier_amorce` (reprend la colonne "Palier amorce" du tableau PRD §14, distinct de `paliers` qui reste toujours `["nI","nF"]`).
-- Branche `feat/fonda-lot1-contrats`, commit `4555b20`, PR vers `design` ouverte (lien ci-dessous). Pas de merge sans feu vert explicite.
+- Branche `feat/fonda-lot1-contrats`, commit `4555b20`. **Fusionné** dans `design` (`ba50763`), branche supprimée.
 - Codex : non (pas demandé sur ce ticket).
 
-### ☑ T2 — Carte « réponse produite » + correction par profil — révisé le 2026-10-05, 3 passes de critique Codex, **prêt pour fusion sur feu vert**
+### ☑ T2 — Carte « réponse produite » + correction par profil — révisé le 2026-10-05, 8 passes de critique Codex, **fusionné**
 - But : composant saisie courte + moteur 4 profils (sens/orthographe/numerique/exact, PRD §5.1). Tests d'abord.
 - Impact prod : nul (développé isolé, non branché).
 - DoD : suite de tests verte ✅ (`node --test fonda/engine/*.test.js` — **80/80**, écrite/mise à jour avant chaque révision du moteur) ; profils pilotés par les données de carte ✅.
@@ -177,13 +177,31 @@ Remplacé par une **grammaire explicite** (`RE_UNITE_PLAUSIBLE`) : un reliquat e
 
 **8e critique Codex** (vérification exhaustive, 180 000+ cas générés : unités à 2-3 facteurs toutes combinaisons `/`/`·`/exposant-à-toute-position, fractions malformées avec séparateurs multiples/signes/espaces/virgule-point mélangés) → **aucune faille, rien au-delà des limites connues du README**. Conforme à la règle d'arrêt fixée par Éric avant la 5e passe — reste à confirmer explicitement le feu vert de fusion.
 
-**État final T2** : 96/96 tests verts, T1 revalidé, rien touché hors `/fonda/`. Branche `feat/fonda-lot1-reponse-produite` (8 commits de révision). **Prêt pour fusion vers `design` — en attente du feu vert explicite d'Éric** (pas de merge sans accord).
+**État final T2** : 96/96 tests verts, T1 revalidé, rien touché hors `/fonda/`. Branche `feat/fonda-lot1-reponse-produite` (8 commits de révision).
 
-### ☐ T3 — Tags grp/ctx + verrou de vote
-- But : émettre les événements avec `grp` (choisi par le prof, jamais un élève) et `ctx` ; un vote par item et par occurrence (verrou local).
-- Impact prod : nul tant que non branché à la page.
-- DoD : un événement bien formé par réponse, conforme à T1, zéro identifiant élève.
-- Codex : OUI (ré-identification possible ?).
+**Fusionné** le 2026-10-05 sur feu vert explicite d'Éric : `git merge --no-ff` dans `design` (pas de `gh`/PR, même méthode que T1), hash de merge `6aa73e8`. `main` non touché (`7ea4f28`, identique au tag `prod-stable-2026-10-05`). Branches `feat/fonda-lot1-contrats` et `feat/fonda-lot1-reponse-produite` supprimées (locale + origin) après fusion.
+
+### ☑ T3 — Émission d'événements : grp/ctx, verrou un-vote, câblage « 1ʳᵉ tentative scorée » — fait le 2026-10-05
+- But : construire, verrouiller et mettre **localement** en file (PRD §3.2) un événement de mesure par réponse scorée (T2) ; zéro réseau (la collecte n8n est T5).
+- Impact prod : nul (développé isolé, pas de réseau, non branché à `index.html` — câblage = T4).
+- DoD : 26 nouveaux tests ✅ (`node --test fonda/engine/evenements.test.js`), suite complète 122/122 ✅, `node fonda/scripts/validate.js` toujours conforme (31 vérifications), rien touché hors `/fonda/` ✅.
+- Fichiers : `fonda/data/classes.json` (20 classes, format `"601"`...`"305"`), `fonda/data/destinataires.json` (vide, posé pour plus tard), `fonda/engine/evenements.js`, `evenements.test.js`, `fonda/scripts/validate.js` (étendu, pas réécrit — voir Décisions), READMEs (`fonda/engine/`, `fonda/data/`).
+
+**Étape 0 — cas-limites (Codex, lecture seule)** : table complète demandée avant tout code (anonymat, `grp` prof vs dérivé, verrou multi-scénarios, `rang_local`/`dt_jours` appareil perso vs partagé, seconde chance). Collée brute à Éric, qui a ensuite tranché lui-même les points ouverts (identité d'occurrence, clé du verrou, format `defi_id`) dans le ticket d'implémentation — pas de 2e aller-retour Codex nécessaire à cette étape.
+
+**Décisions prises (ticket d'Éric)** :
+- `defi_id` = `defi_{annee}-w{semaine}_{grp 3 chiffres}_{notion-slug}` (ex. `defi_2026-w41_601_fractions`) : `grp` s'en extrait, n'est **jamais** saisi par l'élève (G2/G3).
+- Verrou « un vote » scellé sous `${defi_id}::${item_id}` (imposé par le ticket) — scope **par occurrence**.
+- Historique (`rang_local`/`dt_jours`) scellé sous `${set_id}::${item_id}` (ma proposition, confirmée avant codage) — scope **par item, à travers les occurrences** : résout l'ambiguïté « `item_id` unique seulement dans un jeu » relevée à l'étape 0.
+- `fonda/scripts/validate.js` **refactoré, pas dupliqué** : extraction de `validateEventFields()` + export `validerEvenement(event, notionIds)` réutilisable sans I/O disque, `main()` gardé derrière `require.main === module` pour ne plus s'exécuter au `require()`. Renforcé en **liste blanche stricte** des 11 champs (avant : blocklist de noms connus `nom`/`email`/... ; un champ inattendu non listé, ex. `uuid`, passait). Vérifié : `node fonda/scripts/validate.js` toujours 31/31 après refactor (T1 non régressé).
+- `ts` tronqué (pas arrondi au plus proche) à l'heure pleine UTC — anti-réidentification.
+- `dt_jours` : horloge reculée/date future → bornée à `0`, jamais négatif/`NaN` (plutôt que refuser l'émission — l'événement reste légitime, seule la mesure de délai est dégradée).
+- Verrou **synchrone** (vérification + écriture sans attente) : correct pour double-clic/rechargement/2 onglets **dans le même onglet**. Entre deux onglets réellement distincts, `localStorage` n'offre pas de comparaison-et-échange atomique — limite théorique documentée au README, PAS corrigée (la Web Locks API y remédierait mais rendrait async tout le chemin depuis `carte-reponse-produite.js` de T2, hors scope). Signalé explicitement à Éric avant codage, pas d'objection.
+- Seconde chance (`scored:false`) : **aucune écriture**, pas seulement aucune émission — ni verrou, ni historique touchés, pour ne laisser aucune trace mesurable.
+
+**Critique Codex finale** (lecture seule, ciblée anonymat + verrou + non-émission seconde chance) : [à lancer avant PR — voir section suivante si déjà fait au moment de la lecture].
+
+- Branche `feat/fonda-lot1-evenements`. **Pas de PR/fusion sans la critique finale et le feu vert explicite d'Éric. T4 non démarré.**
 
 ### ☐ T4 — Mode Box-FONDA + menu public
 - But : toggle/mode SUR la page existante (pas de lien séparé) + page menu lisant `calendar.json`. Inactif par défaut (feature-flag).

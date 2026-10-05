@@ -61,7 +61,17 @@ Vide à T1 — rempli par le Moteur A / tableau de bord (Lot 2).
 
 ## `fonda/fixtures/events.sample.json` — PRD §3.2
 
-Jeu d'événements **synthétiques et anonymes** (aucune donnée réelle d'élève, aucun identifiant individuel). Couvre plusieurs `grp`, `ctx`, paliers, et deux niveaux de `rang_local` (avec `dt_jours: null` au rang 1, conforme au PRD). Sert de fixture pour le validateur et pour les tests futurs du Moteur A (T3+).
+Jeu d'événements **synthétiques et anonymes** (aucune donnée réelle d'élève, aucun identifiant individuel). Couvre plusieurs `grp`, `ctx`, paliers, et deux niveaux de `rang_local` (avec `dt_jours: null` au rang 1, conforme au PRD). Sert de fixture pour le validateur et pour les tests du Moteur A (T3).
+
+---
+
+## `classes.json` (T3)
+
+Liste fermée des 20 classes de l'année, format canonique **3 chiffres sans lettre** (ex. `"601"`, pas `"6e1"`). C'est la seule source de vérité pour la validité d'un `grp` — voir [`fonda/engine/evenements.js`](../engine/evenements.js). À remettre à jour chaque rentrée.
+
+## `destinataires.json` (T3)
+
+Structure par niveau (`6e`/`5e`/`4e`/`3e`), vide à T3 — **adresses de collègues adultes** (relecture par matière), jamais de donnée élève. Non consommé par le moteur d'événements ; posé en prévision d'un usage ultérieur (notifications de relecture).
 
 ---
 
@@ -75,6 +85,6 @@ Zéro dépendance (Node natif uniquement, pas de `package.json`). Vérifie :
 - JSON bien formé pour les 5 fichiers (`referentiel`, `calendar`, `coverage`, `dashboard`, `events.sample`) ;
 - schéma et types de chaque notion de `referentiel.json`, unicité des `id`, pattern d'id, enums (`matiere`, `priorite_initiale`, `paliers`, `palier_amorce`) ;
 - enveloppe minimale de `calendar.json` / `coverage.json` / `dashboard.json` ;
-- schéma et types de chaque événement de la fixture, enums (`palier`, `ctx`, `result`), cohérence `rang_local`/`dt_jours`, et que chaque `notion_id` référencé existe bien dans `referentiel.json`.
+- schéma et types de chaque événement de la fixture, **liste blanche stricte des 11 champs du schéma** (tout champ supplémentaire est rejeté, cf. G3), enums (`palier`, `ctx`, `result`), cohérence `rang_local`/`dt_jours`, et que chaque `notion_id` référencé existe bien dans `referentiel.json`.
 
-Code de sortie non nul si une vérification échoue (utilisable en CI plus tard).
+Code de sortie non nul si une vérification échoue (utilisable en CI plus tard). Depuis T3, `fonda/scripts/validate.js` exporte aussi `validerEvenement(event, notionIds)` — validation d'UN événement isolé, sans lecture disque, réutilisée par [`fonda/engine/evenements.js`](../engine/evenements.js) avant toute mise en file.

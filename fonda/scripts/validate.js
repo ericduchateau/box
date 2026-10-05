@@ -162,6 +162,48 @@ function validateDashboard() {
 // fixtures/events.sample.json
 // ---------------------------------------------------------------------------
 
+// Liste blanche stricte du schéma PRD §3.2 — AUCUN autre champ n'est toléré (G3 : un
+// champ supplémentaire, même anodin en apparence — "uuid", "ip", "device" — est une
+// fuite potentielle d'identifiant individuel, donc un rejet, pas juste les noms
+// explicitement nominatifs).
+const EVENT_FIELDS = new Set([
+  'ts', 'grp', 'defi_id', 'notion_id', 'palier', 'set_id', 'item_id',
+  'result', 'ctx', 'rang_local', 'dt_jours',
+]);
+
+// Validation d'UN événement isolé — pas de lecture fichier, réutilisable (T3 : avant
+// mise en file d'un événement construit par fonda/engine/evenements.js).
+function validateEventFields(e, notionIds) {
+  assert(e && typeof e === 'object' && !Array.isArray(e), 'un événement doit être un objet');
+
+  Object.keys(e).forEach((k) => {
+    assert(EVENT_FIELDS.has(k), `champ "${k}" hors schéma §3.2 (liste blanche stricte)`);
+  });
+
+  assert(isNonEmptyString(e.ts), 'ts manquant');
+  assert(!Number.isNaN(Date.parse(e.ts)), `ts "${e.ts}" n'est pas une date ISO valide`);
+
+  assert(isNonEmptyString(e.grp), 'grp manquant ou vide');
+  assert(isNonEmptyString(e.defi_id), 'defi_id manquant ou vide');
+
+  assert(isNonEmptyString(e.notion_id), 'notion_id manquant ou vide');
+  assert(notionIds.has(e.notion_id), `notion_id "${e.notion_id}" absent de referentiel.json`);
+
+  assert(PALIERS.has(e.palier), `palier "${e.palier}" invalide (attendu: nI | nF)`);
+  assert(isNonEmptyString(e.set_id), 'set_id manquant ou vide');
+  assert(isNonEmptyString(e.item_id), 'item_id manquant ou vide');
+
+  assert(RESULT_VALUES.has(e.result), `result "${e.result}" invalide (attendu: 0 | 1)`);
+  assert(CTX_VALUES.has(e.ctx), `ctx "${e.ctx}" invalide (attendu: df | maison | classe)`);
+
+  assert(isInt(e.rang_local) && e.rang_local >= 1, 'rang_local doit être un entier >= 1');
+  if (e.rang_local === 1) {
+    assert(e.dt_jours === null, 'dt_jours doit être null au rang_local 1 (pas de tentative précédente)');
+  } else {
+    assert((isInt(e.dt_jours) || typeof e.dt_jours === 'number') && e.dt_jours >= 0, 'dt_jours doit être un nombre >= 0 au-delà du rang_local 1');
+  }
+}
+
 function validateEventsSample(notionIds) {
   const file = path.join(FIXTURES_DIR, 'events.sample.json');
   const data = readJson(file);
@@ -173,37 +215,27 @@ function validateEventsSample(notionIds) {
 
   (data.events || []).forEach((e, i) => {
     const where = `events[${i}]`;
-    check(`events.sample.json : ${where}`, () => {
-      assert(isNonEmptyString(e.ts), 'ts manquant');
-      assert(!Number.isNaN(Date.parse(e.ts)), `ts "${e.ts}" n'est pas une date ISO valide`);
-
-      assert(isNonEmptyString(e.grp), 'grp manquant ou vide');
-      assert(isNonEmptyString(e.defi_id), 'defi_id manquant ou vide');
-
-      assert(isNonEmptyString(e.notion_id), 'notion_id manquant ou vide');
-      assert(notionIds.has(e.notion_id), `notion_id "${e.notion_id}" absent de referentiel.json`);
-
-      assert(PALIERS.has(e.palier), `palier "${e.palier}" invalide (attendu: nI | nF)`);
-      assert(isNonEmptyString(e.set_id), 'set_id manquant ou vide');
-      assert(isNonEmptyString(e.item_id), 'item_id manquant ou vide');
-
-      assert(RESULT_VALUES.has(e.result), `result "${e.result}" invalide (attendu: 0 | 1)`);
-      assert(CTX_VALUES.has(e.ctx), `ctx "${e.ctx}" invalide (attendu: df | maison | classe)`);
-
-      assert(isInt(e.rang_local) && e.rang_local >= 1, 'rang_local doit être un entier >= 1');
-      if (e.rang_local === 1) {
-        assert(e.dt_jours === null, 'dt_jours doit être null au rang_local 1 (pas de tentative précédente)');
-      } else {
-        assert((isInt(e.dt_jours) || typeof e.dt_jours === 'number') && e.dt_jours >= 0, 'dt_jours doit être un nombre >= 0 au-delà du rang_local 1');
-      }
-
-      // Aucune donnée nominative attendue : pas de champ "nom"/"prenom"/"email"/"id_eleve" (G3).
-      ['nom', 'prenom', 'email', 'id_eleve', 'eleve_id'].forEach((forbidden) => {
-        assert(!(forbidden in e), `champ "${forbidden}" interdit (G3 — aucune donnée nominative d'élève)`);
-      });
-    });
+    check(`events.sample.json : ${where}`, () => validateEventFields(e, notionIds));
   });
 }
+
+/**
+ * Valide UN événement isolé, sans accès disque — pour réutilisation hors de ce script
+ * (T3 : juste avant de mettre un événement en file d'émission). `notionIds` peut être
+ * un Set ou un tableau d'ids valides (ex. relu depuis referentiel.json).
+ * @returns {{ valide: true } | { valide: false, erreurs: string[] }}
+ */
+function validerEvenement(e, notionIds) {
+  const ids = notionIds instanceof Set ? notionIds : new Set(notionIds || []);
+  try {
+    validateEventFields(e, ids);
+    return { valide: true };
+  } catch (err) {
+    return { valide: false, erreurs: [err.message] };
+  }
+}
+
+module.exports = { validerEvenement, EVENT_FIELDS };
 
 // ---------------------------------------------------------------------------
 // run
@@ -244,4 +276,6 @@ function main() {
   }
 }
 
-main();
+if (require.main === module) {
+  main();
+}

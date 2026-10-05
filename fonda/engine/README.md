@@ -105,6 +105,73 @@ Inchangé : seuls les espaces sont pardonnés (après la couche de normalisation
 
 `onResultat` reçoit `{ statut, reussite, tentative, scored }`. `scored` n'est `true` que pour `tentative === 1` (PRD §5.1 : « on score la 1ère tentative »). La seconde chance (relance immédiate, uniquement après un `presque`, si `carte.seconde_chance` est vrai) est pédagogique et n'est **jamais** scorée. À charge de l'appelant (T3) de ne construire un événement de mesure (PRD §3.2) que pour les résultats où `scored === true`.
 
+---
+
+# `evenements.js` — émission d'événements de mesure (T3)
+
+Référence : [`docs/PRD-Box-FONDA.md`](../../docs/PRD-Box-FONDA.md) §3.2, §5.1, §6 ; `AGENTS.md` G2/G3. Construit, verrouille et met **localement** en file les événements de mesure pour `onResultat({ scored: true })` de T2 — **aucun appel réseau** (la collecte n8n est T5). `node --test fonda/engine/evenements.test.js` (26 tests).
+
+## Pourquoi un module séparé de `correction.js`
+
+`correction.js`/`carte-reponse-produite.js` ne connaissent ni `grp`, ni `notion_id`, ni le contexte de session (cf. leur doc) — c'est volontaire, pour rester réutilisables hors Box-FONDA. `evenements.js` est la couche qui ajoute ce contexte et transforme un résultat de carte en événement de mesure anonyme.
+
+## API
+
+```js
+const { soumettreTentative } = require('./evenements.js');
+
+soumettreTentative({
+  defiId, itemId, setId, notionId, palier, ctx,  // contexte du défi, FOURNI par l'appelant (T4) — jamais deviné
+  reussite, scored,                               // issus de onResultat() de T2
+  classesAutorisees,                              // contenu de fonda/data/classes.json
+  notionIdsConnus,                                // optionnel : ids de fonda/data/referentiel.json, pour une vraie vérification
+  stockage,                                        // ex. window.localStorage — INJECTÉ, jamais lu en dur
+  maintenant,                                      // () => new Date() — injecté, pour la testabilité
+});
+// → { emis: true, event } | { emis: false, raison: string, erreurs?: string[] }
+```
+
+`event` contient **exactement** les 11 champs du schéma §3.2 (`ts, grp, defi_id, notion_id, palier, set_id, item_id, result, ctx, rang_local, dt_jours`), reconstruit champ par champ (jamais par copie de l'entrée — un paramètre étranger passé par erreur, ex. un nom d'élève, ne peut donc jamais fuiter) puis revalidé par `validerEvenement()` de T1 (liste blanche stricte) avant toute mise en file.
+
+## `grp` : exclusivement lu depuis `defi_id` (G2/G3)
+
+`defi_id` a la forme `defi_{annee}-w{semaine}_{grp 3 chiffres}_{notion-slug}` (ex. `defi_2026-w41_601_fractions`) ; `grp` en est **extrait**, jamais saisi par l'élève ni déduit d'un nom/login/IP/historique. Deux échecs distincts :
+- `defi_id` ne respecte pas le format (grp absent ou pas 3 chiffres) → `raison: 'defi_id_invalide'` — « pas d'occurrence fabriquée depuis `rang_local` ».
+- `defi_id` bien formé mais le grp extrait n'est pas dans `classes.json` (ex. roster désynchronisé) → `raison: 'grp_non_autorise'`.
+
+Dans les deux cas : **mode entraînement, aucune émission** — l'élève révise, rien n'est mesuré.
+
+## Verrou « un vote » et historique : deux clés distinctes
+
+| Donnée | Clé localStorage | Portée | Pourquoi |
+|---|---|---|---|
+| Verrou (un vote) | `fonda_evt_verrous` → `{ "${defi_id}::${item_id}": true }` | Par **occurrence** (le `defi_id` change à chaque semaine) | Une 2ᵉ soumission du même item dans la même occurrence (rechargement, double-clic, 2 onglets) ne crée jamais de 2ᵉ événement. Un nouveau vote redevient possible à l'occurrence suivante (nouveau `defi_id`). |
+| Historique (pour `rang_local`/`dt_jours`) | `fonda_evt_historique` → `{ "${set_id}::${item_id}": [{ts, defi_id}, ...] }` | Par **item**, à travers les occurrences | Doit survivre au changement de `defi_id` pour que `rang_local` s'incrémente d'une occurrence à l'autre. Résout l'ambiguïté « `item_id` unique seulement à l'intérieur d'un jeu » (critique Codex de cadrage) en widening la clé à `(set_id, item_id)`. |
+| File d'émission (T5 la videra) | `fonda_evt_file` → `[event, ...]` | — | Chaque événement y est gelé (`Object.freeze`) : un réessai d'émission futur (T5) réutilisera le même objet, n'en recréera jamais un second. |
+
+Verrou et historique sont scellés dans le **même bloc synchrone** que la validation et la mise en file (vérification puis écriture, sans aucune attente entre les deux) : correct pour un double-clic, un double callback ou un rechargement **dans le même onglet** (JS y est mono-thread, rien ne peut s'intercaler). Entre deux onglets réellement distincts (processus séparés), `localStorage` n'offre aucune primitive de comparaison-et-échange atomique — une course très rare reste possible en théorie. **Limite documentée, pas corrigée** (cf. « Limites connues » ci-dessous) : ajouter la Web Locks API y remédierait, mais demanderait de rendre asynchrone tout le chemin d'appel depuis `carte-reponse-produite.js` (T2), hors scope T3.
+
+## Seconde chance : aucune trace
+
+`scored !== true` → `raison: 'non_score'`, et **aucune écriture** (ni verrou, ni historique, ni file) : une relance après un « presque » ne doit laisser aucune trace mesurable, conforme à T2 (seule la 1ʳᵉ tentative est scorée).
+
+## `ts` : tronqué à l'heure pleine
+
+`ts` est toujours tronqué (pas arrondi au plus proche : toujours vers le bas) aux minutes/secondes à `00`, en UTC — anti-réidentification par recoupement horaire fin (grp minuscule + horaire précis + item = risque de ré-identification indirecte, relevé par la critique de cadrage). `dt_jours` est calculé en jours entiers écoulés depuis le dernier passage connu de l'historique, **jamais négatif ni `NaN`** : une horloge reculée ou une date future est bornée à `dt_jours: 0` plutôt que rejetée (l'événement reste légitime, seule la mesure de délai est dégradée).
+
+## Robustesse
+
+- **Stockage indisponible, saturé, bloqué ou corrompu** (`getItem`/`setItem` qui lèvent, JSON illisible) → aucune émission, aucune exception (`raison: 'stockage_indisponible'` ou `'stockage_corrompu'`) — l'élève peut toujours réviser, seule la mesure est perdue.
+- **Contexte incomplet** (`itemId`/`setId`/`notionId`/`palier` manquants) → aucune émission : ce module ne fabrique jamais un contexte, il le reçoit de l'appelant (T4).
+- **`ctx` invalide** (hors `df`/`maison`/`classe`) → aucune émission.
+- **Horloge injectée invalide** (`maintenant` absente, non-fonction, ou renvoyant une date invalide) → aucune émission, jamais d'exception.
+
+## Limites connues (hors périmètre ce ticket — signalées, pas corrigées)
+
+- **Course entre deux onglets réellement distincts** (processus séparés, écriture quasi simultanée) : voir « Verrou » ci-dessus — limite théorique de `localStorage` sans Web Locks API, non traitée pour rester synchrone avec T2.
+- **Élève utilisant un appareil partagé/prêté** : l'historique et le verrou décrivent l'usage du navigateur, pas celui d'un individu — assumé par le PRD (G2, pas de compte élève).
+- **Pas de vérification réseau/collecte ici** : T3 construit et stocke, T5 émettra réellement vers n8n. Un événement en file peut rester local indéfiniment si T5 n'est jamais câblé.
+
 ## Limites connues (hors périmètre collège — signalées, pas corrigées)
 
 Relevées par les 2ᵉ et 3ᵉ critiques Codex, volontairement laissées telles quelles (arbitrage Éric : hors du périmètre réaliste d'une réponse saisie par un collégien) :
