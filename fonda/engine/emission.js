@@ -32,13 +32,13 @@
   if (typeof module === 'object' && module.exports) {
     const ev = require('./evenements.js');
     const validate = require('../scripts/validate.js');
-    module.exports = factory(ev.lireFile, ev.retirerDeFile, validate.validerEvenement);
+    module.exports = factory(ev.lireFile, ev.retirerDeFile, ev.formeEvenementPlausible, validate.validerEvenement);
   } else {
     const ev = root.FondaEvenements || {};
     const validate = root.FondaValidate || {};
-    root.FondaEmission = factory(ev.lireFile, ev.retirerDeFile, validate.validerEvenement);
+    root.FondaEmission = factory(ev.lireFile, ev.retirerDeFile, ev.formeEvenementPlausible, validate.validerEvenement);
   }
-})(typeof self !== 'undefined' ? self : this, function (lireFile, retirerDeFile, validerEvenement) {
+})(typeof self !== 'undefined' ? self : this, function (lireFile, retirerDeFile, formeEvenementPlausible, validerEvenement) {
 'use strict';
 
 // Liste blanche stricte, reconstruite ici pour ne JAMAIS dépendre d'un spread de
@@ -89,7 +89,11 @@ async function viderFileEvenements({ stockage, webhookUrl, envoyer }) {
     const corps = construireCorps(event);
 
     const validation = validerEvenement(corps, [corps.notion_id]);
-    if (!validation.valide) {
+    // Au-delà de la liste blanche des 11 champs : contrôle de FORME (grp à 3 chiffres
+    // cohérent avec defi_id, notion_id du pattern référentiel, identifiants sans texte
+    // libre, ts tronqué à l'heure) — défense en profondeur contre une file altérée ou
+    // un appel direct au webhook qui contournerait soumettreTentative (T3).
+    if (!validation.valide || !formeEvenementPlausible(corps)) {
       resultat.invalides += 1;
       continue; // jamais envoyé, jamais bloquant pour les suivants
     }

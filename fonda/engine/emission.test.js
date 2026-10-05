@@ -166,6 +166,49 @@ describe('cas — corps limité STRICTEMENT aux 11 champs du schéma, rien d\'au
     assert.equal(resultat.envoyes, 1);
     assert.equal(appels, 1); // seul le 2e event (valide) a été réellement envoyé
   });
+
+  test('(critique Codex) contrôle de FORME au-delà des noms de champs : métadonnée/texte libre glissé dans un champ autorisé -> jamais envoyé', async () => {
+    const stockage = creerStockageFactice();
+    remplirFile(stockage, 1);
+    const mesure = JSON.parse(stockage.getItem(CLE_MESURE));
+    mesure.file[0].set_id = 'IP=192.0.2.10; device=synthetic'; // texte libre dans un champ autorisé
+    stockage.setItem(CLE_MESURE, JSON.stringify(mesure));
+
+    let appele = false;
+    const envoyer = async () => { appele = true; return true; };
+    const resultat = await viderFileEvenements({ stockage, webhookUrl: 'https://exemple/box-fonda-events', envoyer });
+
+    assert.equal(appele, false, 'un set_id contenant du texte libre ne doit jamais partir sur le réseau');
+    assert.equal(resultat.invalides, 1);
+    assert.equal(resultat.envoyes, 0);
+  });
+
+  test('(critique Codex) ts non tronqué à l\'heure (événement falsifié) -> jamais envoyé', async () => {
+    const stockage = creerStockageFactice();
+    remplirFile(stockage, 1);
+    const mesure = JSON.parse(stockage.getItem(CLE_MESURE));
+    mesure.file[0].ts = '2026-10-05T10:23:45.678Z'; // précision à la seconde/ms, jamais produite par T3
+    stockage.setItem(CLE_MESURE, JSON.stringify(mesure));
+
+    let appele = false;
+    const envoyer = async () => { appele = true; return true; };
+    const resultat = await viderFileEvenements({ stockage, webhookUrl: 'https://exemple/box-fonda-events', envoyer });
+
+    assert.equal(appele, false, 'un ts non tronqué à l\'heure ne doit jamais partir sur le réseau (anti-réidentification)');
+    assert.equal(resultat.invalides, 1);
+  });
+
+  test('(critique Codex) grp incohérent avec le defi_id (falsifié) -> jamais envoyé', async () => {
+    const stockage = creerStockageFactice();
+    remplirFile(stockage, 1);
+    const mesure = JSON.parse(stockage.getItem(CLE_MESURE));
+    mesure.file[0].grp = '999'; // ne correspond plus au grp encodé dans defi_id
+    stockage.setItem(CLE_MESURE, JSON.stringify(mesure));
+
+    const resultat = await viderFileEvenements({ stockage, webhookUrl: 'https://exemple/box-fonda-events', envoyer: async () => true });
+    assert.equal(resultat.invalides, 1);
+    assert.equal(resultat.envoyes, 0);
+  });
 });
 
 describe('cas — URL de webhook non configurée : mode dégradé, ne bloque jamais la révision', () => {

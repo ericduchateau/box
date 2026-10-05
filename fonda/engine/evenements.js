@@ -84,6 +84,41 @@ function estIdentifiantPlausible(valeur) {
   return typeof valeur === 'string' && ID_TECHNIQUE_PATTERN.test(valeur);
 }
 
+// Pattern référentiel de T1 (fonda/data/README.md) : {fr|maths}.{slug-kebab}.
+const NOTION_ID_PATTERN = /^(fr|maths)\.[a-z0-9-]+$/;
+const GRP_PATTERN = /^[0-9]{3}$/;
+
+function tsEstTronqueALHeure(ts) {
+  if (typeof ts !== 'string') return false;
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return false;
+  return d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0 && d.getUTCMilliseconds() === 0;
+}
+
+/**
+ * Contrôle de FORME d'un événement déjà construit — défense en profondeur pour T5
+ * (émission réseau), au-delà de la liste blanche des 11 champs (validerEvenement de
+ * T1) : vérifie que le CONTENU de chaque champ ressemble à ce que soumettreTentative
+ * produit réellement — grp à 3 chiffres, defi_id du bon format ET cohérent avec ce
+ * grp, notion_id du pattern référentiel, identifiants techniques sans texte libre,
+ * ts tronqué à l'heure. Protège contre une file locale altérée (devtools) ou un appel
+ * direct au webhook qui contournerait soumettreTentative — PAS contre un identifiant
+ * qui respecte la forme attendue mais n'existe pas réellement (ex. un item_id à
+ * chiffres qui ressemblerait à une IP : même limite que la dette T6 déjà documentée,
+ * la forme ne garantit jamais la sémantique).
+ */
+function formeEvenementPlausible(event) {
+  const e = event || {};
+  if (!GRP_PATTERN.test(e.grp)) return false;
+  const parse = parserDefiId(e.defi_id);
+  if (!parse || parse.grp !== e.grp) return false;
+  if (!NOTION_ID_PATTERN.test(e.notion_id)) return false;
+  if (!estIdentifiantPlausible(e.set_id)) return false;
+  if (!estIdentifiantPlausible(e.item_id)) return false;
+  if (!tsEstTronqueALHeure(e.ts)) return false;
+  return true;
+}
+
 const CLE_MESURE = 'fonda_evt_mesure';
 
 // Décompose un defi_id en ses 4 segments, ou null si la forme ne correspond pas.
@@ -329,6 +364,7 @@ return {
   ctxEstValide,
   lireFile,
   retirerDeFile,
+  formeEvenementPlausible,
   CLE_MESURE,
 };
 

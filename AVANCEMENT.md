@@ -285,7 +285,7 @@ Ajout d'un garde-fou permanent dans `AGENTS.md` (section G1-G7) : interdiction d
 - DoD :
   - Émetteur navigateur (`fonda/engine/emission.js`, 11 tests) ✅ : file vidée dans l'ordre ; succès → retiré de la file ; échec (réseau, exception, réponse négative) → reste en file, **même objet** renvoyé au réessai (même `ts`) ; un échec n'empêche pas les suivants ; corps strictement limité aux 11 champs (reconstruit champ par champ, jamais par spread — vérifié même avec un événement en file volontairement corrompu avec des champs étrangers) ; `webhookUrl` absente → mode dégradé, aucune tentative, aucune exception, révision jamais bloquée.
   - Workflow n8n (`n8n/fonda-collecte/box-fonda-events.json`, livré inactif) : liste blanche stricte des 11 champs côté serveur aussi (défense en profondeur) ; CORS prévu (node OPTIONS dédié + `allowedOrigins` + en-têtes `Access-Control-Allow-Origin` sur les 3 réponses) ; ID du Sheet référencé via un node `Config` dédié (un seul endroit à éditer), jamais en dur dans le node Google Sheets ; aucune IP écrite ni utilisée pour dédoublonner ; 12ᵉ colonne optionnelle `recu_serveur_ts` (horodatage serveur, explicitement autorisé par le ticket), rien d'autre.
-  - `node fonda/scripts/validate.js` toujours 31/31. **181/181 tests** (suite complète T1-T5, hors workflow n8n lui-même, non testable en Node).
+  - `node fonda/scripts/validate.js` toujours 31/31. **184/184 tests** (suite complète T1-T5 après la critique ci-dessous, hors workflow n8n lui-même, non testable en Node).
 - Fichiers : `fonda/engine/emission.js` + `emission.test.js`, `fonda/engine/evenements.js` (étendu, purement additif : `lireFile()`/`retirerDeFile()` exportés — 170 tests T1-T4 revérifiés inchangés), `n8n/fonda-collecte/box-fonda-events.json`, `n8n/fonda-collecte/README.md` (procédure d'import pas à pas pour Éric).
 
 **Décisions prises** :
@@ -295,7 +295,19 @@ Ajout d'un garde-fou permanent dans `AGENTS.md` (section G1-G7) : interdiction d
 - **Limite documentée, pas corrigée** : pas d'exactly-once réseau — si la réponse serveur se perd après un traitement réussi, l'événement est réémis au prochain passage (ligne dupliquée possible dans ce seul scénario, jamais de perte). Nécessiterait un jeton d'idempotence côté serveur, hors scope de ce ticket.
 - Workflow n8n : credential Google Sheets laissé vide (type distinct du credential Drive des autres workflows, même si même compte Google) — deviner un ID aurait été une fabrication, pas une configuration.
 
-- Branche `feat/fonda-lot1-collecte`. **Pas de PR/fusion sans critique Codex (anonymat + non-régression n8n) et feu vert explicite d'Éric. T6 non démarré.**
+**Critique Codex** (lecture seule, double angle anonymat + non-régression n8n, commit `88fb7b2`) :
+- **Non-régression n8n : aucune collision trouvée.** Comparaison systématique avec les 9 sauvegardes (`n8n/backup-2026-10-05/`) : aucun chemin partagé, aucune référence à leurs IDs de workflow/fichier/dossier/credential. `active: false` confirmé ; aucun import/activation réel possible (Codex n'avait accès qu'aux fichiers, pas au MCP n8n).
+- **Anonymat : 1 défaut réel, gravité moyenne** — reproduit avec des données synthétiques : la liste blanche des 11 champs protège les **noms**, pas le **contenu**. Un événement altéré avec `set_id: "IP=192.0.2.10; device=synthetic"` passait la validation (clés présentes, types basiques corrects) aussi bien côté émetteur navigateur que côté workflow n8n ; de même un `ts` précis à la milliseconde (au lieu de tronqué à l'heure) n'était pas rejeté. Chemin d'exploitation : file locale altérée (devtools) ou appel direct au webhook contournant `soumettreTentative`.
+- Précision non retenue comme défaut : le Sheet a 12 colonnes (11 + `recu_serveur_ts`) — explicitement pré-autorisé par le ticket, pas une fuite.
+
+**Corrigé** (tests d'abord, 3 nouveaux tests emission.js) :
+- `evenements.js::formeEvenementPlausible()` (export additif) : contrôle de FORME au-delà des noms de champs — `grp` 3 chiffres cohérent avec le grp encodé dans `defi_id`, `notion_id` au pattern référentiel, `set_id`/`item_id` sans texte libre (réutilise `estIdentifiantPlausible` déjà en place), `ts` tronqué à l'heure.
+- `emission.js` appelle ce contrôle juste avant l'envoi, en plus de `validerEvenement()` — même traitement que les autres événements invalides (`invalides`, jamais envoyé, ne bloque pas les suivants).
+- **Même règle dupliquée dans `n8n/fonda-collecte/box-fonda-events.json`** (le Code node ne peut pas `require()` le dépôt) — les trois cas reproduits par Codex (métadonnée dans `set_id`, `ts` non tronqué, `grp` incohérent) revérifiés rejetés après le correctif, cas normal toujours accepté.
+
+184/184 tests (suite complète T1-T5), `node fonda/scripts/validate.js` toujours 31/31.
+
+- Branche `feat/fonda-lot1-collecte`. **Prêt pour fusion — en attente du feu vert explicite d'Éric. T6 non démarré.**
 
 ### ☐ T6 — Génération initiale équilibrée (seed Moteur B)
 - But : 1er lot de candidates équilibré facile/difficile + nI/nF, modèle plus puissant (Sonnet) avec spec de clarté, routage relecture (fr → Justine, maths → Éric).
