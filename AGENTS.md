@@ -45,6 +45,7 @@ Contexte : dépôt à l'AAP **CARDIE-SEPIA 2026-2027** (échéance **21/10/2026*
 - **G5 — Séparation des modèles.** **Haiku** = BOX ordinaire (PDF → fiches). **Modèle plus puissant (Sonnet)** = génération fondamentaux (clarté des énoncés critique). **Ne pas intervertir.**
 - **G6 — Protection légère assumée.** Tableau de bord = mot de passe (filtre le tout-venant, pas un curieux déterminé). L'archive réelle = **copie Drive**. Ne jamais présenter le dashboard comme « sécurisé ».
 - **G7 — Hébergement statique.** Pas de backend applicatif ; seul le webhook de collecte est dynamique.
+- **n8n — production.** L'instance Hostinger fait tourner la prod BOX (9 workflows, préfixe webhook `/box-…`). **Interdiction de créer, modifier, activer ou désactiver un workflow de prod sans validation explicite d'Éric dans la conversation.** Tout nouveau workflow a son propre chemin de webhook, ne lit/n'écrit aucun workflow existant, et est testé en exécution manuelle avant activation. Sauvegarde de référence : `/n8n/backup-2026-10-05/`.
 
 ---
 
