@@ -160,6 +160,23 @@ describe('carte-reponse-produite — contrat seconde chance (tentative/scored)',
     assert.ok(feedback.textContent.includes('8 cm'), `attendu "8 cm" dans le feedback, reçu : "${feedback.textContent}"`);
   });
 
+  test('carte_invalide (attendu incohérent) : pas de crash, pas de seconde chance, jamais scored en réussite', () => {
+    const { input, bouton, resultats, container } = monterCarte({
+      question: 'Quelle est la masse ?',
+      profil_correction: 'numerique',
+      reponses_acceptees: ['8 kg'],
+      unite: 'cm',
+    });
+    input.value = '8 cm';
+    bouton.__click();
+
+    assert.equal(resultats.length, 1);
+    assert.deepEqual(resultats[0], { statut: 'carte_invalide', reussite: false, tentative: 1, scored: true });
+    assert.equal(input.disabled, true, 'pas de seconde chance sur une carte invalide');
+    const feedback = container.children[3];
+    assert.ok(feedback.textContent.length > 0, 'un message est affiché, pas de crash');
+  });
+
   test('validation au clavier (Entrée) déclenche le même contrat', () => {
     const { input, resultats } = monterCarte({
       question: 'Capitale de la France ?',

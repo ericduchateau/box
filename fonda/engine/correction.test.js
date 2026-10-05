@@ -371,3 +371,54 @@ describe('2e passe — feedback : la cible affichée est celle réellement exig�
     assert.equal(calculerCibleAffichee({ profil: 'orthographe', reponsesAcceptees: ['garçon'] }), 'garçon');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Micro-passe finale — critique Codex ciblée (2026-10-05, 3e passe)
+// ---------------------------------------------------------------------------
+
+describe('micro-passe finale — carte_invalide : attendu (reponsesAcceptees) incohérent, jamais "juste" (numerique)', () => {
+  test('unité de l\'attendu en contradiction avec la carte (8 kg attendu, unite:"cm") -> carte_invalide', () => {
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '8 kg', reponsesAcceptees: ['8 kg'], unite: 'cm' }), 'carte_invalide');
+  });
+
+  test('même quand la réponse de l\'élève suit la carte (8 cm) : l\'attendu reste incohérent -> carte_invalide, pas juste', () => {
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '8 cm', reponsesAcceptees: ['8 kg'], unite: 'cm' }), 'carte_invalide');
+  });
+
+  test('« fraction » non entier/entier dans l\'attendu (0,5/1,5 : suffixe numérique) -> carte_invalide', () => {
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '0,5', reponsesAcceptees: ['0,5/1,5'] }), 'carte_invalide');
+  });
+
+  test('carte_invalide ne compte jamais comme une réussite', () => {
+    assert.equal(compteCommeReussite('carte_invalide', 'numerique'), false);
+  });
+
+  test('non-régression : attendu cohérent (unité correcte, pas de reliquat) -> comportement inchangé', () => {
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '8 cm', reponsesAcceptees: ['8'], unite: 'cm' }), 'juste');
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '8', reponsesAcceptees: ['8'], unite: 'cm' }), 'presque');
+  });
+
+  test('un nombre non fini en reponsesAcceptees reste "faux" (garde-fou existant, pas carte_invalide)', () => {
+    const nombreEnorme = '9'.repeat(310);
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '1', reponsesAcceptees: [nombreEnorme] }), 'faux');
+  });
+});
+
+describe('micro-passe finale — normalisation du moins en exposant ⁻→- côté unité (m·s⁻¹ = m·s-1)', () => {
+  test('unité élève en ASCII (-1), unité carte en exposant (⁻¹)', () => {
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '8 m/s-1', reponsesAcceptees: ['8'], unite: 'm/s⁻¹' }), 'juste');
+  });
+
+  test('unité élève en exposant (⁻¹), unité carte en ASCII (-1)', () => {
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '8 m/s⁻¹', reponsesAcceptees: ['8'], unite: 'm/s-1' }), 'juste');
+  });
+});
+
+describe('micro-passe finale — feedback : affichage à la précision de arrondi (pas de résidu binaire)', () => {
+  const { calculerCibleAffichee } = require('./correction.js');
+
+  test('la cible affichée respecte exactement n décimales (toFixed, pas String brut)', () => {
+    assert.equal(calculerCibleAffichee({ profil: 'numerique', reponsesAcceptees: ['1/3'], arrondi: 2 }), '0,33');
+    assert.equal(calculerCibleAffichee({ profil: 'numerique', reponsesAcceptees: ['2.675'], arrondi: 2 }), '2,68');
+  });
+});

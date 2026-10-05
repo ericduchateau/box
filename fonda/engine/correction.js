@@ -118,8 +118,8 @@ function normaliserExact(str) {
 // Exposants Unicode -> chiffres ASCII (cm² -> cm2). Scopé à l'usage numérique
 // (unités) : ne touche pas normaliserExact, qui doit rester strict sur les symboles.
 function normaliserExposants(str) {
-  const table = { '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4', '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9' };
-  return str.replace(/[⁰¹²³⁴-⁹]/g, (c) => table[c]);
+  const table = { '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4', '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9', '⁻': '-' };
+  return str.replace(/[⁰¹²³⁴-⁹⁻]/g, (c) => table[c]);
 }
 
 // Sépare un nombre (ou une fraction entier/entier) d'une unité éventuelle en
@@ -180,7 +180,27 @@ function valeursEgalesBinaire(a, b) {
   return Math.abs(a - b) <= echelle * EPSILON_RELATIF;
 }
 
+// Détecte un ATTENDU (reponsesAcceptees) incohérent — problème d'auteur de la carte,
+// indépendant de ce que tape l'élève. Deux cas : (1) le reliquat d'une entrée contient
+// un chiffre (ex. "0,5/1,5" : fraction non entier/entier, le parseur n'y voit qu'une
+// valeur + un reliquat numérique qui n'est pas une unité) ; (2) le reliquat ressemble à
+// une unité (alphabétique) mais contredit l'unité déclarée par la carte (ex. "8 kg"
+// alors que la carte exige "cm"). Dans les deux cas : jamais "juste", on signale.
+function detecterIncoherenceAttendu(reponsesAcceptees, unite) {
+  const uniteAttendue = unite ? normaliserExposants(canoniser(String(unite)).trim()) : null;
+  return reponsesAcceptees.some((a) => {
+    const parsed = parseReponseNumerique(a);
+    if (Number.isNaN(parsed.valeur)) return false; // couvert par le garde-fou existant, pas une incohérence de forme
+    const suffixe = parsed.unite;
+    if (!suffixe) return false;
+    if (/\d/.test(suffixe)) return true; // reliquat numérique = forme malformée, jamais une unité valide
+    return uniteAttendue != null && suffixe !== uniteAttendue;
+  });
+}
+
 function evaluerNumerique(reponseDonnee, reponsesAcceptees, { unite = null, arrondi = null } = {}) {
+  if (detecterIncoherenceAttendu(reponsesAcceptees, unite)) return 'carte_invalide';
+
   const donnee = parseReponseNumerique(reponseDonnee);
   if (Number.isNaN(donnee.valeur)) return 'faux';
 
@@ -296,7 +316,12 @@ function calculerCibleAffichee({ profil, reponsesAcceptees, unite = null, arrond
 
   const arrondiEffectif = arrondiValide(arrondi) ? arrondi : null;
   const valeurCible = arrondiEffectif != null ? arrondirDemiVersHaut(parse.valeur, arrondiEffectif) : parse.valeur;
-  const valeurTexte = formaterNombreFr(valeurCible);
+  // Si un arrondi est défini, on formate à PRÉCISÉMENT n décimales (toFixed) plutôt
+  // que d'afficher le String() brut du flottant : évite un résidu binaire visible à
+  // l'écran (ex. ...0000000017) sans toucher au calcul lui-même, déjà correct.
+  const valeurTexte = arrondiEffectif != null
+    ? valeurCible.toFixed(arrondiEffectif).replace('.', ',')
+    : formaterNombreFr(valeurCible);
   return unite ? `${valeurTexte} ${unite}` : valeurTexte;
 }
 

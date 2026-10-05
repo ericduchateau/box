@@ -39,6 +39,9 @@ const MESSAGES = {
   juste: () => '✅ Juste !',
   faux: (bonneReponse) => `❌ Faux — réponse attendue : ${bonneReponse}`,
   presque: (bonneReponse) => `🟡 Presque ! → ${bonneReponse}`,
+  // Carte signalée par le moteur comme incohérente (attendu malformé/contradictoire) —
+  // jamais "juste", pas de seconde chance, à remonter en relecture (pas une erreur élève).
+  carte_invalide: () => '⚠️ Carte à vérifier (signalée pour relecture)',
 };
 
 /**
