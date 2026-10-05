@@ -22,9 +22,13 @@
 //
 // `carte` attendu : { question, profil_correction, reponses_acceptees, unite?, arrondi?,
 //                      seconde_chance? } (sur-ensemble de PRD §3.6).
-// `onResultat` reçoit { statut, reussite, secondeChanceUtilisee } — à charge de l'appelant
+// `onResultat` reçoit { statut, reussite, tentative, scored } — à charge de l'appelant
 // (T3) d'en faire un événement conforme au schéma PRD §3.2 (aucune émission ici : ce
 // composant ne connaît ni grp, ni notion_id, ni contexte de session).
+// Contrat seconde chance (PRD §5.1 : « on score la 1ère tentative ») : `tentative`
+// vaut 1 ou 2, `scored` n'est true QUE pour tentative===1. La 2e tentative (si
+// proposée après un "presque") est pédagogique, jamais scorée — à l'appelant (T3)
+// de n'émettre un événement de mesure que pour les résultats où scored===true.
 
 (function (root) {
 'use strict';
@@ -69,9 +73,11 @@ function montrerCarteReponseProduite(container, carte, options = {}) {
   feedback.className = 'fonda-feedback';
   feedback.setAttribute('role', 'status');
 
-  let secondeChanceUtilisee = false;
+  let tentative = 0;
 
   function soumettre() {
+    tentative += 1;
+
     const { statut } = evaluerReponse({
       profil: carte.profil_correction,
       reponseDonnee: input.value,
@@ -84,16 +90,15 @@ function montrerCarteReponseProduite(container, carte, options = {}) {
     feedback.dataset.statut = statut;
 
     const reussite = compteCommeReussite(statut, carte.profil_correction);
-    // Seconde chance : relance immédiate après un "presque" (score déjà émis sur
-    // la 1ère tentative, cf. PRD §5.1 — l'appelant ne doit scorer qu'une fois).
-    const proposerSecondeChance = statut === 'presque' && carte.seconde_chance && !secondeChanceUtilisee;
+    const scored = tentative === 1; // PRD §5.1 : on score la 1ère tentative, jamais la seconde chance
+    // Seconde chance : relance immédiate après un "presque", seulement sur la 1ère tentative.
+    const proposerSecondeChance = statut === 'presque' && carte.seconde_chance && tentative === 1;
 
     if (typeof onResultat === 'function') {
-      onResultat({ statut, reussite, secondeChanceUtilisee });
+      onResultat({ statut, reussite, tentative, scored });
     }
 
     if (proposerSecondeChance) {
-      secondeChanceUtilisee = true;
       input.value = '';
       input.focus();
     } else {

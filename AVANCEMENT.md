@@ -125,14 +125,25 @@ Règles de travail (rappel) :
 - Branche `feat/fonda-lot1-contrats`, commit `4555b20`, PR vers `design` ouverte (lien ci-dessous). Pas de merge sans feu vert explicite.
 - Codex : non (pas demandé sur ce ticket).
 
-### ☑ T2 — Carte « réponse produite » + correction par profil — implémenté le 2026-10-05, **Codex critique en attente avant fusion**
+### ☑ T2 — Carte « réponse produite » + correction par profil — révisé le 2026-10-05 suite critique Codex, **2e critique ciblée en attente avant fusion**
 - But : composant saisie courte + moteur 4 profils (sens/orthographe/numerique/exact, PRD §5.1). Tests d'abord.
 - Impact prod : nul (développé isolé, non branché).
-- DoD : suite de tests verte ✅ (`node --test fonda/engine/correction.test.js` — 31/31, écrite avant `correction.js`, tous les cas du ticket couverts : accents, pluriels, 6/8=3/4, unité, arrondi, « presque », Levenshtein off) ; profils pilotés par les données de carte ✅.
-- Fichiers : `fonda/engine/correction.js` (moteur pur, UMD — `require()` en Node, `window.FondaCorrection` en navigateur, zéro dépendance), `correction.test.js`, `carte-reponse-produite.js` (composant vanilla JS, **non branché à `index.html`**, câblage = T4), `README.md`.
-- Décisions prises : 2 champs carte non détaillés par le PRD, ajoutés et **documentés dans `fonda/engine/README.md` pour validation Éric** : `unite` (numerique, défaut `null`) et `arrondi` (numerique, défaut `null` = exact). Règle « presque » : jamais en sens/exact (déjà tout pardonné / tout strict) ; en orthographe = matche seulement si on pardonne accent+pluriel ; en numerique = valeur correcte mais unité manquante.
-- **Codex : requis avant fusion (cf. Plan Lot 1)** — pas encore lancé. Question à poser : une faute peut-elle être validée à tort ? la mesure de rétention peut-elle être faussée par le comptage "presque" ?
-- Branche `feat/fonda-lot1-reponse-produite`. **Pas de PR/fusion tant que la critique Codex n'a pas eu lieu et sans feu vert explicite d'Éric.**
+- DoD : suite de tests verte ✅ (`node --test fonda/engine/*.test.js` — **59/59**, écrite/mise à jour avant chaque révision du moteur) ; profils pilotés par les données de carte ✅.
+- Fichiers : `fonda/engine/correction.js`, `correction.test.js`, `carte-reponse-produite.js`, `carte-reponse-produite.test.js` (nouveau — test d'intégration du contrat seconde chance via un DOM factice maison, zéro dépendance), `README.md`.
+
+**Historique de la révision (2026-10-05)** :
+1. 1ʳᵉ implémentation (31 tests) → **1ʳᵉ critique Codex (lecture seule)** : 4 failles graves (orthographe trop permissif sur apostrophe/trait d'union, unité fausse comptée comme réussite, arrondi arrondissait les deux côtés au lieu de fixer une cible, risque de double comptage seconde chance) + 7 moyennes (Unicode NFD/NFC, pluriels irréguliers et collision `chaux→chau`, epsilon numérique trop large, séparateurs/unités avec chiffre non gérés, `arrondi` non validé, réponse vide validable, comptage par défaut permissif) + 1 faible.
+2. Corrections appliquées (tests d'abord, table de comportement validée par Éric) :
+   - Couche de normalisation commune (NFC + apostrophes/traits d'union/espaces typographiques → ASCII canonique) avant toute règle de profil.
+   - Orthographe : apostrophe/trait d'union redevenus **significatifs** (`lhomme` ≠ `l'homme` → faux, pas presque) ; seule la ponctuation de phrase (`. , ; !`) est pardonnée ; « presque » ne se déclenche plus que sur un accent manquant.
+   - Sens : suppression totale du repli mécanique `-s/-x` (source de la collision `chaux→chau`) — le pluriel doit être déclaré dans `reponses_acceptees[]`.
+   - Numérique/unité : manquante → presque, **fausse → faux** (plus de presque pour une mauvaise grandeur) ; unités avec chiffre (`cm2`) gérées ; sans unité exigée, tout reliquat alphabétique → faux.
+   - Numérique/arrondi : **nouvelle sémantique** — on arrondit la cible (attendu), pas la réponse de l'élève ; demi vers le haut avec correction de l'artefact binaire (`2.675`→`2.68`, pas `2.67`) ; valeur invalide → repli silencieux sur comparaison exacte.
+   - Numérique/exact : epsilon relatif à l'échelle (plus de seuil absolu `1e-9` qui confondait `0` et `0.0000000009`) ; fractions restreintes à entier/entier.
+   - Robustesse : réponse vide toujours faux ; `compteCommeReussite` faux par défaut pour tout statut/profil inconnu.
+   - Composant UI : contrat seconde chance explicite `{ tentative, scored }` (`scored` vrai uniquement à la tentative 1), verrouillé par un test d'intégration sur DOM factice maison.
+3. **2e critique Codex, ciblée en lecture seule sur les points changés** (unité manquante vs fausse, arrondi = cible arrondie, normalisation typographique, comptage par défaut) : lancée, retour collé verbatim dans ce fichier par Éric / la session suivante — voir section juste en dessous si présente, sinon pas encore réalisée au moment de cette entrée.
+- Branche `feat/fonda-lot1-reponse-produite`. **Pas de PR/fusion tant que la 2e critique n'a pas eu lieu et sans feu vert explicite d'Éric.**
 
 ### ☐ T3 — Tags grp/ctx + verrou de vote
 - But : émettre les événements avec `grp` (choisi par le prof, jamais un élève) et `ctx` ; un vote par item et par occurrence (verrou local).
