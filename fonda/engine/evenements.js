@@ -68,8 +68,11 @@ const CTX_VALUES = new Set(['df', 'maison', 'classe']);
 // defi_{annee}-w{semaine}_{grp 3 chiffres}_{notion-slug} — ex. defi_2026-w41_601_fractions.
 // Le grp est TOUJOURS exactement 3 chiffres (format canonique de classes.json) : une
 // forme "6e4" ou "abc" ne matche pas ce pattern et rend le defi_id lui-même invalide,
-// distinct du cas "grp bien formé mais absent du roster" (géré séparément).
-const DEFI_ID_PATTERN = /^defi_\d{4}-w\d{1,2}_([0-9]{3})_[a-z0-9-]+$/;
+// distinct du cas "grp bien formé mais absent du roster" (géré séparément). 4 groupes
+// capturés (pas seulement le grp) : T4 (fonda/engine/liens.js) doit pouvoir RÉSOUDRE
+// un defi_id (retrouver année/semaine/slug) en plus de l'émettre — une seule regex,
+// source unique de vérité pour le format, jamais dupliquée ailleurs.
+const DEFI_ID_PATTERN = /^defi_(\d{4})-w(\d{1,2})_([0-9]{3})_([a-z0-9-]+)$/;
 
 // Garde-fou de NATURE (pas de format métier) sur un identifiant technique : chaîne
 // non vide, bornée en longueur, sans espace ni caractère de texte libre. N'affirme
@@ -83,10 +86,20 @@ function estIdentifiantPlausible(valeur) {
 
 const CLE_MESURE = 'fonda_evt_mesure';
 
-function extraireGrpDepuisDefiId(defiId) {
+// Décompose un defi_id en ses 4 segments, ou null si la forme ne correspond pas.
+// Utilisé par T3 (extraireGrpDepuisDefiId, ci-dessous) ET par T4 (fonda/engine/liens.js,
+// qui doit retrouver année/semaine/slug pour résoudre un lien élève) — un seul endroit
+// qui connaît le format, jamais deux regex qui pourraient diverger.
+function parserDefiId(defiId) {
   if (typeof defiId !== 'string') return null;
   const m = defiId.match(DEFI_ID_PATTERN);
-  return m ? m[1] : null;
+  if (!m) return null;
+  return { annee: m[1], semaine: m[2], grp: m[3], notionSlug: m[4] };
+}
+
+function extraireGrpDepuisDefiId(defiId) {
+  const parse = parserDefiId(defiId);
+  return parse ? parse.grp : null;
 }
 
 function grpEstAutorise(grp, classesAutorisees) {
@@ -277,6 +290,7 @@ function soumettreTentative({
 return {
   soumettreTentative,
   extraireGrpDepuisDefiId,
+  parserDefiId,
   grpEstAutorise,
   ctxEstValide,
   CLE_MESURE,

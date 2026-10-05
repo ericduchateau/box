@@ -242,14 +242,33 @@ Documentation ajoutée (README `fonda/engine/`) pour les points 2 et 3, avec tes
 
 131/131 tests (suite complète T1+T2+T3), `node fonda/scripts/validate.js` toujours 31/31. Rien touché hors `/fonda/`.
 
-- Branche `feat/fonda-lot1-evenements`. **Prêt pour fusion — en attente du feu vert explicite d'Éric. T4 non démarré.**
+**Fusionné** le 2026-10-05 sur feu vert explicite d'Éric : hash de merge `0086046`. Branche `feat/fonda-lot1-evenements` supprimée (locale + origin) après fusion.
 
-### ☐ T4 — Mode Box-FONDA + menu public
-- But : toggle/mode SUR la page existante (pas de lien séparé) + page menu lisant `calendar.json`. Inactif par défaut (feature-flag).
-- Impact prod : additif, désactivé par défaut.
-- DoD : défi lançable en ≤ 2 clics avec choix du groupe ; menu visible sans auth ; BOX ordinaire strictement inchangé.
-- Décisions ouvertes : emplacement du toggle ; forme du feature-flag.
-- Codex : non.
+### ☑ T4 — Mode Box-FONDA sur la page existante + liens par classe + page par niveau — fait le 2026-10-05
+- But : `?fonda=1` charge le mode FONDA (lecture seule : classes/référentiel/calendrier) ; décline un défi « notion × niveau » en un lien par classe ; page par niveau (lien + copier, par classe) ; résolution d'un lien élève (grp hérité, jamais choisi) ; contexte invalide → entraînement, aucune émission.
+- Impact prod : nul si flag absent — **prouvé**, pas supposé (voir DoD).
+- DoD :
+  - **Non-régression stricte** ✅ : `fonda/page/non-regression.test.js` (12 tests) — la branche `fonda` + son `return` est la toute première instruction de `init()` ; comparaison **directe** avec `git show main:js/app.js` exécuté dans le même harnais (`vm`) : séquence d'appels identique pour `''`, `?set=...`, `?action=delete` ; `index.html` byte-identique à `main` ; zéro `<script>`/`<link>` statique vers `/fonda/`.
+  - **Liens par classe** ✅ : `fonda/engine/liens.test.js` (18 tests) — niveau 6e → exactement 5 liens (601..605), chaque `defi_id` parsable et son grp/slug correspondant au vrai référentiel ; `classesDuNiveau` ne retourne jamais un grp hors `classes.json`.
+  - **Résolution + entraînement** ✅ : `fonda/page/bootstrap.test.js` (9 tests) — lien valide → contexte résolu sans exception ; `defi_id` expiré/malformé/hors roster/calendrier vide → page non blanche, aucune émission, aucune exception.
+  - `node fonda/scripts/validate.js` toujours 31/31. **170/170 tests** (suite complète T1-T4).
+- Fichiers : `js/app.js` (2 ajouts purement additifs : branche `fonda` + `initFonda()`, et un export guard no-op en navigateur), `fonda/engine/evenements.js` (étendu : `DEFI_ID_PATTERN` capture 4 groupes au lieu d'1, nouveau `parserDefiId()` exporté — 131 tests T1-T3 revérifiés inchangés), `fonda/engine/liens.js` + `liens.test.js`, `fonda/page/bootstrap.js` + `bootstrap.test.js` + `non-regression.test.js`.
+
+**Avant de coder, confirmé par Éric** : (a) injection via `App.initFonda()` qui crée dynamiquement un `<script>` (zéro tag statique) — validé sans objection ; (b) URLs sur `index.html?fonda=1&...` (cohérent avec `?set=`/`?action=` existants), `&defi=defi_...` pour un lien élève, `&page=niveau&niveau=6e[&semaine=...]` pour la page niveau — validé ; (c) QR — **tranché : pas de lib en T4**, lien + bouton copier seulement.
+
+**Deux tests supplémentaires exigés par Éric avant codage**, tous deux livrés :
+1. Non-régression stricte (isolation totale du `return`, comparaison directe avec `main`) — voir DoD ci-dessus.
+2. `defi` introuvable (expiré / faute de frappe / semaine passée) → entraînement, aucune émission, aucune exception, pas de page blanche — `bootstrap.test.js`, 6 variantes + calendrier vide.
+
+**Décision d'Éric en cours de route — contenu réel des cartes** : T4 ne fetch PAS de contenu de jeu (pas de convention `set_id`→Drive définie, ça appartient à T6). `lancerDefi(contexte)` existe, reçoit un contexte résolu et sûr, et affiche « contenu à venir » — c'est le point de branchement vers T2/T3 documenté dans `fonda/engine/README.md`.
+
+#### 🔖 DETTE T6 — brancher le contenu réel du jeu sur lancerDefi()
+**Quand T6 définira la convention `set_id` → Drive, remplacer le message « contenu à venir » de `lancerDefi()` (`fonda/page/bootstrap.js`) par un vrai fetch du jeu + `FondaCarteReponseProduite.montrerCarteReponseProduite(...)`, et dans son `onResultat`, appeler `FondaEvenements.soumettreTentative({...contexte, reussite, scored, ...})`.** Le contexte (`grp`/`notionId`/`palier`/`setId`) est déjà résolu et sûr — ne manque que le contenu. **À vérifier explicitement à la revue de T6.**
+
+#### 🔖 DETTE QR — lien + copier seulement en T4
+**Pas de lib QR vendorée en T4** (décision Éric : zéro npm pour le front, et il voulait voir la proposition avant toute intégration — a tranché pour la reporter). La page niveau n'a qu'un lien + bouton copier. **Ticket ultérieur dédié** quand le besoin réel se confirme (ex. pour Pronote/affichage papier) — proposer alors une lib vendorée minimale (ex. `qrcode-generator`, kazuhikoarase, MIT, zéro dépendance) pour validation avant intégration.
+
+- Branche `feat/fonda-lot1-mode-page`. **Pas de PR/fusion sans critique Codex non-régression (lecture seule) et feu vert explicite d'Éric. T5 non démarré.**
 
 ### ☐ T5 — Collecte n8n → Sheet
 - But : nouveau workflow d'ingestion des événements, livré en JSON à importer, testé sur copie.

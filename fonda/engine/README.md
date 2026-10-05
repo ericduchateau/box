@@ -190,6 +190,46 @@ Vérification PUIS écriture dans le **même bloc synchrone** (pas d'attente ent
 - **Élève utilisant un appareil partagé/prêté** : l'historique et le verrou décrivent l'usage du navigateur, pas celui d'un individu — assumé par le PRD (G2, pas de compte élève).
 - **Pas de vérification réseau/collecte ici** : T3 construit et stocke, T5 émettra réellement vers n8n. Un événement en file peut rester local indéfiniment si T5 n'est jamais câblé.
 
+---
+
+# `liens.js` — liens par classe + résolution de défi (T4)
+
+Référence : [`docs/PRD-Box-FONDA.md`](../../docs/PRD-Box-FONDA.md) §3.3, §4, §6 ; `AGENTS.md` G1/G7. Logique pure (zéro DOM, zéro fetch) : génère, pour un défi « notion × niveau » programmé dans `calendar.json`, un lien par classe du niveau — et, à l'inverse, résout le contexte complet d'un `defi_id` ouvert par un élève. `node --test fonda/engine/liens.test.js` (18 tests).
+
+## Un seul format de `defi_id`, une seule regex — jamais deux qui pourraient diverger
+
+`evenements.js::DEFI_ID_PATTERN` (T3) a été étendu (purement additif, 131 tests T1-T3 revérifiés inchangés) pour capturer les 4 segments (`année`, `semaine`, `grp`, `notionSlug`) via `parserDefiId()`, pas seulement le `grp`. `liens.js` réutilise cette MÊME fonction pour générer (`genererDefiId`) et pour résoudre (`resoudreContexteDefi`) — la génération et la résolution ne peuvent donc jamais diverger sur le format, puisqu'elles partagent le même code.
+
+## Génération (page niveau) vs résolution (lien élève)
+
+```js
+const { genererLiensNiveau, resoudreContexteDefi } = require('./liens.js');
+
+// Page niveau : décline un lien par classe du niveau, pour chaque entrée programmée
+genererLiensNiveau({ niveau: '6e', annee: '2026', semaine: '41', entreesNiveau, classesAutorisees });
+// → [{ grp: '601', notionId, palier, setId, defiId }, { grp: '602', ... }, ...]
+
+// Lien élève : grp HÉRITÉ du defi_id, jamais redemandé
+resoudreContexteDefi({ defiId, calendrier, classesAutorisees });
+// → { valide: true, grp, notionId, palier, setId } | { valide: false }
+```
+
+`resoudreContexteDefi` ne retourne `valide: true` que si **tout** correspond à une entrée réelle de `calendar.json` : grp dans `classes.json`, semaine présente dans le calendrier, et une entrée de ce niveau dont le slug de `notion_id` correspond exactement à celui du `defi_id`. Tout le reste (`defi_id` malformé, semaine expirée/absente, faute de frappe dans le slug, grp hors roster, calendrier vide) → `valide: false`, sans exception — c'est le signal pour la page de basculer en mode entraînement.
+
+## `fonda/page/bootstrap.js` — la couche DOM (non testée en Node, smoke-test requis)
+
+Chargé **uniquement** quand `?fonda=1` (injection dynamique depuis `js/app.js::initFonda()`, jamais de `<script>` statique — zéro requête en plus flag OFF, vérifié par `fonda/page/non-regression.test.js`). Fait le fetch des 3 JSON (`classes`, `referentiel`, `calendar`) et le rendu DOM pour deux vues :
+- **Page niveau** (`?fonda=1&page=niveau&niveau=6e[&semaine=2026-w41]`) : liste, par classe du niveau, le lien du défi de la semaine + un bouton **Copier** (pas de QR en T4, voir dette ci-dessous).
+- **Lien élève** (`?fonda=1&defi=...`) : résout le contexte via `liens.js`. Si invalide → message d'entraînement (testé : `fonda/page/bootstrap.test.js`, 9 cas incluant defi expiré/malformé/hors roster/calendrier vide — jamais d'exception, jamais de page blanche). Si valide → `lancerDefi(contexte)`, le point de branchement vers T2/T3 (voir dette T6 ci-dessous).
+
+Ce fichier fait du DOM/fetch réel : **non couvert par `node --test`** (pas de navigateur ici) au-delà de ce qui est testé via DOM/fetch factices dans `bootstrap.test.js`. Toute la décision (génération, résolution, format) est dans `liens.js`, testée ; `bootstrap.js` ne fait que l'exécuter et afficher. **À smoke-tester manuellement dans un vrai navigateur avant tout usage réel.**
+
+## Limites connues / dettes tracées (T4)
+
+- **🔖 Pas de QR en T4** : uniquement lien + bouton copier sur la page niveau. QR reporté à un ticket ultérieur dédié (décision Éric : pas de lib vendorée sans revue préalable). Voir `AVANCEMENT.md`.
+- **🔖 DETTE T6 — contenu réel des cartes** : `lancerDefi(contexte)` (dans `bootstrap.js`) reçoit un contexte résolu et sûr, mais affiche un message « contenu à venir » au lieu de fetcher un vrai jeu : aucune convention `set_id` → Drive n'existe encore (T6). Quand T6 la définira, remplacer ce message par le fetch + `FondaCarteReponseProduite.montrerCarteReponseProduite(...)`, et dans son `onResultat`, appeler `FondaEvenements.soumettreTentative({...contexte, reussite, scored, ...})` — le contexte est déjà le bon.
+- **Pas de CSS dédié** : les classes (`fonda-liens-niveau`, `fonda-lien-classe`, `fonda-message`) ne sont pas stylées dans `css/style.css` — rendu fonctionnel mais brut. Hors périmètre des tests fournis.
+
 ## Limites connues (hors périmètre collège — signalées, pas corrigées)
 
 Relevées par les 2ᵉ et 3ᵉ critiques Codex, volontairement laissées telles quelles (arbitrage Éric : hors du périmètre réaliste d'une réponse saisie par un collégien) :
