@@ -14,15 +14,18 @@ const {
   extraireGrpDepuisDefiId,
   grpEstAutorise,
   ctxEstValide,
-  CLE_VERROUS,
-  CLE_HISTORIQUE,
-  CLE_FILE,
+  CLE_MESURE,
 } = require('./evenements.js');
 
 const CLASSES = require('../data/classes.json');
 const REFERENTIEL = require('../data/referentiel.json');
 const NOTION_IDS = new Set(REFERENTIEL.notions.map((n) => n.id));
 const UNE_NOTION = REFERENTIEL.notions[0].id;
+
+function lireFile(stockage) {
+  const brut = stockage.getItem(CLE_MESURE);
+  return brut ? JSON.parse(brut).file : [];
+}
 
 // --- Stockage factice (zéro dépendance, pas de vrai localStorage) ----------------
 
@@ -100,8 +103,7 @@ describe('cas 2/13 — un vote par (defi_id, item_id) : rechargement / double-cl
     assert.equal(r1.emis, true);
     assert.equal(r2.emis, false);
     assert.equal(r2.raison, 'deja_vote');
-    const file = JSON.parse(stockage.getItem(CLE_FILE));
-    assert.equal(file.length, 1);
+    assert.equal(lireFile(stockage).length, 1);
   });
 
   test('deux "onglets" (deux appels successifs sur le MÊME store partagé) -> un seul event', () => {
@@ -109,8 +111,7 @@ describe('cas 2/13 — un vote par (defi_id, item_id) : rechargement / double-cl
     const onglet1 = soumettre({}, stockagePartage);
     const onglet2 = soumettre({}, stockagePartage);
     assert.equal([onglet1.emis, onglet2.emis].filter(Boolean).length, 1);
-    const file = JSON.parse(stockagePartage.getItem(CLE_FILE));
-    assert.equal(file.length, 1);
+    assert.equal(lireFile(stockagePartage).length, 1);
   });
 });
 
@@ -120,9 +121,7 @@ describe('cas 3 — seconde chance (scored:false) : aucune émission, aucune éc
     const r = soumettre({ scored: false }, stockage);
     assert.equal(r.emis, false);
     assert.equal(r.raison, 'non_score');
-    assert.equal(stockage.getItem(CLE_VERROUS), null);
-    assert.equal(stockage.getItem(CLE_HISTORIQUE), null);
-    assert.equal(stockage.getItem(CLE_FILE), null);
+    assert.equal(stockage.getItem(CLE_MESURE), null);
   });
 
   test('1re tentative scorée, puis "seconde chance" sur le même item -> rang_local de la tentative suivante reste 2, pas 3', () => {
@@ -201,6 +200,33 @@ describe('cas 7 — liste blanche stricte : un champ hors schéma est toujours r
     const r = soumettre({ nomEleve: 'Dupont' });
     assert.equal('nomEleve' in r.event, false);
   });
+
+  test('(critique Codex) un échec de validation ne renvoie jamais la valeur fautive à l\'appelant', () => {
+    const r = soumettre({ notionId: 'notion-qui-n-existe-pas' });
+    assert.equal(r.emis, false);
+    assert.equal(r.raison, 'event_invalide');
+    assert.equal('erreurs' in r, false);
+    assert.equal(JSON.stringify(r).includes('notion-qui-n-existe-pas'), false);
+  });
+});
+
+describe('(critique Codex) garde-fou de NATURE sur itemId/setId/notionId : pas de texte libre, jamais un contrôle de format métier', () => {
+  test('espace, longueur excessive, ou caractère hors [A-Za-z0-9._-] -> identifiant_invalide', () => {
+    for (const champ of ['itemId', 'setId', 'notionId']) {
+      for (const valeur of ['Dupont Jean', 'a'.repeat(65), 'nom;élève', 'commentaire libre ici']) {
+        const r = soumettre({ [champ]: valeur });
+        assert.equal(r.emis, false, `${champ}="${valeur}"`);
+        assert.equal(r.raison, 'identifiant_invalide', `${champ}="${valeur}"`);
+      }
+    }
+  });
+
+  test('un identifiant technique plausible (lettres/chiffres/._-, <=64) passe, sans vérification sémantique', () => {
+    const r = soumettre({ itemId: 'it_02.v1-b', setId: 'box-fonda-test01', notionId: 'notion.inexistante-mais-bien-formee', notionIdsConnus: undefined });
+    // "bien formé" au sens syntaxique n'implique pas "valide au sens référentiel" :
+    // sans notionIdsConnus, ce module ne vérifie QUE la nature, jamais l'existence.
+    assert.equal(r.emis, true);
+  });
 });
 
 describe('cas 8 — defi_id inconnu / absent / malformé : aucun event, pas d\'occurrence fabriquée', () => {
@@ -236,13 +262,69 @@ describe('cas 9 — stockage local indisponible : aucun event, révision possibl
     assert.equal(r.raison, 'stockage_indisponible');
   });
 
-  test('JSON corrompu dans le store -> aucun event, pas d\'exception (doute = pas d\'émission)', () => {
+  test('JSON syntaxiquement invalide dans le store -> aucun event, pas d\'exception (doute = pas d\'émission)', () => {
     const stockage = creerStockageFactice();
-    stockage.setItem(CLE_VERROUS, '{ pas du json valide');
+    stockage.setItem(CLE_MESURE, '{ pas du json valide');
     assert.doesNotThrow(() => soumettre({}, stockage));
     const r = soumettre({}, stockage);
     assert.equal(r.emis, false);
     assert.equal(r.raison, 'stockage_corrompu');
+  });
+
+  test('(critique Codex #4) JSON valide mais de forme incorrecte -> stockage_corrompu, JAMAIS silencieusement réinitialisé à vide', () => {
+    for (const formeInvalide of ['[]', 'null', '"texte"', '42', '{"verrous":[],"historique":{},"file":[]}', '{"verrous":{},"historique":null,"file":[]}', '{"verrous":{},"historique":{},"file":{}}']) {
+      const stockage = creerStockageFactice();
+      stockage.setItem(CLE_MESURE, formeInvalide);
+      const r = soumettre({}, stockage);
+      assert.equal(r.emis, false, `forme=${formeInvalide}`);
+      assert.equal(r.raison, 'stockage_corrompu', `forme=${formeInvalide}`);
+    }
+  });
+
+  test('(critique Codex #4) un verrou déjà scellé ne peut jamais être rouvert par un stockage corrompu', () => {
+    const stockage = creerStockageFactice();
+    const r1 = soumettre({}, stockage);
+    assert.equal(r1.emis, true);
+    // Avant le fix : remplacer le blob par une forme "vide-compatible" (ex. verrous
+    // comme tableau) le réinitialisait silencieusement -> un 2e vote passait.
+    const corrompu = JSON.stringify({ verrous: [], historique: {}, file: [] });
+    stockage.setItem(CLE_MESURE, corrompu);
+    const r2 = soumettre({}, stockage);
+    assert.equal(r2.emis, false);
+    assert.equal(r2.raison, 'stockage_corrompu');
+  });
+});
+
+describe('(critique Codex #5/#6) atomicité de l\'écriture et clés composites non ambiguës', () => {
+  test('un échec d\'écriture ne laisse jamais un état partiel (verrou posé sans event en file)', () => {
+    const reel = creerStockageFactice();
+    let appels = 0;
+    const cassant = {
+      getItem: (k) => reel.getItem(k),
+      setItem(k, v) { appels += 1; throw new Error('quota dépassé'); },
+    };
+    const r = soumettre({}, cassant);
+    assert.equal(r.emis, false);
+    assert.equal(r.raison, 'stockage_indisponible');
+    assert.equal(appels, 1); // une seule tentative d'écriture (un seul setItem), pas 3
+    assert.equal(reel.getItem(CLE_MESURE), null); // rien n'a été persisté : pas d'état partiel
+    // Nouvelle tentative sur le VRAI store (non cassant) : doit fonctionner normalement,
+    // preuve qu'aucun verrou fantôme n'a été posé par la tentative échouée.
+    const r2 = soumettre({}, reel);
+    assert.equal(r2.emis, true);
+    assert.equal(r2.event.rang_local, 1);
+  });
+
+  test('(critique Codex #6) des ids contenant eux-mêmes un séparateur ne collisionnent jamais entre deux couples distincts', () => {
+    const stockage = creerStockageFactice();
+    // (setId="a::b", itemId="c") vs (setId="a", itemId="b::c") : avec une clé
+    // "a::b"+"::"+"c" les deux couples produiraient la même clé "a::b::c".
+    const r1 = soumettre({ setId: 'a..b', itemId: 'c', defiId: 'defi_2026-w41_601_fractions' }, stockage);
+    const r2 = soumettre({ setId: 'a', itemId: 'b..c', defiId: 'defi_2026-w42_601_fractions' }, stockage, () => new Date('2026-10-12T10:00:00Z'));
+    assert.equal(r1.emis, true);
+    assert.equal(r2.emis, true);
+    assert.equal(r1.event.rang_local, 1);
+    assert.equal(r2.event.rang_local, 1, 'couple distinct -> historique distinct, pas de collision');
   });
 });
 
@@ -251,7 +333,7 @@ describe('cas 10 — l\'event déjà émis est immuable : pas de 2e vote, pas de
     const stockage = creerStockageFactice();
     const r1 = soumettre({ reussite: true }, stockage);
     soumettre({ reussite: false }, stockage); // tentative de "changer" le résultat -> ignorée
-    const file = JSON.parse(stockage.getItem(CLE_FILE));
+    const file = lireFile(stockage);
     assert.equal(file.length, 1);
     assert.equal(file[0].result, r1.event.result);
     assert.equal(file[0].grp, r1.event.grp);
@@ -296,7 +378,7 @@ describe('cas 14 — immuabilité de l\'objet en file (prêt pour une reprise T5
   test('la file stockée correspond exactement à l\'event retourné', () => {
     const stockage = creerStockageFactice();
     const r = soumettre({}, stockage);
-    const file = JSON.parse(stockage.getItem(CLE_FILE));
+    const file = lireFile(stockage);
     assert.deepEqual(file[0], r.event);
   });
 });

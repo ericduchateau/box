@@ -109,7 +109,7 @@ Inchangé : seuls les espaces sont pardonnés (après la couche de normalisation
 
 # `evenements.js` — émission d'événements de mesure (T3)
 
-Référence : [`docs/PRD-Box-FONDA.md`](../../docs/PRD-Box-FONDA.md) §3.2, §5.1, §6 ; `AGENTS.md` G2/G3. Construit, verrouille et met **localement** en file les événements de mesure pour `onResultat({ scored: true })` de T2 — **aucun appel réseau** (la collecte n8n est T5). `node --test fonda/engine/evenements.test.js` (26 tests).
+Référence : [`docs/PRD-Box-FONDA.md`](../../docs/PRD-Box-FONDA.md) §3.2, §5.1, §6 ; `AGENTS.md` G2/G3. Construit, verrouille et met **localement** en file les événements de mesure pour `onResultat({ scored: true })` de T2 — **aucun appel réseau** (la collecte n8n est T5). `node --test fonda/engine/evenements.test.js` (33 tests). Révisé une fois suite critique Codex ciblée anonymat/verrou/seconde chance (lecture seule) — voir `AVANCEMENT.md` pour le détail.
 
 ## Pourquoi un module séparé de `correction.js`
 
@@ -128,10 +128,10 @@ soumettreTentative({
   stockage,                                        // ex. window.localStorage — INJECTÉ, jamais lu en dur
   maintenant,                                      // () => new Date() — injecté, pour la testabilité
 });
-// → { emis: true, event } | { emis: false, raison: string, erreurs?: string[] }
+// → { emis: true, event } | { emis: false, raison: string }
 ```
 
-`event` contient **exactement** les 11 champs du schéma §3.2 (`ts, grp, defi_id, notion_id, palier, set_id, item_id, result, ctx, rang_local, dt_jours`), reconstruit champ par champ (jamais par copie de l'entrée — un paramètre étranger passé par erreur, ex. un nom d'élève, ne peut donc jamais fuiter) puis revalidé par `validerEvenement()` de T1 (liste blanche stricte) avant toute mise en file.
+`event` contient **exactement** les 11 champs du schéma §3.2 (`ts, grp, defi_id, notion_id, palier, set_id, item_id, result, ctx, rang_local, dt_jours`), reconstruit champ par champ (jamais par copie de l'entrée — un paramètre étranger passé par erreur, ex. un nom d'élève, ne peut donc jamais fuiter) puis revalidé par `validerEvenement()` de T1 (liste blanche stricte) avant toute mise en file. En cas d'échec, `raison` est un **code générique** — jamais le détail de la valeur fautive (un message d'erreur n'est pas un canal d'évasion pour une donnée qu'on vient de refuser).
 
 ## `grp` : exclusivement lu depuis `defi_id` (G2/G3)
 
@@ -141,19 +141,27 @@ soumettreTentative({
 
 Dans les deux cas : **mode entraînement, aucune émission** — l'élève révise, rien n'est mesuré.
 
-## Verrou « un vote » et historique : deux clés distinctes
+## `itemId`/`setId`/`notionId` : garde-fou de NATURE, pas de format métier
 
-| Donnée | Clé localStorage | Portée | Pourquoi |
+Ces trois champs doivent être des identifiants techniques plausibles — chaîne non vide, ≤ 64 caractères, uniquement `[A-Za-z0-9._-]` (ni espace, ni texte libre) — sinon `raison: 'identifiant_invalide'`. Ce contrôle empêche qu'un nom, une phrase ou un commentaire se glisse dans un champ autorisé **par erreur d'appel** ; il ne vérifie PAS que l'id existe réellement dans un référentiel ou un jeu de cartes — cette garantie-là vient d'amont (T1 pour `notion_id`, T6/génération pour `item_id`/`set_id`), pas de ce module. `notionIdsConnus` reste le seul moyen d'une vérification *sémantique* réelle (optionnelle).
+
+## Verrou, historique et file : un seul blob, une seule écriture
+
+| Donnée | Clé dans le blob | Portée | Pourquoi |
 |---|---|---|---|
-| Verrou (un vote) | `fonda_evt_verrous` → `{ "${defi_id}::${item_id}": true }` | Par **occurrence** (le `defi_id` change à chaque semaine) | Une 2ᵉ soumission du même item dans la même occurrence (rechargement, double-clic, 2 onglets) ne crée jamais de 2ᵉ événement. Un nouveau vote redevient possible à l'occurrence suivante (nouveau `defi_id`). |
-| Historique (pour `rang_local`/`dt_jours`) | `fonda_evt_historique` → `{ "${set_id}::${item_id}": [{ts, defi_id}, ...] }` | Par **item**, à travers les occurrences | Doit survivre au changement de `defi_id` pour que `rang_local` s'incrémente d'une occurrence à l'autre. Résout l'ambiguïté « `item_id` unique seulement à l'intérieur d'un jeu » (critique Codex de cadrage) en widening la clé à `(set_id, item_id)`. |
-| File d'émission (T5 la videra) | `fonda_evt_file` → `[event, ...]` | — | Chaque événement y est gelé (`Object.freeze`) : un réessai d'émission futur (T5) réutilisera le même objet, n'en recréera jamais un second. |
+| Verrou (un vote) | `verrous["${JSON.stringify([defi_id, item_id])}"]` | Par **occurrence** (le `defi_id` change à chaque semaine) | Une 2ᵉ soumission du même item dans la même occurrence (rechargement, double-clic, 2 onglets) ne crée jamais de 2ᵉ événement. Un nouveau vote redevient possible à l'occurrence suivante (nouveau `defi_id`). |
+| Historique (pour `rang_local`/`dt_jours`) | `historique["${JSON.stringify([set_id, item_id])}"]` → `[{ts, defi_id}, ...]` | Par **item**, à travers les occurrences | Doit survivre au changement de `defi_id` pour que `rang_local` s'incrémente d'une occurrence à l'autre. Résout l'ambiguïté « `item_id` unique seulement à l'intérieur d'un jeu » (critique de cadrage) en élargissant la clé à `(set_id, item_id)`. |
+| File d'émission (T5 la videra) | `file` → `[event, ...]` | — | Chaque événement y est gelé (`Object.freeze`) : un réessai d'émission futur (T5) réutilisera le même objet, n'en recréera jamais un second. |
 
-Verrou et historique sont scellés dans le **même bloc synchrone** que la validation et la mise en file (vérification puis écriture, sans aucune attente entre les deux) : correct pour un double-clic, un double callback ou un rechargement **dans le même onglet** (JS y est mono-thread, rien ne peut s'intercaler). Entre deux onglets réellement distincts (processus séparés), `localStorage` n'offre aucune primitive de comparaison-et-échange atomique — une course très rare reste possible en théorie. **Limite documentée, pas corrigée** (cf. « Limites connues » ci-dessous) : ajouter la Web Locks API y remédierait, mais demanderait de rendre asynchrone tout le chemin d'appel depuis `carte-reponse-produite.js` (T2), hors scope T3.
+Les trois cohabitent dans **un seul document JSON**, sous **une seule clé localStorage** (`fonda_evt_mesure`), écrit en **un seul `setItem()`**. Choix délibéré après critique Codex : trois clés séparées peuvent se désynchroniser si l'une des trois écritures échoue en cours de route (ex. verrou posé, mais l'écriture de la file lève une exception quota → mesure perdue silencieusement, sans que rien ne le signale). Un seul document, une seule écriture, élimine structurellement ce risque — pas de scénario où le verrou existe sans l'événement correspondant en file.
+
+Les clés composites (`(defi_id, item_id)`, `(set_id, item_id)`) utilisent `JSON.stringify([a, b])`, jamais une concaténation `a + '::' + b` : cette dernière peut faire collisionner deux couples distincts si l'un des id contient lui-même le séparateur.
+
+Vérification PUIS écriture dans le **même bloc synchrone** (pas d'attente entre les deux) : correct pour un double-clic, un double callback ou un rechargement **dans le même onglet** (JS y est mono-thread, rien ne peut s'intercaler). Entre deux onglets réellement distincts (processus séparés), `localStorage` n'offre aucune primitive de comparaison-et-échange atomique — une course très rare reste possible en théorie. **Limite documentée, pas corrigée** (cf. « Limites connues » ci-dessous) : la Web Locks API y remédierait, mais demanderait de rendre asynchrone tout le chemin d'appel depuis `carte-reponse-produite.js` (T2), hors scope T3.
 
 ## Seconde chance : aucune trace
 
-`scored !== true` → `raison: 'non_score'`, et **aucune écriture** (ni verrou, ni historique, ni file) : une relance après un « presque » ne doit laisser aucune trace mesurable, conforme à T2 (seule la 1ʳᵉ tentative est scorée).
+`scored !== true` → `raison: 'non_score'`, et **aucune écriture** (ni verrou, ni historique, ni file — le blob `fonda_evt_mesure` n'est même pas lu) : une relance après un « presque » ne doit laisser aucune trace mesurable, conforme à T2 (seule la 1ʳᵉ tentative est scorée).
 
 ## `ts` : tronqué à l'heure pleine
 
@@ -161,7 +169,8 @@ Verrou et historique sont scellés dans le **même bloc synchrone** que la valid
 
 ## Robustesse
 
-- **Stockage indisponible, saturé, bloqué ou corrompu** (`getItem`/`setItem` qui lèvent, JSON illisible) → aucune émission, aucune exception (`raison: 'stockage_indisponible'` ou `'stockage_corrompu'`) — l'élève peut toujours réviser, seule la mesure est perdue.
+- **Stockage indisponible, saturé, bloqué, ou JSON syntaxiquement invalide** (`getItem`/`setItem` qui lèvent) → aucune émission, aucune exception (`raison: 'stockage_indisponible'`).
+- **Blob de forme incorrecte** (JSON valide mais `verrous`/`historique` pas un objet, `file` pas un tableau — ex. un ancien format, une corruption partielle) → `raison: 'stockage_corrompu'`, **jamais** silencieusement réinitialisé à une table vide (ce qui rouvrirait un vote déjà scellé).
 - **Contexte incomplet** (`itemId`/`setId`/`notionId`/`palier` manquants) → aucune émission : ce module ne fabrique jamais un contexte, il le reçoit de l'appelant (T4).
 - **`ctx` invalide** (hors `df`/`maison`/`classe`) → aucune émission.
 - **Horloge injectée invalide** (`maintenant` absente, non-fonction, ou renvoyant une date invalide) → aucune émission, jamais d'exception.
@@ -169,6 +178,7 @@ Verrou et historique sont scellés dans le **même bloc synchrone** que la valid
 ## Limites connues (hors périmètre ce ticket — signalées, pas corrigées)
 
 - **Course entre deux onglets réellement distincts** (processus séparés, écriture quasi simultanée) : voir « Verrou » ci-dessus — limite théorique de `localStorage` sans Web Locks API, non traitée pour rester synchrone avec T2.
+- **`validerEvenement()` suppose un objet ordinaire** (propriétés énumérables propres reflétant sa vraie forme) : un objet construit de façon adversariale (ex. un `toJSON` hérité ajoutant un champ) pourrait en théorie contourner la liste blanche. `soumettreTentative` ne construit jamais un tel objet (toujours un littéral `{...}` neuf) — ce n'est un risque que pour un appelant externe qui invoquerait `validerEvenement()` directement sur un objet forgé, hors du chemin normal de ce module.
 - **Élève utilisant un appareil partagé/prêté** : l'historique et le verrou décrivent l'usage du navigateur, pas celui d'un individu — assumé par le PRD (G2, pas de compte élève).
 - **Pas de vérification réseau/collecte ici** : T3 construit et stocke, T5 émettra réellement vers n8n. Un événement en file peut rester local indéfiniment si T5 n'est jamais câblé.
 

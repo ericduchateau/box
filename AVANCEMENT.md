@@ -192,16 +192,34 @@ Remplacé par une **grammaire explicite** (`RE_UNITE_PLAUSIBLE`) : un reliquat e
 **Décisions prises (ticket d'Éric)** :
 - `defi_id` = `defi_{annee}-w{semaine}_{grp 3 chiffres}_{notion-slug}` (ex. `defi_2026-w41_601_fractions`) : `grp` s'en extrait, n'est **jamais** saisi par l'élève (G2/G3).
 - Verrou « un vote » scellé sous `${defi_id}::${item_id}` (imposé par le ticket) — scope **par occurrence**.
-- Historique (`rang_local`/`dt_jours`) scellé sous `${set_id}::${item_id}` (ma proposition, confirmée avant codage) — scope **par item, à travers les occurrences** : résout l'ambiguïté « `item_id` unique seulement dans un jeu » relevée à l'étape 0.
+- Historique (`rang_local`/`dt_jours`) scellé sous `(set_id, item_id)` (ma proposition, confirmée avant codage) — scope **par item, à travers les occurrences** : résout l'ambiguïté « `item_id` unique seulement dans un jeu » relevée à l'étape 0.
 - `fonda/scripts/validate.js` **refactoré, pas dupliqué** : extraction de `validateEventFields()` + export `validerEvenement(event, notionIds)` réutilisable sans I/O disque, `main()` gardé derrière `require.main === module` pour ne plus s'exécuter au `require()`. Renforcé en **liste blanche stricte** des 11 champs (avant : blocklist de noms connus `nom`/`email`/... ; un champ inattendu non listé, ex. `uuid`, passait). Vérifié : `node fonda/scripts/validate.js` toujours 31/31 après refactor (T1 non régressé).
 - `ts` tronqué (pas arrondi au plus proche) à l'heure pleine UTC — anti-réidentification.
 - `dt_jours` : horloge reculée/date future → bornée à `0`, jamais négatif/`NaN` (plutôt que refuser l'émission — l'événement reste légitime, seule la mesure de délai est dégradée).
 - Verrou **synchrone** (vérification + écriture sans attente) : correct pour double-clic/rechargement/2 onglets **dans le même onglet**. Entre deux onglets réellement distincts, `localStorage` n'offre pas de comparaison-et-échange atomique — limite théorique documentée au README, PAS corrigée (la Web Locks API y remédierait mais rendrait async tout le chemin depuis `carte-reponse-produite.js` de T2, hors scope). Signalé explicitement à Éric avant codage, pas d'objection.
 - Seconde chance (`scored:false`) : **aucune écriture**, pas seulement aucune émission — ni verrou, ni historique touchés, pour ne laisser aucune trace mesurable.
 
-**Critique Codex finale** (lecture seule, ciblée anonymat + verrou + non-émission seconde chance) : [à lancer avant PR — voir section suivante si déjà fait au moment de la lecture].
+**Critique Codex finale** (lecture seule, ciblée anonymat + verrou + non-émission seconde chance, commit `9c592c2`) → 6 points, dont 3 confirmés comme bugs réels (hors « seconde chance », qui n'a montré aucun défaut) :
+1. **Élevée** : un stockage JSON syntaxiquement valide mais de mauvaise forme (`verrous` remplacé par `[]`, etc.) était silencieusement réinitialisé à vide au lieu d'être refusé — rouvrait un vote déjà scellé.
+2. **Moyenne** : les 3 écritures (verrou/historique/file, clés séparées) ne formaient pas une transaction — un échec sur la 3ᵉ laissait le verrou posé sans l'événement en file (mesure perdue silencieusement).
+3. **Moyenne** : clé composite `a + '::' + b` pouvait collisionner si `a`/`b` contenaient eux-mêmes `::`.
+4. **Moyenne** : le retour d'erreur (`erreurs`) recopiait la valeur brute du champ fautif (ex. un `notion_id` invalide) — remonté par `soumettreTentative` sans que rien ne le consomme, mais un canal de fuite inutile.
+5. **Moyenne** : `EVENT_FIELDS` (liste blanche) exporté comme `Set` mutable — `Object.freeze()` sur un `Set` ne bloque PAS `.add()`/`.delete()` (ce sont des méthodes sur un slot interne, pas une propriété ; vérifié : `Object.freeze(new Set(...)).add(...)` réussit silencieusement).
+6. **Élevée, signalée mais pas un bug de code** : le contenu de `itemId`/`setId`/`notionId`/`defiId` n'était vérifié dans AUCUN format — un nom d'élève y passerait tel quel. Question de scope posée à Éric (T3 vs T1/T6).
 
-- Branche `feat/fonda-lot1-evenements`. **Pas de PR/fusion sans la critique finale et le feu vert explicite d'Éric. T4 non démarré.**
+**Décision d'Éric sur le point 6** : ni « documenter comme limite » ni « format métier strict ». Garde-fou de **nature**, pas de format : chaîne non vide, ≤ 64 car., `[A-Za-z0-9._-]` uniquement (pas d'espace/texte libre) sur `itemId`/`setId`/`notionId` — bloque un nom/une phrase sans deviner un format sémantique que seuls T1/T6 connaissent. La cohérence référentielle (l'id existe-t-il vraiment ?) reste garantie en amont, documentée comme telle.
+
+**Corrections appliquées** (tests d'abord, 7 nouveaux tests, 33/33) :
+- Refonte du stockage : **un seul blob JSON** (`fonda_evt_mesure` = `{verrous, historique, file}`) écrit en **une seule** `setItem()` — élimine structurellement la désynchronisation (point 2) ; une forme de blob incorrecte → `stockage_corrompu`, jamais de réinitialisation silencieuse (point 1).
+- Clés composites via `JSON.stringify([a, b])` au lieu de `a + '::' + b` (point 3).
+- `soumettreTentative` ne renvoie plus que `{ emis, raison }` — plus de champ `erreurs` (point 4).
+- `fonda/scripts/validate.js` : `EVENT_FIELDS` remplacé par `EVENT_FIELDS_LIST`, un **tableau** gelé (`Object.freeze` fonctionne réellement sur un tableau, contrairement à un `Set`) ; le `Set` de travail est reconstruit à chaque appel, jamais partagé muable (point 5).
+- Nouvelle fonction `estIdentifiantPlausible()` + `raison: 'identifiant_invalide'` (point 6, décision Éric ci-dessus).
+- Limite notée au README (pas corrigée, hypothèse documentée) : `validerEvenement()` suppose un objet ordinaire (propriétés propres énumérables) — un objet forgé avec un `toJSON` hérité pourrait en théorie contourner la liste blanche ; `soumettreTentative` ne construit jamais un tel objet, ce n'est un risque que pour un appel externe direct et adversarial de `validerEvenement()`.
+
+129/129 tests (suite complète T1+T2+T3), `node fonda/scripts/validate.js` toujours 31/31. Rien touché hors `/fonda/`.
+
+- Branche `feat/fonda-lot1-evenements`. **Pas de PR/fusion sans feu vert explicite d'Éric. T4 non démarré.**
 
 ### ☐ T4 — Mode Box-FONDA + menu public
 - But : toggle/mode SUR la page existante (pas de lien séparé) + page menu lisant `calendar.json`. Inactif par défaut (feature-flag).

@@ -166,7 +166,12 @@ function validateDashboard() {
 // champ supplémentaire, même anodin en apparence — "uuid", "ip", "device" — est une
 // fuite potentielle d'identifiant individuel, donc un rejet, pas juste les noms
 // explicitement nominatifs).
-const EVENT_FIELDS = new Set([
+// Exporté en tableau GELÉ, pas en Set : Object.freeze() sur un Set ne bloque pas
+// .add()/.delete() (ce sont des méthodes qui touchent un slot interne, pas une
+// propriété — freeze() ne les voit pas). Un tableau figé, lui, lève vraiment sur
+// toute tentative de mutation. Le Set de travail est reconstruit à chaque usage à
+// partir de cette source gelée, jamais partagé muable.
+const EVENT_FIELDS_LIST = Object.freeze([
   'ts', 'grp', 'defi_id', 'notion_id', 'palier', 'set_id', 'item_id',
   'result', 'ctx', 'rang_local', 'dt_jours',
 ]);
@@ -176,8 +181,9 @@ const EVENT_FIELDS = new Set([
 function validateEventFields(e, notionIds) {
   assert(e && typeof e === 'object' && !Array.isArray(e), 'un événement doit être un objet');
 
+  const champsAutorises = new Set(EVENT_FIELDS_LIST);
   Object.keys(e).forEach((k) => {
-    assert(EVENT_FIELDS.has(k), `champ "${k}" hors schéma §3.2 (liste blanche stricte)`);
+    assert(champsAutorises.has(k), `champ "${k}" hors schéma §3.2 (liste blanche stricte)`);
   });
 
   assert(isNonEmptyString(e.ts), 'ts manquant');
@@ -235,7 +241,7 @@ function validerEvenement(e, notionIds) {
   }
 }
 
-module.exports = { validerEvenement, EVENT_FIELDS };
+module.exports = { validerEvenement, EVENT_FIELDS_LIST };
 
 // ---------------------------------------------------------------------------
 // run

@@ -21,24 +21,37 @@
 //     erreur), ils ne peuvent pas fuiter car l'événement est reconstruit champ par
 //     champ, jamais par copie/spread de l'entrée. Revalidé juste avant mise en file
 //     par le validateur de T1 (liste blanche stricte).
+//   - `itemId`/`setId`/`notionId`/`defiId` sont vérifiés dans leur NATURE (chaîne non
+//     vide, longueur bornée, caractères limités à [A-Za-z0-9._-] — jamais d'espace ni
+//     de texte libre), PAS dans leur FORMAT métier : ce module ne sait pas, et ne doit
+//     pas deviner, quels ids sont "réels" au sens du référentiel/des jeux de cartes
+//     (T1/T6 le garantissent en amont). Objectif unique ici : empêcher qu'un nom ou un
+//     commentaire libre se glisse dans un champ autorisé par erreur d'appel.
 //   - La réponse brute/normalisée de l'élève n'est JAMAIS transmise : seul `result`
 //     (0 ou 1) l'est, déjà calculé par T2.
 //   - `ts` est arrondi (tronqué) à l'heure : jamais la seconde/minute, pour limiter la
 //     réidentification par recoupement horaire fin.
+//   - Un échec de validation ne renvoie JAMAIS la valeur fautive à l'appelant (juste un
+//     code `raison`) : un message d'erreur n'est pas un canal d'évasion pour une donnée
+//     qu'on vient de refuser.
 //
-// Verrou "un vote" : scellé sous la clé `${defiId}::${itemId}` — vérification PUIS
-// écriture dans un même bloc synchrone (pas d'attente entre les deux), ce qui est
-// suffisant pour un double-clic, un double callback ou un rechargement DANS LE MÊME
-// onglet (JS y est mono-thread, aucun autre code ne peut s'intercaler). Entre deux
-// onglets véritablement distincts (processus séparés), `localStorage` n'offre aucune
+// Verrou "un vote" + historique + file : un SEUL blob JSON, sous une seule clé de
+// stockage (`fonda_evt_mesure`), écrit en un seul `setItem()`. Choix délibéré après
+// critique Codex : trois clés séparées (verrou/historique/file) peuvent se désynchroniser
+// si l'une des trois écritures échoue (verrou posé mais rien en file = mesure perdue
+// silencieusement) — un seul document, une seule écriture, élimine structurellement ce
+// risque (pas de transaction partielle possible). Les clés composites (verrou par
+// `(defiId, itemId)`, historique par `(setId, itemId)`) utilisent `JSON.stringify([a,
+// b])`, jamais une concaténation `a + '::' + b` : un simple "::" dans un id aurait pu
+// faire collisionner deux couples distincts.
+//
+// Vérification PUIS écriture dans un même bloc synchrone (pas d'attente entre les
+// deux) : correct pour un double-clic, un double callback ou un rechargement DANS LE
+// MÊME onglet (JS y est mono-thread, rien ne peut s'intercaler). Entre deux onglets
+// véritablement distincts (processus séparés), `localStorage` n'offre toujours aucune
 // primitive de comparaison-et-échange atomique : une course très rare reste possible.
-// Limite documentée (voir fonda/engine/README.md), pas corrigée ici — cf. l'esprit
-// G6 (« protection légère assumée », pas une garantie de sécurité).
-//
-// Historique par item (pour rang_local/dt_jours) : scellé sous `${setId}::${itemId}`,
-// DISTINCT de la clé de verrou — doit survivre au changement de `defi_id` d'une
-// occurrence à l'autre (le verrou, lui, est scopé par occurrence). Ce choix résout
-// l'ambiguïté « item_id unique seulement à l'intérieur d'un jeu » relevée en amont.
+// Limite documentée (voir fonda/engine/README.md), pas corrigée ici — cf. l'esprit G6
+// (« protection légère assumée », pas une garantie de sécurité).
 
 (function (root, factory) {
   'use strict';
@@ -58,9 +71,17 @@ const CTX_VALUES = new Set(['df', 'maison', 'classe']);
 // distinct du cas "grp bien formé mais absent du roster" (géré séparément).
 const DEFI_ID_PATTERN = /^defi_\d{4}-w\d{1,2}_([0-9]{3})_[a-z0-9-]+$/;
 
-const CLE_VERROUS = 'fonda_evt_verrous';
-const CLE_HISTORIQUE = 'fonda_evt_historique';
-const CLE_FILE = 'fonda_evt_file';
+// Garde-fou de NATURE (pas de format métier) sur un identifiant technique : chaîne
+// non vide, bornée en longueur, sans espace ni caractère de texte libre. N'affirme
+// jamais que l'id "existe" ou "a du sens" — seulement qu'il ne ressemble pas à du
+// texte saisi librement (un nom, une phrase, un commentaire).
+const ID_TECHNIQUE_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
+
+function estIdentifiantPlausible(valeur) {
+  return typeof valeur === 'string' && ID_TECHNIQUE_PATTERN.test(valeur);
+}
+
+const CLE_MESURE = 'fonda_evt_mesure';
 
 function extraireGrpDepuisDefiId(defiId) {
   if (typeof defiId !== 'string') return null;
@@ -84,18 +105,37 @@ function tronquerAHeure(date) {
   return d;
 }
 
-// Lecture défensive d'un blob JSON de stockage. Distingue explicitement "absent"
-// (renvoie `parDefaut`) de "corrompu" (renvoie `undefined` — jamais confondus : un
-// JSON corrompu ne doit jamais être silencieusement traité comme une table vide, ce
-// qui romprait le verrou ou l'historique existants).
-function lireJSON(stockage, cle, parDefaut) {
-  const brut = stockage.getItem(cle);
-  if (brut === null || brut === undefined) return parDefaut;
+// Clé composite non ambiguë : JSON.stringify d'un tableau échappe et délimite chaque
+// élément — contrairement à `a + '::' + b`, aucune valeur de a/b ne peut la faire
+// collisionner avec un autre couple.
+function cleComposite(a, b) {
+  return JSON.stringify([a, b]);
+}
+
+function formeValide(valeur) {
+  return typeof valeur === 'object' && valeur !== null && !Array.isArray(valeur);
+}
+
+// Lecture défensive du blob unique de mesure. Distingue explicitement "absent"
+// (enveloppe neuve) de "présent mais illisible ou mal formé" (→ undefined, jamais
+// traité comme une table vide : un stockage corrompu ne doit jamais réautoriser
+// silencieusement un vote déjà scellé ou effacer un historique réel).
+function lireMesure(stockage) {
+  const brut = stockage.getItem(CLE_MESURE);
+  if (brut === null || brut === undefined) {
+    return { verrous: {}, historique: {}, file: [] };
+  }
+  let data;
   try {
-    return JSON.parse(brut);
+    data = JSON.parse(brut);
   } catch {
     return undefined;
   }
+  if (!formeValide(data)) return undefined;
+  if (!formeValide(data.verrous)) return undefined;
+  if (!formeValide(data.historique)) return undefined;
+  if (!Array.isArray(data.file)) return undefined;
+  return data;
 }
 
 /**
@@ -115,7 +155,7 @@ function lireJSON(stockage, cle, parDefaut) {
  * @param {Set<string>|string[]} [p.notionIdsConnus] - notion_id valides (referentiel.json) ; si omis, la vérification contre le référentiel est un no-op
  * @param {{getItem:Function,setItem:Function}} p.stockage - ex. window.localStorage, injecté (jamais lu en dur)
  * @param {() => Date} p.maintenant - horloge injectée (testabilité)
- * @returns {{ emis:true, event:object } | { emis:false, raison:string, erreurs?:string[] }}
+ * @returns {{ emis:true, event:object } | { emis:false, raison:string }}
  */
 function soumettreTentative({
   defiId, itemId, setId, notionId, palier, ctx,
@@ -146,30 +186,29 @@ function soumettreTentative({
   if (!itemId || !setId || !notionId || !palier) {
     return { emis: false, raison: 'contexte_incomplet' };
   }
+  // Garde-fou de nature : aucun de ces champs ne doit ressembler à du texte libre
+  // (nom, phrase, commentaire). Ne vérifie PAS leur existence réelle dans un
+  // référentiel — garanti en amont par T1/T6, pas le rôle de ce module.
+  if (!estIdentifiantPlausible(itemId) || !estIdentifiantPlausible(setId) || !estIdentifiantPlausible(notionId)) {
+    return { emis: false, raison: 'identifiant_invalide' };
+  }
 
   if (!stockage || typeof stockage.getItem !== 'function' || typeof stockage.setItem !== 'function') {
     return { emis: false, raison: 'stockage_indisponible' };
   }
 
-  let verrous;
-  let historique;
-  let file;
+  let mesure;
   try {
-    verrous = lireJSON(stockage, CLE_VERROUS, {});
-    historique = lireJSON(stockage, CLE_HISTORIQUE, {});
-    file = lireJSON(stockage, CLE_FILE, []);
+    mesure = lireMesure(stockage);
   } catch {
     return { emis: false, raison: 'stockage_indisponible' };
   }
-  if (verrous === undefined || historique === undefined || file === undefined) {
+  if (mesure === undefined) {
     return { emis: false, raison: 'stockage_corrompu' };
   }
-  if (typeof verrous !== 'object' || verrous === null || Array.isArray(verrous)) verrous = {};
-  if (typeof historique !== 'object' || historique === null || Array.isArray(historique)) historique = {};
-  if (!Array.isArray(file)) file = [];
 
-  const cleVerrou = `${defiId}::${itemId}`;
-  if (verrous[cleVerrou]) {
+  const cleVerrou = cleComposite(defiId, itemId);
+  if (mesure.verrous[cleVerrou]) {
     return { emis: false, raison: 'deja_vote' };
   }
 
@@ -179,8 +218,8 @@ function soumettreTentative({
   }
   const ts = tronquerAHeure(now);
 
-  const cleHistorique = `${setId}::${itemId}`;
-  const passages = Array.isArray(historique[cleHistorique]) ? historique[cleHistorique] : [];
+  const cleHistorique = cleComposite(setId, itemId);
+  const passages = Array.isArray(mesure.historique[cleHistorique]) ? mesure.historique[cleHistorique] : [];
 
   const rangLocal = passages.length + 1;
   let dtJours = null;
@@ -212,18 +251,22 @@ function soumettreTentative({
 
   const validation = validerEvenement(event, notionIdsConnus !== undefined ? notionIdsConnus : [notionId]);
   if (!validation.valide) {
-    return { emis: false, raison: 'event_invalide', erreurs: validation.erreurs };
+    // Jamais le détail (valeur fautive) à l'appelant : seulement un code générique.
+    return { emis: false, raison: 'event_invalide' };
   }
 
   const eventScelle = Object.freeze({ ...event });
 
-  verrous[cleVerrou] = true;
-  historique[cleHistorique] = [...passages, { ts: event.ts, defi_id: defiId }];
+  const nouvelleMesure = {
+    verrous: { ...mesure.verrous, [cleVerrou]: true },
+    historique: { ...mesure.historique, [cleHistorique]: [...passages, { ts: event.ts, defi_id: defiId }] },
+    file: [...mesure.file, eventScelle],
+  };
 
   try {
-    stockage.setItem(CLE_VERROUS, JSON.stringify(verrous));
-    stockage.setItem(CLE_HISTORIQUE, JSON.stringify(historique));
-    stockage.setItem(CLE_FILE, JSON.stringify([...file, eventScelle]));
+    // Une seule écriture : verrou, historique et file changent d'état ensemble ou pas
+    // du tout (pas de scénario où le verrou est posé sans l'événement en file).
+    stockage.setItem(CLE_MESURE, JSON.stringify(nouvelleMesure));
   } catch {
     return { emis: false, raison: 'stockage_indisponible' };
   }
@@ -236,9 +279,7 @@ return {
   extraireGrpDepuisDefiId,
   grpEstAutorise,
   ctxEstValide,
-  CLE_VERROUS,
-  CLE_HISTORIQUE,
-  CLE_FILE,
+  CLE_MESURE,
 };
 
 }); // fin UMD
