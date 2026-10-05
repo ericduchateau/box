@@ -406,6 +406,17 @@ describe('micro-passe finale — carte_invalide : attendu (reponsesAcceptees) in
     }
   });
 
+  test('(5e critique Codex) fraction malformée SUIVIE d\'un texte d\'unité, sans unite déclarée : le "/" résiduel reste malformé même si la suite ressemble à une unité', () => {
+    for (const attendu of ['1/ cm²', '1/2/ cm²', '1 / -2 / cm²', '0,5 / 1,5 cm²', '1//2 cm²']) {
+      const resultat = statut({ profil: 'numerique', reponseDonnee: '1', reponsesAcceptees: [attendu] });
+      assert.equal(resultat, 'carte_invalide', `attendu="${attendu}" -> reçu "${resultat}"`);
+    }
+  });
+
+  test('non-régression : une fraction PROPRE suivie d\'une unité reste valide (le "/" est entièrement absorbé dans la valeur)', () => {
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '0,75 cm', reponsesAcceptees: ['3/4 cm'], unite: 'cm' }), 'juste');
+  });
+
   test('carte_invalide ne compte jamais comme une réussite', () => {
     assert.equal(compteCommeReussite('carte_invalide', 'numerique'), false);
   });

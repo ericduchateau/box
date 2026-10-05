@@ -201,6 +201,11 @@ function detecterIncoherenceAttendu(reponsesAcceptees, unite) {
     if (Number.isNaN(parsed.valeur)) return brut.includes('/');
     const suffixe = parsed.unite;
     if (!suffixe) return false;
+    // Un "/" dans le reliquat est TOUJOURS un résidu de fraction mal formée, même
+    // quand ce qui suit ressemble à une unité (ex. "1/ cm²", "0,5/1,5 cm²") : une
+    // fraction propre ("3/4") est entièrement absorbée dans la valeur, son "/" ne
+    // peut donc jamais atterrir ici.
+    if (suffixe.includes('/')) return true;
     const ressembleAUneUnite = /[\p{L}°%]/u.test(suffixe);
     if (!ressembleAUneUnite) return true; // reliquat sans lettre : fraction/forme malformée, jamais une unité
     return uniteAttendue != null && suffixe !== uniteAttendue;
