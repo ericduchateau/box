@@ -181,14 +181,17 @@ function valeursEgalesBinaire(a, b) {
 }
 
 // Grammaire d'une unité plausible : un ou plusieurs "tokens" de lettres (tout
-// alphabet) et symboles d'unité courants (°, %, µ, Ω, point médian ·), chaque token
-// pouvant porter un exposant (chiffres, éventuellement précédés d'un "-" déjà ASCII
-// depuis l'exposant Unicode — ex. "cm2", "m·s-1"), le tout pouvant s'enchaîner via
-// "/" pour une unité COMPOSÉE légitime ("m/s", "km/h"). Un "/" qui ne relie pas deux
-// tokens propres (ex. ".5 cm2" résidu d'une fraction "1/2,5" tronquée, ou "/1,5") ne
-// correspond pas à cette grammaire — c'est un résidu numérique malformé, jamais une
-// unité, quels que soient les chiffres ou lettres qu'il contient par ailleurs.
-const RE_UNITE_PLAUSIBLE = /^[\p{L}°%µΩ·]+(?:-?\d+)?(?:\/[\p{L}°%µΩ·]+(?:-?\d+)?)*$/u;
+// alphabet) et symboles d'unité courants (°, %, µ, Ω), chaque token pouvant porter un
+// exposant (chiffres, éventuellement précédés d'un "-" déjà ASCII depuis l'exposant
+// Unicode — ex. "cm2", "s-1"), le tout pouvant s'enchaîner via "/" ou "·" pour une
+// unité COMPOSÉE légitime ("m/s", "km/h", "kg·m2/s2", "m2·s-1" — le point médian est
+// un JOINEUR entre deux tokens, pas un caractère interne : un exposant peut donc
+// porter sur un facteur du milieu, pas seulement sur le dernier). Un "/" ou un "·"
+// qui ne relie pas deux tokens propres (ex. ".5 cm2" résidu d'une fraction "1/2,5"
+// tronquée, ou "/1,5") ne correspond pas à cette grammaire — c'est un résidu
+// numérique malformé, jamais une unité, quels que soient les chiffres ou lettres
+// qu'il contient par ailleurs.
+const RE_UNITE_PLAUSIBLE = /^[\p{L}°%µΩ]+(?:-?\d+)?(?:[·/][\p{L}°%µΩ]+(?:-?\d+)?)*$/u;
 
 // Détecte un ATTENDU (reponsesAcceptees) incohérent — problème d'auteur de la carte,
 // indépendant de ce que tape l'élève. Trois cas, jamais "juste" :

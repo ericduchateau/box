@@ -422,6 +422,12 @@ describe('micro-passe finale — carte_invalide : attendu (reponsesAcceptees) in
     assert.equal(statut({ profil: 'numerique', reponseDonnee: '8 km/h', reponsesAcceptees: ['8 km/h'], unite: 'km/h' }), 'juste');
   });
 
+  test('(7e critique Codex, faux positif) une unité composée avec exposant sur un facteur du milieu (m²·s⁻¹, kg·m²/s²) n\'est pas une incohérence', () => {
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '8 m²·s⁻¹', reponsesAcceptees: ['8 m²·s⁻¹'], unite: 'm²·s⁻¹' }), 'juste');
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '8 m⁻¹·s⁻¹', reponsesAcceptees: ['8 m⁻¹·s⁻¹'], unite: 'm⁻¹·s⁻¹' }), 'juste');
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '8 kg·m²/s²', reponsesAcceptees: ['8 kg·m²/s²'], unite: 'kg·m²/s²' }), 'juste');
+  });
+
   test('(6e critique Codex, faux négatif) une fraction décimale tronquée par le parseur (1/2,5) laisse un résidu malformé -> carte_invalide', () => {
     for (const attendu of ['1/2,5 cm²', '1 / -2,5 cm²', '1/2.5 m·s⁻¹']) {
       const resultat = statut({ profil: 'numerique', reponseDonnee: '0,5', reponsesAcceptees: [attendu] });
