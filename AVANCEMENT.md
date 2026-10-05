@@ -113,12 +113,17 @@ Règles de travail (rappel) :
 - Ordre impératif : T1 → T2 → T3 → T4 → T5 → T6 (T1 fonde les suivants).
 - Critique Codex (lecture seule, avant fusion) : sur T2, T3 et T5 seulement.
 
-### ☐ T1 — Contrats de données (fondation)
+### ☑ T1 — Contrats de données (fondation) — fait le 2026-10-05
 - But : poser `/fonda/data/referentiel.json` (seed pré-pondéré PRD §14) + schémas vides `calendar/coverage/dashboard` + `/fonda/fixtures/events.sample.json` (anonymes) + script de validation.
 - Impact prod : nul (dossier neuf).
-- DoD : la validation passe ; rien touché hors `/fonda/` + `docs/`.
-- Décisions ouvertes : chemin du namespace ; convention d'`id` de notions ; JSON Schema ou validation maison.
-- Codex : non.
+- DoD : la validation passe ✅ (`node fonda/scripts/validate.js`, 31 vérifications, testé aussi en cassant volontairement une donnée pour confirmer que le script détecte bien les erreurs) ; rien touché hors `/fonda/` ✅ (`docs/` finalement pas nécessaire, le PRD était déjà en place).
+- Décisions prises (feu vert Éric le 2026-10-05) :
+  - namespace `/fonda/data/` + `/fonda/fixtures/` + `/fonda/scripts/validate.js` ;
+  - id de notion `{fr|maths}.{slug-kebab}` ; 11 notions (éclatement de la ligne groupée PRD §14 "Proportionnalité · Grandeurs & mesures · Espace & géométrie" en 3 notions distinctes, regroupables via le nouveau champ `categorie`) ;
+  - validation maison en Node natif, zéro dépendance, pas de `package.json` (cohérent avec la règle racine "pas de npm pour le front").
+  - ajout non prévu au schéma minimal du PRD, documenté dans `fonda/data/README.md` : `categorie` (regroupement dashboard) et `palier_amorce` (reprend la colonne "Palier amorce" du tableau PRD §14, distinct de `paliers` qui reste toujours `["nI","nF"]`).
+- Branche `feat/fonda-lot1-contrats`, commit `4555b20`, PR vers `design` ouverte (lien ci-dessous). Pas de merge sans feu vert explicite.
+- Codex : non (pas demandé sur ce ticket).
 
 ### ☐ T2 — Carte « réponse produite » + correction par profil
 - But : composant saisie courte + moteur 4 profils (sens/orthographe/numerique/exact, PRD §5.1). Tests d'abord.

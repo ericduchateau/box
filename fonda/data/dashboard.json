@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "last_updated": "",
+  "par_groupe": [],
+  "agrege_etablissement": {
+    "adoption": {
+      "n_profs": 0,
+      "n_matieres": 0,
+      "n_jeux": 0,
+      "n_revisions": 0
+    },
+    "delta_par_notion": []
+  }
+}

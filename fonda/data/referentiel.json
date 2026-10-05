@@ -1,0 +1,138 @@
+{
+  "version": 1,
+  "last_updated": "2026-10-05",
+  "notions": [
+    {
+      "id": "maths.resolution-problemes",
+      "matiere": "maths",
+      "categorie": "resolution-problemes",
+      "libelle": "Résolution de problèmes",
+      "programme_refs": [],
+      "eval_nat_domaine": "résolution de problèmes",
+      "paliers": ["nI", "nF"],
+      "palier_amorce": ["nI", "nF"],
+      "priorite_initiale": "ambre",
+      "frequence_base_semaines": 4
+    },
+    {
+      "id": "maths.decimaux-fractions",
+      "matiere": "maths",
+      "categorie": "nombres-decimaux-fractions",
+      "libelle": "Nombres décimaux et fractions (écritures d'un même nombre)",
+      "programme_refs": [],
+      "eval_nat_domaine": "nombres et calculs",
+      "paliers": ["nI", "nF"],
+      "palier_amorce": ["nI", "nF"],
+      "priorite_initiale": "ambre",
+      "frequence_base_semaines": 4
+    },
+    {
+      "id": "maths.calcul-automatismes",
+      "matiere": "maths",
+      "categorie": "calcul-automatismes",
+      "libelle": "Calcul et automatismes",
+      "programme_refs": [],
+      "eval_nat_domaine": "calcul",
+      "paliers": ["nI", "nF"],
+      "palier_amorce": ["nI", "nF"],
+      "priorite_initiale": "ambre",
+      "frequence_base_semaines": 4
+    },
+    {
+      "id": "maths.proportionnalite",
+      "matiere": "maths",
+      "categorie": "grandeurs-mesures",
+      "libelle": "Proportionnalité",
+      "programme_refs": [],
+      "eval_nat_domaine": "grandeurs et mesures",
+      "paliers": ["nI", "nF"],
+      "palier_amorce": ["nI"],
+      "priorite_initiale": "gris",
+      "frequence_base_semaines": 4
+    },
+    {
+      "id": "maths.grandeurs-mesures",
+      "matiere": "maths",
+      "categorie": "grandeurs-mesures",
+      "libelle": "Grandeurs et mesures",
+      "programme_refs": [],
+      "eval_nat_domaine": "grandeurs et mesures",
+      "paliers": ["nI", "nF"],
+      "palier_amorce": ["nI"],
+      "priorite_initiale": "gris",
+      "frequence_base_semaines": 4
+    },
+    {
+      "id": "maths.espace-geometrie",
+      "matiere": "maths",
+      "categorie": "espace-geometrie",
+      "libelle": "Espace et géométrie",
+      "programme_refs": [],
+      "eval_nat_domaine": "espace et géométrie",
+      "paliers": ["nI", "nF"],
+      "palier_amorce": ["nI"],
+      "priorite_initiale": "gris",
+      "frequence_base_semaines": 4
+    },
+    {
+      "id": "fr.comprehension",
+      "matiere": "français",
+      "categorie": "comprehension",
+      "libelle": "Compréhension (écrit/oral)",
+      "programme_refs": [],
+      "eval_nat_domaine": "compréhension",
+      "paliers": ["nI", "nF"],
+      "palier_amorce": ["nI", "nF"],
+      "priorite_initiale": "ambre",
+      "frequence_base_semaines": 4
+    },
+    {
+      "id": "fr.grammaire-phrase",
+      "matiere": "français",
+      "categorie": "grammaire-phrase",
+      "libelle": "Grammaire de phrase (constituants, classes de mots, accord sujet-verbe)",
+      "programme_refs": [],
+      "eval_nat_domaine": "grammaire",
+      "paliers": ["nI", "nF"],
+      "palier_amorce": ["nI", "nF"],
+      "priorite_initiale": "ambre",
+      "frequence_base_semaines": 4
+    },
+    {
+      "id": "fr.orthographe",
+      "matiere": "français",
+      "categorie": "orthographe",
+      "libelle": "Orthographe (accords, lexicale)",
+      "programme_refs": [],
+      "eval_nat_domaine": "orthographe",
+      "paliers": ["nI", "nF"],
+      "palier_amorce": ["nI", "nF"],
+      "priorite_initiale": "ambre",
+      "frequence_base_semaines": 4
+    },
+    {
+      "id": "fr.lexique",
+      "matiere": "français",
+      "categorie": "lexique",
+      "libelle": "Lexique / vocabulaire",
+      "programme_refs": [],
+      "eval_nat_domaine": "lexique",
+      "paliers": ["nI", "nF"],
+      "palier_amorce": ["nI", "nF"],
+      "priorite_initiale": "ambre",
+      "frequence_base_semaines": 4
+    },
+    {
+      "id": "fr.fluence",
+      "matiere": "français",
+      "categorie": "fluence",
+      "libelle": "Fluence / décodage",
+      "programme_refs": [],
+      "eval_nat_domaine": "fluence",
+      "paliers": ["nI", "nF"],
+      "palier_amorce": ["nI"],
+      "priorite_initiale": "gris",
+      "frequence_base_semaines": 4
+    }
+  ]
+}
