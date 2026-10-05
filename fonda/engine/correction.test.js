@@ -417,6 +417,18 @@ describe('micro-passe finale — carte_invalide : attendu (reponsesAcceptees) in
     assert.equal(statut({ profil: 'numerique', reponseDonnee: '0,75 cm', reponsesAcceptees: ['3/4 cm'], unite: 'cm' }), 'juste');
   });
 
+  test('(6e critique Codex, faux positif) une unité COMPOSÉE légitime contenant un "/" (m/s, km/h) n\'est pas une incohérence', () => {
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '0,75 m/s', reponsesAcceptees: ['3/4 m/s'], unite: 'm/s' }), 'juste');
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '8 km/h', reponsesAcceptees: ['8 km/h'], unite: 'km/h' }), 'juste');
+  });
+
+  test('(6e critique Codex, faux négatif) une fraction décimale tronquée par le parseur (1/2,5) laisse un résidu malformé -> carte_invalide', () => {
+    for (const attendu of ['1/2,5 cm²', '1 / -2,5 cm²', '1/2.5 m·s⁻¹']) {
+      const resultat = statut({ profil: 'numerique', reponseDonnee: '0,5', reponsesAcceptees: [attendu] });
+      assert.equal(resultat, 'carte_invalide', `attendu="${attendu}" -> reçu "${resultat}"`);
+    }
+  });
+
   test('carte_invalide ne compte jamais comme une réussite', () => {
     assert.equal(compteCommeReussite('carte_invalide', 'numerique'), false);
   });

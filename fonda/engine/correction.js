@@ -180,6 +180,16 @@ function valeursEgalesBinaire(a, b) {
   return Math.abs(a - b) <= echelle * EPSILON_RELATIF;
 }
 
+// Grammaire d'une unité plausible : un ou plusieurs "tokens" de lettres (tout
+// alphabet) et symboles d'unité courants (°, %, µ, Ω, point médian ·), chaque token
+// pouvant porter un exposant (chiffres, éventuellement précédés d'un "-" déjà ASCII
+// depuis l'exposant Unicode — ex. "cm2", "m·s-1"), le tout pouvant s'enchaîner via
+// "/" pour une unité COMPOSÉE légitime ("m/s", "km/h"). Un "/" qui ne relie pas deux
+// tokens propres (ex. ".5 cm2" résidu d'une fraction "1/2,5" tronquée, ou "/1,5") ne
+// correspond pas à cette grammaire — c'est un résidu numérique malformé, jamais une
+// unité, quels que soient les chiffres ou lettres qu'il contient par ailleurs.
+const RE_UNITE_PLAUSIBLE = /^[\p{L}°%µΩ·]+(?:-?\d+)?(?:\/[\p{L}°%µΩ·]+(?:-?\d+)?)*$/u;
+
 // Détecte un ATTENDU (reponsesAcceptees) incohérent — problème d'auteur de la carte,
 // indépendant de ce que tape l'élève. Trois cas, jamais "juste" :
 // (1) la valeur ne parse à RIEN DE FINI (NaN) ET l'entrée contient un "/" : une
@@ -187,12 +197,13 @@ function valeursEgalesBinaire(a, b) {
 //     plutôt qu'un simple nombre aberrant. Un nombre non fini SANS "/" (ex. un nombre
 //     à 310 chiffres -> Infinity) reste couvert par le garde-fou existant (-> "faux"
 //     global), ce n'est pas une incohérence de forme de l'attendu ;
-// (2) le reliquat d'une entrée parsée ne RESSEMBLE PAS à une unité (aucune lettre, ni
-//     °/% — ex. "/1,5" ou "/" résiduel d'une fraction malformée type "0,5/1,5" ou
-//     "1/2/"). Un reliquat avec chiffre N'EST PAS en soi suspect (ex. "cm2", "m·s⁻¹"
-//     sont des unités légitimes) — seule l'absence de toute lettre/symbole l'est ;
-// (3) le reliquat ressemble à une unité mais CONTREDIT l'unité déclarée par la carte
-//     (ex. "8 kg" alors que la carte exige "cm").
+// (2) le reliquat d'une entrée parsée ne respecte PAS la grammaire d'une unité
+//     plausible (ci-dessus) — résidu de fraction malformée (vide, commence par un
+//     chiffre/point, "/" mal placé...), même suivi d'un texte qui ressemble à une
+//     unité (ex. "1/ cm²", "1/2,5 cm²") ;
+// (3) le reliquat RESPECTE la grammaire (c'est une unité plausible, composée ou non)
+//     mais CONTREDIT l'unité déclarée par la carte (ex. "8 kg" alors que la carte
+//     exige "cm").
 function detecterIncoherenceAttendu(reponsesAcceptees, unite) {
   const uniteAttendue = unite ? normaliserExposants(canoniser(String(unite)).trim()) : null;
   return reponsesAcceptees.some((a) => {
@@ -201,13 +212,7 @@ function detecterIncoherenceAttendu(reponsesAcceptees, unite) {
     if (Number.isNaN(parsed.valeur)) return brut.includes('/');
     const suffixe = parsed.unite;
     if (!suffixe) return false;
-    // Un "/" dans le reliquat est TOUJOURS un résidu de fraction mal formée, même
-    // quand ce qui suit ressemble à une unité (ex. "1/ cm²", "0,5/1,5 cm²") : une
-    // fraction propre ("3/4") est entièrement absorbée dans la valeur, son "/" ne
-    // peut donc jamais atterrir ici.
-    if (suffixe.includes('/')) return true;
-    const ressembleAUneUnite = /[\p{L}°%]/u.test(suffixe);
-    if (!ressembleAUneUnite) return true; // reliquat sans lettre : fraction/forme malformée, jamais une unité
+    if (!RE_UNITE_PLAUSIBLE.test(suffixe)) return true;
     return uniteAttendue != null && suffixe !== uniteAttendue;
   });
 }
