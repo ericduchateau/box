@@ -125,12 +125,59 @@ Règles de travail (rappel) :
 - Branche `feat/fonda-lot1-contrats`, commit `4555b20`, PR vers `design` ouverte (lien ci-dessous). Pas de merge sans feu vert explicite.
 - Codex : non (pas demandé sur ce ticket).
 
-### ☐ T2 — Carte « réponse produite » + correction par profil
+### ☑ T2 — Carte « réponse produite » + correction par profil — révisé le 2026-10-05, 3 passes de critique Codex, **prêt pour fusion sur feu vert**
 - But : composant saisie courte + moteur 4 profils (sens/orthographe/numerique/exact, PRD §5.1). Tests d'abord.
 - Impact prod : nul (développé isolé, non branché).
-- DoD : suite de tests verte (accents, pluriels, 6/8=3/4, « presque ») ; profils pilotés par les données de carte.
-- Décisions ouvertes : tolérances exactes par profil ; rendu de l'état « presque ».
-- Codex : OUI (une faute peut-elle être validée ? la mesure peut-elle être faussée ?).
+- DoD : suite de tests verte ✅ (`node --test fonda/engine/*.test.js` — **80/80**, écrite/mise à jour avant chaque révision du moteur) ; profils pilotés par les données de carte ✅.
+- Fichiers : `fonda/engine/correction.js`, `correction.test.js`, `carte-reponse-produite.js`, `carte-reponse-produite.test.js` (test d'intégration via DOM factice maison, zéro dépendance), `README.md`.
+
+**Historique de la révision (2026-10-05)** :
+
+**Passe 1** — 1ʳᵉ implémentation (31 tests) → critique Codex : 4 graves (apostrophe/trait d'union trop pardonnés en orthographe, unité fausse comptée réussite, arrondi arrondissait les deux côtés au lieu de fixer une cible, risque de double comptage seconde chance) + 7 moyennes + 1 faible. Corrections : couche de normalisation commune (NFC + typographie → ASCII), orthographe strict sur apostrophe/trait d'union/accents (presque = accent manquant seulement), sens sans repli pluriel mécanique (corrige la collision `chaux→chau`), unité manquante→presque/fausse→faux, arrondi = cible arrondie (pas la réponse élève), epsilon relatif, vide toujours faux, `compteCommeReussite` faux par défaut, contrat seconde chance `{tentative, scored}`. 59/59 tests.
+
+**Passe 2** — 2e critique Codex ciblée (lecture seule) sur ces points précis → encore 2 graves + 5 moyennes : tolérance numérique encore trop permissive (`1000000001`≈`1000000000`, `0`≈`0.0000000000005`, `0,33000...01`≈cible arrondie) ; unité fausse acceptée après mise en minuscule (`8 mA` validé pour `MA`) ; comptage par défaut incomplet (profil inconnu + statut `juste` → `true`) ; arrondi décalé par une nudge absolue trop grossière + non borné (`arrondi:309` accepté) ; unités asymétriques/exposants non gérés (`cm²` vs `cm2`, unité exigée non canonisée) ; ponctuation trop permissive créant des collisions (`cha,t`=`chat`, `-4`=`4`, `1,5`=`15`, `!!!` validé contre une réponse acceptée vide) ; feedback affichant l'attendu brut au lieu de la cible réelle.
+
+Corrections passe 2 (tests d'abord, 21 nouveaux tests) :
+- Ponctuation pardonnée réduite à `. ! ?` en position **externe uniquement**, plus jamais `-, +, ,, /` (internes ou externes) — comportement sens/orthographe resserré en conséquence (ex. `porte-monnaie`=`portemonnaie` en sens n'est plus pardonné par défaut).
+- Contrôle du vide déplacé **après** normalisation (pas sur la saisie brute) : `!!!` ne matche plus une réponse acceptée vide.
+- `compteCommeReussite` valide désormais aussi le profil (`PROFILS.has`) avant tout — un profil inconnu ne compte jamais, même avec statut `juste`.
+- Unité : comparaison **sensible à la casse**, et l'unité exigée par la carte passe désormais par la même canonisation typographique + normalisation d'exposants (`²³`→`2 3`) que la saisie (symétrie).
+- Arrondi : borné à `[0,10]` (hors bornes → repli exact) ; nudge de correction de l'artefact binaire passée d'absolue (`1e-9`) à **relative** (`Number.EPSILON × 8`, quelques ULPs) — corrige le décalage artificiel sur une cible volontairement sous le seuil (`2.674999999999` reste `2.67`, pas `2.68`).
+- Comparaison numérique exacte : même passage à une tolérance **relative à l'échelle** (`Number.EPSILON × 8`) sans aucun plancher absolu — **déviation documentée** vs la suggestion initiale de Codex (`≈1e-9×max(|a|,|b|)`) : ce facteur ne suffit pas, il confond deux grands entiers consécutifs à l'échelle `1e9` ; voir `fonda/engine/README.md` pour le détail.
+- Garde-fou global : toute valeur non finie (`Infinity`, ex. un nombre de 310 chiffres) traitée comme invalide → faux, jamais d'exception ; profil inconnu → `evaluerReponse` retourne `faux` au lieu de lever une exception (ancien comportement supprimé).
+- Nouvelle fonction exportée `calculerCibleAffichee()` : le feedback du composant UI affiche désormais la cible réellement exigée (valeur arrondie + unité si exigée), plus jamais la réponse acceptée brute.
+- README : nouvelle section « Limites connues (hors périmètre collège) » — notation scientifique (`1e3`), signe `+` explicite, espaces internes en profil `exact` : identifiées, volontairement non corrigées (arbitrage Éric).
+
+80/80 tests verts. T1 revalidé. Rien touché hors `/fonda/`.
+
+**3e critique Codex** (ciblée, lecture seule, sur unité manquante/fausse + arrondi + normalisation typographique + comptage par défaut) → 0 grave, 2 moyennes + 3 faibles + 1 note lexicale, dont 2 jugées hors du périmètre pré-autorisé (« limites connues ») par Éric lui-même après relecture du retour brut : **micro-passe finale** demandée sur seulement 2 points précis (le reste explicitement acté comme limite connue, documenté au README) :
+- nouveau statut `carte_invalide` : un attendu (`reponses_acceptees`) incohérent (unité contradictoire avec la carte, ou fraction malformée du type `0,5/1,5`) ne doit **jamais** rendre `juste` — signalé pour relecture, compté faux.
+- normalisation du moins en exposant (`⁻`→`-`) côté unité, dans les deux sens (`m·s⁻¹` ≡ `m·s-1`).
+- README : ajout de 4 limites connues supplémentaires (précision >~12 chiffres significatifs, `.5`=`5` en `sens`, espaces autour de `/` dans une unité, variantes lexicales type `cœur`/`coeur`).
+
+10 nouveaux tests (90/90) → commit `e0535e6`.
+
+**4e critique Codex, ciblée en lecture seule** UNIQUEMENT sur `carte_invalide` et la normalisation `⁻` (règle d'arrêt : si seulement « limites connues », pas de correction, on acte la fusion) → 2 défauts réels trouvés, **hors limites connues** :
+1. **Faux positif (élevé)** : une unité contenant un chiffre et qui correspond bien à la carte (`cm²`/`cm2`, `m·s⁻¹`) était quand même signalée `carte_invalide` — la détection initiale testait « un chiffre dans le reliquat » au lieu de « le reliquat ressemble-t-il à une unité ».
+2. **Faux négatif (moyen)** : un reliquat `/` résiduel sans aucun chiffre (`"1/"`, `"1/2/"`) échappait à la détection et validait silencieusement en `juste`.
+
+Corrigé (tests d'abord, 2 nouveaux tests, 92/92) : la détection d'incohérence repose maintenant sur « le reliquat contient-il une lettre (ou `°`/`%`) » — présent et conforme à l'unité déclarée → pas une incohérence (même avec un chiffre) ; absent → toujours incohérent (fraction/forme malformée), qu'il y ait un chiffre ou pas.
+
+**Consigne d'Éric avant la 5e passe** : garder côte à côte les deux tests cœur (unité contradictoire → `carte_invalide` ; unité valide avec chiffre → `juste`), et étendre la table de fractions malformées à l'attendu ET à la saisie élève (`1/`, `1/2/`, `/3`, dénominateur nul `1/0`) — `carte_invalide` si c'est l'attendu, `faux` jamais `juste` si c'est la saisie élève.
+
+**5e critique Codex** (ciblée sur ces deux points) → 1 défaut hors limites connues : une fraction malformée **suivie d'un texte d'unité**, sans `unite` déclarée (`"1/ cm²"`, `"0,5/1,5 cm²"`), échappait encore — le reliquat contenait une lettre donc passait le test, et sans unité déclarée rien ne le comparait. Corrigé : un `/` qui subsiste dans le reliquat est toujours un résidu malformé (une fraction propre comme `3/4` absorbe entièrement son `/` dans la valeur). 93/93 tests, commit `ed7c6de`.
+
+**6e critique Codex** (même points) → 2 nouveaux défauts, le fix précédent ayant été trop large :
+1. **Faux positif** : une unité composée légitime contenant elle-même un `/` (`m/s`, `km/h`) était signalée `carte_invalide` — le "tout `/` restant = malformé" ne distinguait pas un `/` d'unité d'un `/` de fraction cassée.
+2. **Faux négatif** : une fraction décimale tronquée par le parseur (`"1/2,5"` → seul `1/2` est reconnu comme fraction entière, le reliquat `.5 cm²` commence par un chiffre/point) passait encore, car ce reliquat contenait une lettre et pas de `/`.
+
+Remplacé par une **grammaire explicite** (`RE_UNITE_PLAUSIBLE`) : un reliquat est une unité plausible seulement s'il est une suite de tokens lettres/symboles (`°`, `%`, `µ`, `Ω`), chacun avec exposant optionnel, enchaînés par `/` pour une unité composée. Tout le reste (vide avant `/`, commence par un chiffre/point, `/` mal placé) est malformé. 95/95 tests, commit `6edcdef`.
+
+**7e critique Codex** (même points) → 1 défaut : une unité à 2+ facteurs avec exposant sur un facteur du milieu séparé par un **point médian** (`m²·s⁻¹`, `kg·m²/s²`) était rejetée — le `·` était inclus dans le token lui-même au lieu d'être un joineur, donc bloquait la suite après un exposant. Corrigé : `·` traité comme joineur au même titre que `/`. 96/96 tests, commit `c378924`.
+
+**8e critique Codex** (vérification exhaustive, 180 000+ cas générés : unités à 2-3 facteurs toutes combinaisons `/`/`·`/exposant-à-toute-position, fractions malformées avec séparateurs multiples/signes/espaces/virgule-point mélangés) → **aucune faille, rien au-delà des limites connues du README**. Conforme à la règle d'arrêt fixée par Éric avant la 5e passe — reste à confirmer explicitement le feu vert de fusion.
+
+**État final T2** : 96/96 tests verts, T1 revalidé, rien touché hors `/fonda/`. Branche `feat/fonda-lot1-reponse-produite` (8 commits de révision). **Prêt pour fusion vers `design` — en attente du feu vert explicite d'Éric** (pas de merge sans accord).
 
 ### ☐ T3 — Tags grp/ctx + verrou de vote
 - But : émettre les événements avec `grp` (choisi par le prof, jamais un élève) et `ctx` ; un vote par item et par occurrence (verrou local).
