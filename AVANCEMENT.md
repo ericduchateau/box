@@ -268,7 +268,11 @@ Documentation ajoutée (README `fonda/engine/`) pour les points 2 et 3, avec tes
 #### 🔖 DETTE QR — lien + copier seulement en T4
 **Pas de lib QR vendorée en T4** (décision Éric : zéro npm pour le front, et il voulait voir la proposition avant toute intégration — a tranché pour la reporter). La page niveau n'a qu'un lien + bouton copier. **Ticket ultérieur dédié** quand le besoin réel se confirme (ex. pour Pronote/affichage papier) — proposer alors une lib vendorée minimale (ex. `qrcode-generator`, kazuhikoarase, MIT, zéro dépendance) pour validation avant intégration.
 
-- Branche `feat/fonda-lot1-mode-page`. **Pas de PR/fusion sans critique Codex non-régression (lecture seule) et feu vert explicite d'Éric. T5 non démarré.**
+**Critique Codex non-régression** (lecture seule, commit `e2a266f`, angle différent des tickets précédents : plus l'anonymat, mais « les collègues voient-ils une différence ? ») → **aucune régression trouvée**. Vérifié : 20 URLs flag OFF (dont fragments `#fonda=1`, `?` manquant, casse `FONDA=1`, valeurs `0`/`true`/vide/`01`/`1x`/`1 `, paramètres imbriqués) comparées à `main` dans le même harnais vm — appels identiques, zéro injection ; 5 URLs flag ON (dont encodage `%31`, paramètre dupliqué) → injection confirmée. Deux nuances relevées, aucune retenue comme régression :
+1. « Même JS exécuté » pas littéralement exact : le test du flag et l'export CommonJS sont évalués en plus, sans aucun effet observable (ni DOM, ni requête) — c'est le « strict minimum » explicitement autorisé par le ticket.
+2. `initFonda()` ne revérifie pas elle-même le flag — un appel manuel `App.initFonda()` depuis la console l'activerait. Codex confirme lui-même qu'aucun parcours BOX existant ne fait cet appel : pas un chemin d'exécution réel, juste une garantie théorique « trop forte » pour être exigée.
+
+- Branche `feat/fonda-lot1-mode-page`. **Prêt pour fusion — en attente du feu vert explicite d'Éric. T5 non démarré.**
 
 ### ☐ T5 — Collecte n8n → Sheet
 - But : nouveau workflow d'ingestion des événements, livré en JSON à importer, testé sur copie.
