@@ -8,9 +8,10 @@
 //     si renseignée (ex. "cm"), l'unité est exigée dans la réponse ; sinon toute unité
 //     fournie est ignorée. Champ à valider avec Éric (cf. fonda/engine/README.md).
 //   arrondi (numerique seulement, optionnel, défaut null) — AJOUT non détaillé par le PRD :
-//     tolérance absolue autour de la valeur attendue (ex. 0.1). Sans cette carte,
-//     la comparaison décimale est exacte (hors epsilon flottant), conforme à
-//     « décimaux exacts sauf arrondi mentionné » (PRD §5.1).
+//     entier n = nombre de décimales. Si renseigné, réponse ET valeur attendue sont
+//     arrondies à n décimales avant comparaison (ex. arrondi:2, attendu "1/3" →
+//     0,33 accepté). null/absent = comparaison décimale exacte (hors epsilon
+//     flottant), conforme à « décimaux exacts sauf arrondi mentionné » (PRD §5.1).
 //
 // Levenshtein (faute de frappe à 1 lettre) : volontairement absent de ce module —
 // c'est la décision « OFF par défaut » du PRD §5.1, pas un oubli.
@@ -89,15 +90,22 @@ function parseReponseNumerique(brut) {
   return { valeur, unite };
 }
 
+// Compare deux valeurs selon la règle "arrondi" de la carte : arrondi à n
+// décimales de part et d'autre (ex. 1/3 et 0,33 matchent à n=2), ou égalité
+// exacte (hors epsilon flottant) si arrondi est null.
+function valeursCorrespondent(a, b, arrondi) {
+  if (arrondi == null) return Math.abs(a - b) <= 1e-9;
+  return Number(a.toFixed(arrondi)) === Number(b.toFixed(arrondi));
+}
+
 function evaluerNumerique(reponseDonnee, reponsesAcceptees, { unite = null, arrondi = null } = {}) {
   const donnee = parseReponseNumerique(reponseDonnee);
   if (Number.isNaN(donnee.valeur)) return 'faux';
 
-  const tolerance = arrondi != null ? Math.abs(arrondi) : 1e-9; // 1e-9 = sécurité flottante, pas une tolérance pédagogique
   const valeurCorrecte = reponsesAcceptees
     .map((a) => parseReponseNumerique(a))
     .filter((a) => !Number.isNaN(a.valeur))
-    .some((a) => Math.abs(donnee.valeur - a.valeur) <= tolerance);
+    .some((a) => valeursCorrespondent(donnee.valeur, a.valeur, arrondi));
 
   if (!valeurCorrecte) return 'faux';
 

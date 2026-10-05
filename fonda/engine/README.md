@@ -33,7 +33,7 @@ Le PRD §5.1 mentionne les règles (« unité exigée seulement si la carte le p
 | Champ | Portée | Défaut | Rôle |
 |---|---|---|---|
 | `unite` | profil `numerique` | `null` | Si renseigné (ex. `"cm"`), l'unité est exigée dans la réponse ; sinon toute unité fournie est ignorée. |
-| `arrondi` | profil `numerique` | `null` | Tolérance absolue autour de la valeur attendue (ex. `0.1`). Sans cette carte, comparaison décimale exacte (hors epsilon flottant `1e-9`). |
+| `arrondi` | profil `numerique` | `null` | Entier = nombre de décimales. Si renseigné, réponse **et** valeur attendue sont arrondies à n décimales avant comparaison (ex. `arrondi: 2`, attendu `"1/3"` → `0,33` accepté). `null` = comparaison décimale exacte (hors epsilon flottant `1e-9`). |
 
 Si ces noms ne conviennent pas (ou si le PRD doit être mis à jour en conséquence), c'est un changement localisé à `correction.js` + `correction.test.js`.
 

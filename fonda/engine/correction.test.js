@@ -97,8 +97,16 @@ describe('profil "numerique" — virgule=point, espaces, zéros inutiles pardonn
     assert.equal(evaluerReponse({ profil: 'numerique', reponseDonnee: '3.1', reponsesAcceptees: ['3.14'] }).statut, 'faux');
   });
 
-  test('arrondi toléré uniquement si la carte le précise', () => {
-    assert.equal(evaluerReponse({ profil: 'numerique', reponseDonnee: '3.1', reponsesAcceptees: ['3.14'], arrondi: 0.1 }).statut, 'juste');
+  test('arrondi toléré uniquement si la carte le précise : "arrondi: n" arrondit les deux côtés à n décimales', () => {
+    // Exemple de référence (Éric) : 1/3 avec arrondi:2 accepte 0,33.
+    assert.equal(evaluerReponse({ profil: 'numerique', reponseDonnee: '0,33', reponsesAcceptees: ['1/3'], arrondi: 2 }).statut, 'juste');
+  });
+
+  test('arrondi : les deux côtés sont arrondis, pas seulement comparés avec une tolérance', () => {
+    // 3.14 arrondi à 1 décimale = 3.1 ; 3.09 arrondi à 1 décimale = 3.1 aussi.
+    assert.equal(evaluerReponse({ profil: 'numerique', reponseDonnee: '3.09', reponsesAcceptees: ['3.14'], arrondi: 1 }).statut, 'juste');
+    // Hors de la décimale demandée, ça ne matche plus.
+    assert.equal(evaluerReponse({ profil: 'numerique', reponseDonnee: '3.2', reponsesAcceptees: ['3.14'], arrondi: 1 }).statut, 'faux');
   });
 
   test('valeur fausse = faux', () => {
