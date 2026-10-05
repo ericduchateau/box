@@ -1,0 +1,76 @@
+{
+  "id": "0lo2EJjYDUh0ouKp",
+  "name": "BOX - Question Eleve",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "POST", "path": "box-question", "responseMode": "responseNode", "options": {} },
+      "id": "wh_q",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "d184c08f-d0b9-4376-8acd-26e2d66c465e"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": { "__rl": true, "mode": "id", "value": "={{ $json.body.drive_file_id }}" },
+        "options": {}
+      },
+      "id": "gd_q",
+      "name": "Download Fiche",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [240, 0],
+      "credentials": { "googleDriveOAuth2Api": { "id": "cukxQDNwWIqOAK02", "name": "Google Drive la bonne!" } },
+      "notes": "Telecharge la fiche pour recuperer l'email du prof"
+    },
+    {
+      "parameters": {
+        "jsCode": "const webhookData = $('Webhook').first().json.body;\nconst buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst fiche = JSON.parse(buffer.toString('utf-8'));\n\nconst card = fiche.cartes.find(c => c.numero === webhookData.card_numero);\n\nreturn [{\n  json: {\n    to: fiche.prof_email,\n    subject: `BOX - Question d'un eleve sur \"${fiche.notion}\"`,\n    body: `<h3>Question d'un eleve en Devoirs Faits</h3>\n<p><strong>Fiche :</strong> ${fiche.notion} (${fiche.matiere} - ${fiche.niveau})</p>\n<hr>\n<p><strong>Carte n°${webhookData.card_numero} :</strong></p>\n<p><em>Question :</em> ${card ? card.question : 'N/A'}</p>\n<p><em>Reponse :</em> ${card ? card.reponse : 'N/A'}</p>\n<hr>\n<p><strong>L'eleve demande :</strong></p>\n<p>${webhookData.question_text}</p>\n<br>\n<p style=\"color:#64748b;font-size:12px\">Ce message a ete envoye automatiquement depuis BOX.</p>`\n  }\n}];"
+      },
+      "id": "code_q",
+      "name": "Preparer Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 0]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.body }}",
+        "options": {}
+      },
+      "id": "gmail_q",
+      "name": "Envoyer Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [720, 0],
+      "webhookId": "6a2b03a1-1e52-42b8-bdfc-f0cb7963131c",
+      "credentials": { "gmailOAuth2": { "id": "iIgjFF3qL44wl8uE", "name": "Gmail n8n iazimut2026" } }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": true, \"message\": \"Question envoyee\"}",
+        "options": { "responseHeaders": { "entries": [{ "name": "Access-Control-Allow-Origin", "value": "*" }] } }
+      },
+      "id": "resp_q",
+      "name": "Repondre",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [960, 0]
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Download Fiche", "type": "main", "index": 0 }]] },
+    "Download Fiche": { "main": [[{ "node": "Preparer Email", "type": "main", "index": 0 }]] },
+    "Preparer Email": { "main": [[{ "node": "Envoyer Email", "type": "main", "index": 0 }]] },
+    "Envoyer Email": { "main": [[{ "node": "Repondre", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "callerPolicy": "workflowsFromSameOwner", "availableInMCP": false },
+  "staticData": null,
+  "pinData": {}
+}

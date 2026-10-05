@@ -1,0 +1,174 @@
+{
+  "id": "lCSOkYDaQt46u96y",
+  "name": "BOX - Suppression",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "POST", "path": "box-delete", "responseMode": "responseNode", "options": {} },
+      "id": "wh_del",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "573cfce3-e236-4387-9d91-d0d34b7d609c"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": { "__rl": true, "mode": "id", "value": "1AmmMsO3nh4h0GQ0I5XzIqWG_zHA9wopa" },
+        "options": {}
+      },
+      "id": "gd_dl_cat",
+      "name": "Download Catalogue",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [240, 0],
+      "credentials": { "googleDriveOAuth2Api": { "id": "cukxQDNwWIqOAK02", "name": "Google Drive la bonne!" } },
+      "notes": "CONFIGURER : remplacer CATALOGUE_FILE_ID par l'ID du fichier catalogue.json"
+    },
+    {
+      "parameters": {
+        "jsCode": "const webhookData = $('Webhook').first().json.body;\nconst buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst catalogue = JSON.parse(buffer.toString('utf-8'));\n\nconst setId = webhookData.set_id;\nconst code = webhookData.code_suppression;\n\n// Trouver le set dans le catalogue\nconst setIndex = catalogue.sets.findIndex(s => s.id === setId);\nif (setIndex === -1) {\n  return [{ json: { found: false, error: 'Jeu introuvable' } }];\n}\n\nconst setInfo = catalogue.sets[setIndex];\n\n// On doit verifier le code dans le fichier JSON du set\nreturn [{\n  json: {\n    found: true,\n    set_id: setId,\n    code_suppression: code,\n    drive_file_id: setInfo.drive_file_id,\n    set_index: setIndex,\n    catalogue: catalogue\n  }\n}];"
+      },
+      "id": "code_find",
+      "name": "Trouver et verifier",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "version": 2, "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "combinator": "and",
+          "conditions": [{ "id": "cond1", "leftValue": "={{ $json.found }}", "rightValue": true, "operator": { "type": "boolean", "operation": "equals" } }]
+        },
+        "options": {}
+      },
+      "id": "if_found",
+      "name": "Set trouve ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [720, 0]
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": { "__rl": true, "mode": "id", "value": "={{ $json.drive_file_id }}" },
+        "options": {}
+      },
+      "id": "gd_dl_set",
+      "name": "Download Set",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [960, -96],
+      "credentials": { "googleDriveOAuth2Api": { "id": "cukxQDNwWIqOAK02", "name": "Google Drive la bonne!" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const prevData = $('Trouver et verifier').first().json;\nconst buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst fiche = JSON.parse(buffer.toString('utf-8'));\n\nif (fiche.code_suppression !== prevData.code_suppression) {\n  return [{ json: { verified: false, error: 'Code incorrect' } }];\n}\n\n// Code OK : preparer la suppression\nconst catalogue = prevData.catalogue;\ncatalogue.sets.splice(prevData.set_index, 1);\ncatalogue.total_sets = catalogue.sets.length;\ncatalogue.last_updated = new Date().toISOString();\n\nreturn [{\n  json: {\n    verified: true,\n    drive_file_id: prevData.drive_file_id,\n    updated_catalogue: JSON.stringify(catalogue, null, 2)\n  }\n}];"
+      },
+      "id": "code_verify",
+      "name": "Verifier code",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, -96]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "version": 2, "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "combinator": "and",
+          "conditions": [{ "id": "cond2", "leftValue": "={{ $json.verified }}", "rightValue": true, "operator": { "type": "boolean", "operation": "equals" } }]
+        },
+        "options": {}
+      },
+      "id": "if_verified",
+      "name": "Code OK ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1440, -96]
+    },
+    {
+      "parameters": {
+        "operation": "deleteFile",
+        "fileId": { "__rl": true, "mode": "id", "value": "={{ $json.drive_file_id }}" },
+        "options": {}
+      },
+      "id": "gd_delete",
+      "name": "Supprimer fichier",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [1680, -208],
+      "credentials": { "googleDriveOAuth2Api": { "id": "cukxQDNwWIqOAK02", "name": "Google Drive la bonne!" } }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": true, \"message\": \"Jeu supprime\"}",
+        "options": { "responseHeaders": { "entries": [{ "name": "Access-Control-Allow-Origin", "value": "*" }] } }
+      },
+      "id": "resp_ok",
+      "name": "Repondre OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2160, -208]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": false, \"error\": \"Code incorrect\"}",
+        "options": { "responseCode": 403, "responseHeaders": { "entries": [{ "name": "Access-Control-Allow-Origin", "value": "*" }] } }
+      },
+      "id": "resp_403",
+      "name": "Repondre 403",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1680, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": false, \"error\": \"Jeu introuvable\"}",
+        "options": { "responseCode": 404, "responseHeaders": { "entries": [{ "name": "Access-Control-Allow-Origin", "value": "*" }] } }
+      },
+      "id": "resp_404",
+      "name": "Repondre 404",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [960, 112]
+    },
+    {
+      "id": "gd_update_cat",
+      "name": "MAJ Catalogue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1920, -208],
+      "parameters": {
+        "method": "PATCH",
+        "url": "https://www.googleapis.com/upload/drive/v3/files/1AmmMsO3nh4h0GQ0I5XzIqWG_zHA9wopa?uploadType=media",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('Verifier code').item.json.updated_catalogue }}",
+        "options": {}
+      },
+      "credentials": { "googleDriveOAuth2Api": { "id": "cukxQDNwWIqOAK02", "name": "Google Drive la bonne!" } }
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Download Catalogue", "type": "main", "index": 0 }]] },
+    "Download Catalogue": { "main": [[{ "node": "Trouver et verifier", "type": "main", "index": 0 }]] },
+    "Trouver et verifier": { "main": [[{ "node": "Set trouve ?", "type": "main", "index": 0 }]] },
+    "Set trouve ?": { "main": [[{ "node": "Download Set", "type": "main", "index": 0 }], [{ "node": "Repondre 404", "type": "main", "index": 0 }]] },
+    "Download Set": { "main": [[{ "node": "Verifier code", "type": "main", "index": 0 }]] },
+    "Verifier code": { "main": [[{ "node": "Code OK ?", "type": "main", "index": 0 }]] },
+    "Code OK ?": { "main": [[{ "node": "Supprimer fichier", "type": "main", "index": 0 }], [{ "node": "Repondre 403", "type": "main", "index": 0 }]] },
+    "Supprimer fichier": { "main": [[{ "node": "MAJ Catalogue", "type": "main", "index": 0 }]] },
+    "MAJ Catalogue": { "main": [[{ "node": "Repondre OK", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "callerPolicy": "workflowsFromSameOwner", "availableInMCP": false },
+  "staticData": null,
+  "pinData": {}
+}
