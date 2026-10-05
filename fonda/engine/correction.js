@@ -181,11 +181,13 @@ function valeursEgalesBinaire(a, b) {
 }
 
 // Détecte un ATTENDU (reponsesAcceptees) incohérent — problème d'auteur de la carte,
-// indépendant de ce que tape l'élève. Deux cas : (1) le reliquat d'une entrée contient
-// un chiffre (ex. "0,5/1,5" : fraction non entier/entier, le parseur n'y voit qu'une
-// valeur + un reliquat numérique qui n'est pas une unité) ; (2) le reliquat ressemble à
-// une unité (alphabétique) mais contredit l'unité déclarée par la carte (ex. "8 kg"
-// alors que la carte exige "cm"). Dans les deux cas : jamais "juste", on signale.
+// indépendant de ce que tape l'élève. Deux cas : (1) le reliquat d'une entrée ne
+// RESSEMBLE PAS à une unité (aucune lettre, ni °/% — ex. "/1,5" ou "/" résiduel d'une
+// fraction malformée type "0,5/1,5" ou "1/2/") ; (2) le reliquat ressemble à une unité
+// mais contredit l'unité déclarée par la carte (ex. "8 kg" alors que la carte exige
+// "cm"). Un reliquat avec chiffre N'EST PAS en soi suspect (ex. "cm2", "m·s⁻¹" sont des
+// unités légitimes) — seule l'absence de toute lettre/symbole d'unité l'est. Dans les
+// deux cas détectés : jamais "juste", on signale.
 function detecterIncoherenceAttendu(reponsesAcceptees, unite) {
   const uniteAttendue = unite ? normaliserExposants(canoniser(String(unite)).trim()) : null;
   return reponsesAcceptees.some((a) => {
@@ -193,7 +195,8 @@ function detecterIncoherenceAttendu(reponsesAcceptees, unite) {
     if (Number.isNaN(parsed.valeur)) return false; // couvert par le garde-fou existant, pas une incohérence de forme
     const suffixe = parsed.unite;
     if (!suffixe) return false;
-    if (/\d/.test(suffixe)) return true; // reliquat numérique = forme malformée, jamais une unité valide
+    const ressembleAUneUnite = /[\p{L}°%]/u.test(suffixe);
+    if (!ressembleAUneUnite) return true; // reliquat sans lettre : fraction/forme malformée, jamais une unité
     return uniteAttendue != null && suffixe !== uniteAttendue;
   });
 }

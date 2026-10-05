@@ -72,8 +72,8 @@ La comparaison d'unité est **sensible à la casse** et **symétrique** : l'unit
 ### numerique — `carte_invalide` : attendu incohérent (problème d'auteur, pas de l'élève)
 
 Si l'une des `reponses_acceptees` est elle-même incohérente, le moteur renvoie `carte_invalide` — **jamais `juste`**, quelle que soit la réponse de l'élève. Deux cas détectés :
-- le reliquat d'une entrée contient un **chiffre** (ex. `"0,5/1,5"` : fraction non entier/entier, cf. règle « entier/entier uniquement » ci-dessous — le reliquat `/1,5` n'est pas une unité) ;
-- le reliquat ressemble à une unité mais **contredit l'unité déclarée par la carte** (ex. attendu `"8 kg"` alors que `unite:"cm"`).
+- le reliquat d'une entrée **ne ressemble pas à une unité** (aucune lettre, ni `°`/`%` — ex. `"0,5/1,5"` ou `"1/2/"` : fraction non entier/entier ou slash résiduel, cf. règle « entier/entier uniquement » ci-dessous — le reliquat `/1,5` ou `/` n'est pas une unité). Un reliquat **avec un chiffre mais aussi des lettres** (`cm2`, `m·s⁻¹`) reste une unité légitime, pas une incohérence ;
+- le reliquat ressemble à une unité (il contient une lettre) mais **contredit l'unité déclarée par la carte** (ex. attendu `"8 kg"` alors que `unite:"cm"`).
 
 `carte_invalide` compte toujours `faux` pour la mesure (`compteCommeReussite`) et n'est jamais compté réussite, quel que soit le profil. Objectif : remonter une carte malformée en relecture plutôt que de valider silencieusement une réponse sur la base d'un attendu erroné.
 

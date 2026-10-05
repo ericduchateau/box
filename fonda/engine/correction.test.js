@@ -402,6 +402,17 @@ describe('micro-passe finale — carte_invalide : attendu (reponsesAcceptees) in
     const nombreEnorme = '9'.repeat(310);
     assert.equal(statut({ profil: 'numerique', reponseDonnee: '1', reponsesAcceptees: [nombreEnorme] }), 'faux');
   });
+
+  test('(critique Codex #1, faux positif) une unité contenant un chiffre et qui CORRESPOND à la carte n\'est pas une incohérence', () => {
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '8 cm²', reponsesAcceptees: ['8 cm²'], unite: 'cm²' }), 'juste');
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '8 cm2', reponsesAcceptees: ['8 cm2'], unite: 'cm²' }), 'juste');
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '8 m·s-1', reponsesAcceptees: ['8 m·s⁻¹'], unite: 'm·s-1' }), 'juste');
+  });
+
+  test('(critique Codex #2, faux négatif) un reliquat "/" résiduel sans lettre est une forme malformée -> carte_invalide', () => {
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '1', reponsesAcceptees: ['1/'] }), 'carte_invalide');
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '0,5', reponsesAcceptees: ['1/2/'] }), 'carte_invalide');
+  });
 });
 
 describe('micro-passe finale — normalisation du moins en exposant ⁻→- côté unité (m·s⁻¹ = m·s-1)', () => {

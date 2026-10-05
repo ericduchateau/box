@@ -125,7 +125,7 @@ Règles de travail (rappel) :
 - Branche `feat/fonda-lot1-contrats`, commit `4555b20`, PR vers `design` ouverte (lien ci-dessous). Pas de merge sans feu vert explicite.
 - Codex : non (pas demandé sur ce ticket).
 
-### ☑ T2 — Carte « réponse produite » + correction par profil — révisé le 2026-10-05, 2 passes de critique Codex, **3e critique ciblée en attente avant fusion**
+### ☑ T2 — Carte « réponse produite » + correction par profil — révisé le 2026-10-05, 3 passes de critique Codex, **prêt pour fusion sur feu vert**
 - But : composant saisie courte + moteur 4 profils (sens/orthographe/numerique/exact, PRD §5.1). Tests d'abord.
 - Impact prod : nul (développé isolé, non branché).
 - DoD : suite de tests verte ✅ (`node --test fonda/engine/*.test.js` — **80/80**, écrite/mise à jour avant chaque révision du moteur) ; profils pilotés par les données de carte ✅.
@@ -150,11 +150,20 @@ Corrections passe 2 (tests d'abord, 21 nouveaux tests) :
 
 80/80 tests verts. T1 revalidé. Rien touché hors `/fonda/`.
 
-**3e critique Codex, ciblée en lecture seule** sur les points changés en passe 2 (unité manquante vs fausse, arrondi = cible arrondie, normalisation typographique, comptage par défaut) : à lancer — voir section juste en dessous si déjà réalisée au moment de la lecture, sinon pas encore faite.
+**3e critique Codex** (ciblée, lecture seule, sur unité manquante/fausse + arrondi + normalisation typographique + comptage par défaut) → 0 grave, 2 moyennes + 3 faibles + 1 note lexicale, dont 2 jugées hors du périmètre pré-autorisé (« limites connues ») par Éric lui-même après relecture du retour brut : **micro-passe finale** demandée sur seulement 2 points précis (le reste explicitement acté comme limite connue, documenté au README) :
+- nouveau statut `carte_invalide` : un attendu (`reponses_acceptees`) incohérent (unité contradictoire avec la carte, ou fraction malformée du type `0,5/1,5`) ne doit **jamais** rendre `juste` — signalé pour relecture, compté faux.
+- normalisation du moins en exposant (`⁻`→`-`) côté unité, dans les deux sens (`m·s⁻¹` ≡ `m·s-1`).
+- README : ajout de 4 limites connues supplémentaires (précision >~12 chiffres significatifs, `.5`=`5` en `sens`, espaces autour de `/` dans une unité, variantes lexicales type `cœur`/`coeur`).
 
-**Consigne reçue d'Éric pour cette 3e passe** : si elle ne relève plus que des cas listés dans « Limites connues » du README (notation scientifique, nombres non finis, `+8`, formules à espaces en `exact`), ne plus rien corriger — les signaler et acter pour la fusion.
+10 nouveaux tests (90/90) → commit `e0535e6`.
 
-- Branche `feat/fonda-lot1-reponse-produite`. **Pas de PR/fusion tant que la 3e critique n'a pas eu lieu et sans feu vert explicite d'Éric.**
+**4e critique Codex, ciblée en lecture seule** UNIQUEMENT sur `carte_invalide` et la normalisation `⁻` (règle d'arrêt : si seulement « limites connues », pas de correction, on acte la fusion) → 2 défauts réels trouvés, **hors limites connues** :
+1. **Faux positif (élevé)** : une unité contenant un chiffre et qui correspond bien à la carte (`cm²`/`cm2`, `m·s⁻¹`) était quand même signalée `carte_invalide` — la détection initiale testait « un chiffre dans le reliquat » au lieu de « le reliquat ressemble-t-il à une unité ».
+2. **Faux négatif (moyen)** : un reliquat `/` résiduel sans aucun chiffre (`"1/"`, `"1/2/"`) échappait à la détection et validait silencieusement en `juste`.
+
+Corrigé (tests d'abord, 2 nouveaux tests, 92/92) : la détection d'incohérence repose maintenant sur « le reliquat contient-il une lettre (ou `°`/`%`) » — présent et conforme à l'unité déclarée → pas une incohérence (même avec un chiffre) ; absent → toujours incohérent (fraction/forme malformée), qu'il y ait un chiffre ou pas.
+
+**État final T2** : 92/92 tests verts, T1 revalidé, rien touché hors `/fonda/`. Branche `feat/fonda-lot1-reponse-produite`. **Prêt pour fusion vers `design` — en attente du feu vert explicite d'Éric** (pas de merge sans accord).
 
 ### ☐ T3 — Tags grp/ctx + verrou de vote
 - But : émettre les événements avec `grp` (choisi par le prof, jamais un élève) et `ctx` ; un vote par item et par occurrence (verrou local).
