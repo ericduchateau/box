@@ -22,6 +22,10 @@ const App = {
 
   init() {
     const params = new URLSearchParams(window.location.search);
+    // Mode Box-FONDA (T4) : uniquement si ?fonda=1, sinon ce "if" est le SEUL octet
+    // de différence avec le comportement d'avant — aucun script FONDA n'est chargé,
+    // rien d'autre n'est exécuté. Toute la logique réelle vit dans /fonda/.
+    if (params.get('fonda') === '1') { this.initFonda(); return; }
     if (params.get('action') === 'delete') { this.showScreen('delete'); return; }
     this.initKeyboard();
     this.initTouch();
@@ -31,6 +35,14 @@ const App = {
     }
     if (params.get('set')) { this.loadAndReview(params.get('set')); return; }
     this.loadCatalogue();
+  },
+
+  // Chargement conditionnel : zéro <script>/<link> statique pointant vers /fonda/
+  // dans index.html, donc zéro requête réseau en plus quand le flag est absent.
+  initFonda() {
+    const s = document.createElement('script');
+    s.src = 'fonda/page/bootstrap.js?v=1';
+    document.head.appendChild(s);
   },
 
   showScreen(name) {
@@ -530,5 +542,11 @@ const App = {
   esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; },
   formatDate(s) { try { return new Date(s).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }); } catch { return s; } }
 };
+
+// Ajouté pour T4 (tests de non-régression en Node) : en <script> classique (navigateur,
+// pas de `module`), cette ligne ne fait RIEN — `const App` reste visible via le script
+// scope partagé du document, exactement comme avant (les onclick="App.xxx()" inline
+// fonctionnaient déjà sans ça). Zéro changement de comportement en production.
+if (typeof module !== 'undefined' && module.exports) { module.exports = App; }
 
 document.addEventListener('DOMContentLoaded', () => App.init());
