@@ -122,10 +122,10 @@ Règles de travail (rappel) :
   - id de notion `{fr|maths}.{slug-kebab}` ; 11 notions (éclatement de la ligne groupée PRD §14 "Proportionnalité · Grandeurs & mesures · Espace & géométrie" en 3 notions distinctes, regroupables via le nouveau champ `categorie`) ;
   - validation maison en Node natif, zéro dépendance, pas de `package.json` (cohérent avec la règle racine "pas de npm pour le front").
   - ajout non prévu au schéma minimal du PRD, documenté dans `fonda/data/README.md` : `categorie` (regroupement dashboard) et `palier_amorce` (reprend la colonne "Palier amorce" du tableau PRD §14, distinct de `paliers` qui reste toujours `["nI","nF"]`).
-- Branche `feat/fonda-lot1-contrats`, commit `4555b20`, PR vers `design` ouverte (lien ci-dessous). Pas de merge sans feu vert explicite.
+- Branche `feat/fonda-lot1-contrats`, commit `4555b20`. **Fusionné** dans `design` (`ba50763`), branche supprimée.
 - Codex : non (pas demandé sur ce ticket).
 
-### ☑ T2 — Carte « réponse produite » + correction par profil — révisé le 2026-10-05, 3 passes de critique Codex, **prêt pour fusion sur feu vert**
+### ☑ T2 — Carte « réponse produite » + correction par profil — révisé le 2026-10-05, 8 passes de critique Codex, **fusionné**
 - But : composant saisie courte + moteur 4 profils (sens/orthographe/numerique/exact, PRD §5.1). Tests d'abord.
 - Impact prod : nul (développé isolé, non branché).
 - DoD : suite de tests verte ✅ (`node --test fonda/engine/*.test.js` — **80/80**, écrite/mise à jour avant chaque révision du moteur) ; profils pilotés par les données de carte ✅.
@@ -177,13 +177,72 @@ Remplacé par une **grammaire explicite** (`RE_UNITE_PLAUSIBLE`) : un reliquat e
 
 **8e critique Codex** (vérification exhaustive, 180 000+ cas générés : unités à 2-3 facteurs toutes combinaisons `/`/`·`/exposant-à-toute-position, fractions malformées avec séparateurs multiples/signes/espaces/virgule-point mélangés) → **aucune faille, rien au-delà des limites connues du README**. Conforme à la règle d'arrêt fixée par Éric avant la 5e passe — reste à confirmer explicitement le feu vert de fusion.
 
-**État final T2** : 96/96 tests verts, T1 revalidé, rien touché hors `/fonda/`. Branche `feat/fonda-lot1-reponse-produite` (8 commits de révision). **Prêt pour fusion vers `design` — en attente du feu vert explicite d'Éric** (pas de merge sans accord).
+**État final T2** : 96/96 tests verts, T1 revalidé, rien touché hors `/fonda/`. Branche `feat/fonda-lot1-reponse-produite` (8 commits de révision).
 
-### ☐ T3 — Tags grp/ctx + verrou de vote
-- But : émettre les événements avec `grp` (choisi par le prof, jamais un élève) et `ctx` ; un vote par item et par occurrence (verrou local).
-- Impact prod : nul tant que non branché à la page.
-- DoD : un événement bien formé par réponse, conforme à T1, zéro identifiant élève.
-- Codex : OUI (ré-identification possible ?).
+**Fusionné** le 2026-10-05 sur feu vert explicite d'Éric : `git merge --no-ff` dans `design` (pas de `gh`/PR, même méthode que T1), hash de merge `6aa73e8`. `main` non touché (`7ea4f28`, identique au tag `prod-stable-2026-10-05`). Branches `feat/fonda-lot1-contrats` et `feat/fonda-lot1-reponse-produite` supprimées (locale + origin) après fusion.
+
+### ☑ T3 — Émission d'événements : grp/ctx, verrou un-vote, câblage « 1ʳᵉ tentative scorée » — fait le 2026-10-05
+- But : construire, verrouiller et mettre **localement** en file (PRD §3.2) un événement de mesure par réponse scorée (T2) ; zéro réseau (la collecte n8n est T5).
+- Impact prod : nul (développé isolé, pas de réseau, non branché à `index.html` — câblage = T4).
+- DoD : 26 nouveaux tests ✅ (`node --test fonda/engine/evenements.test.js`), suite complète 122/122 ✅, `node fonda/scripts/validate.js` toujours conforme (31 vérifications), rien touché hors `/fonda/` ✅.
+- Fichiers : `fonda/data/classes.json` (20 classes, format `"601"`...`"305"`), `fonda/data/destinataires.json` (vide, posé pour plus tard), `fonda/engine/evenements.js`, `evenements.test.js`, `fonda/scripts/validate.js` (étendu, pas réécrit — voir Décisions), READMEs (`fonda/engine/`, `fonda/data/`).
+
+**Étape 0 — cas-limites (Codex, lecture seule)** : table complète demandée avant tout code (anonymat, `grp` prof vs dérivé, verrou multi-scénarios, `rang_local`/`dt_jours` appareil perso vs partagé, seconde chance). Collée brute à Éric, qui a ensuite tranché lui-même les points ouverts (identité d'occurrence, clé du verrou, format `defi_id`) dans le ticket d'implémentation — pas de 2e aller-retour Codex nécessaire à cette étape.
+
+**Décisions prises (ticket d'Éric)** :
+- `defi_id` = `defi_{annee}-w{semaine}_{grp 3 chiffres}_{notion-slug}` (ex. `defi_2026-w41_601_fractions`) : `grp` s'en extrait, n'est **jamais** saisi par l'élève (G2/G3).
+- Verrou « un vote » scellé sous `${defi_id}::${item_id}` (imposé par le ticket) — scope **par occurrence**.
+- Historique (`rang_local`/`dt_jours`) scellé sous `(set_id, item_id)` (ma proposition, confirmée avant codage) — scope **par item, à travers les occurrences** : résout l'ambiguïté « `item_id` unique seulement dans un jeu » relevée à l'étape 0.
+- `fonda/scripts/validate.js` **refactoré, pas dupliqué** : extraction de `validateEventFields()` + export `validerEvenement(event, notionIds)` réutilisable sans I/O disque, `main()` gardé derrière `require.main === module` pour ne plus s'exécuter au `require()`. Renforcé en **liste blanche stricte** des 11 champs (avant : blocklist de noms connus `nom`/`email`/... ; un champ inattendu non listé, ex. `uuid`, passait). Vérifié : `node fonda/scripts/validate.js` toujours 31/31 après refactor (T1 non régressé).
+- `ts` tronqué (pas arrondi au plus proche) à l'heure pleine UTC — anti-réidentification.
+- `dt_jours` : horloge reculée/date future → bornée à `0`, jamais négatif/`NaN` (plutôt que refuser l'émission — l'événement reste légitime, seule la mesure de délai est dégradée).
+- Verrou **synchrone** (vérification + écriture sans attente) : correct pour double-clic/rechargement/2 onglets **dans le même onglet**. Entre deux onglets réellement distincts, `localStorage` n'offre pas de comparaison-et-échange atomique — limite théorique documentée au README, PAS corrigée (la Web Locks API y remédierait mais rendrait async tout le chemin depuis `carte-reponse-produite.js` de T2, hors scope). Signalé explicitement à Éric avant codage, pas d'objection.
+- Seconde chance (`scored:false`) : **aucune écriture**, pas seulement aucune émission — ni verrou, ni historique touchés, pour ne laisser aucune trace mesurable.
+
+**Critique Codex finale** (lecture seule, ciblée anonymat + verrou + non-émission seconde chance, commit `9c592c2`) → 6 points, dont 3 confirmés comme bugs réels (hors « seconde chance », qui n'a montré aucun défaut) :
+1. **Élevée** : un stockage JSON syntaxiquement valide mais de mauvaise forme (`verrous` remplacé par `[]`, etc.) était silencieusement réinitialisé à vide au lieu d'être refusé — rouvrait un vote déjà scellé.
+2. **Moyenne** : les 3 écritures (verrou/historique/file, clés séparées) ne formaient pas une transaction — un échec sur la 3ᵉ laissait le verrou posé sans l'événement en file (mesure perdue silencieusement).
+3. **Moyenne** : clé composite `a + '::' + b` pouvait collisionner si `a`/`b` contenaient eux-mêmes `::`.
+4. **Moyenne** : le retour d'erreur (`erreurs`) recopiait la valeur brute du champ fautif (ex. un `notion_id` invalide) — remonté par `soumettreTentative` sans que rien ne le consomme, mais un canal de fuite inutile.
+5. **Moyenne** : `EVENT_FIELDS` (liste blanche) exporté comme `Set` mutable — `Object.freeze()` sur un `Set` ne bloque PAS `.add()`/`.delete()` (ce sont des méthodes sur un slot interne, pas une propriété ; vérifié : `Object.freeze(new Set(...)).add(...)` réussit silencieusement).
+6. **Élevée, signalée mais pas un bug de code** : le contenu de `itemId`/`setId`/`notionId`/`defiId` n'était vérifié dans AUCUN format — un nom d'élève y passerait tel quel. Question de scope posée à Éric (T3 vs T1/T6).
+
+**Décision d'Éric sur le point 6** : ni « documenter comme limite » ni « format métier strict ». Garde-fou de **nature**, pas de format : chaîne non vide, ≤ 64 car., `[A-Za-z0-9._-]` uniquement (pas d'espace/texte libre) sur `itemId`/`setId`/`notionId` — bloque un nom/une phrase sans deviner un format sémantique que seuls T1/T6 connaissent. La cohérence référentielle (l'id existe-t-il vraiment ?) reste garantie en amont, documentée comme telle.
+
+**Corrections appliquées** (tests d'abord, 7 nouveaux tests, 33/33) :
+- Refonte du stockage : **un seul blob JSON** (`fonda_evt_mesure` = `{verrous, historique, file}`) écrit en **une seule** `setItem()` — élimine structurellement la désynchronisation (point 2) ; une forme de blob incorrecte → `stockage_corrompu`, jamais de réinitialisation silencieuse (point 1).
+- Clés composites via `JSON.stringify([a, b])` au lieu de `a + '::' + b` (point 3).
+- `soumettreTentative` ne renvoie plus que `{ emis, raison }` — plus de champ `erreurs` (point 4).
+- `fonda/scripts/validate.js` : `EVENT_FIELDS` remplacé par `EVENT_FIELDS_LIST`, un **tableau** gelé (`Object.freeze` fonctionne réellement sur un tableau, contrairement à un `Set`) ; le `Set` de travail est reconstruit à chaque appel, jamais partagé muable (point 5).
+- Nouvelle fonction `estIdentifiantPlausible()` + `raison: 'identifiant_invalide'` (point 6, décision Éric ci-dessus).
+- Limite notée au README (pas corrigée, hypothèse documentée) : `validerEvenement()` suppose un objet ordinaire (propriétés propres énumérables) — un objet forgé avec un `toJSON` hérité pourrait en théorie contourner la liste blanche ; `soumettreTentative` ne construit jamais un tel objet, ce n'est un risque que pour un appel externe direct et adversarial de `validerEvenement()`.
+
+129/129 tests (suite complète T1+T2+T3), `node fonda/scripts/validate.js` toujours 31/31. Rien touché hors `/fonda/`.
+
+**6e critique Codex** (lecture seule, commit `836a7c1`) : lancée en effort "medium" avec consigne large → tuée après 30 min (limite max) sans jamais répondre, aucune sortie exploitable. Relancée en effort **"low"**, consigne resserrée à 3 questions fermées (OUI/NON + 1 ligne), ciblée uniquement anonymat — répond en quelques secondes :
+1. Un champ hors schéma ou du texte libre/nom dans `item_id`/`set_id`/`notion_id`/`defi_id` ? → **OUI** : aucun champ supplémentaire ne passe, mais un identifiant sans espace type `jean-dupont` passe le garde-fou de nature (charset).
+2. `grp` hors `classes.json` ? → **OUI** si la liste `classesAutorisees` injectée diverge du vrai fichier — le module ne relit jamais `classes.json` lui-même.
+3. Réponse brute/feedback/horodatage trop précis peuvent fuiter ? → **NON** par le chemin normal (jamais copiés) ; `ts` est tronqué à la construction mais le validateur générique seul (`validerEvenement`) accepte une précision supérieure — délibéré (sert aussi à valider la fixture T1 aux minutes arbitraires).
+
+**Investigation demandée par Éric avant de qualifier le point 1** : provenance réelle des 4 champs, pas une réponse uniforme.
+- `grp` : gouverné par `classes.json` (roster fermé) — risque nul dans ce module, seulement un contrat d'intégration (liste injectée = responsabilité T4).
+- `notion_id` : gouverné par le pattern `^(fr|maths)\.[a-z0-9-]+$` de T1 (11 entrées fixes) — garde-fou de nature = filet de sécurité, pas la vraie défense.
+- `defi_id` (slug) : dérive du vrai slug de la notion — sûr SI T4 le fait correctement (même frontière de confiance que `grp`).
+- `item_id`/`set_id` : **aucune garantie amont**. Vérifié : le PRD §3.6 nomme `card_id` (Moteur B/relecture) et §3.2 nomme `item_id`/`set_id` (événements) sans jamais relier les deux ; aucun algorithme de génération nulle part dans le repo ; T6 (génération initiale) n'existe pas encore.
+
+**Décision d'Éric** : garder le garde-fou de nature tel quel sur `item_id`/`set_id` (ne PAS le durcir — une heuristique anti-nom casserait des ids T6 inconnus aujourd'hui, mauvais compromis). Documenté comme garantie **déléguée à T6**, pas comme risque simplement "assumé" — avec une dette bloquante taguée ci-dessous.
+
+#### 🔖 DETTE T6 — item_id/set_id DOIVENT venir de valeurs système
+**T6 DOIT générer `item_id`/`set_id` à partir de valeurs système (index de carte, slug de notion, id de jeu), jamais à partir de texte libre d'origine humaine.** Le garde-fou de nature de T3 (charset `[A-Za-z0-9._-]`, ≤ 64) ne distingue pas un nom sans espace d'un id technique légitime — la garantie d'anonymat réelle sur ces deux champs dépend entièrement de la règle de génération de T6. **À vérifier explicitement à la revue de T6**, avant toute fusion de ce ticket.
+
+#### 🔖 DETTE T4 — defi_id (slug) et notion_id DOIVENT venir du référentiel/calendrier réels
+**T4 DOIT dériver le slug du `defi_id` et `notion_id` du vrai référentiel/calendrier (`fonda/data/referentiel.json`, `calendar.json`), jamais d'une valeur ad hoc.** De même, `classesAutorisees` passé à `soumettreTentative` DOIT être le contenu réel de `fonda/data/classes.json`, jamais une liste reconstruite à la main. **À vérifier explicitement à la revue de T4.**
+
+Documentation ajoutée (README `fonda/engine/`) pour les points 2 et 3, avec test verrouillant chacun : `(doc point 2)` prouve que `classesAutorisees` est injecté et non relu ; `(doc point 3)` prouve que `validerEvenement()` seul accepte un `ts` non tronqué (délibéré, pour ne pas casser la fixture T1) alors que `soumettreTentative` tronque toujours.
+
+131/131 tests (suite complète T1+T2+T3), `node fonda/scripts/validate.js` toujours 31/31. Rien touché hors `/fonda/`.
+
+- Branche `feat/fonda-lot1-evenements`. **Prêt pour fusion — en attente du feu vert explicite d'Éric. T4 non démarré.**
 
 ### ☐ T4 — Mode Box-FONDA + menu public
 - But : toggle/mode SUR la page existante (pas de lien séparé) + page menu lisant `calendar.json`. Inactif par défaut (feature-flag).
