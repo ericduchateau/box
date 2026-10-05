@@ -33,7 +33,7 @@
 (function (root) {
 'use strict';
 
-const { evaluerReponse, compteCommeReussite } = root.FondaCorrection;
+const { evaluerReponse, compteCommeReussite, calculerCibleAffichee } = root.FondaCorrection;
 
 const MESSAGES = {
   juste: () => '✅ Juste !',
@@ -49,7 +49,14 @@ const MESSAGES = {
  */
 function montrerCarteReponseProduite(container, carte, options = {}) {
   const { onResultat } = options;
-  const premiereReponseAcceptee = (carte.reponses_acceptees && carte.reponses_acceptees[0]) || '';
+  // Cible RÉELLEMENT exigée pour le feedback — jamais la 1ère réponse acceptée
+  // brute : en numérique, tient compte de l'arrondi et de l'unité (critique Codex #7).
+  const cibleAffichee = calculerCibleAffichee({
+    profil: carte.profil_correction,
+    reponsesAcceptees: carte.reponses_acceptees || [],
+    unite: carte.unite ?? null,
+    arrondi: carte.arrondi ?? null,
+  });
 
   container.innerHTML = '';
   container.classList.add('fonda-carte-reponse-produite');
@@ -86,7 +93,7 @@ function montrerCarteReponseProduite(container, carte, options = {}) {
       arrondi: carte.arrondi ?? null,
     });
 
-    feedback.textContent = MESSAGES[statut](premiereReponseAcceptee);
+    feedback.textContent = MESSAGES[statut](cibleAffichee);
     feedback.dataset.statut = statut;
 
     const reussite = compteCommeReussite(statut, carte.profil_correction);

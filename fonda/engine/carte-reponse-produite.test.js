@@ -133,6 +133,33 @@ describe('carte-reponse-produite — contrat seconde chance (tentative/scored)',
     assert.equal(input.disabled, true);
   });
 
+  test('feedback : affiche la cible arrondie, pas la fraction brute (critique Codex #7)', () => {
+    const { input, bouton, container } = monterCarte({
+      question: 'Combien vaut 1/3, arrondi à 2 décimales ?',
+      profil_correction: 'numerique',
+      reponses_acceptees: ['1/3'],
+      arrondi: 2,
+    });
+    input.value = '1/3'; // la fraction brute, non arrondie : faux, mais on vérifie le MESSAGE affiché
+    bouton.__click();
+    const feedback = container.children[3];
+    assert.ok(feedback.textContent.includes('0,33'), `attendu "0,33" dans le feedback, reçu : "${feedback.textContent}"`);
+    assert.ok(!feedback.textContent.includes('1/3'), `la fraction brute ne doit plus apparaître, reçu : "${feedback.textContent}"`);
+  });
+
+  test('feedback : affiche l\'unité manquante dans la cible (critique Codex #7)', () => {
+    const { input, bouton, container } = monterCarte({
+      question: 'Quelle est la longueur ?',
+      profil_correction: 'numerique',
+      reponses_acceptees: ['8'],
+      unite: 'cm',
+    });
+    input.value = '8'; // valeur correcte, unité omise : presque
+    bouton.__click();
+    const feedback = container.children[3];
+    assert.ok(feedback.textContent.includes('8 cm'), `attendu "8 cm" dans le feedback, reçu : "${feedback.textContent}"`);
+  });
+
   test('validation au clavier (Entrée) déclenche le même contrat', () => {
     const { input, resultats } = monterCarte({
       question: 'Capitale de la France ?',

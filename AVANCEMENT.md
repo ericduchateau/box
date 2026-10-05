@@ -125,25 +125,36 @@ Règles de travail (rappel) :
 - Branche `feat/fonda-lot1-contrats`, commit `4555b20`, PR vers `design` ouverte (lien ci-dessous). Pas de merge sans feu vert explicite.
 - Codex : non (pas demandé sur ce ticket).
 
-### ☑ T2 — Carte « réponse produite » + correction par profil — révisé le 2026-10-05 suite critique Codex, **2e critique ciblée en attente avant fusion**
+### ☑ T2 — Carte « réponse produite » + correction par profil — révisé le 2026-10-05, 2 passes de critique Codex, **3e critique ciblée en attente avant fusion**
 - But : composant saisie courte + moteur 4 profils (sens/orthographe/numerique/exact, PRD §5.1). Tests d'abord.
 - Impact prod : nul (développé isolé, non branché).
-- DoD : suite de tests verte ✅ (`node --test fonda/engine/*.test.js` — **59/59**, écrite/mise à jour avant chaque révision du moteur) ; profils pilotés par les données de carte ✅.
-- Fichiers : `fonda/engine/correction.js`, `correction.test.js`, `carte-reponse-produite.js`, `carte-reponse-produite.test.js` (nouveau — test d'intégration du contrat seconde chance via un DOM factice maison, zéro dépendance), `README.md`.
+- DoD : suite de tests verte ✅ (`node --test fonda/engine/*.test.js` — **80/80**, écrite/mise à jour avant chaque révision du moteur) ; profils pilotés par les données de carte ✅.
+- Fichiers : `fonda/engine/correction.js`, `correction.test.js`, `carte-reponse-produite.js`, `carte-reponse-produite.test.js` (test d'intégration via DOM factice maison, zéro dépendance), `README.md`.
 
 **Historique de la révision (2026-10-05)** :
-1. 1ʳᵉ implémentation (31 tests) → **1ʳᵉ critique Codex (lecture seule)** : 4 failles graves (orthographe trop permissif sur apostrophe/trait d'union, unité fausse comptée comme réussite, arrondi arrondissait les deux côtés au lieu de fixer une cible, risque de double comptage seconde chance) + 7 moyennes (Unicode NFD/NFC, pluriels irréguliers et collision `chaux→chau`, epsilon numérique trop large, séparateurs/unités avec chiffre non gérés, `arrondi` non validé, réponse vide validable, comptage par défaut permissif) + 1 faible.
-2. Corrections appliquées (tests d'abord, table de comportement validée par Éric) :
-   - Couche de normalisation commune (NFC + apostrophes/traits d'union/espaces typographiques → ASCII canonique) avant toute règle de profil.
-   - Orthographe : apostrophe/trait d'union redevenus **significatifs** (`lhomme` ≠ `l'homme` → faux, pas presque) ; seule la ponctuation de phrase (`. , ; !`) est pardonnée ; « presque » ne se déclenche plus que sur un accent manquant.
-   - Sens : suppression totale du repli mécanique `-s/-x` (source de la collision `chaux→chau`) — le pluriel doit être déclaré dans `reponses_acceptees[]`.
-   - Numérique/unité : manquante → presque, **fausse → faux** (plus de presque pour une mauvaise grandeur) ; unités avec chiffre (`cm2`) gérées ; sans unité exigée, tout reliquat alphabétique → faux.
-   - Numérique/arrondi : **nouvelle sémantique** — on arrondit la cible (attendu), pas la réponse de l'élève ; demi vers le haut avec correction de l'artefact binaire (`2.675`→`2.68`, pas `2.67`) ; valeur invalide → repli silencieux sur comparaison exacte.
-   - Numérique/exact : epsilon relatif à l'échelle (plus de seuil absolu `1e-9` qui confondait `0` et `0.0000000009`) ; fractions restreintes à entier/entier.
-   - Robustesse : réponse vide toujours faux ; `compteCommeReussite` faux par défaut pour tout statut/profil inconnu.
-   - Composant UI : contrat seconde chance explicite `{ tentative, scored }` (`scored` vrai uniquement à la tentative 1), verrouillé par un test d'intégration sur DOM factice maison.
-3. **2e critique Codex, ciblée en lecture seule sur les points changés** (unité manquante vs fausse, arrondi = cible arrondie, normalisation typographique, comptage par défaut) : lancée, retour collé verbatim dans ce fichier par Éric / la session suivante — voir section juste en dessous si présente, sinon pas encore réalisée au moment de cette entrée.
-- Branche `feat/fonda-lot1-reponse-produite`. **Pas de PR/fusion tant que la 2e critique n'a pas eu lieu et sans feu vert explicite d'Éric.**
+
+**Passe 1** — 1ʳᵉ implémentation (31 tests) → critique Codex : 4 graves (apostrophe/trait d'union trop pardonnés en orthographe, unité fausse comptée réussite, arrondi arrondissait les deux côtés au lieu de fixer une cible, risque de double comptage seconde chance) + 7 moyennes + 1 faible. Corrections : couche de normalisation commune (NFC + typographie → ASCII), orthographe strict sur apostrophe/trait d'union/accents (presque = accent manquant seulement), sens sans repli pluriel mécanique (corrige la collision `chaux→chau`), unité manquante→presque/fausse→faux, arrondi = cible arrondie (pas la réponse élève), epsilon relatif, vide toujours faux, `compteCommeReussite` faux par défaut, contrat seconde chance `{tentative, scored}`. 59/59 tests.
+
+**Passe 2** — 2e critique Codex ciblée (lecture seule) sur ces points précis → encore 2 graves + 5 moyennes : tolérance numérique encore trop permissive (`1000000001`≈`1000000000`, `0`≈`0.0000000000005`, `0,33000...01`≈cible arrondie) ; unité fausse acceptée après mise en minuscule (`8 mA` validé pour `MA`) ; comptage par défaut incomplet (profil inconnu + statut `juste` → `true`) ; arrondi décalé par une nudge absolue trop grossière + non borné (`arrondi:309` accepté) ; unités asymétriques/exposants non gérés (`cm²` vs `cm2`, unité exigée non canonisée) ; ponctuation trop permissive créant des collisions (`cha,t`=`chat`, `-4`=`4`, `1,5`=`15`, `!!!` validé contre une réponse acceptée vide) ; feedback affichant l'attendu brut au lieu de la cible réelle.
+
+Corrections passe 2 (tests d'abord, 21 nouveaux tests) :
+- Ponctuation pardonnée réduite à `. ! ?` en position **externe uniquement**, plus jamais `-, +, ,, /` (internes ou externes) — comportement sens/orthographe resserré en conséquence (ex. `porte-monnaie`=`portemonnaie` en sens n'est plus pardonné par défaut).
+- Contrôle du vide déplacé **après** normalisation (pas sur la saisie brute) : `!!!` ne matche plus une réponse acceptée vide.
+- `compteCommeReussite` valide désormais aussi le profil (`PROFILS.has`) avant tout — un profil inconnu ne compte jamais, même avec statut `juste`.
+- Unité : comparaison **sensible à la casse**, et l'unité exigée par la carte passe désormais par la même canonisation typographique + normalisation d'exposants (`²³`→`2 3`) que la saisie (symétrie).
+- Arrondi : borné à `[0,10]` (hors bornes → repli exact) ; nudge de correction de l'artefact binaire passée d'absolue (`1e-9`) à **relative** (`Number.EPSILON × 8`, quelques ULPs) — corrige le décalage artificiel sur une cible volontairement sous le seuil (`2.674999999999` reste `2.67`, pas `2.68`).
+- Comparaison numérique exacte : même passage à une tolérance **relative à l'échelle** (`Number.EPSILON × 8`) sans aucun plancher absolu — **déviation documentée** vs la suggestion initiale de Codex (`≈1e-9×max(|a|,|b|)`) : ce facteur ne suffit pas, il confond deux grands entiers consécutifs à l'échelle `1e9` ; voir `fonda/engine/README.md` pour le détail.
+- Garde-fou global : toute valeur non finie (`Infinity`, ex. un nombre de 310 chiffres) traitée comme invalide → faux, jamais d'exception ; profil inconnu → `evaluerReponse` retourne `faux` au lieu de lever une exception (ancien comportement supprimé).
+- Nouvelle fonction exportée `calculerCibleAffichee()` : le feedback du composant UI affiche désormais la cible réellement exigée (valeur arrondie + unité si exigée), plus jamais la réponse acceptée brute.
+- README : nouvelle section « Limites connues (hors périmètre collège) » — notation scientifique (`1e3`), signe `+` explicite, espaces internes en profil `exact` : identifiées, volontairement non corrigées (arbitrage Éric).
+
+80/80 tests verts. T1 revalidé. Rien touché hors `/fonda/`.
+
+**3e critique Codex, ciblée en lecture seule** sur les points changés en passe 2 (unité manquante vs fausse, arrondi = cible arrondie, normalisation typographique, comptage par défaut) : à lancer — voir section juste en dessous si déjà réalisée au moment de la lecture, sinon pas encore faite.
+
+**Consigne reçue d'Éric pour cette 3e passe** : si elle ne relève plus que des cas listés dans « Limites connues » du README (notation scientifique, nombres non finis, `+8`, formules à espaces en `exact`), ne plus rien corriger — les signaler et acter pour la fusion.
+
+- Branche `feat/fonda-lot1-reponse-produite`. **Pas de PR/fusion tant que la 3e critique n'a pas eu lieu et sans feu vert explicite d'Éric.**
 
 ### ☐ T3 — Tags grp/ctx + verrou de vote
 - But : émettre les événements avec `grp` (choisi par le prof, jamais un élève) et `ctx` ; un vote par item et par occurrence (verrou local).

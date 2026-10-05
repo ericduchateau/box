@@ -263,4 +263,111 @@ describe('comptage pour la mesure de rétention (PRD §5.1) — robustesse par d
     assert.equal(compteCommeReussite('inconnu', 'numerique'), false);
     assert.equal(compteCommeReussite('presque', 'profil-inconnu'), false);
   });
+
+  test('2e passe (critique Codex #3) : même un statut "juste" ne compte pas si le profil est invalide', () => {
+    assert.equal(compteCommeReussite('juste', 'inconnu'), false);
+    assert.equal(compteCommeReussite('juste', undefined), false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 2e passe de corrections — critique Codex ciblée (2026-10-05)
+// ---------------------------------------------------------------------------
+
+describe('2e passe — unité : sensible à la casse, normalisation symétrique, exposants (#2 #5)', () => {
+  test('casse significative : mA et MA sont des unités différentes', () => {
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '8 mA', reponsesAcceptees: ['8'], unite: 'MA' }), 'faux');
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '8 mA', reponsesAcceptees: ['8'], unite: 'mA' }), 'juste');
+  });
+
+  test('symétrie : l\'unité EXIGÉE passe par la même canonisation typographique que la saisie', () => {
+    // signe moins typographique (−) côté carte, trait d'union ASCII côté élève
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '8 m/s-1', reponsesAcceptees: ['8'], unite: 'm/s−1' }), 'juste');
+  });
+
+  test('exposants Unicode normalisés vers des chiffres, dans les deux sens', () => {
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '8 cm²', reponsesAcceptees: ['8'], unite: 'cm2' }), 'juste');
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '8 cm2', reponsesAcceptees: ['8'], unite: 'cm²' }), 'juste');
+  });
+});
+
+describe('2e passe — ponctuation : seulement . ! ? en externe ; -, +, ,, / jamais supprimés (#6)', () => {
+  test('virgule interne significative en orthographe (cha,t ne doit plus matcher chat)', () => {
+    assert.equal(statut({ profil: 'orthographe', reponseDonnee: 'cha,t', reponsesAcceptees: ['chat'] }), 'faux');
+  });
+
+  test('trait d\'union (signe moins) significatif en sens : -4 ne doit plus matcher 4', () => {
+    assert.equal(statut({ profil: 'sens', reponseDonnee: '-4', reponsesAcceptees: ['4'] }), 'faux');
+  });
+
+  test('virgule significative en sens : 1,5 ne doit plus matcher 15', () => {
+    assert.equal(statut({ profil: 'sens', reponseDonnee: '1,5', reponsesAcceptees: ['15'] }), 'faux');
+  });
+
+  test('. ! ? restent pardonnés en position externe', () => {
+    assert.equal(statut({ profil: 'orthographe', reponseDonnee: 'garçon?', reponsesAcceptees: ['garçon'] }), 'juste');
+    assert.equal(statut({ profil: 'sens', reponseDonnee: '!chat!', reponsesAcceptees: ['chat'] }), 'juste');
+  });
+
+  test('contrôle du vide EN DERNIER : "!!!" ne doit jamais matcher une reponse_acceptee vide/blanche', () => {
+    assert.equal(statut({ profil: 'orthographe', reponseDonnee: '!!!', reponsesAcceptees: [''] }), 'faux');
+    assert.equal(statut({ profil: 'sens', reponseDonnee: '???', reponsesAcceptees: ['   '] }), 'faux');
+  });
+});
+
+describe('2e passe — numérique : tolérance relative (pas de seuil absolu), arrondi borné, garde-fou aberrant (#1 #4)', () => {
+  test('deux grands entiers consécutifs sont bien distincts (tolérance relative, pas 1e-9 absolu)', () => {
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '1000000001', reponsesAcceptees: ['1000000000'] }), 'faux');
+  });
+
+  test('toujours "exacte près de zéro" : 0 et 0.0000000000005 restent distincts', () => {
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '0', reponsesAcceptees: ['0.0000000000005'] }), 'faux');
+  });
+
+  test('arrondi:2, la cible est 0,33 (depuis 1/3) : 0,3300000001 (bruit décimal réel, pas binaire) reste faux', () => {
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '0.3300000001', reponsesAcceptees: ['1/3'], arrondi: 2 }), 'faux');
+  });
+
+  test('arrondi hors bornes [0,10] -> repli exact, pas d\'exception, pas de faux "juste"', () => {
+    assert.doesNotThrow(() => evaluerReponse({ profil: 'numerique', reponseDonnee: '2.68', reponsesAcceptees: ['2.674999999999'], arrondi: 309 }));
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '2.68', reponsesAcceptees: ['2.674999999999'], arrondi: 309 }), 'faux');
+  });
+
+  test('l\'arrondi "demi vers le haut" ne doit pas franchir un seuil réel non lié au bruit binaire', () => {
+    // 2.674999999999 est réellement EN DESSOUS de 2.675 (écart ~1e-12, pas du bruit binaire ~1e-16) :
+    // arrondi à 2 décimales -> cible 2.67, pas 2.68.
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '2.67', reponsesAcceptees: ['2.674999999999'], arrondi: 2 }), 'juste');
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '2.68', reponsesAcceptees: ['2.674999999999'], arrondi: 2 }), 'faux');
+  });
+
+  test('garde-fou : un nombre non fini (ex. 310 chiffres -> Infinity) est toujours faux, jamais d\'exception', () => {
+    const nombreEnorme = '9'.repeat(310);
+    assert.doesNotThrow(() => evaluerReponse({ profil: 'numerique', reponseDonnee: nombreEnorme, reponsesAcceptees: ['1'] }));
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: nombreEnorme, reponsesAcceptees: ['1'] }), 'faux');
+    // ... y compris si c'est la réponse ACCEPTÉE qui est aberrante.
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '1', reponsesAcceptees: [nombreEnorme] }), 'faux');
+  });
+});
+
+describe('2e passe — profil/statut inconnu : garde-fou "jamais d\'exception"', () => {
+  test('profil inconnu -> faux, sans lever d\'exception (plus de throw)', () => {
+    assert.doesNotThrow(() => evaluerReponse({ profil: 'inconnu', reponseDonnee: 'x', reponsesAcceptees: ['x'] }));
+    assert.equal(statut({ profil: 'inconnu', reponseDonnee: 'x', reponsesAcceptees: ['x'] }), 'faux');
+  });
+});
+
+describe('2e passe — feedback : la cible affichée est celle réellement exigée (#7)', () => {
+  const { calculerCibleAffichee } = require('./correction.js');
+
+  test('numerique + arrondi : affiche la valeur arrondie, pas la fraction brute', () => {
+    assert.equal(calculerCibleAffichee({ profil: 'numerique', reponsesAcceptees: ['1/3'], arrondi: 2 }), '0,33');
+  });
+
+  test('numerique + unité exigée : l\'unité apparaît dans la cible affichée', () => {
+    assert.equal(calculerCibleAffichee({ profil: 'numerique', reponsesAcceptees: ['8'], unite: 'cm' }), '8 cm');
+  });
+
+  test('profil littéral : simplement la première réponse acceptée', () => {
+    assert.equal(calculerCibleAffichee({ profil: 'orthographe', reponsesAcceptees: ['garçon'] }), 'garçon');
+  });
 });
