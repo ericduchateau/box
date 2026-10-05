@@ -102,3 +102,53 @@ Lot 1 (PRD §13), un chantier par branche, à démarrer sur feu vert : mode Box-
 ### Pièges et points ouverts
 - Le dépôt `box/` était sur la branche `design` (pas `main`) au moment du commit ; `design` == `main` en contenu (vérifié en septembre) mais à garder en tête pour la suite des PR du Lot 1.
 - Position DPD/DANE académique sur Box-FONDA : hors code, à traiter dans le dossier AAP (PRD §16, point 5).
+
+## Plan Lot 1 — Box-FONDA
+
+Règles de travail (rappel) :
+- Branches : `main` (prod, NE PAS toucher) ← `design` (intégration) ← `feat/fonda-lot1-*` (une par ticket).
+- Point de restauration : tag de prod posé avant Box-FONDA.
+- Chaque ticket = une PR vers `design`. Fusion vers `main` UNIQUEMENT sur feu vert explicite d'Éric.
+- Rien hors `/fonda/` et `docs/` sans le signaler. n8n jamais modifié en live (JSON à importer, testé sur copie).
+- Ordre impératif : T1 → T2 → T3 → T4 → T5 → T6 (T1 fonde les suivants).
+- Critique Codex (lecture seule, avant fusion) : sur T2, T3 et T5 seulement.
+
+### ☐ T1 — Contrats de données (fondation)
+- But : poser `/fonda/data/referentiel.json` (seed pré-pondéré PRD §14) + schémas vides `calendar/coverage/dashboard` + `/fonda/fixtures/events.sample.json` (anonymes) + script de validation.
+- Impact prod : nul (dossier neuf).
+- DoD : la validation passe ; rien touché hors `/fonda/` + `docs/`.
+- Décisions ouvertes : chemin du namespace ; convention d'`id` de notions ; JSON Schema ou validation maison.
+- Codex : non.
+
+### ☐ T2 — Carte « réponse produite » + correction par profil
+- But : composant saisie courte + moteur 4 profils (sens/orthographe/numerique/exact, PRD §5.1). Tests d'abord.
+- Impact prod : nul (développé isolé, non branché).
+- DoD : suite de tests verte (accents, pluriels, 6/8=3/4, « presque ») ; profils pilotés par les données de carte.
+- Décisions ouvertes : tolérances exactes par profil ; rendu de l'état « presque ».
+- Codex : OUI (une faute peut-elle être validée ? la mesure peut-elle être faussée ?).
+
+### ☐ T3 — Tags grp/ctx + verrou de vote
+- But : émettre les événements avec `grp` (choisi par le prof, jamais un élève) et `ctx` ; un vote par item et par occurrence (verrou local).
+- Impact prod : nul tant que non branché à la page.
+- DoD : un événement bien formé par réponse, conforme à T1, zéro identifiant élève.
+- Codex : OUI (ré-identification possible ?).
+
+### ☐ T4 — Mode Box-FONDA + menu public
+- But : toggle/mode SUR la page existante (pas de lien séparé) + page menu lisant `calendar.json`. Inactif par défaut (feature-flag).
+- Impact prod : additif, désactivé par défaut.
+- DoD : défi lançable en ≤ 2 clics avec choix du groupe ; menu visible sans auth ; BOX ordinaire strictement inchangé.
+- Décisions ouvertes : emplacement du toggle ; forme du feature-flag.
+- Codex : non.
+
+### ☐ T5 — Collecte n8n → Sheet
+- But : nouveau workflow d'ingestion des événements, livré en JSON à importer, testé sur copie.
+- Impact prod : nul si importé/testé hors live.
+- DoD : un POST d'événement arrive au Sheet ; les 9 workflows existants intacts.
+- Codex : OUI (casse d'un workflow existant ? fuite de donnée ?).
+
+### ☐ T6 — Génération initiale équilibrée (seed Moteur B)
+- But : 1er lot de candidates équilibré facile/difficile + nI/nF, modèle plus puissant (Sonnet) avec spec de clarté, routage relecture (fr → Justine, maths → Éric).
+- Impact prod : nul (rien publié).
+- DoD : candidates EN FILE DE RELECTURE, rien publié automatiquement ; énoncés conformes à la spec de clarté (§5.1/§11).
+- Décisions ouvertes : volume du premier lot ; répartition par notion.
+- Codex : non (relecture humaine = Justine/Éric).
