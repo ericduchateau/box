@@ -14,10 +14,15 @@ const FIXTURES_DIR = path.join(ROOT, 'fixtures');
 
 const ID_PATTERN = /^(fr|maths)\.[a-z0-9-]+$/;
 const MATIERES = new Set(['français', 'maths']);
-const PRIORITES = new Set(['gris', 'ambre']);
+// v2 (référentiel diagnostic évaluations 4e 2026) : "gris" a disparu, remplacé par "rouge".
+const PRIORITES = new Set(['rouge', 'ambre', 'vert']);
 const PALIERS = new Set(['nI', 'nF']);
 const CTX_VALUES = new Set(['df', 'maison', 'classe']);
 const RESULT_VALUES = new Set([0, 1]);
+// v2 : routing de relecture explicite, une notion par matière unique (G4, AGENTS.md).
+const RELECTEURS = new Set(['justine', 'eric']);
+const RELECTEUR_ATTENDU = { 'français': 'justine', 'maths': 'eric' };
+const AXES = new Set(['Comprendre', 'Représenter', 'Raisonner', 'Exprimer']);
 
 let errors = [];
 let checks = 0;
@@ -60,10 +65,6 @@ function isArray(v) {
   return Array.isArray(v);
 }
 
-function isStringArray(v) {
-  return isArray(v) && v.every(isString);
-}
-
 function isInt(v) {
   return Number.isInteger(v);
 }
@@ -72,16 +73,80 @@ function isInt(v) {
 // referentiel.json
 // ---------------------------------------------------------------------------
 
+// Enveloppe du référentiel — pas de lecture fichier, réutilisable/testable.
+function validateReferentielEnvelopeFields(data) {
+  // v2 : version peut être une chaîne ("2.0") — rétro-compatible avec un entier.
+  assert(isString(data.version) || isInt(data.version), '"version" doit être une chaîne ou un entier');
+  assert(isString(data.last_updated), '"last_updated" doit être une chaîne');
+  assert(isArray(data.notions), '"notions" doit être un tableau');
+  assert(data.notions.length > 0, '"notions" ne doit pas être vide');
+}
+
+/**
+ * Valide l'enveloppe du référentiel, sans lecture disque.
+ * @returns {{ valide: true } | { valide: false, erreurs: string[] }}
+ */
+function validerEnveloppeReferentiel(data) {
+  try {
+    validateReferentielEnvelopeFields(data || {});
+    return { valide: true };
+  } catch (err) {
+    return { valide: false, erreurs: [err.message] };
+  }
+}
+
+// Une notion isolée — pas de lecture fichier, réutilisable/testable (le doublon d'id
+// reste géré à part dans validateReferentiel, qui a seul la vue sur l'ensemble).
+// Champs de l'ancien seed (categorie, programme_refs, eval_nat_domaine) RETIRÉS du
+// contrat (v2) : categorie -> axe, eval_nat_domaine -> taux_eval.domaine (souple, non
+// validé). Champs laissés volontairement souples, non validés : enonce_modele,
+// taux_eval, disciplines, micro_competence, ordre, note.
+function validateNotionFields(n) {
+  assert(isNonEmptyString(n.id), 'id manquant ou vide');
+  assert(ID_PATTERN.test(n.id), `id "${n.id}" ne respecte pas le pattern (fr|maths).slug-kebab`);
+
+  assert(MATIERES.has(n.matiere), `matiere "${n.matiere}" invalide (attendu: ${[...MATIERES].join(' | ')})`);
+  assert(isNonEmptyString(n.libelle), 'libelle manquant ou vide');
+
+  assert(RELECTEURS.has(n.relecteur), `relecteur "${n.relecteur}" invalide (attendu: ${[...RELECTEURS].join(' | ')})`);
+  assert(
+    RELECTEUR_ATTENDU[n.matiere] === n.relecteur,
+    `relecteur "${n.relecteur}" incohérent avec matiere "${n.matiere}" (attendu: ${RELECTEUR_ATTENDU[n.matiere]})`,
+  );
+
+  assert(AXES.has(n.axe), `axe "${n.axe}" invalide (attendu: ${[...AXES].join(' | ')})`);
+
+  assert(
+    isArray(n.paliers) && n.paliers.length === 2 && n.paliers[0] === 'nI' && n.paliers[1] === 'nF',
+    'paliers doit être exactement ["nI","nF"]',
+  );
+
+  assert(PALIERS.has(n.palier_amorce), `palier_amorce "${n.palier_amorce}" invalide (attendu: nI | nF)`);
+  assert(n.paliers.includes(n.palier_amorce), `palier_amorce "${n.palier_amorce}" absent de paliers`);
+
+  assert(PRIORITES.has(n.priorite_initiale), `priorite_initiale "${n.priorite_initiale}" invalide (attendu: ${[...PRIORITES].join(' | ')})`);
+
+  assert(isInt(n.frequence_base_semaines) && n.frequence_base_semaines > 0, 'frequence_base_semaines doit être un entier positif');
+}
+
+/**
+ * Valide UNE notion isolée, sans lecture disque.
+ * @returns {{ valide: true } | { valide: false, erreurs: string[] }}
+ */
+function validerNotion(n) {
+  try {
+    validateNotionFields(n || {});
+    return { valide: true };
+  } catch (err) {
+    return { valide: false, erreurs: [err.message] };
+  }
+}
+
 function validateReferentiel() {
   const file = path.join(DATA_DIR, 'referentiel.json');
   const data = readJson(file);
 
-  check('referentiel.json : enveloppe', () => {
-    assert(isInt(data.version), '"version" doit être un entier');
-    assert(isString(data.last_updated), '"last_updated" doit être une chaîne');
-    assert(isArray(data.notions), '"notions" doit être un tableau');
-    assert(data.notions.length > 0, '"notions" ne doit pas être vide');
-  });
+  check('referentiel.json : enveloppe', () => validateReferentielEnvelopeFields(data));
 
   const seenIds = new Set();
   const notionIds = new Set();
@@ -90,28 +155,10 @@ function validateReferentiel() {
     const where = `notions[${i}] (${n && n.id ? n.id : '?'})`;
 
     check(`referentiel.json : ${where} — champs`, () => {
-      assert(isNonEmptyString(n.id), 'id manquant ou vide');
-      assert(ID_PATTERN.test(n.id), `id "${n.id}" ne respecte pas le pattern (fr|maths).slug-kebab`);
       assert(!seenIds.has(n.id), `id "${n.id}" en doublon`);
       seenIds.add(n.id);
       notionIds.add(n.id);
-
-      assert(MATIERES.has(n.matiere), `matiere "${n.matiere}" invalide (attendu: ${[...MATIERES].join(' | ')})`);
-      assert(isNonEmptyString(n.categorie), 'categorie manquante ou vide');
-      assert(isNonEmptyString(n.libelle), 'libelle manquant ou vide');
-      assert(isStringArray(n.programme_refs), 'programme_refs doit être un tableau de chaînes');
-      assert(isNonEmptyString(n.eval_nat_domaine), 'eval_nat_domaine manquant ou vide');
-
-      assert(isArray(n.paliers) && n.paliers.length > 0, 'paliers doit être un tableau non vide');
-      n.paliers.forEach((p) => assert(PALIERS.has(p), `palier "${p}" invalide (attendu: nI | nF)`));
-
-      assert(isArray(n.palier_amorce) && n.palier_amorce.length > 0, 'palier_amorce doit être un tableau non vide');
-      n.palier_amorce.forEach((p) => assert(PALIERS.has(p), `palier_amorce "${p}" invalide (attendu: nI | nF)`));
-      n.palier_amorce.forEach((p) => assert(n.paliers.includes(p), `palier_amorce "${p}" absent de paliers`));
-
-      assert(PRIORITES.has(n.priorite_initiale), `priorite_initiale "${n.priorite_initiale}" invalide (attendu: gris | ambre)`);
-
-      assert(isInt(n.frequence_base_semaines) && n.frequence_base_semaines > 0, 'frequence_base_semaines doit être un entier positif');
+      validateNotionFields(n); // id manquant/mal formé : détecté ici (source unique de vérité)
     });
   });
 
@@ -241,7 +288,7 @@ function validerEvenement(e, notionIds) {
   }
 }
 
-module.exports = { validerEvenement, EVENT_FIELDS_LIST };
+module.exports = { validerEvenement, EVENT_FIELDS_LIST, validerNotion, validerEnveloppeReferentiel };
 
 // ---------------------------------------------------------------------------
 // run

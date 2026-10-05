@@ -6,18 +6,18 @@
     { "ts": "2026-09-07T18:40:00Z", "grp": "6A", "defi_id": "defi_0001", "notion_id": "maths.resolution-problemes", "palier": "nI", "set_id": "box_fonda_test01", "item_id": "it01", "result": 1, "ctx": "maison", "rang_local": 2, "dt_jours": 0 },
     { "ts": "2026-09-14T09:05:00Z", "grp": "6A", "defi_id": "defi_0017", "notion_id": "maths.resolution-problemes", "palier": "nI", "set_id": "box_fonda_test01", "item_id": "it03", "result": 1, "ctx": "df", "rang_local": 3, "dt_jours": 7 },
 
-    { "ts": "2026-09-08T10:00:00Z", "grp": "5B", "defi_id": "defi_0002", "notion_id": "maths.decimaux-fractions", "palier": "nI", "set_id": "box_fonda_test02", "item_id": "it01", "result": 0, "ctx": "classe", "rang_local": 1, "dt_jours": null },
-    { "ts": "2026-09-08T10:00:10Z", "grp": "5B", "defi_id": "defi_0002", "notion_id": "maths.decimaux-fractions", "palier": "nF", "set_id": "box_fonda_test02", "item_id": "it02", "result": 1, "ctx": "classe", "rang_local": 1, "dt_jours": null },
-    { "ts": "2026-09-15T20:14:00Z", "grp": "5B", "defi_id": "defi_0018", "notion_id": "maths.decimaux-fractions", "palier": "nI", "set_id": "box_fonda_test02", "item_id": "it01", "result": 1, "ctx": "maison", "rang_local": 2, "dt_jours": 7 },
+    { "ts": "2026-09-08T10:00:00Z", "grp": "5B", "defi_id": "defi_0002", "notion_id": "maths.nombres-fractions-relatifs", "palier": "nI", "set_id": "box_fonda_test02", "item_id": "it01", "result": 0, "ctx": "classe", "rang_local": 1, "dt_jours": null },
+    { "ts": "2026-09-08T10:00:10Z", "grp": "5B", "defi_id": "defi_0002", "notion_id": "maths.nombres-fractions-relatifs", "palier": "nF", "set_id": "box_fonda_test02", "item_id": "it02", "result": 1, "ctx": "classe", "rang_local": 1, "dt_jours": null },
+    { "ts": "2026-09-15T20:14:00Z", "grp": "5B", "defi_id": "defi_0018", "notion_id": "maths.nombres-fractions-relatifs", "palier": "nI", "set_id": "box_fonda_test02", "item_id": "it01", "result": 1, "ctx": "maison", "rang_local": 2, "dt_jours": 7 },
 
-    { "ts": "2026-09-09T08:30:00Z", "grp": "4C", "defi_id": "defi_0003", "notion_id": "maths.calcul-automatismes", "palier": "nI", "set_id": "box_fonda_test03", "item_id": "it01", "result": 1, "ctx": "df", "rang_local": 1, "dt_jours": null },
-    { "ts": "2026-09-09T08:30:08Z", "grp": "4C", "defi_id": "defi_0003", "notion_id": "maths.calcul-automatismes", "palier": "nF", "set_id": "box_fonda_test03", "item_id": "it02", "result": 1, "ctx": "df", "rang_local": 1, "dt_jours": null },
+    { "ts": "2026-09-09T08:30:00Z", "grp": "4C", "defi_id": "defi_0003", "notion_id": "maths.nombres-fractions-relatifs", "palier": "nI", "set_id": "box_fonda_test03", "item_id": "it01", "result": 1, "ctx": "df", "rang_local": 1, "dt_jours": null },
+    { "ts": "2026-09-09T08:30:08Z", "grp": "4C", "defi_id": "defi_0003", "notion_id": "maths.nombres-fractions-relatifs", "palier": "nF", "set_id": "box_fonda_test03", "item_id": "it02", "result": 1, "ctx": "df", "rang_local": 1, "dt_jours": null },
 
-    { "ts": "2026-09-10T09:15:00Z", "grp": "6A", "defi_id": "defi_0004", "notion_id": "fr.comprehension", "palier": "nI", "set_id": "box_fonda_test04", "item_id": "it01", "result": 1, "ctx": "classe", "rang_local": 1, "dt_jours": null },
-    { "ts": "2026-09-10T09:15:06Z", "grp": "6A", "defi_id": "defi_0004", "notion_id": "fr.comprehension", "palier": "nI", "set_id": "box_fonda_test04", "item_id": "it02", "result": 0, "ctx": "classe", "rang_local": 1, "dt_jours": null },
+    { "ts": "2026-09-10T09:15:00Z", "grp": "6A", "defi_id": "defi_0004", "notion_id": "fr.inference-implicite", "palier": "nI", "set_id": "box_fonda_test04", "item_id": "it01", "result": 1, "ctx": "classe", "rang_local": 1, "dt_jours": null },
+    { "ts": "2026-09-10T09:15:06Z", "grp": "6A", "defi_id": "defi_0004", "notion_id": "fr.inference-implicite", "palier": "nI", "set_id": "box_fonda_test04", "item_id": "it02", "result": 0, "ctx": "classe", "rang_local": 1, "dt_jours": null },
 
-    { "ts": "2026-09-11T11:00:00Z", "grp": "3D", "defi_id": "defi_0005", "notion_id": "fr.orthographe", "palier": "nF", "set_id": "box_fonda_test05", "item_id": "it01", "result": 0, "ctx": "maison", "rang_local": 1, "dt_jours": null },
-    { "ts": "2026-09-18T11:02:00Z", "grp": "3D", "defi_id": "defi_0019", "notion_id": "fr.orthographe", "palier": "nF", "set_id": "box_fonda_test05", "item_id": "it02", "result": 1, "ctx": "maison", "rang_local": 2, "dt_jours": 7 },
+    { "ts": "2026-09-11T11:00:00Z", "grp": "3D", "defi_id": "defi_0005", "notion_id": "fr.phrase-orthographe", "palier": "nF", "set_id": "box_fonda_test05", "item_id": "it01", "result": 0, "ctx": "maison", "rang_local": 1, "dt_jours": null },
+    { "ts": "2026-09-18T11:02:00Z", "grp": "3D", "defi_id": "defi_0019", "notion_id": "fr.phrase-orthographe", "palier": "nF", "set_id": "box_fonda_test05", "item_id": "it02", "result": 1, "ctx": "maison", "rang_local": 2, "dt_jours": 7 },
 
     { "ts": "2026-09-12T13:45:00Z", "grp": "5B", "defi_id": "defi_0006", "notion_id": "fr.lexique", "palier": "nI", "set_id": "box_fonda_test06", "item_id": "it01", "result": 1, "ctx": "df", "rang_local": 1, "dt_jours": null }
   ]
