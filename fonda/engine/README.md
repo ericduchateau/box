@@ -71,9 +71,12 @@ La comparaison d'unité est **sensible à la casse** et **symétrique** : l'unit
 
 ### numerique — `carte_invalide` : attendu incohérent (problème d'auteur, pas de l'élève)
 
-Si l'une des `reponses_acceptees` est elle-même incohérente, le moteur renvoie `carte_invalide` — **jamais `juste`**, quelle que soit la réponse de l'élève. Deux cas détectés :
+Si l'une des `reponses_acceptees` est elle-même incohérente, le moteur renvoie `carte_invalide` — **jamais `juste`**, quelle que soit la réponse de l'élève. Trois cas détectés :
+- la valeur ne parse à rien de fini **et** l'entrée contient un `/` : fraction manifestement ratée — **dénominateur nul** (`"1/0"`), ou **forme non reconnue** (`"/3"`, rien avant le `/`). Un nombre non fini **sans** `/` (notation hors de portée d'un flottant 64 bits) reste couvert par le garde-fou existant (→ `faux` global), ce n'est pas une incohérence de forme de l'attendu ;
 - le reliquat d'une entrée **ne ressemble pas à une unité** (aucune lettre, ni `°`/`%` — ex. `"0,5/1,5"` ou `"1/2/"` : fraction non entier/entier ou slash résiduel, cf. règle « entier/entier uniquement » ci-dessous — le reliquat `/1,5` ou `/` n'est pas une unité). Un reliquat **avec un chiffre mais aussi des lettres** (`cm2`, `m·s⁻¹`) reste une unité légitime, pas une incohérence ;
 - le reliquat ressemble à une unité (il contient une lettre) mais **contredit l'unité déclarée par la carte** (ex. attendu `"8 kg"` alors que `unite:"cm"`).
+
+Ces trois cas ne valent que pour l'**attendu** (`reponses_acceptees`) — une carte malformée se signale, elle ne doit jamais être validée malgré elle. La **même forme de fraction malformée tapée par l'élève** (`"1/"`, `"1/2/"`, `"/3"`, `"1/0"`) reste simplement `faux` (jamais `juste`) : la carte, elle, est correcte — ce n'est qu'une saisie élève invalide, pas un problème à remonter en relecture.
 
 `carte_invalide` compte toujours `faux` pour la mesure (`compteCommeReussite`) et n'est jamais compté réussite, quel que soit le profil. Objectif : remonter une carte malformée en relecture plutôt que de valider silencieusement une réponse sur la base d'un attendu erroné.
 

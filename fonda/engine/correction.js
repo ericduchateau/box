@@ -181,18 +181,24 @@ function valeursEgalesBinaire(a, b) {
 }
 
 // Détecte un ATTENDU (reponsesAcceptees) incohérent — problème d'auteur de la carte,
-// indépendant de ce que tape l'élève. Deux cas : (1) le reliquat d'une entrée ne
-// RESSEMBLE PAS à une unité (aucune lettre, ni °/% — ex. "/1,5" ou "/" résiduel d'une
-// fraction malformée type "0,5/1,5" ou "1/2/") ; (2) le reliquat ressemble à une unité
-// mais contredit l'unité déclarée par la carte (ex. "8 kg" alors que la carte exige
-// "cm"). Un reliquat avec chiffre N'EST PAS en soi suspect (ex. "cm2", "m·s⁻¹" sont des
-// unités légitimes) — seule l'absence de toute lettre/symbole d'unité l'est. Dans les
-// deux cas détectés : jamais "juste", on signale.
+// indépendant de ce que tape l'élève. Trois cas, jamais "juste" :
+// (1) la valeur ne parse à RIEN DE FINI (NaN) ET l'entrée contient un "/" : une
+//     fraction manifestement ratée (dénominateur nul "1/0", forme non reconnue "/3")
+//     plutôt qu'un simple nombre aberrant. Un nombre non fini SANS "/" (ex. un nombre
+//     à 310 chiffres -> Infinity) reste couvert par le garde-fou existant (-> "faux"
+//     global), ce n'est pas une incohérence de forme de l'attendu ;
+// (2) le reliquat d'une entrée parsée ne RESSEMBLE PAS à une unité (aucune lettre, ni
+//     °/% — ex. "/1,5" ou "/" résiduel d'une fraction malformée type "0,5/1,5" ou
+//     "1/2/"). Un reliquat avec chiffre N'EST PAS en soi suspect (ex. "cm2", "m·s⁻¹"
+//     sont des unités légitimes) — seule l'absence de toute lettre/symbole l'est ;
+// (3) le reliquat ressemble à une unité mais CONTREDIT l'unité déclarée par la carte
+//     (ex. "8 kg" alors que la carte exige "cm").
 function detecterIncoherenceAttendu(reponsesAcceptees, unite) {
   const uniteAttendue = unite ? normaliserExposants(canoniser(String(unite)).trim()) : null;
   return reponsesAcceptees.some((a) => {
-    const parsed = parseReponseNumerique(a);
-    if (Number.isNaN(parsed.valeur)) return false; // couvert par le garde-fou existant, pas une incohérence de forme
+    const brut = String(a);
+    const parsed = parseReponseNumerique(brut);
+    if (Number.isNaN(parsed.valeur)) return brut.includes('/');
     const suffixe = parsed.unite;
     if (!suffixe) return false;
     const ressembleAUneUnite = /[\p{L}°%]/u.test(suffixe);

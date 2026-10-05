@@ -377,16 +377,33 @@ describe('2e passe — feedback : la cible affichée est celle réellement exig�
 // ---------------------------------------------------------------------------
 
 describe('micro-passe finale — carte_invalide : attendu (reponsesAcceptees) incohérent, jamais "juste" (numerique)', () => {
-  test('unité de l\'attendu en contradiction avec la carte (8 kg attendu, unite:"cm") -> carte_invalide', () => {
+  // Les deux cas ci-dessous sont le cœur du garde-fou : une unité CONTRADICTOIRE
+  // doit toujours être signalée, une unité valide contenant simplement un chiffre
+  // (cm², m·s⁻¹) ne doit jamais l'être. Gardés côte à côte pour qu'une régression
+  // sur l'un ne passe pas inaperçue en corrigeant l'autre (cf. critique Codex #1).
+  test('unité CONTRADICTOIRE (8 kg attendu, unite:"cm") -> carte_invalide, y compris si la réponse élève suit la carte (8 cm)', () => {
     assert.equal(statut({ profil: 'numerique', reponseDonnee: '8 kg', reponsesAcceptees: ['8 kg'], unite: 'cm' }), 'carte_invalide');
-  });
-
-  test('même quand la réponse de l\'élève suit la carte (8 cm) : l\'attendu reste incohérent -> carte_invalide, pas juste', () => {
     assert.equal(statut({ profil: 'numerique', reponseDonnee: '8 cm', reponsesAcceptees: ['8 kg'], unite: 'cm' }), 'carte_invalide');
   });
 
-  test('« fraction » non entier/entier dans l\'attendu (0,5/1,5 : suffixe numérique) -> carte_invalide', () => {
-    assert.equal(statut({ profil: 'numerique', reponseDonnee: '0,5', reponsesAcceptees: ['0,5/1,5'] }), 'carte_invalide');
+  test('unité VALIDE contenant un chiffre et qui correspond à la carte (cm², cm2, m·s⁻¹) -> jamais carte_invalide', () => {
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '8 cm²', reponsesAcceptees: ['8 cm²'], unite: 'cm²' }), 'juste');
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '8 cm2', reponsesAcceptees: ['8 cm2'], unite: 'cm²' }), 'juste');
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '8 m·s-1', reponsesAcceptees: ['8 m·s⁻¹'], unite: 'm·s-1' }), 'juste');
+  });
+
+  test('table des fractions malformées dans l\'ATTENDU (reponsesAcceptees) -> toujours carte_invalide, jamais juste', () => {
+    for (const attendu of ['1/', '1/2/', '/3', '1/0', '0,5/1,5']) {
+      const resultat = statut({ profil: 'numerique', reponseDonnee: '1', reponsesAcceptees: [attendu] });
+      assert.equal(resultat, 'carte_invalide', `attendu="${attendu}" -> reçu "${resultat}"`);
+    }
+  });
+
+  test('la MÊME table de fractions malformées côté SAISIE ÉLÈVE (reponseDonnee) -> toujours faux, jamais juste (la carte, elle, est correcte)', () => {
+    for (const saisie of ['1/', '1/2/', '/3', '1/0', '0,5/1,5']) {
+      const resultat = statut({ profil: 'numerique', reponseDonnee: saisie, reponsesAcceptees: ['1'] });
+      assert.equal(resultat, 'faux', `saisie="${saisie}" -> reçu "${resultat}"`);
+    }
   });
 
   test('carte_invalide ne compte jamais comme une réussite', () => {
@@ -398,20 +415,9 @@ describe('micro-passe finale — carte_invalide : attendu (reponsesAcceptees) in
     assert.equal(statut({ profil: 'numerique', reponseDonnee: '8', reponsesAcceptees: ['8'], unite: 'cm' }), 'presque');
   });
 
-  test('un nombre non fini en reponsesAcceptees reste "faux" (garde-fou existant, pas carte_invalide)', () => {
+  test('un nombre non fini en reponsesAcceptees (sans "/") reste "faux" (garde-fou existant, pas carte_invalide)', () => {
     const nombreEnorme = '9'.repeat(310);
     assert.equal(statut({ profil: 'numerique', reponseDonnee: '1', reponsesAcceptees: [nombreEnorme] }), 'faux');
-  });
-
-  test('(critique Codex #1, faux positif) une unité contenant un chiffre et qui CORRESPOND à la carte n\'est pas une incohérence', () => {
-    assert.equal(statut({ profil: 'numerique', reponseDonnee: '8 cm²', reponsesAcceptees: ['8 cm²'], unite: 'cm²' }), 'juste');
-    assert.equal(statut({ profil: 'numerique', reponseDonnee: '8 cm2', reponsesAcceptees: ['8 cm2'], unite: 'cm²' }), 'juste');
-    assert.equal(statut({ profil: 'numerique', reponseDonnee: '8 m·s-1', reponsesAcceptees: ['8 m·s⁻¹'], unite: 'm·s-1' }), 'juste');
-  });
-
-  test('(critique Codex #2, faux négatif) un reliquat "/" résiduel sans lettre est une forme malformée -> carte_invalide', () => {
-    assert.equal(statut({ profil: 'numerique', reponseDonnee: '1', reponsesAcceptees: ['1/'] }), 'carte_invalide');
-    assert.equal(statut({ profil: 'numerique', reponseDonnee: '0,5', reponsesAcceptees: ['1/2/'] }), 'carte_invalide');
   });
 });
 
