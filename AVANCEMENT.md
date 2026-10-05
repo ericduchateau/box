@@ -219,7 +219,30 @@ Remplacé par une **grammaire explicite** (`RE_UNITE_PLAUSIBLE`) : un reliquat e
 
 129/129 tests (suite complète T1+T2+T3), `node fonda/scripts/validate.js` toujours 31/31. Rien touché hors `/fonda/`.
 
-- Branche `feat/fonda-lot1-evenements`. **Pas de PR/fusion sans feu vert explicite d'Éric. T4 non démarré.**
+**6e critique Codex** (lecture seule, commit `836a7c1`) : lancée en effort "medium" avec consigne large → tuée après 30 min (limite max) sans jamais répondre, aucune sortie exploitable. Relancée en effort **"low"**, consigne resserrée à 3 questions fermées (OUI/NON + 1 ligne), ciblée uniquement anonymat — répond en quelques secondes :
+1. Un champ hors schéma ou du texte libre/nom dans `item_id`/`set_id`/`notion_id`/`defi_id` ? → **OUI** : aucun champ supplémentaire ne passe, mais un identifiant sans espace type `jean-dupont` passe le garde-fou de nature (charset).
+2. `grp` hors `classes.json` ? → **OUI** si la liste `classesAutorisees` injectée diverge du vrai fichier — le module ne relit jamais `classes.json` lui-même.
+3. Réponse brute/feedback/horodatage trop précis peuvent fuiter ? → **NON** par le chemin normal (jamais copiés) ; `ts` est tronqué à la construction mais le validateur générique seul (`validerEvenement`) accepte une précision supérieure — délibéré (sert aussi à valider la fixture T1 aux minutes arbitraires).
+
+**Investigation demandée par Éric avant de qualifier le point 1** : provenance réelle des 4 champs, pas une réponse uniforme.
+- `grp` : gouverné par `classes.json` (roster fermé) — risque nul dans ce module, seulement un contrat d'intégration (liste injectée = responsabilité T4).
+- `notion_id` : gouverné par le pattern `^(fr|maths)\.[a-z0-9-]+$` de T1 (11 entrées fixes) — garde-fou de nature = filet de sécurité, pas la vraie défense.
+- `defi_id` (slug) : dérive du vrai slug de la notion — sûr SI T4 le fait correctement (même frontière de confiance que `grp`).
+- `item_id`/`set_id` : **aucune garantie amont**. Vérifié : le PRD §3.6 nomme `card_id` (Moteur B/relecture) et §3.2 nomme `item_id`/`set_id` (événements) sans jamais relier les deux ; aucun algorithme de génération nulle part dans le repo ; T6 (génération initiale) n'existe pas encore.
+
+**Décision d'Éric** : garder le garde-fou de nature tel quel sur `item_id`/`set_id` (ne PAS le durcir — une heuristique anti-nom casserait des ids T6 inconnus aujourd'hui, mauvais compromis). Documenté comme garantie **déléguée à T6**, pas comme risque simplement "assumé" — avec une dette bloquante taguée ci-dessous.
+
+#### 🔖 DETTE T6 — item_id/set_id DOIVENT venir de valeurs système
+**T6 DOIT générer `item_id`/`set_id` à partir de valeurs système (index de carte, slug de notion, id de jeu), jamais à partir de texte libre d'origine humaine.** Le garde-fou de nature de T3 (charset `[A-Za-z0-9._-]`, ≤ 64) ne distingue pas un nom sans espace d'un id technique légitime — la garantie d'anonymat réelle sur ces deux champs dépend entièrement de la règle de génération de T6. **À vérifier explicitement à la revue de T6**, avant toute fusion de ce ticket.
+
+#### 🔖 DETTE T4 — defi_id (slug) et notion_id DOIVENT venir du référentiel/calendrier réels
+**T4 DOIT dériver le slug du `defi_id` et `notion_id` du vrai référentiel/calendrier (`fonda/data/referentiel.json`, `calendar.json`), jamais d'une valeur ad hoc.** De même, `classesAutorisees` passé à `soumettreTentative` DOIT être le contenu réel de `fonda/data/classes.json`, jamais une liste reconstruite à la main. **À vérifier explicitement à la revue de T4.**
+
+Documentation ajoutée (README `fonda/engine/`) pour les points 2 et 3, avec test verrouillant chacun : `(doc point 2)` prouve que `classesAutorisees` est injecté et non relu ; `(doc point 3)` prouve que `validerEvenement()` seul accepte un `ts` non tronqué (délibéré, pour ne pas casser la fixture T1) alors que `soumettreTentative` tronque toujours.
+
+131/131 tests (suite complète T1+T2+T3), `node fonda/scripts/validate.js` toujours 31/31. Rien touché hors `/fonda/`.
+
+- Branche `feat/fonda-lot1-evenements`. **Prêt pour fusion — en attente du feu vert explicite d'Éric. T4 non démarré.**
 
 ### ☐ T4 — Mode Box-FONDA + menu public
 - But : toggle/mode SUR la page existante (pas de lien séparé) + page menu lisant `calendar.json`. Inactif par défaut (feature-flag).

@@ -141,9 +141,14 @@ soumettreTentative({
 
 Dans les deux cas : **mode entraînement, aucune émission** — l'élève révise, rien n'est mesuré.
 
-## `itemId`/`setId`/`notionId` : garde-fou de NATURE, pas de format métier
+Ce module **fait confiance** à ce qu'on lui injecte pour `classesAutorisees` (comme pour `stockage`) : il ne relit jamais `fonda/data/classes.json` lui-même. Si l'appelant (T4) y passe une liste qui diverge du vrai fichier, le contrôle reste cohérent avec la liste reçue — ce n'est pas une faille de ce module, c'est un contrat d'intégration à respecter en T4 (voir « Dette documentée » dans `AVANCEMENT.md`).
 
-Ces trois champs doivent être des identifiants techniques plausibles — chaîne non vide, ≤ 64 caractères, uniquement `[A-Za-z0-9._-]` (ni espace, ni texte libre) — sinon `raison: 'identifiant_invalide'`. Ce contrôle empêche qu'un nom, une phrase ou un commentaire se glisse dans un champ autorisé **par erreur d'appel** ; il ne vérifie PAS que l'id existe réellement dans un référentiel ou un jeu de cartes — cette garantie-là vient d'amont (T1 pour `notion_id`, T6/génération pour `item_id`/`set_id`), pas de ce module. `notionIdsConnus` reste le seul moyen d'une vérification *sémantique* réelle (optionnelle).
+## `itemId`/`setId`/`notionId` : garde-fou de NATURE, pas de format métier — provenance par champ
+
+Ces trois champs doivent être des identifiants techniques plausibles — chaîne non vide, ≤ 64 caractères, uniquement `[A-Za-z0-9._-]` (ni espace, ni texte libre) — sinon `raison: 'identifiant_invalide'`. Ce contrôle empêche qu'un nom, une phrase ou un commentaire se glisse dans un champ autorisé **par erreur d'appel** ; il ne vérifie PAS que l'id existe réellement dans un référentiel ou un jeu de cartes. Son niveau de protection réelle diffère selon le champ :
+
+- **`notion_id`** : gouverné en amont par `fonda/data/referentiel.json`, verrouillé par le pattern `^(fr|maths)\.[a-z0-9-]+$` de T1 (11 entrées fixes, curées). Si l'appelant source bien `notion_id` depuis le vrai référentiel, la valeur ne peut être que l'une des 11 connues — le garde-fou de nature n'est ici qu'un filet de sécurité. `notionIdsConnus` permet en plus une vérification *sémantique* réelle (optionnelle).
+- **`item_id` / `set_id` : garantie d'anonymat déléguée à T6.** Ces ids sont choisis par le système au service du défi, jamais saisis par l'élève. Le garde-fou de nature (charset, ≤ 64) empêche le texte libre/espaces mais ne distingue pas un nom sans espace (ex. `jean-dupont`, syntaxiquement indiscernable d'un id technique kebab-case légitime). **La garantie définitive dépend de la règle de génération de T6** — aucune règle de génération n'existe encore dans ce repo (le PRD §3.6 nomme `card_id` côté relecture, §3.2 nomme `item_id`/`set_id` côté événement, sans jamais relier les deux) ; T1 ne contraint que `notion_id`. Voir la dette documentée, taguée, dans `AVANCEMENT.md`.
 
 ## Verrou, historique et file : un seul blob, une seule écriture
 
@@ -167,6 +172,8 @@ Vérification PUIS écriture dans le **même bloc synchrone** (pas d'attente ent
 
 `ts` est toujours tronqué (pas arrondi au plus proche : toujours vers le bas) aux minutes/secondes à `00`, en UTC — anti-réidentification par recoupement horaire fin (grp minuscule + horaire précis + item = risque de ré-identification indirecte, relevé par la critique de cadrage). `dt_jours` est calculé en jours entiers écoulés depuis le dernier passage connu de l'historique, **jamais négatif ni `NaN`** : une horloge reculée ou une date future est bornée à `dt_jours: 0` plutôt que rejetée (l'événement reste légitime, seule la mesure de délai est dégradée).
 
+**Cette troncature est appliquée uniquement par `soumettreTentative` (construction), PAS par `validerEvenement()` de T1** (le validateur partagé) : c'est délibéré, pas un oubli. `validerEvenement()` sert aussi à valider `fonda/fixtures/events.sample.json`, dont les horodatages synthétiques ont des minutes arbitraires (`08:12:00`, pas `08:00:00`) — lui imposer la troncature casserait la validation de cette fixture (T1). Un `ts` à la minute/seconde près reste donc *schématiquement* valide pour le validateur générique ; seule la construction T3 garantit la troncature. Verrouillé par un test : voir `evenements.test.js`.
+
 ## Robustesse
 
 - **Stockage indisponible, saturé, bloqué, ou JSON syntaxiquement invalide** (`getItem`/`setItem` qui lèvent) → aucune émission, aucune exception (`raison: 'stockage_indisponible'`).
@@ -177,6 +184,7 @@ Vérification PUIS écriture dans le **même bloc synchrone** (pas d'attente ent
 
 ## Limites connues (hors périmètre ce ticket — signalées, pas corrigées)
 
+- **`item_id`/`set_id` sans garantie de génération amont, `defi_id`/`notion_id` dépendants de T4** : voir « provenance par champ » ci-dessus. Dette documentée et taguée dans `AVANCEMENT.md` (section T6, section T4) — à vérifier explicitement à la revue de ces tickets.
 - **Course entre deux onglets réellement distincts** (processus séparés, écriture quasi simultanée) : voir « Verrou » ci-dessus — limite théorique de `localStorage` sans Web Locks API, non traitée pour rester synchrone avec T2.
 - **`validerEvenement()` suppose un objet ordinaire** (propriétés énumérables propres reflétant sa vraie forme) : un objet construit de façon adversariale (ex. un `toJSON` hérité ajoutant un champ) pourrait en théorie contourner la liste blanche. `soumettreTentative` ne construit jamais un tel objet (toujours un littéral `{...}` neuf) — ce n'est un risque que pour un appelant externe qui invoquerait `validerEvenement()` directement sur un objet forgé, hors du chemin normal de ce module.
 - **Élève utilisant un appareil partagé/prêté** : l'historique et le verrou décrivent l'usage du navigateur, pas celui d'un individu — assumé par le PRD (G2, pas de compte élève).

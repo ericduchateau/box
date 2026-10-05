@@ -73,12 +73,25 @@ describe('cas 1 — soumission admissible : event conforme, rang_local 1, dt_jou
     assert.equal(r.event.dt_jours, null);
   });
 
-  test('ts arrondi à l\'heure : minutes/secondes/ms à 00', () => {
+  test('ts arrondi à l\'heure : minutes/secondes/ms à 00, quel que soit l\'horloge injectée', () => {
+    // maintenant() renvoie volontairement une date NON ronde (10:23:41) pour prouver
+    // que soumettreTentative tronque bien, et ne se contente pas de recopier une
+    // horloge qui serait déjà à l'heure pile par coïncidence.
     const r = soumettre();
     const d = new Date(r.event.ts);
     assert.equal(d.getUTCMinutes(), 0);
     assert.equal(d.getUTCSeconds(), 0);
     assert.equal(d.getUTCMilliseconds(), 0);
+  });
+
+  test('(doc point 3) la troncature est une garantie de CONSTRUCTION (soumettreTentative), pas du schéma générique : validerEvenement() seul accepte un ts non tronqué', () => {
+    const { validerEvenement } = require('../scripts/validate.js');
+    const evenementNonTronque = { ...soumettre().event, ts: '2026-10-05T10:23:41.000Z' };
+    // Délibéré : validerEvenement() sert aussi à valider fixtures/events.sample.json,
+    // dont les horodatages synthétiques ont des minutes arbitraires — lui imposer la
+    // troncature casserait cette fixture T1. La garantie anti-réidentification vient
+    // UNIQUEMENT de la construction côté T3, pas du schéma partagé.
+    assert.equal(validerEvenement(evenementNonTronque, NOTION_IDS).valide, true);
   });
 
   test('result=0 quand la réponse n\'est pas réussie', () => {
@@ -165,6 +178,18 @@ describe('cas 5 — grp hors classes.json : aucun event (entraînement)', () => 
     const r = soumettre({ defiId: 'defi_2026-w41_609_fractions' });
     assert.equal(r.emis, false);
     assert.equal(r.raison, 'grp_non_autorise');
+  });
+
+  test('(doc point 2) classesAutorisees est INJECTÉ, jamais relu depuis classes.json : la vérification n\'est fiable que si l\'appelant passe la vraie liste', () => {
+    // Démontre le contrat de confiance (même modèle que `stockage`) : si l'appelant
+    // injecte une liste divergente, le module reste cohérent avec CE qu'il reçoit —
+    // ce n'est pas une faille de evenements.js, c'est une responsabilité d'intégration
+    // (T4) documentée au README.
+    const r = soumettre({ classesAutorisees: ['999'] }); // liste volontairement fausse
+    assert.equal(r.emis, false);
+    assert.equal(r.raison, 'grp_non_autorise'); // "601" n'est pas dans CETTE liste injectée
+    const r2 = soumettre({ defiId: 'defi_2026-w41_999_fractions', classesAutorisees: ['999'] });
+    assert.equal(r2.emis, true); // "999" n'existe pas dans le vrai classes.json, mais la liste injectée l'autorise
   });
 });
 
