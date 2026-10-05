@@ -188,7 +188,7 @@ Vérification PUIS écriture dans le **même bloc synchrone** (pas d'attente ent
 - **Course entre deux onglets réellement distincts** (processus séparés, écriture quasi simultanée) : voir « Verrou » ci-dessus — limite théorique de `localStorage` sans Web Locks API, non traitée pour rester synchrone avec T2.
 - **`validerEvenement()` suppose un objet ordinaire** (propriétés énumérables propres reflétant sa vraie forme) : un objet construit de façon adversariale (ex. un `toJSON` hérité ajoutant un champ) pourrait en théorie contourner la liste blanche. `soumettreTentative` ne construit jamais un tel objet (toujours un littéral `{...}` neuf) — ce n'est un risque que pour un appelant externe qui invoquerait `validerEvenement()` directement sur un objet forgé, hors du chemin normal de ce module.
 - **Élève utilisant un appareil partagé/prêté** : l'historique et le verrou décrivent l'usage du navigateur, pas celui d'un individu — assumé par le PRD (G2, pas de compte élève).
-- **Pas de vérification réseau/collecte ici** : T3 construit et stocke, T5 émettra réellement vers n8n. Un événement en file peut rester local indéfiniment si T5 n'est jamais câblé.
+- **Pas de vérification réseau/collecte ici** : T3 construit et stocke, `emission.js` (T5) vide la file vers le webhook de collecte. Un événement en file peut rester local indéfiniment si `emission.js` n'est jamais appelé ou si `webhookUrl` n'est jamais câblée.
 
 ---
 
@@ -229,6 +229,38 @@ Ce fichier fait du DOM/fetch réel : **non couvert par `node --test`** (pas de n
 - **🔖 Pas de QR en T4** : uniquement lien + bouton copier sur la page niveau. QR reporté à un ticket ultérieur dédié (décision Éric : pas de lib vendorée sans revue préalable). Voir `AVANCEMENT.md`.
 - **🔖 DETTE T6 — contenu réel des cartes** : `lancerDefi(contexte)` (dans `bootstrap.js`) reçoit un contexte résolu et sûr, mais affiche un message « contenu à venir » au lieu de fetcher un vrai jeu : aucune convention `set_id` → Drive n'existe encore (T6). Quand T6 la définira, remplacer ce message par le fetch + `FondaCarteReponseProduite.montrerCarteReponseProduite(...)`, et dans son `onResultat`, appeler `FondaEvenements.soumettreTentative({...contexte, reussite, scored, ...})` — le contexte est déjà le bon.
 - **Pas de CSS dédié** : les classes (`fonda-liens-niveau`, `fonda-lien-classe`, `fonda-message`) ne sont pas stylées dans `css/style.css` — rendu fonctionnel mais brut. Hors périmètre des tests fournis.
+
+---
+
+# `emission.js` — vide la file locale vers le webhook de collecte (T5)
+
+Référence : [`docs/PRD-Box-FONDA.md`](../../docs/PRD-Box-FONDA.md) §2, §3.2 ; `AGENTS.md` G2/G3 + règle n8n-production. `node --test fonda/engine/emission.test.js` (11 tests). Le seul composant réseau de Box-FONDA côté navigateur — tout le reste (T1-T4) est lecture seule / stockage local uniquement.
+
+## API
+
+```js
+const { viderFileEvenements } = require('./emission.js');
+
+await viderFileEvenements({
+  stockage,     // ex. window.localStorage — INJECTÉ, jamais lu en dur (même contrat que evenements.js)
+  webhookUrl,   // URL du workflow n8n (voir n8n/fonda-collecte/) ; absent/vide = mode dégradé, rien ne bloque
+  envoyer,      // (url, corps) => Promise<boolean> — INJECTÉ : true = succès CONFIRMÉ par le serveur
+});
+// → { tentes, envoyes, echecs, invalides }
+```
+
+`envoyer` abstrait le réseau (comme `stockage` abstrait `localStorage`) : en prod, ce sera un `fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(corps)})` résolu en `response.ok` — câblage non fait dans ce ticket (T5 livre l'émetteur ; le brancher dans `fonda/page/bootstrap.js` avec la vraie URL du webhook une fois activé par Éric est un pas d'intégration ultérieur, comme la dette T6 de `lancerDefi()`).
+
+## Garanties
+
+- **Corps strictement limité aux 11 champs** : reconstruit champ par champ depuis l'événement en file (jamais par spread) — même si l'événement stocké contenait un champ étranger (corruption), il ne peut pas apparaître dans la requête. Revalidé par `validerEvenement()` de T1 juste avant l'envoi (défense en profondeur) ; un événement devenu invalide n'est jamais envoyé mais **ne bloque pas** les suivants (comptabilisé séparément : `invalides`, distinct de `echecs`).
+- **Retrait de la file UNIQUEMENT sur succès confirmé** (`envoyer` résout à `true`) : un échec réseau, une exception, ou une réponse négative laissent l'événement strictement inchangé en file — le prochain appel renvoie **le même objet** (même `ts`), jamais une reconstruction. Un échec sur un événement n'empêche pas les suivants d'être tentés dans le même passage.
+- **Mode dégradé si `webhookUrl` absent** : aucune tentative, aucune exception, la file s'accumule localement — ne bloque jamais la révision de l'élève.
+- **Jamais d'exception propagée** (stockage indisponible, JSON corrompu, `envoyer` qui lève) — cohérent avec `evenements.js`.
+
+## Limite documentée : pas d'exactly-once au niveau réseau
+
+Si le serveur reçoit et traite la requête mais que la **réponse** se perd (coupure réseau juste après), le client ne peut pas distinguer ce cas d'un échec réel : l'événement reste en file et sera réémis au prochain passage, ce qui peut produire une **ligne dupliquée côté Sheet** dans ce scénario précis (rare). Ajouter une garantie exactly-once demanderait un jeton d'idempotence consommé côté serveur (n8n) — non demandé par ce ticket, déjà noté comme point ouvert dans l'historique T3 (« Réessai d'émission », `AVANCEMENT.md`). Pas de perte possible dans tous les cas ; une duplication reste possible dans ce seul scénario.
 
 ## Limites connues (hors périmètre collège — signalées, pas corrigées)
 

@@ -151,6 +151,40 @@ function lireMesure(stockage) {
   return data;
 }
 
+// Identité d'un événement en file, pour le retirer sans ambiguïté — (defi_id, item_id)
+// est déjà la clé du verrou (T3) : au plus un événement scellé par couple, donc
+// suffisante pour identifier une entrée de la file sans dépendre de l'égalité profonde
+// de l'objet entier (qui échouerait si l'appelant reconstruit l'événement plutôt que
+// de réutiliser la référence).
+function identifiantFile(event) {
+  return cleComposite(event && event.defi_id, event && event.item_id);
+}
+
+// Lecture SEULE de la file (T5 : l'émetteur doit pouvoir lire sans connaître la forme
+// interne du blob de mesure). undefined si le stockage est indisponible/corrompu —
+// jamais confondu avec une file vide.
+function lireFile(stockage) {
+  const mesure = lireMesure(stockage);
+  return mesure === undefined ? undefined : mesure.file;
+}
+
+// Retire de la file les événements déjà confirmés envoyés (T5), sans toucher au
+// verrou ni à l'historique — une seule écriture, comme soumettreTentative. Ne retire
+// JAMAIS un événement qui ne serait pas identifiable dans la file actuelle (évite de
+// fabriquer un état incohérent si la file a changé entre la lecture et l'écriture).
+function retirerDeFile(stockage, eventsEnvoyes) {
+  const mesure = lireMesure(stockage);
+  if (mesure === undefined) return false;
+  const aRetirer = new Set((eventsEnvoyes || []).map(identifiantFile));
+  mesure.file = mesure.file.filter((e) => !aRetirer.has(identifiantFile(e)));
+  try {
+    stockage.setItem(CLE_MESURE, JSON.stringify(mesure));
+  } catch {
+    return false;
+  }
+  return true;
+}
+
 /**
  * Construit, verrouille et met en file (localement — AUCUN réseau) un événement de
  * mesure Box-FONDA pour une tentative, si et seulement si elle est éligible.
@@ -293,6 +327,8 @@ return {
   parserDefiId,
   grpEstAutorise,
   ctxEstValide,
+  lireFile,
+  retirerDeFile,
   CLE_MESURE,
 };
 
