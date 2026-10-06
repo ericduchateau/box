@@ -4,10 +4,10 @@
   "ts_generation": "2026-10-06T09:00:00.000Z",
   "notions_couvertes": 12,
   "total_jeux": 24,
-  "total_cartes": 144,
+  "total_cartes": 143,
   "repartition_relecteur": {
     "justine": 72,
-    "eric": 72
+    "eric": 71
   },
   "jeux": [
     {
@@ -136,7 +136,7 @@
       "matiere": "maths",
       "relecteur": "eric",
       "palier": "nF",
-      "n_cartes": 6
+      "n_cartes": 5
     },
     {
       "set_id": "set_fonda_comprendre-document_nI_01",
@@ -1742,7 +1742,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "jardin-rectangulaire"
+        "contexte": "jardin-rectangulaire",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_geometrie_nI_01",
@@ -1763,7 +1764,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "terrain-de-sport"
+        "contexte": "terrain-de-sport",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_geometrie_nI_01",
@@ -1784,7 +1786,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "tapis-salon"
+        "contexte": "tapis-salon",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_geometrie_nI_01",
@@ -1805,7 +1808,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "triangle-voile-bateau"
+        "contexte": "triangle-voile-bateau",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_geometrie_nI_01",
@@ -1828,7 +1832,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "affiche-rectangulaire"
+        "contexte": "affiche-rectangulaire",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_geometrie_nI_01",
@@ -1849,7 +1854,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "terrain-foot-miniature"
+        "contexte": "terrain-foot-miniature",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_geometrie_nF_01",
@@ -1870,7 +1876,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "terrain-en-l-jardin"
+        "contexte": "terrain-en-l-jardin",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_geometrie_nF_01",
@@ -1891,7 +1898,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "cadre-photo-bordure"
+        "contexte": "cadre-photo-bordure",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_geometrie_nF_01",
@@ -1935,7 +1943,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "parcelle-perimetre-connu"
+        "contexte": "parcelle-perimetre-connu",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_geometrie_nF_01",
@@ -1956,7 +1965,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "triangle-rectangle-cathetes"
+        "contexte": "triangle-rectangle-cathetes",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_geometrie_nF_01",
@@ -1977,7 +1987,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "salle-carrelage-longueur-inconnue"
+        "contexte": "salle-carrelage-longueur-inconnue",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_grandeurs-mesures_nI_01",
@@ -1998,7 +2009,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "cycliste-trajet"
+        "contexte": "cycliste-trajet",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_grandeurs-mesures_nI_01",
@@ -2021,7 +2033,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "echarpe-conversion-longueur"
+        "contexte": "echarpe-conversion-longueur",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_grandeurs-mesures_nI_01",
@@ -2042,7 +2055,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "bouteille-eau-volume"
+        "contexte": "bouteille-eau-volume",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_grandeurs-mesures_nI_01",
@@ -2063,7 +2077,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "colis-poste-masse"
+        "contexte": "colis-poste-masse",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_grandeurs-mesures_nI_01",
@@ -2105,7 +2120,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "piscine-remplissage-debit"
+        "contexte": "piscine-remplissage-debit",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_grandeurs-mesures_nF_01",
@@ -2126,7 +2142,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "voiture-vitesse-moyenne"
+        "contexte": "voiture-vitesse-moyenne",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_grandeurs-mesures_nF_01",
@@ -2147,7 +2164,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "salon-largeur-inconnue"
+        "contexte": "salon-largeur-inconnue",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_grandeurs-mesures_nF_01",
@@ -2168,7 +2186,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "train-deux-etapes-vitesse"
+        "contexte": "train-deux-etapes-vitesse",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_grandeurs-mesures_nF_01",
@@ -2189,7 +2208,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "reservoir-essence-consommation"
+        "contexte": "reservoir-essence-consommation",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_grandeurs-mesures_nF_01",
@@ -2212,7 +2232,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "terrain-conversion-hectare"
+        "contexte": "terrain-conversion-hectare",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_grandeurs-mesures_nF_01",
@@ -2233,7 +2254,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "fontaine-debit-temps"
+        "contexte": "fontaine-debit-temps",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_resolution-problemes_nI_01",
@@ -2254,7 +2276,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "argent-poche-achats"
+        "contexte": "argent-poche-achats",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_resolution-problemes_nI_01",
@@ -2295,7 +2318,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "billets-cinema-groupe"
+        "contexte": "billets-cinema-groupe",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_resolution-problemes_nI_01",
@@ -2356,7 +2380,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "location-velo-tarif"
+        "contexte": "location-velo-tarif",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_resolution-problemes_nF_01",
@@ -2377,7 +2402,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "solde-pull-boutique"
+        "contexte": "solde-pull-boutique",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_resolution-problemes_nF_01",
@@ -2398,7 +2424,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "sortie-classe-subvention"
+        "contexte": "sortie-classe-subvention",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_resolution-problemes_nF_01",
@@ -2439,7 +2466,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "reservoir-vidage-debit"
+        "contexte": "reservoir-vidage-debit",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_resolution-problemes_nF_01",
@@ -2460,7 +2488,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "voyage-comparaison-prix-personne"
+        "contexte": "voyage-comparaison-prix-personne",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_resolution-problemes_nF_01",
@@ -2501,7 +2530,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "recette-doses-ingredients"
+        "contexte": "recette-doses-ingredients",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_proportionnalite_nI_01",
@@ -2522,7 +2552,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "prix-kilo-fruits"
+        "contexte": "prix-kilo-fruits",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_proportionnalite_nI_01",
@@ -2543,7 +2574,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "vitesse-constante-trajet-voiture"
+        "contexte": "vitesse-constante-trajet-voiture",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_proportionnalite_nI_01",
@@ -2584,7 +2616,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "essence-prix-litres"
+        "contexte": "essence-prix-litres",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_proportionnalite_nI_01",
@@ -2625,7 +2658,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "solde-pourcentage-article"
+        "contexte": "solde-pourcentage-article",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_proportionnalite_nF_01",
@@ -2666,7 +2700,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "echelle-plan-maison"
+        "contexte": "echelle-plan-maison",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_proportionnalite_nF_01",
@@ -2689,7 +2724,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "safran-masse-fleurs"
+        "contexte": "safran-masse-fleurs",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_proportionnalite_nF_01",
@@ -2730,7 +2766,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "abonnement-augmentation-pourcentage"
+        "contexte": "abonnement-augmentation-pourcentage",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_nombres-fractions-relatifs_nI_01",
@@ -2751,7 +2788,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "temperature-ville-hiver"
+        "contexte": "temperature-ville-hiver",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_nombres-fractions-relatifs_nI_01",
@@ -2772,7 +2810,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "compte-bancaire-debit"
+        "contexte": "compte-bancaire-debit",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_nombres-fractions-relatifs_nI_01",
@@ -2813,7 +2852,8 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "sous-marin-profondeur"
+        "contexte": "sous-marin-profondeur",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_nombres-fractions-relatifs_nI_01",
@@ -2883,27 +2923,6 @@
         "relecteur": "eric",
         "palier": "nF",
         "difficulte": "moyen",
-        "question": "Entre quels deux entiers consécutifs se trouve 56/10 ?",
-        "reponse": "5 et 6",
-        "profil_correction": "numerique",
-        "reponses_acceptees": [
-          "5 et 6",
-          "entre 5 et 6"
-        ],
-        "seconde_chance": false,
-        "statut": "attente",
-        "source": "T6-pilote",
-        "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "encadrement-decimal-mesure"
-      },
-      {
-        "set_id": "set_fonda_nombres-fractions-relatifs_nF_01",
-        "item_id": "it03",
-        "notion_id": "maths.nombres-fractions-relatifs",
-        "matiere": "maths",
-        "relecteur": "eric",
-        "palier": "nF",
-        "difficulte": "moyen",
         "question": "3/4 est-elle égale à 9/12 ?",
         "reponse": "oui",
         "profil_correction": "sens",
@@ -2919,7 +2938,7 @@
       },
       {
         "set_id": "set_fonda_nombres-fractions-relatifs_nF_01",
-        "item_id": "it04",
+        "item_id": "it03",
         "notion_id": "maths.nombres-fractions-relatifs",
         "matiere": "maths",
         "relecteur": "eric",
@@ -2936,11 +2955,12 @@
         "statut": "attente",
         "source": "T6-pilote",
         "ts": "2026-10-06T09:00:00.000Z",
-        "contexte": "plongeur-altitude-deux-etapes"
+        "contexte": "plongeur-altitude-deux-etapes",
+        "_fixture_note": "unite_manquante"
       },
       {
         "set_id": "set_fonda_nombres-fractions-relatifs_nF_01",
-        "item_id": "it05",
+        "item_id": "it04",
         "notion_id": "maths.nombres-fractions-relatifs",
         "matiere": "maths",
         "relecteur": "eric",
@@ -2960,7 +2980,7 @@
       },
       {
         "set_id": "set_fonda_nombres-fractions-relatifs_nF_01",
-        "item_id": "it06",
+        "item_id": "it05",
         "notion_id": "maths.nombres-fractions-relatifs",
         "matiere": "maths",
         "relecteur": "eric",

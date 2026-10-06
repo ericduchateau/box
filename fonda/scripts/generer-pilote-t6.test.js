@@ -13,6 +13,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { construireLotPilote } = require('./generer-pilote-t6.js');
 const { validerCandidate, validerJeu } = require('../engine/generation.js');
+const { evaluerReponse } = require('../engine/correction.js');
 
 describe('construireLotPilote — chaîne exercée sur le contenu pilote (en mémoire, sans écriture)', () => {
   test('zéro erreur : les 12 notions du référentiel ont un contenu nI et nF', () => {
@@ -20,18 +21,20 @@ describe('construireLotPilote — chaîne exercée sur le contenu pilote (en mé
     assert.deepEqual(erreurs, []);
   });
 
-  test('24 jeux (12 notions × 2 paliers), 144 cartes (24 × 6)', () => {
+  // 24 jeux, 143 cartes (144 - 1 : carte « encadrement 5 et 6 » retirée en T6a,
+  // profil numerique incompatible avec deux valeurs — point (b) validé par Éric).
+  test('24 jeux (12 notions × 2 paliers), 143 cartes', () => {
     const { manifesteJeux, toutesLesCartes } = construireLotPilote();
     assert.equal(manifesteJeux.length, 24);
-    assert.equal(toutesLesCartes.length, 144);
+    assert.equal(toutesLesCartes.length, 143);
   });
 
-  test('équilibre 6 notions Justine / 6 notions Éric -> 72 cartes chacun', () => {
+  test('équilibre 6 notions Justine / 6 notions Éric -> 72 Justine / 71 Éric (1 carte maths retirée)', () => {
     const { toutesLesCartes } = construireLotPilote();
     const justine = toutesLesCartes.filter((c) => c.relecteur === 'justine');
     const eric = toutesLesCartes.filter((c) => c.relecteur === 'eric');
     assert.equal(justine.length, 72);
-    assert.equal(eric.length, 72);
+    assert.equal(eric.length, 71);
   });
 
   test('toutes les cartes passent validerCandidate (notion_id connu du référentiel)', () => {
@@ -40,6 +43,31 @@ describe('construireLotPilote — chaîne exercée sur le contenu pilote (en mé
     toutesLesCartes.forEach((c) => {
       const r = validerCandidate(c, { notionIdsConnus: notionIds });
       assert.equal(r.valide, true, `${c.set_id}/${c.item_id} : ${r.erreurs && r.erreurs.join(', ')}`);
+    });
+  });
+
+  // T6a point (c), validé par Éric : les cartes à réponse avec unité physique mais
+  // SANS champ `unite` sont un cas connu — "le correcteur a raison, c'est la
+  // rédaction qui est incomplète" — marquées `_fixture_note`, PAS corrigées ici.
+  // Ce test verrouille le contrat : exactement les cartes notées (ni plus, ni
+  // moins) peuvent diverger du correcteur ; toute AUTRE carte doit réellement
+  // passer — une régression future sur une carte non notée doit faire échouer ceci.
+  test('toutes les cartes NON marquées `_fixture_note` passent réellement le correcteur T2', () => {
+    const { toutesLesCartes } = construireLotPilote();
+    const nonNotees = toutesLesCartes.filter((c) => !c._fixture_note);
+    nonNotees.forEach((c) => {
+      const r = evaluerReponse({ profil: c.profil_correction, reponseDonnee: c.reponse, reponsesAcceptees: c.reponses_acceptees });
+      assert.equal(r.statut, 'juste', `${c.set_id}/${c.item_id} (${c.reponse}) -> ${r.statut}, inattendu pour une carte non notée`);
+    });
+  });
+
+  test('exactement 41 cartes sont marquées `_fixture_note: "unite_manquante"`, et toutes échouent réellement pour cette raison (sinon la note est obsolète)', () => {
+    const { toutesLesCartes } = construireLotPilote();
+    const notees = toutesLesCartes.filter((c) => c._fixture_note === 'unite_manquante');
+    assert.equal(notees.length, 41);
+    notees.forEach((c) => {
+      const r = evaluerReponse({ profil: c.profil_correction, reponseDonnee: c.reponse, reponsesAcceptees: c.reponses_acceptees });
+      assert.notEqual(r.statut, 'juste', `${c.set_id}/${c.item_id} passe maintenant le correcteur — retirer sa _fixture_note`);
     });
   });
 
@@ -85,11 +113,12 @@ describe('intégration — node fonda/scripts/generer-pilote-t6.js écrit un fic
     const outPath = path.join(__dirname, '..', 'data', 'pilote-t6-relecture.json');
     const data = JSON.parse(fs.readFileSync(outPath, 'utf-8'));
     assert.equal(data.total_jeux, 24);
-    assert.equal(data.total_cartes, 144);
+    assert.equal(data.total_cartes, 143);
     assert.equal(data.repartition_relecteur.justine, 72);
-    assert.equal(data.repartition_relecteur.eric, 72);
+    assert.equal(data.repartition_relecteur.eric, 71);
     assert.equal(data.par_relecteur.justine.length, 72);
-    assert.equal(data.par_relecteur.eric.length, 72);
+    assert.equal(data.par_relecteur.eric.length, 71);
+    assert.match(data.nature, /FIXTURE TECHNIQUE/);
     data.par_relecteur.justine.concat(data.par_relecteur.eric).forEach((c) => {
       assert.equal(c.statut, 'attente');
     });

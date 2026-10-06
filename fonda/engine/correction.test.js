@@ -435,6 +435,33 @@ describe('micro-passe finale — carte_invalide : attendu (reponsesAcceptees) in
     }
   });
 
+  test('(8e critique Codex, T6a) unités MONÉTAIRES courantes (€, $, £...) reconnues comme unité plausible — jamais carte_invalide, par grammaire (\\p{Sc}), pas une liste en dur', () => {
+    for (const devise of ['€', '$', '£', '¥']) {
+      assert.notEqual(
+        statut({ profil: 'numerique', reponseDonnee: `9 ${devise}`, reponsesAcceptees: [`9 ${devise}`], unite: devise }),
+        'carte_invalide',
+        `devise="${devise}"`,
+      );
+    }
+  });
+
+  test('unité monétaire, carte qui la déclare (unite) -> juste, forme accolée OU séparée', () => {
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '9 €', reponsesAcceptees: ['9 €'], unite: '€' }), 'juste');
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '9€', reponsesAcceptees: ['9€'], unite: '€' }), 'juste');
+  });
+
+  test('unité monétaire CONTRADICTOIRE avec la carte (ex. $ attendu alors que unite:"€") -> carte_invalide, même logique que les unités physiques', () => {
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '9 $', reponsesAcceptees: ['9 $'], unite: '€' }), 'carte_invalide');
+  });
+
+  test('unité monétaire SANS unite déclarée sur la carte -> faux (pas carte_invalide) : même règle que toute unité non déclarée, cf. "unité exigée seulement si la carte le précise" (§5.1)', () => {
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '9 €', reponsesAcceptees: ['9 €', '9'] }), 'faux');
+  });
+
+  test('"%" (déjà géré avant T6a) continue de fonctionner aux côtés des devises élargies', () => {
+    assert.equal(statut({ profil: 'numerique', reponseDonnee: '80%', reponsesAcceptees: ['80%'], unite: '%' }), 'juste');
+  });
+
   test('carte_invalide ne compte jamais comme une réussite', () => {
     assert.equal(compteCommeReussite('carte_invalide', 'numerique'), false);
   });

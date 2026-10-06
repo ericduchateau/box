@@ -20,17 +20,29 @@
 //       * `deposerEnRelecture` FORCE `statut: "attente"` sur CHAQUE candidate
 //         déposée — toute valeur entrante (`"validée"`, `"rejetée"`, absente) est
 //         ignorée et écrasée. Aucune candidate ne peut entrer pré-validée.
-//       * `matiere`/`relecteur` sont DÉRIVÉS du référentiel (`notions`, fourni par
-//         l'appelant) via `notion_id` — JAMAIS lus/conservés depuis la candidate.
-//         Une candidate dont le `notion_id` n'existe pas dans `notions` est rejetée
-//         (dans `invalides`), jamais déposée avec un routage par défaut.
-//   - Intégrité structurelle au dépôt (T6a, suite critique #12) :
-//       * Gel PROFOND (candidate + `reponses_acceptees`) : muter après coup le
-//         tableau D'ORIGINE passé par l'appelant ne mute plus la candidate déposée
-//         (le dépôt en clone une copie avant de geler, jamais la référence reçue).
-//       * Unicité `(set_id, item_id)` et cohérence `set_id` ↔ `notion_id` ↔ `palier`
-//         vérifiées AU DÉPÔT (pas seulement au schéma d'une candidate isolée) —
-//         un id de jeu d'une autre notion/palier, ou un doublon, est rejeté.
+//       * `matiere`/`relecteur` DÉPOSÉS sont DÉRIVÉS du référentiel (`notions`,
+//         fourni par l'appelant) via `notion_id` — ce que déclare la candidate pour
+//         ces deux champs n'a AUCUNE influence sur le routage final ni sur le
+//         contenu déposé (écrasé systématiquement). Nuance exacte (2e critique
+//         Codex T6a, point #5) : ces champs déclarés sont encore vérifiés en AMONT,
+//         pour la FORME générale de la candidate (cohérence interne, un contrôle de
+//         schéma qui a sa valeur seul) — une candidate structurellement invalide
+//         est rejetée avant même d'atteindre le référentiel. Mais une fois admise,
+//         ils ne pèsent plus : le routage et le contenu déposé viennent QUE du
+//         référentiel. Une candidate dont le `notion_id` n'existe pas dans
+//         `notions` (absent, dupliqué, ou notion mal formée — matiere/relecteur du
+//         RÉFÉRENTIEL lui-même incohérents) est rejetée (`invalides`), jamais
+//         déposée avec un routage par défaut ni sur la base de la dernière entrée.
+//   - Intégrité structurelle au dépôt (T6a, suite critiques Codex #12 puis #2/#3) :
+//       * Gel PROFOND récursif (toute la candidate, à N'IMPORTE QUEL niveau
+//         d'imbrication — pas seulement `reponses_acceptees`) : muter après coup
+//         N'IMPORTE QUEL champ de l'objet D'ORIGINE passé par l'appelant ne mute
+//         plus la candidate déposée (le dépôt clone intégralement avant de geler,
+//         jamais la référence reçue, à aucune profondeur).
+//       * Unicité `(set_id, item_id)`, cohérence `set_id` ↔ `notion_id` ↔ `palier`,
+//         ET unicité `set_id` ↔ notion_id DANS UN MÊME LOT (un 2e notion_id ne peut
+//         pas revendiquer un set_id déjà pris par un autre dans ce dépôt) sont
+//         vérifiées AU DÉPÔT (pas seulement au schéma d'une candidate isolée).
 //   - Routage par relecteur (§12, AGENTS.md "Conventions") : `relecteurDepuisMatiere`
 //     est l'UNIQUE table matiere -> relecteur, strictement identique à celle de
 //     fonda/scripts/validate.js (RELECTEUR_ATTENDU) — ne jamais dupliquer/diverger.
@@ -104,12 +116,32 @@ function extraireSlugNotion(notionId) {
 // referentiel.json, `notions`). Seule source de vérité pour le dépôt (T6a) — jamais
 // la candidate elle-même. `notions` manquant/vide -> index vide -> toute candidate
 // est rejetée (échoue fermé, jamais un routage par défaut).
+//
+// Révisé après 2e critique Codex (T6a) :
+//   - un `id` DUPLIQUÉ dans `notions` n'est plus "la dernière entrée gagne" (routage
+//     silencieux sur une valeur arbitraire) : il EMPOISONNE l'entrée (retirée de
+//     l'index) — toute candidate référençant cet id est alors rejetée comme notion
+//     inconnue, jamais routée sur une valeur ambiguë.
+//   - `matiere`/`relecteur` DOIVENT être mutuellement cohérents (même table
+//     RELECTEUR_ATTENDU que pour une candidate) — une entrée de référentiel mal
+//     formée (`matiere:"maths"` + `relecteur:"justine"`) est elle aussi retirée de
+//     l'index, jamais utilisée pour router "tel que déclaré".
 function construireIndexNotions(notions) {
   const index = new Map();
+  const vus = new Set();
   (isArray(notions) ? notions : []).forEach((n) => {
-    if (n && isNonEmptyString(n.id)) {
+    if (!n || !isNonEmptyString(n.id)) return;
+    if (vus.has(n.id)) {
+      index.delete(n.id); // id dupliqué -> empoisonné, jamais "la dernière entrée gagne"
+      return;
+    }
+    vus.add(n.id);
+    const matiereValide = n.matiere === 'français' || n.matiere === 'maths';
+    const coherent = matiereValide && RELECTEUR_ATTENDU[n.matiere] === n.relecteur;
+    if (coherent) {
       index.set(n.id, { matiere: n.matiere, relecteur: n.relecteur });
     }
+    // sinon : entrée mal formée, simplement absente de l'index (rejet en aval).
   });
   return index;
 }
@@ -117,6 +149,14 @@ function construireIndexNotions(notions) {
 // Cohérence set_id <-> (notion_id, palier) : le slug ET le palier encodés dans
 // set_id doivent correspondre à ceux de la candidate — un id de jeu d'une autre
 // notion ou d'un autre palier, recopié par erreur ou forgé, est détecté ici.
+// LIMITE CONNUE (signalée par la 2e critique Codex) : la comparaison porte sur le
+// SLUG seul (pas le préfixe matiere.) — deux notions de matières différentes qui
+// partageraient le même slug pourraient en théorie revendiquer le même set_id. Pas
+// un problème avec le référentiel réel (12 slugs tous distincts, vérifié par
+// validate.js : unicité des `id` complets) ; `deposerEnRelecture` ajoute en plus une
+// garde AU DÉPÔT (un même set_id ne peut être revendiqué que par UN seul notion_id
+// dans un même lot, voir ci-dessous) sans reformater l'id système existant (Dette
+// T6, déjà committée/testée).
 function setIdCoherentAvecNotion(setId, notionId, palier) {
   const slug = extraireSlugNotion(notionId);
   if (!slug || !isNonEmptyString(setId)) return false;
@@ -124,15 +164,41 @@ function setIdCoherentAvecNotion(setId, notionId, palier) {
   return attendu.test(setId);
 }
 
-// Gel PROFOND d'une candidate avant dépôt : clone `reponses_acceptees` (jamais la
-// référence reçue) puis gèle le clone ET l'objet — muter après coup le tableau
-// D'ORIGINE passé par l'appelant ne peut plus muter la candidate déposée.
-function gelCandidate(c) {
-  const clone = { ...c };
-  if (isArray(clone.reponses_acceptees)) {
-    clone.reponses_acceptees = Object.freeze([...clone.reponses_acceptees]);
+// Clone PROFOND (jamais une référence partagée avec l'appelant, à N'IMPORTE QUEL
+// niveau d'imbrication — pas seulement `reponses_acceptees`, cf. 2e critique Codex
+// T6a : un champ imbriqué quelconque, ex. `meta.review.ok`, échappait au clonage
+// spécial précédent). S'arrête aux primitifs (chaîne, nombre, booléen, null) —
+// immuables par nature, rien à cloner/geler.
+function clonerProfond(valeur) {
+  if (isArray(valeur)) return valeur.map(clonerProfond);
+  if (valeur && typeof valeur === 'object') {
+    const clone = {};
+    Object.keys(valeur).forEach((k) => { clone[k] = clonerProfond(valeur[k]); });
+    return clone;
   }
-  return Object.freeze(clone);
+  return valeur;
+}
+
+// Gèle récursivement un objet/tableau DÉJÀ CLONÉ (jamais la structure reçue de
+// l'appelant — gelCandidate() clone toujours avant d'appeler ceci).
+function gelProfond(valeur) {
+  if (isArray(valeur)) {
+    valeur.forEach(gelProfond);
+    return Object.freeze(valeur);
+  }
+  if (valeur && typeof valeur === 'object') {
+    Object.keys(valeur).forEach((k) => gelProfond(valeur[k]));
+    return Object.freeze(valeur);
+  }
+  return valeur;
+}
+
+// Gel PROFOND d'une candidate avant dépôt : clone TOUTE la structure (pas seulement
+// `reponses_acceptees`) puis gèle le clone — muter après coup N'IMPORTE QUEL champ
+// (y compris imbriqué) de l'objet D'ORIGINE passé par l'appelant ne peut plus muter
+// la candidate déposée.
+function gelCandidate(c) {
+  return gelProfond(clonerProfond(c));
 }
 
 /**
@@ -282,17 +348,46 @@ function deposerEnRelecture(candidates, options) {
   const parRelecteur = { justine: [], eric: [] };
   const invalides = [];
   const dejaDeposes = new Set();
+  // set_id -> notion_id déjà admis sous cet id, DANS CE LOT (3e critique Codex T6a,
+  // point #3) : la cohérence set_id<->notion/palier ne compare que le slug, pas le
+  // préfixe matiere. — deux notion_id distincts pourraient en théorie partager un
+  // même set_id si leurs slugs coïncident. Cette garde empêche qu'un 2e notion_id
+  // revendique un set_id déjà pris par un autre dans le même dépôt (le 2e est
+  // rejeté, le 1er reste déposé — même politique que le doublon (set_id,item_id)).
+  const setIdVuPourNotion = new Map();
 
-  (isArray(candidates) ? candidates : []).forEach((c, i) => {
+  (isArray(candidates) ? candidates : []).forEach((brut, i) => {
+    // Aller-retour JSON AVANT toute lecture de champ (4e critique Codex T6a, point
+    // #4) : un objet forgé avec un getter/toJSON pourrait, par simple relecture
+    // d'un champ (le spread `{...c}` du dépôt relit TOUT après coup), répondre une
+    // valeur DIFFÉRENTE de celle vue par `validerCandidate` — deux chemins
+    // confirmés par la critique (notion/id changés après coup, statut sérialisé
+    // différent de celui gelé en mémoire). Un round-trip JSON, fait UNE SEULE FOIS
+    // ici, fige une snapshot plate — chaque champ n'est plus lu qu'une fois, la
+    // même valeur sert à la validation ET au dépôt, aucune divergence possible.
+    // Risque théorique (nécessite un objet JS avec du code, pas un JSON.parse
+    // ordinaire) — le script pilote ne construit que des objets simples.
+    let c;
+    try {
+      c = JSON.parse(JSON.stringify(brut));
+    } catch {
+      invalides.push({ index: i, raisons: ['candidate non sérialisable en JSON'] });
+      return;
+    }
+
     const forme = validerCandidate(c);
     if (!forme.valide) {
       invalides.push({ index: i, raisons: forme.erreurs });
       return;
     }
 
+    // Référentiel = SEULE source de vérité pour matiere/relecteur (jamais la
+    // candidate) : `indexNotions` ne contient déjà plus aucune entrée malformée
+    // (relecteur incohérent, matiere invalide) ni aucun id dupliqué empoisonné
+    // (voir construireIndexNotions) — `!ref` couvre donc les trois cas d'un coup.
     const ref = indexNotions.get(c.notion_id);
-    if (!ref || !RELECTEURS.has(ref.relecteur) || (ref.matiere !== 'français' && ref.matiere !== 'maths')) {
-      invalides.push({ index: i, raisons: [`notion_id "${c.notion_id}" absent du référentiel fourni ou notion mal formée`] });
+    if (!ref) {
+      invalides.push({ index: i, raisons: [`notion_id "${c.notion_id}" absent du référentiel fourni, ou notion mal formée/dupliquée`] });
       return;
     }
 
@@ -300,6 +395,13 @@ function deposerEnRelecture(candidates, options) {
       invalides.push({ index: i, raisons: ['set_id incohérent avec notion_id/palier'] });
       return;
     }
+
+    const notionDejaLieeASetId = setIdVuPourNotion.get(c.set_id);
+    if (notionDejaLieeASetId !== undefined && notionDejaLieeASetId !== c.notion_id) {
+      invalides.push({ index: i, raisons: [`set_id "${c.set_id}" déjà revendiqué par la notion "${notionDejaLieeASetId}" dans ce lot`] });
+      return;
+    }
+    setIdVuPourNotion.set(c.set_id, c.notion_id);
 
     const cleUnicite = JSON.stringify([c.set_id, c.item_id]);
     if (dejaDeposes.has(cleUnicite)) {

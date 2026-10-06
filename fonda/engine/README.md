@@ -7,7 +7,7 @@ Révisé le 2026-10-05, **trois passes** suite critiques Codex successives (lect
 ## Fichiers
 
 - **`correction.js`** — moteur de correction pur (zéro DOM, zéro dépendance). Format UMD : `require()`-able en Node (tests, futurs scripts de calcul) et chargeable en `<script>` classique dans le navigateur (pose `window.FondaCorrection`), cohérent avec le style du front BOX existant (pas de bundler).
-- **`correction.test.js`** — suite de tests (80 cas), écrite **avant** chaque révision du moteur. `node --test fonda/engine/correction.test.js`.
+- **`correction.test.js`** — suite de tests (**93 cas**, dont 6 ajoutés en T6a pour l'élargissement aux unités monétaires, voir « numerique — unité » ci-dessous), écrite **avant** chaque révision du moteur. `node --test fonda/engine/correction.test.js`.
 - **`carte-reponse-produite.js`** — composant vanilla JS (saisie courte → validation → feedback). Charge `window.FondaCorrection`, donc à inclure **après** `correction.js` dans la page. **Développé isolé, non branché à `index.html`** (impact prod nul) — le câblage dans la page existante est T4.
 - **`carte-reponse-produite.test.js`** — test d'intégration du contrat seconde chance (`tentative`/`scored`) et du feedback affiché, avec un DOM factice minimal maison (zéro dépendance, pas de jsdom).
 
@@ -68,6 +68,8 @@ Seuls `. ! ?` sont pardonnés, et **uniquement en position externe** (début/fin
 | valeur correcte, **reliquat alphabétique** (`8 banane`) | non exigée | **`faux`** |
 
 La comparaison d'unité est **sensible à la casse** et **symétrique** : l'unité exigée par la carte passe par la même canonisation typographique (apostrophes/tirets/espaces) que la saisie de l'élève, et les exposants Unicode sont normalisés en chiffres des deux côtés (`cm²` ≡ `cm2`, dans un sens comme dans l'autre), **y compris le moins en exposant** (`⁻` → `-`, donc `m·s⁻¹` ≡ `m·s-1`, quel que soit le côté qui utilise la forme exposant).
+
+**Unités monétaires (T6a)** : la grammaire d'unité plausible (`RE_UNITE_PLAUSIBLE`, voir « carte_invalide » ci-dessous) inclut désormais `\p{Sc}` (catégorie Unicode *Symbol, Currency* — €, $, £, ¥...), **pas une liste en dur** : toute devise de cette catégorie est reconnue automatiquement. Déclenché par un lot de cartes T6a dont 11 réponses en € échouaient à tort en `carte_invalide`. Comme pour toute autre unité : **reste `faux` (pas `juste`) si la carte ne déclare pas `unite`** — c'est la règle générale « unité exigée seulement si la carte le précise », pas une exception pour les devises. `%` était déjà géré avant ce changement (présent explicitement dans la grammaire).
 
 ### numerique — `carte_invalide` : attendu incohérent (problème d'auteur, pas de l'élève)
 
@@ -249,7 +251,7 @@ Relevées par les 2ᵉ et 3ᵉ critiques Codex, volontairement laissées telles 
 
 # `generation.js` — chaîne de génération assistée + dépôt en file de relecture (T6)
 
-Référence : [`docs/PRD-Box-FONDA.md`](../../docs/PRD-Box-FONDA.md) §3.6, §5.1, §9, §11, §12 ; `AGENTS.md` G3/G4/G5. Logique pure (zéro DOM, zéro fetch, zéro appel réseau/n8n) : ids système, schéma candidate, anti-clone, routage par relecteur. `node --test fonda/engine/generation.test.js` (**34 tests** — 27 + 7 ajoutés en T6a suite critique Codex, voir ci-dessous).
+Référence : [`docs/PRD-Box-FONDA.md`](../../docs/PRD-Box-FONDA.md) §3.6, §5.1, §9, §11, §12 ; `AGENTS.md` G3/G4/G5. Logique pure (zéro DOM, zéro fetch, zéro appel réseau/n8n) : ids système, schéma candidate, anti-clone, routage par relecteur. `node --test fonda/engine/generation.test.js` (**41 tests** — 27 d'origine + 7 après la 1ʳᵉ critique Codex (T6a) + 7 après une 2ᵉ critique Codex ciblée uniquement sur le moteur durci, voir ci-dessous).
 
 **Ce module ne génère aucun texte de carte.** Le contenu pédagogique du lot pilote T6 est rédigé à la main (`fonda/scripts/generer-pilote-t6.js`) — voir ce fichier et `AVANCEMENT.md` pour ce qui est fait vs ce qui reste une dette.
 
@@ -279,13 +281,16 @@ Ferme la dette ouverte par T3/T4 (voir `evenements.js` ci-dessus, « garantie d'
 
 `relecteurDepuisMatiere` est l'unique table `matiere -> relecteur` (identique à `RELECTEUR_ATTENDU` de `fonda/scripts/validate.js` — ne jamais diverger). `validerCandidate` revérifie la cohérence des champs `matiere`/`relecteur` **déclarés** sur la candidate — un contrôle de forme utile en isolation, mais PAS une garantie suffisante pour G4 (une candidate peut être forgée avec une paire interne cohérente mais fausse par rapport à sa vraie notion).
 
-**`deposerEnRelecture` ne fait confiance à rien de ce que déclare la candidate pour router ou publier** (révisé après critique Codex — la 1ʳᵉ version du dépôt prenait `matiere`/`relecteur`/`statut` tels que fournis) :
-- `matiere`/`relecteur` sont **dérivés du référentiel réel** (`notions`, option obligatoire — `referentiel.json.notions` ou équivalent) via `notion_id`, puis écrasent les champs déclarés sur la candidate avant dépôt. `notion_id` absent de `notions` (ou notion mal formée) → **rejet**, jamais un routage par défaut. `notions` omis/vide → tout est rejeté (échoue fermé).
+**`deposerEnRelecture` ne fait confiance à rien de ce que déclare la candidate pour router ou publier** (révisé après une 1ʳᵉ critique Codex — la toute première version du dépôt prenait `matiere`/`relecteur`/`statut` tels que fournis — PUIS renforcé après une 2ᵉ critique ciblée sur ce moteur durci lui-même) :
+- `matiere`/`relecteur` sont **dérivés du référentiel réel** (`notions`, option obligatoire — `referentiel.json.notions` ou équivalent) via `notion_id`, puis écrasent les champs déclarés sur la candidate avant dépôt. `notion_id` absent de `notions` → **rejet**. Une entrée de `notions` elle-même **mal formée** (matiere/relecteur incohérents) ou **dupliquée** (même `id` répété) est retirée de l'index (2ᵉ critique, point #1) — jamais utilisée pour router "telle que déclarée", jamais "la dernière entrée gagne" sur un id en double. `notions` omis/vide → tout est rejeté (échoue fermé).
 - `statut` est **forcé à `"attente"`** sur chaque candidate déposée, quelle que soit la valeur entrante (`"validée"`/`"rejetée"` sont écrasées).
-- `set_id` doit cohérer avec `(notion_id, palier)` (motif `set_fonda_{slug}_{palier}_..`) et `(set_id, item_id)` doit être unique dans le lot déposé — sinon rejet.
-- Chaque candidate déposée est **gelée en profondeur** (candidate + `reponses_acceptees`, clonés avant gel) : muter après coup le tableau d'origine passé par l'appelant ne mute plus la candidate déposée.
+- `set_id` doit cohérer avec `(notion_id, palier)` (motif `set_fonda_{slug}_{palier}_..`) ; `(set_id, item_id)` doit être unique dans le lot ; et un même `set_id` ne peut pas être revendiqué par deux `notion_id` différents dans le même lot (2ᵉ critique, point #3 — la comparaison set_id↔notion ne porte que sur le slug, pas le préfixe `fr.`/`maths.` : cette garde couvre le cas où deux notions de matières différentes partageraient un slug) — sinon rejet.
+- Chaque candidate déposée est **clonée puis gelée EN PROFONDEUR, récursivement, à tout niveau d'imbrication** (pas seulement `reponses_acceptees` — 2ᵉ critique, point #2) : muter après coup N'IMPORTE QUEL champ (y compris imbriqué) de l'objet d'origine passé par l'appelant ne mute plus la candidate déposée. Un vrai `Object.freeze` (pas un `Object.seal`, qui laisserait réaffecter un élément de tableau existant — verrouillé par test, point #6).
+- Chaque candidate est lue via un **aller-retour JSON unique** avant toute validation (2ᵉ critique, point #4, risque théorique) : neutralise un getter/`toJSON` forgé qui répondrait des valeurs différentes selon le moment de la lecture — ce qui aurait pu faire diverger ce qui est validé de ce qui est déposé. Nécessite un objet JS avec du code, pas un `JSON.parse` ordinaire ; le script pilote ne construit que des objets simples.
 
 Une candidate invalide/rejetée n'est jamais incluse silencieusement dans `parRelecteur` : elle sort dans `invalides`, avec des raisons de diagnostic (jamais la valeur fautive).
+
+**Nuance assumée (2ᵉ critique, point #5)** : les champs `matiere`/`relecteur`/`statut` **déclarés** sur la candidate sont encore vérifiés en amont par `validerCandidate` (contrôle de forme/cohérence interne, utile isolément) — une candidate structurellement invalide est rejetée avant même d'atteindre le référentiel. Ce qu'ils ne font PLUS, depuis le durcissement : décider du **routage final** ou du **contenu déposé**, entièrement repris du référentiel après admission.
 
 **Écart constaté avec le mécanisme de relecture existant (BOX - Selection Prof)** : ce workflow route aujourd'hui vers l'email du prof **soumissionnaire** (`prof_email`), pas vers un relecteur nommé (Justine/Éric) — il n'a ni champ `statut`, ni `relecteur`. `deposerEnRelecture` produit une structure prête à être câblée dans ce mécanisme, mais ce câblage (nouveau workflow ou adaptation de l'email vers Justine/Éric selon `matiere`) **n'est pas fait** — hors scope T6 (zéro action n8n), tracé comme dette ouverte dans `AVANCEMENT.md`.
 

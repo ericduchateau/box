@@ -285,4 +285,73 @@ describe('deposerEnRelecture — routage par relecteur (G4/§12), IMPRENABLE (T6
     original.reponses_acceptees.push('valeur ajoutée après coup');
     assert.deepEqual(r.parRelecteur.eric[0].reponses_acceptees, ['15 cm²', '15']);
   });
+
+  // --- 2e critique Codex (T6a) : points #1, #2, #3, #6 --------------------------
+
+  test('(2e critique #1) une entrée de référentiel INCOHÉRENTE (matiere/relecteur qui ne correspondent pas) est rejetée, jamais routée "telle que déclarée"', () => {
+    const notionsIncoherentes = [{ id: 'maths.geometrie', matiere: 'maths', relecteur: 'justine' }]; // incohérent : maths -> eric attendu
+    const r = deposerEnRelecture([CANDIDATE_VALIDE], { notions: notionsIncoherentes });
+    assert.equal(r.total, 0);
+    assert.equal(r.invalides.length, 1);
+    assert.equal(r.parRelecteur.justine.length, 0);
+  });
+
+  test('(2e critique #1) un id DUPLIQUÉ dans `notions` empoisonne l\'entrée — rejet, jamais "la dernière entrée gagne"', () => {
+    const notionsDupliquees = [
+      { id: 'maths.geometrie', matiere: 'maths', relecteur: 'eric' },
+      { id: 'maths.geometrie', matiere: 'français', relecteur: 'justine' }, // 2e entrée, même id
+    ];
+    const r = deposerEnRelecture([CANDIDATE_VALIDE], { notions: notionsDupliquees });
+    assert.equal(r.total, 0);
+    assert.equal(r.invalides.length, 1);
+  });
+
+  test('(2e critique #2) gel PROFOND récursif : un champ imbriqué quelconque (pas seulement reponses_acceptees) est isolé de l\'original', () => {
+    const avecMeta = { ...CANDIDATE_VALIDE, meta: { review: { ok: false } } };
+    const r = deposerEnRelecture([avecMeta], { notions: NOTIONS_FIXTURE });
+    avecMeta.meta.review.ok = true; // mutation de l'ORIGINAL, après dépôt
+    assert.equal(r.parRelecteur.eric[0].meta.review.ok, false, 'la candidate déposée ne doit pas voir la mutation après coup');
+    assert.throws(() => { r.parRelecteur.eric[0].meta.review.ok = true; }, /read.only|frozen|Cannot assign/i);
+  });
+
+  test('(2e critique #6) le gel est un VRAI Object.freeze, pas un Object.seal : réaffecter un élément EXISTANT du tableau lève aussi', () => {
+    const r = deposerEnRelecture([CANDIDATE_VALIDE], { notions: NOTIONS_FIXTURE });
+    // Object.seal bloquerait .push() (ajout) mais PAS la réaffectation d'un index
+    // existant — un vrai Object.freeze bloque les deux. Reproduit par la 2e critique.
+    assert.throws(() => { r.parRelecteur.eric[0].reponses_acceptees[0] = 'remplacé'; }, /read.only|frozen|Cannot assign/i);
+  });
+
+  test('(2e critique #3) deux notion_id distincts ne peuvent pas revendiquer le même set_id dans un même lot — le 2e est rejeté', () => {
+    const notionsSlugsPartages = [
+      { id: 'maths.commun', matiere: 'maths', relecteur: 'eric' },
+      { id: 'fr.commun', matiere: 'français', relecteur: 'justine' },
+    ];
+    const carteMaths = { ...CANDIDATE_VALIDE, notion_id: 'maths.commun', set_id: 'set_fonda_commun_nI_01', item_id: 'it01' };
+    const carteFr = { ...CANDIDATE_VALIDE, notion_id: 'fr.commun', set_id: 'set_fonda_commun_nI_01', item_id: 'it02' };
+    const r = deposerEnRelecture([carteMaths, carteFr], { notions: notionsSlugsPartages });
+    assert.equal(r.total, 1, 'le 2e notion_id sur le même set_id doit être rejeté, pas déposé');
+    assert.equal(r.invalides.length, 1);
+    assert.equal(r.parRelecteur.eric.length, 1);
+    assert.equal(r.parRelecteur.justine.length, 0);
+  });
+
+  test('(2e critique #6) l\'unicité porte sur le COUPLE (set_id, item_id), pas sur set_id seul — deux cartes légitimes du même jeu sont toutes deux déposées', () => {
+    const carte1 = { ...CANDIDATE_VALIDE, item_id: 'it01' };
+    const carte2 = { ...CANDIDATE_VALIDE, item_id: 'it02' }; // même set_id, item_id différent : jeu légitime
+    const r = deposerEnRelecture([carte1, carte2], { notions: NOTIONS_FIXTURE });
+    assert.equal(r.total, 2, 'un dédoublonnage sur set_id seul rejetterait à tort la 2e carte');
+    assert.equal(r.invalides.length, 0);
+  });
+
+  test('(4e critique #4) un getter qui change de valeur entre deux lectures ne peut pas faire diverger validation et dépôt', () => {
+    let lectures = 0;
+    const forgee = { ...CANDIDATE_VALIDE };
+    Object.defineProperty(forgee, 'item_id', {
+      enumerable: true,
+      get() { lectures += 1; return lectures === 1 ? 'it01' : 'it99'; },
+    });
+    const r = deposerEnRelecture([forgee], { notions: NOTIONS_FIXTURE });
+    assert.equal(r.total, 1);
+    assert.equal(r.parRelecteur.eric[0].item_id, 'it01', 'la valeur déposée doit être celle vue par la validation, jamais une relecture ultérieure');
+  });
 });

@@ -105,57 +105,57 @@ const CONTENU_PAR_NOTION = {
 
   'maths.geometrie': {
     nI: [
-      { contexte: 'jardin-rectangulaire', question: 'Un jardin rectangulaire mesure 8 m sur 5 m. Quelle est son aire ?', reponse: '40 m²', reponses_acceptees: ['40 m²', '40'], profil_correction: 'numerique', difficulte: 'facile' },
-      { contexte: 'terrain-de-sport', question: 'Un terrain de basket mesure 15 m sur 8 m. Quel est son périmètre ?', reponse: '46 m', reponses_acceptees: ['46 m', '46'], profil_correction: 'numerique', difficulte: 'facile' },
-      { contexte: 'tapis-salon', question: 'Un tapis rectangulaire mesure 3 m de long et 2 m de large. Quelle est son aire ?', reponse: '6 m²', reponses_acceptees: ['6 m²', '6'], profil_correction: 'numerique', difficulte: 'facile' },
-      { contexte: 'triangle-voile-bateau', question: 'Une voile triangulaire a une base de 4 m et une hauteur de 3 m. Quelle est son aire ?', reponse: '6 m²', reponses_acceptees: ['6 m²', '6'], profil_correction: 'numerique', difficulte: 'moyen' },
-      { contexte: 'affiche-rectangulaire', question: 'Une affiche mesure 120 cm sur 80 cm. Quelle est son aire en m² ?', reponse: '0,96 m²', reponses_acceptees: ['0,96 m²', '0.96 m²', '0,96', '0.96'], profil_correction: 'numerique', difficulte: 'moyen' },
-      { contexte: 'terrain-foot-miniature', question: 'Un terrain de mini-foot mesure 20 m sur 10 m. Quelle est son aire ?', reponse: '200 m²', reponses_acceptees: ['200 m²', '200'], profil_correction: 'numerique', difficulte: 'moyen' },
+      { contexte: 'jardin-rectangulaire', question: 'Un jardin rectangulaire mesure 8 m sur 5 m. Quelle est son aire ?', reponse: '40 m²', reponses_acceptees: ['40 m²', '40'], profil_correction: 'numerique', difficulte: 'facile', _fixture_note: 'unite_manquante' },
+      { contexte: 'terrain-de-sport', question: 'Un terrain de basket mesure 15 m sur 8 m. Quel est son périmètre ?', reponse: '46 m', reponses_acceptees: ['46 m', '46'], profil_correction: 'numerique', difficulte: 'facile', _fixture_note: 'unite_manquante' },
+      { contexte: 'tapis-salon', question: 'Un tapis rectangulaire mesure 3 m de long et 2 m de large. Quelle est son aire ?', reponse: '6 m²', reponses_acceptees: ['6 m²', '6'], profil_correction: 'numerique', difficulte: 'facile', _fixture_note: 'unite_manquante' },
+      { contexte: 'triangle-voile-bateau', question: 'Une voile triangulaire a une base de 4 m et une hauteur de 3 m. Quelle est son aire ?', reponse: '6 m²', reponses_acceptees: ['6 m²', '6'], profil_correction: 'numerique', difficulte: 'moyen', _fixture_note: 'unite_manquante' },
+      { contexte: 'affiche-rectangulaire', question: 'Une affiche mesure 120 cm sur 80 cm. Quelle est son aire en m² ?', reponse: '0,96 m²', reponses_acceptees: ['0,96 m²', '0.96 m²', '0,96', '0.96'], profil_correction: 'numerique', difficulte: 'moyen', _fixture_note: 'unite_manquante' },
+      { contexte: 'terrain-foot-miniature', question: 'Un terrain de mini-foot mesure 20 m sur 10 m. Quelle est son aire ?', reponse: '200 m²', reponses_acceptees: ['200 m²', '200'], profil_correction: 'numerique', difficulte: 'moyen', _fixture_note: 'unite_manquante' },
     ],
     nF: [
-      { contexte: 'terrain-en-l-jardin', question: "Un terrain en forme de L se découpe en deux rectangles : 6 m × 4 m et 3 m × 2 m. Quelle est l'aire totale du terrain ?", reponse: '30 m²', reponses_acceptees: ['30 m²', '30'], profil_correction: 'numerique', difficulte: 'moyen' },
-      { contexte: 'cadre-photo-bordure', question: "Un cadre mesure 30 cm sur 20 cm à l'extérieur, avec une bordure de 2 cm tout autour. Quelle est l'aire de la photo visible, sans la bordure ?", reponse: '416 cm²', reponses_acceptees: ['416 cm²', '416'], profil_correction: 'numerique', difficulte: 'difficile' },
+      { contexte: 'terrain-en-l-jardin', question: "Un terrain en forme de L se découpe en deux rectangles : 6 m × 4 m et 3 m × 2 m. Quelle est l'aire totale du terrain ?", reponse: '30 m²', reponses_acceptees: ['30 m²', '30'], profil_correction: 'numerique', difficulte: 'moyen', _fixture_note: 'unite_manquante' },
+      { contexte: 'cadre-photo-bordure', question: "Un cadre mesure 30 cm sur 20 cm à l'extérieur, avec une bordure de 2 cm tout autour. Quelle est l'aire de la photo visible, sans la bordure ?", reponse: '416 cm²', reponses_acceptees: ['416 cm²', '416'], profil_correction: 'numerique', difficulte: 'difficile', _fixture_note: 'unite_manquante' },
       { contexte: 'expression-aire-rectangle-ab', question: "Un rectangle a pour longueur « a » et pour largeur « b ». Quelle est l'expression de son aire ?", reponse: 'a × b', reponses_acceptees: ['a × b', 'a×b', 'ab', 'a x b'], profil_correction: 'exact', difficulte: 'moyen' },
-      { contexte: 'parcelle-perimetre-connu', question: 'Une parcelle rectangulaire a un périmètre de 60 m et une longueur de 20 m. Quelle est sa largeur ?', reponse: '10 m', reponses_acceptees: ['10 m', '10'], profil_correction: 'numerique', difficulte: 'moyen' },
-      { contexte: 'triangle-rectangle-cathetes', question: 'Un triangle rectangle a deux côtés (cathètes) de 6 cm et 8 cm. Quelle est son aire ?', reponse: '24 cm²', reponses_acceptees: ['24 cm²', '24'], profil_correction: 'numerique', difficulte: 'difficile' },
-      { contexte: 'salle-carrelage-longueur-inconnue', question: 'Une salle rectangulaire a une aire de 24 m² et une largeur de 4 m. Quelle est sa longueur ?', reponse: '6 m', reponses_acceptees: ['6 m', '6'], profil_correction: 'numerique', difficulte: 'difficile' },
+      { contexte: 'parcelle-perimetre-connu', question: 'Une parcelle rectangulaire a un périmètre de 60 m et une longueur de 20 m. Quelle est sa largeur ?', reponse: '10 m', reponses_acceptees: ['10 m', '10'], profil_correction: 'numerique', difficulte: 'moyen', _fixture_note: 'unite_manquante' },
+      { contexte: 'triangle-rectangle-cathetes', question: 'Un triangle rectangle a deux côtés (cathètes) de 6 cm et 8 cm. Quelle est son aire ?', reponse: '24 cm²', reponses_acceptees: ['24 cm²', '24'], profil_correction: 'numerique', difficulte: 'difficile', _fixture_note: 'unite_manquante' },
+      { contexte: 'salle-carrelage-longueur-inconnue', question: 'Une salle rectangulaire a une aire de 24 m² et une largeur de 4 m. Quelle est sa longueur ?', reponse: '6 m', reponses_acceptees: ['6 m', '6'], profil_correction: 'numerique', difficulte: 'difficile', _fixture_note: 'unite_manquante' },
     ],
   },
 
   'maths.grandeurs-mesures': {
     nI: [
-      { contexte: 'cycliste-trajet', question: 'Un cycliste roule à 15 km/h pendant 2 heures. Quelle distance parcourt-il ?', reponse: '30 km', reponses_acceptees: ['30 km', '30'], profil_correction: 'numerique', difficulte: 'facile' },
-      { contexte: 'echarpe-conversion-longueur', question: 'Une écharpe mesure 150 cm. Combien cela fait-il en mètres ?', reponse: '1,5 m', reponses_acceptees: ['1,5 m', '1.5 m', '1,5', '1.5'], profil_correction: 'numerique', difficulte: 'facile' },
-      { contexte: 'bouteille-eau-volume', question: "Une bouteille contient 1,5 L d'eau. Combien cela fait-il en cL ?", reponse: '150 cL', reponses_acceptees: ['150 cL', '150'], profil_correction: 'numerique', difficulte: 'facile' },
-      { contexte: 'colis-poste-masse', question: 'Un colis pèse 2,3 kg. Combien cela fait-il en grammes ?', reponse: '2300 g', reponses_acceptees: ['2300 g', '2300'], profil_correction: 'numerique', difficulte: 'moyen' },
+      { contexte: 'cycliste-trajet', question: 'Un cycliste roule à 15 km/h pendant 2 heures. Quelle distance parcourt-il ?', reponse: '30 km', reponses_acceptees: ['30 km', '30'], profil_correction: 'numerique', difficulte: 'facile', _fixture_note: 'unite_manquante' },
+      { contexte: 'echarpe-conversion-longueur', question: 'Une écharpe mesure 150 cm. Combien cela fait-il en mètres ?', reponse: '1,5 m', reponses_acceptees: ['1,5 m', '1.5 m', '1,5', '1.5'], profil_correction: 'numerique', difficulte: 'facile', _fixture_note: 'unite_manquante' },
+      { contexte: 'bouteille-eau-volume', question: "Une bouteille contient 1,5 L d'eau. Combien cela fait-il en cL ?", reponse: '150 cL', reponses_acceptees: ['150 cL', '150'], profil_correction: 'numerique', difficulte: 'facile', _fixture_note: 'unite_manquante' },
+      { contexte: 'colis-poste-masse', question: 'Un colis pèse 2,3 kg. Combien cela fait-il en grammes ?', reponse: '2300 g', reponses_acceptees: ['2300 g', '2300'], profil_correction: 'numerique', difficulte: 'moyen', _fixture_note: 'unite_manquante' },
       { contexte: 'cuisson-gateau-duree', question: "Un gâteau cuit pendant 45 min, en commençant à 14h30. À quelle heure sort-il du four ?", reponse: '15h15', reponses_acceptees: ['15h15', '15 h 15'], profil_correction: 'exact', difficulte: 'moyen' },
-      { contexte: 'piscine-remplissage-debit', question: 'Un robinet remplit une piscine à 10 L par minute pendant 5 minutes. Quel volume est versé ?', reponse: '50 L', reponses_acceptees: ['50 L', '50'], profil_correction: 'numerique', difficulte: 'moyen' },
+      { contexte: 'piscine-remplissage-debit', question: 'Un robinet remplit une piscine à 10 L par minute pendant 5 minutes. Quel volume est versé ?', reponse: '50 L', reponses_acceptees: ['50 L', '50'], profil_correction: 'numerique', difficulte: 'moyen', _fixture_note: 'unite_manquante' },
     ],
     nF: [
-      { contexte: 'voiture-vitesse-moyenne', question: 'Une voiture parcourt 180 km en 3 heures. Quelle est sa vitesse moyenne ?', reponse: '60 km/h', reponses_acceptees: ['60 km/h', '60'], profil_correction: 'numerique', difficulte: 'moyen' },
-      { contexte: 'salon-largeur-inconnue', question: 'Un salon a une aire de 56 m² et une longueur de 8 m. Quelle est sa largeur ?', reponse: '7 m', reponses_acceptees: ['7 m', '7'], profil_correction: 'numerique', difficulte: 'moyen' },
-      { contexte: 'train-deux-etapes-vitesse', question: 'Un train roule à 80 km/h pendant 1h30, puis à 100 km/h pendant 1h. Quelle distance totale parcourt-il ?', reponse: '220 km', reponses_acceptees: ['220 km', '220'], profil_correction: 'numerique', difficulte: 'difficile' },
-      { contexte: 'reservoir-essence-consommation', question: 'Une voiture consomme 6 L aux 100 km. Combien consomme-t-elle pour un trajet de 250 km ?', reponse: '15 L', reponses_acceptees: ['15 L', '15'], profil_correction: 'numerique', difficulte: 'difficile' },
-      { contexte: 'terrain-conversion-hectare', question: 'Un terrain mesure 5000 m². Combien cela fait-il en hectares ?', reponse: '0,5 ha', reponses_acceptees: ['0,5 ha', '0.5 ha', '0,5', '0.5'], profil_correction: 'numerique', difficulte: 'difficile' },
-      { contexte: 'fontaine-debit-temps', question: 'Une fontaine coule à 4 L par minute. Combien de temps faut-il pour remplir un seau de 20 L ?', reponse: '5 min', reponses_acceptees: ['5 min', '5'], profil_correction: 'numerique', difficulte: 'moyen' },
+      { contexte: 'voiture-vitesse-moyenne', question: 'Une voiture parcourt 180 km en 3 heures. Quelle est sa vitesse moyenne ?', reponse: '60 km/h', reponses_acceptees: ['60 km/h', '60'], profil_correction: 'numerique', difficulte: 'moyen', _fixture_note: 'unite_manquante' },
+      { contexte: 'salon-largeur-inconnue', question: 'Un salon a une aire de 56 m² et une longueur de 8 m. Quelle est sa largeur ?', reponse: '7 m', reponses_acceptees: ['7 m', '7'], profil_correction: 'numerique', difficulte: 'moyen', _fixture_note: 'unite_manquante' },
+      { contexte: 'train-deux-etapes-vitesse', question: 'Un train roule à 80 km/h pendant 1h30, puis à 100 km/h pendant 1h. Quelle distance totale parcourt-il ?', reponse: '220 km', reponses_acceptees: ['220 km', '220'], profil_correction: 'numerique', difficulte: 'difficile', _fixture_note: 'unite_manquante' },
+      { contexte: 'reservoir-essence-consommation', question: 'Une voiture consomme 6 L aux 100 km. Combien consomme-t-elle pour un trajet de 250 km ?', reponse: '15 L', reponses_acceptees: ['15 L', '15'], profil_correction: 'numerique', difficulte: 'difficile', _fixture_note: 'unite_manquante' },
+      { contexte: 'terrain-conversion-hectare', question: 'Un terrain mesure 5000 m². Combien cela fait-il en hectares ?', reponse: '0,5 ha', reponses_acceptees: ['0,5 ha', '0.5 ha', '0,5', '0.5'], profil_correction: 'numerique', difficulte: 'difficile', _fixture_note: 'unite_manquante' },
+      { contexte: 'fontaine-debit-temps', question: 'Une fontaine coule à 4 L par minute. Combien de temps faut-il pour remplir un seau de 20 L ?', reponse: '5 min', reponses_acceptees: ['5 min', '5'], profil_correction: 'numerique', difficulte: 'moyen', _fixture_note: 'unite_manquante' },
     ],
   },
 
   'maths.resolution-problemes': {
     nI: [
-      { contexte: 'argent-poche-achats', question: 'Léo a 20€. Il achète un livre à 8€ et un cahier à 3€. Combien lui reste-t-il ?', reponse: '9 €', reponses_acceptees: ['9 €', '9'], profil_correction: 'numerique', difficulte: 'facile' },
+      { contexte: 'argent-poche-achats', question: 'Léo a 20€. Il achète un livre à 8€ et un cahier à 3€. Combien lui reste-t-il ?', reponse: '9 €', reponses_acceptees: ['9 €', '9'], profil_correction: 'numerique', difficulte: 'facile', _fixture_note: 'unite_manquante' },
       { contexte: 'partage-bonbons-amis', question: '36 bonbons sont partagés à parts égales entre 4 amis. Combien chacun reçoit-il ?', reponse: '9', reponses_acceptees: ['9'], profil_correction: 'numerique', difficulte: 'facile' },
-      { contexte: 'billets-cinema-groupe', question: 'Un billet de cinéma coûte 7€. Combien coûtent 5 billets ?', reponse: '35 €', reponses_acceptees: ['35 €', '35'], profil_correction: 'numerique', difficulte: 'facile' },
+      { contexte: 'billets-cinema-groupe', question: 'Un billet de cinéma coûte 7€. Combien coûtent 5 billets ?', reponse: '35 €', reponses_acceptees: ['35 €', '35'], profil_correction: 'numerique', difficulte: 'facile', _fixture_note: 'unite_manquante' },
       { contexte: 'jardin-plants-rangees', question: 'Un jardinier plante 48 plants en rangées égales de 6 plants. Combien de rangées fait-il ?', reponse: '8', reponses_acceptees: ['8'], profil_correction: 'numerique', difficulte: 'moyen' },
       { contexte: 'gouter-classe-paquets', question: 'Pour un goûter, on achète 3 paquets de 12 gâteaux. Combien de gâteaux au total ?', reponse: '36', reponses_acceptees: ['36'], profil_correction: 'numerique', difficulte: 'moyen' },
-      { contexte: 'location-velo-tarif', question: 'Louer un vélo coûte 5€ plus 2€ par heure. Combien coûte une location de 3 heures ?', reponse: '11 €', reponses_acceptees: ['11 €', '11'], profil_correction: 'numerique', difficulte: 'moyen' },
+      { contexte: 'location-velo-tarif', question: 'Louer un vélo coûte 5€ plus 2€ par heure. Combien coûte une location de 3 heures ?', reponse: '11 €', reponses_acceptees: ['11 €', '11'], profil_correction: 'numerique', difficulte: 'moyen', _fixture_note: 'unite_manquante' },
     ],
     nF: [
-      { contexte: 'solde-pull-boutique', question: 'Un pull coûte 40€. Il est soldé à -25%. Quel est son nouveau prix ?', reponse: '30 €', reponses_acceptees: ['30 €', '30'], profil_correction: 'numerique', difficulte: 'moyen' },
-      { contexte: 'sortie-classe-subvention', question: 'Une classe de 28 élèves organise une sortie à 12€ par élève, avec 50€ de subvention. Quel est le coût total restant à payer par les élèves ?', reponse: '286 €', reponses_acceptees: ['286 €', '286'], profil_correction: 'numerique', difficulte: 'difficile' },
+      { contexte: 'solde-pull-boutique', question: 'Un pull coûte 40€. Il est soldé à -25%. Quel est son nouveau prix ?', reponse: '30 €', reponses_acceptees: ['30 €', '30'], profil_correction: 'numerique', difficulte: 'moyen', _fixture_note: 'unite_manquante' },
+      { contexte: 'sortie-classe-subvention', question: 'Une classe de 28 élèves organise une sortie à 12€ par élève, avec 50€ de subvention. Quel est le coût total restant à payer par les élèves ?', reponse: '286 €', reponses_acceptees: ['286 €', '286'], profil_correction: 'numerique', difficulte: 'difficile', _fixture_note: 'unite_manquante' },
       { contexte: 'partage-cartes-proportionnel', question: 'Un lot de 90 cartes est partagé entre 3 personnes dans le rapport 1:2:3. Combien la personne avec la plus petite part reçoit-elle ?', reponse: '15', reponses_acceptees: ['15'], profil_correction: 'numerique', difficulte: 'difficile' },
-      { contexte: 'reservoir-vidage-debit', question: "Un réservoir de 120 L, plein, se vide à 4 L par minute. Combien de temps faut-il pour qu'il reste 40 L ?", reponse: '20 min', reponses_acceptees: ['20 min', '20'], profil_correction: 'numerique', difficulte: 'moyen' },
-      { contexte: 'voyage-comparaison-prix-personne', question: "Un voyage coûte 450€ pour 3 personnes, ou 560€ pour 4 personnes (même formule). Quel est le prix par personne le plus bas entre les deux options ?", reponse: '140 €', reponses_acceptees: ['140 €', '140'], profil_correction: 'numerique', difficulte: 'difficile' },
+      { contexte: 'reservoir-vidage-debit', question: "Un réservoir de 120 L, plein, se vide à 4 L par minute. Combien de temps faut-il pour qu'il reste 40 L ?", reponse: '20 min', reponses_acceptees: ['20 min', '20'], profil_correction: 'numerique', difficulte: 'moyen', _fixture_note: 'unite_manquante' },
+      { contexte: 'voyage-comparaison-prix-personne', question: "Un voyage coûte 450€ pour 3 personnes, ou 560€ pour 4 personnes (même formule). Quel est le prix par personne le plus bas entre les deux options ?", reponse: '140 €', reponses_acceptees: ['140 €', '140'], profil_correction: 'numerique', difficulte: 'difficile', _fixture_note: 'unite_manquante' },
       { contexte: 'reussite-controle-pourcentage', question: "Dans une classe de 25 élèves, 80% ont réussi un contrôle. Combien d'élèves ont réussi ?", reponse: '20', reponses_acceptees: ['20'], profil_correction: 'numerique', difficulte: 'moyen' },
     ],
   },
@@ -181,37 +181,41 @@ const CONTENU_PAR_NOTION = {
 
   'maths.proportionnalite': {
     nI: [
-      { contexte: 'recette-doses-ingredients', question: 'Une recette pour 4 personnes demande 200 g de farine. Quelle quantité faut-il pour 8 personnes ?', reponse: '400 g', reponses_acceptees: ['400 g', '400'], profil_correction: 'numerique', difficulte: 'facile' },
-      { contexte: 'prix-kilo-fruits', question: "2 kg de pommes coûtent 6€. Quel est le prix d'1 kg ?", reponse: '3 €', reponses_acceptees: ['3 €', '3'], profil_correction: 'numerique', difficulte: 'facile' },
-      { contexte: 'vitesse-constante-trajet-voiture', question: 'Une voiture roule à vitesse constante : 50 km en 1h. Quelle distance parcourt-elle en 3h ?', reponse: '150 km', reponses_acceptees: ['150 km', '150'], profil_correction: 'numerique', difficulte: 'facile' },
+      { contexte: 'recette-doses-ingredients', question: 'Une recette pour 4 personnes demande 200 g de farine. Quelle quantité faut-il pour 8 personnes ?', reponse: '400 g', reponses_acceptees: ['400 g', '400'], profil_correction: 'numerique', difficulte: 'facile', _fixture_note: 'unite_manquante' },
+      { contexte: 'prix-kilo-fruits', question: "2 kg de pommes coûtent 6€. Quel est le prix d'1 kg ?", reponse: '3 €', reponses_acceptees: ['3 €', '3'], profil_correction: 'numerique', difficulte: 'facile', _fixture_note: 'unite_manquante' },
+      { contexte: 'vitesse-constante-trajet-voiture', question: 'Une voiture roule à vitesse constante : 50 km en 1h. Quelle distance parcourt-elle en 3h ?', reponse: '150 km', reponses_acceptees: ['150 km', '150'], profil_correction: 'numerique', difficulte: 'facile', _fixture_note: 'unite_manquante' },
       { contexte: 'photocopies-feuilles', question: '10 photocopies utilisent 10 feuilles. Combien de feuilles pour 35 photocopies ?', reponse: '35', reponses_acceptees: ['35'], profil_correction: 'numerique', difficulte: 'moyen' },
-      { contexte: 'essence-prix-litres', question: '5 L d\'essence coûtent 9€. Combien coûtent 10 L ?', reponse: '18 €', reponses_acceptees: ['18 €', '18'], profil_correction: 'numerique', difficulte: 'moyen' },
+      { contexte: 'essence-prix-litres', question: '5 L d\'essence coûtent 9€. Combien coûtent 10 L ?', reponse: '18 €', reponses_acceptees: ['18 €', '18'], profil_correction: 'numerique', difficulte: 'moyen', _fixture_note: 'unite_manquante' },
       { contexte: 'tableau-proportionnalite-complement', question: 'Dans un tableau de proportionnalité, 3 correspond à 12. Quel nombre correspond à 5 ?', reponse: '20', reponses_acceptees: ['20'], profil_correction: 'numerique', difficulte: 'moyen' },
     ],
     nF: [
-      { contexte: 'solde-pourcentage-article', question: 'Un article à 80€ est soldé à -30%. Quel est son nouveau prix ?', reponse: '56 €', reponses_acceptees: ['56 €', '56'], profil_correction: 'numerique', difficulte: 'moyen' },
+      { contexte: 'solde-pourcentage-article', question: 'Un article à 80€ est soldé à -30%. Quel est son nouveau prix ?', reponse: '56 €', reponses_acceptees: ['56 €', '56'], profil_correction: 'numerique', difficulte: 'moyen', _fixture_note: 'unite_manquante' },
       { contexte: 'dilution-sirop-eau', question: "On mélange 1 volume de sirop pour 4 volumes d'eau. Combien de volumes d'eau pour 3 volumes de sirop ?", reponse: '12', reponses_acceptees: ['12'], profil_correction: 'numerique', difficulte: 'moyen' },
-      { contexte: 'echelle-plan-maison', question: "Sur un plan à l'échelle 1/100, un mur mesure 4 cm. Quelle est sa longueur réelle en mètres ?", reponse: '4 m', reponses_acceptees: ['4 m', '4'], profil_correction: 'numerique', difficulte: 'difficile' },
-      { contexte: 'safran-masse-fleurs', question: '80 g de fleurs donnent 1 g de safran. Quelle masse de safran obtient-on avec 1 kg de fleurs ?', reponse: '12,5 g', reponses_acceptees: ['12,5 g', '12.5 g', '12,5', '12.5'], profil_correction: 'numerique', difficulte: 'difficile' },
+      { contexte: 'echelle-plan-maison', question: "Sur un plan à l'échelle 1/100, un mur mesure 4 cm. Quelle est sa longueur réelle en mètres ?", reponse: '4 m', reponses_acceptees: ['4 m', '4'], profil_correction: 'numerique', difficulte: 'difficile', _fixture_note: 'unite_manquante' },
+      { contexte: 'safran-masse-fleurs', question: '80 g de fleurs donnent 1 g de safran. Quelle masse de safran obtient-on avec 1 kg de fleurs ?', reponse: '12,5 g', reponses_acceptees: ['12,5 g', '12.5 g', '12,5', '12.5'], profil_correction: 'numerique', difficulte: 'difficile', _fixture_note: 'unite_manquante' },
       { contexte: 'tableau-proportionnalite-coefficient', question: 'Dans un tableau de proportionnalité, 7 correspond à 21. Quel nombre correspond à 1 ?', reponse: '3', reponses_acceptees: ['3'], profil_correction: 'numerique', difficulte: 'moyen' },
-      { contexte: 'abonnement-augmentation-pourcentage', question: "Un abonnement de 25€ augmente de 20%. Quel est son nouveau prix ?", reponse: '30 €', reponses_acceptees: ['30 €', '30'], profil_correction: 'numerique', difficulte: 'difficile' },
+      { contexte: 'abonnement-augmentation-pourcentage', question: "Un abonnement de 25€ augmente de 20%. Quel est son nouveau prix ?", reponse: '30 €', reponses_acceptees: ['30 €', '30'], profil_correction: 'numerique', difficulte: 'difficile', _fixture_note: 'unite_manquante' },
     ],
   },
 
   'maths.nombres-fractions-relatifs': {
     nI: [
-      { contexte: 'temperature-ville-hiver', question: "La température est de -3°C le matin et augmente de 7°C l'après-midi. Quelle température fait-il l'après-midi ?", reponse: '4°C', reponses_acceptees: ['4°C', '4'], profil_correction: 'numerique', difficulte: 'facile' },
-      { contexte: 'compte-bancaire-debit', question: 'Un compte affiche -15€. On y ajoute 20€. Quel est le nouveau solde ?', reponse: '5 €', reponses_acceptees: ['5 €', '5'], profil_correction: 'numerique', difficulte: 'facile' },
+      { contexte: 'temperature-ville-hiver', question: "La température est de -3°C le matin et augmente de 7°C l'après-midi. Quelle température fait-il l'après-midi ?", reponse: '4°C', reponses_acceptees: ['4°C', '4'], profil_correction: 'numerique', difficulte: 'facile', _fixture_note: 'unite_manquante' },
+      { contexte: 'compte-bancaire-debit', question: 'Un compte affiche -15€. On y ajoute 20€. Quel est le nouveau solde ?', reponse: '5 €', reponses_acceptees: ['5 €', '5'], profil_correction: 'numerique', difficulte: 'facile', _fixture_note: 'unite_manquante' },
       { contexte: 'fraction-partage-pizza', question: 'Une pizza est coupée en 8 parts. Combien de parts représentent 3/4 de la pizza ?', reponse: '6', reponses_acceptees: ['6'], profil_correction: 'numerique', difficulte: 'facile' },
-      { contexte: 'sous-marin-profondeur', question: 'Un sous-marin est à -120 m. Il remonte de 50 m. À quelle profondeur est-il maintenant ?', reponse: '-70 m', reponses_acceptees: ['-70 m', '-70'], profil_correction: 'numerique', difficulte: 'moyen' },
+      { contexte: 'sous-marin-profondeur', question: 'Un sous-marin est à -120 m. Il remonte de 50 m. À quelle profondeur est-il maintenant ?', reponse: '-70 m', reponses_acceptees: ['-70 m', '-70'], profil_correction: 'numerique', difficulte: 'moyen', _fixture_note: 'unite_manquante' },
       { contexte: 'fraction-simplification-gateau', question: 'Sur un gâteau, 6/8 ont été mangés. Quelle fraction simplifiée cela représente-t-il ?', reponse: '3/4', reponses_acceptees: ['3/4'], profil_correction: 'numerique', difficulte: 'moyen' },
       { contexte: 'score-jeu-relatif', question: 'Au premier tour, un joueur a -5 points. Au second tour, il gagne 12 points. Quel est son score total ?', reponse: '7', reponses_acceptees: ['7'], profil_correction: 'numerique', difficulte: 'moyen' },
     ],
     nF: [
       { contexte: 'calcul-soustraction-relatifs', question: 'Calcule : 7 − (−5).', reponse: '12', reponses_acceptees: ['12'], profil_correction: 'numerique', difficulte: 'moyen' },
-      { contexte: 'encadrement-decimal-mesure', question: 'Entre quels deux entiers consécutifs se trouve 56/10 ?', reponse: '5 et 6', reponses_acceptees: ['5 et 6', 'entre 5 et 6'], profil_correction: 'numerique', difficulte: 'moyen' },
+      // 'encadrement-decimal-mesure' (« Entre quels deux entiers... » -> "5 et 6") RETIRÉE (T6a,
+      // point (b) validé par Éric) : deux valeurs attendues, incompatible avec le profil
+      // `numerique` (qui compare UNE valeur). Carte retirée, pas "réparée" — PRD §5.1 n'a pas
+      // d'équivalent "plage" pour ce profil ; un futur besoin d'encadrement irait en profil
+      // `exact`/QCM, à décider en relecture, pas ici.
       { contexte: 'fraction-equivalente-reconnaissance', question: '3/4 est-elle égale à 9/12 ?', reponse: 'oui', reponses_acceptees: ['oui', 'oui, elles sont égales'], profil_correction: 'sens', difficulte: 'moyen' },
-      { contexte: 'plongeur-altitude-deux-etapes', question: 'Un plongeur descend à -18 m, puis remonte de 25 m. À quelle hauteur est-il par rapport à la surface ?', reponse: '7 m', reponses_acceptees: ['7 m', '7'], profil_correction: 'numerique', difficulte: 'difficile' },
+      { contexte: 'plongeur-altitude-deux-etapes', question: 'Un plongeur descend à -18 m, puis remonte de 25 m. À quelle hauteur est-il par rapport à la surface ?', reponse: '7 m', reponses_acceptees: ['7 m', '7'], profil_correction: 'numerique', difficulte: 'difficile', _fixture_note: 'unite_manquante' },
       { contexte: 'fraction-addition-denominateur-commun', question: 'Calcule : 1/4 + 1/2.', reponse: '3/4', reponses_acceptees: ['3/4'], profil_correction: 'numerique', difficulte: 'difficile' },
       { contexte: 'calcul-produit-relatifs', question: 'Calcule : (−4) × (−3).', reponse: '12', reponses_acceptees: ['12'], profil_correction: 'numerique', difficulte: 'difficile' },
     ],
@@ -353,6 +357,11 @@ function construireLotPilote() {
           source: SOURCE_PILOTE,
           ts: TS_GENERATION,
           contexte: brute.contexte,
+          // Transmis tel quel, champ par champ comme le reste (jamais de spread de
+          // `brute`) — cas connu de non-correspondance avec correction.js (T6a point
+          // (c), validé par Éric : ne pas corriger ces cartes, les marquer). Absent
+          // (undefined) pour toute carte qui n'en a pas — disparaît à la sérialisation.
+          _fixture_note: brute._fixture_note,
         };
       });
 
