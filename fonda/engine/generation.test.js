@@ -306,6 +306,33 @@ describe('deposerEnRelecture — routage par relecteur (G4/§12), IMPRENABLE (T6
     assert.equal(r.invalides.length, 1);
   });
 
+  test('(3e critique Codex) un id présent TROIS fois (pas seulement deux) dans `notions` reste empoisonné — pas de "ré-admission" sur la 3e occurrence', () => {
+    const notionsTriplees = [
+      { id: 'maths.geometrie', matiere: 'maths', relecteur: 'eric' },
+      { id: 'maths.geometrie', matiere: 'français', relecteur: 'justine' },
+      { id: 'maths.geometrie', matiere: 'maths', relecteur: 'eric' }, // 3e occurrence, redevient "cohérente"
+    ];
+    const r = deposerEnRelecture([CANDIDATE_VALIDE], { notions: notionsTriplees });
+    assert.equal(r.total, 0, 'une 3e occurrence ne doit pas "réparer" un id déjà empoisonné par le doublon');
+  });
+
+  test('(3e critique Codex, point #4) un getter sur une entrée du RÉFÉRENTIEL (pas la candidate) qui change de valeur entre deux lectures ne doit pas faire diverger vérification et routage', () => {
+    let lectures = 0;
+    const notionForgee = {
+      id: 'maths.geometrie',
+      matiere: 'maths',
+      // 1re lecture (vérification de cohérence) -> "eric" (cohérent) ; 2e lecture
+      // (stockage dans l'index) -> "justine" (incohérent) : sans protection, la
+      // candidate serait routée chez Justine avec matiere "maths" sans jamais
+      // avoir passé la vérification de cohérence sur CETTE valeur.
+      get relecteur() { lectures += 1; return lectures === 1 ? 'eric' : 'justine'; },
+    };
+    const r = deposerEnRelecture([CANDIDATE_VALIDE], { notions: [notionForgee] });
+    assert.equal(r.total, 1);
+    assert.equal(r.parRelecteur.eric.length, 1, 'doit router sur la valeur VÉRIFIÉE (eric), jamais une relecture ultérieure (justine)');
+    assert.equal(r.parRelecteur.justine.length, 0);
+  });
+
   test('(2e critique #2) gel PROFOND récursif : un champ imbriqué quelconque (pas seulement reponses_acceptees) est isolé de l\'original', () => {
     const avecMeta = { ...CANDIDATE_VALIDE, meta: { review: { ok: false } } };
     const r = deposerEnRelecture([avecMeta], { notions: NOTIONS_FIXTURE });
@@ -319,6 +346,29 @@ describe('deposerEnRelecture — routage par relecteur (G4/§12), IMPRENABLE (T6
     // Object.seal bloquerait .push() (ajout) mais PAS la réaffectation d'un index
     // existant — un vrai Object.freeze bloque les deux. Reproduit par la 2e critique.
     assert.throws(() => { r.parRelecteur.eric[0].reponses_acceptees[0] = 'remplacé'; }, /read.only|frozen|Cannot assign/i);
+  });
+
+  test('(3e critique Codex) le gel récursif porte aussi sur un TABLEAU D\'OBJETS imbriqué, pas seulement un objet ou un tableau de chaînes', () => {
+    const avecTableauObjets = { ...CANDIDATE_VALIDE, meta: [{ ok: false }, { ok: true }] };
+    const r = deposerEnRelecture([avecTableauObjets], { notions: NOTIONS_FIXTURE });
+    const depose = r.parRelecteur.eric[0];
+    assert.equal(Object.isFrozen(depose.meta[0]), true, 'chaque objet du tableau doit lui-même être gelé, pas seulement le tableau conteneur');
+    assert.throws(() => { depose.meta[0].ok = true; }, /read.only|frozen|Cannot assign/i);
+    // Et l'original reste indépendant : muter l'objet source après dépôt ne doit rien changer au dépôt.
+    avecTableauObjets.meta[0].ok = true;
+    assert.equal(depose.meta[0].ok, false);
+  });
+
+  test('(3e critique Codex) une candidate avec `toJSON()` forgé ne peut pas faire dire "attente" en mémoire et autre chose à la sérialisation', () => {
+    const avecToJSONForge = {
+      ...CANDIDATE_VALIDE,
+      toJSON() { return { ...CANDIDATE_VALIDE, statut: 'validée' }; }, // tenterait de "republier" au JSON.stringify
+    };
+    const r = deposerEnRelecture([avecToJSONForge], { notions: NOTIONS_FIXTURE });
+    const depose = r.parRelecteur.eric[0];
+    assert.equal(depose.statut, 'attente');
+    // La candidate déposée ne doit elle-même porter aucun toJSON hérité de l'entrée forgée.
+    assert.equal(JSON.parse(JSON.stringify(depose)).statut, 'attente', 'la sérialisation de la candidate DÉPOSÉE doit rester "attente", jamais republier une valeur forgée');
   });
 
   test('(2e critique #3) deux notion_id distincts ne peuvent pas revendiquer le même set_id dans un même lot — le 2e est rejeté', () => {

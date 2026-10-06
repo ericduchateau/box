@@ -251,7 +251,7 @@ Relevées par les 2ᵉ et 3ᵉ critiques Codex, volontairement laissées telles 
 
 # `generation.js` — chaîne de génération assistée + dépôt en file de relecture (T6)
 
-Référence : [`docs/PRD-Box-FONDA.md`](../../docs/PRD-Box-FONDA.md) §3.6, §5.1, §9, §11, §12 ; `AGENTS.md` G3/G4/G5. Logique pure (zéro DOM, zéro fetch, zéro appel réseau/n8n) : ids système, schéma candidate, anti-clone, routage par relecteur. `node --test fonda/engine/generation.test.js` (**41 tests** — 27 d'origine + 7 après la 1ʳᵉ critique Codex (T6a) + 7 après une 2ᵉ critique Codex ciblée uniquement sur le moteur durci, voir ci-dessous).
+Référence : [`docs/PRD-Box-FONDA.md`](../../docs/PRD-Box-FONDA.md) §3.6, §5.1, §9, §11, §12 ; `AGENTS.md` G3/G4/G5. Logique pure (zéro DOM, zéro fetch, zéro appel réseau/n8n) : ids système, schéma candidate, anti-clone, routage par relecteur. `node --test fonda/engine/generation.test.js` (**45 tests** — 27 d'origine + 7 (1ʳᵉ critique Codex) + 7 (2ᵉ critique, moteur durci) + 4 (3ᵉ critique, confirmation — a aussi trouvé et fait corriger 2 défauts réels, voir ci-dessous).
 
 **Ce module ne génère aucun texte de carte.** Le contenu pédagogique du lot pilote T6 est rédigé à la main (`fonda/scripts/generer-pilote-t6.js`) — voir ce fichier et `AVANCEMENT.md` pour ce qui est fait vs ce qui reste une dette.
 
@@ -291,6 +291,11 @@ Ferme la dette ouverte par T3/T4 (voir `evenements.js` ci-dessus, « garantie d'
 Une candidate invalide/rejetée n'est jamais incluse silencieusement dans `parRelecteur` : elle sort dans `invalides`, avec des raisons de diagnostic (jamais la valeur fautive).
 
 **Nuance assumée (2ᵉ critique, point #5)** : les champs `matiere`/`relecteur`/`statut` **déclarés** sur la candidate sont encore vérifiés en amont par `validerCandidate` (contrôle de forme/cohérence interne, utile isolément) — une candidate structurellement invalide est rejetée avant même d'atteindre le référentiel. Ce qu'ils ne font PLUS, depuis le durcissement : décider du **routage final** ou du **contenu déposé**, entièrement repris du référentiel après admission.
+
+**3ᵉ critique Codex (confirmation, a trouvé 2 défauts réels en plus, corrigés)** :
+- `clonerProfond` utilisait `clone[k] = …` (affectation par crochets) : une clé **littéralement nommée `"__proto__"`** dans l'objet source (du JSON ordinaire, `JSON.parse('{"__proto__":{...}}')`, aucun getter requis) basculait sur le setter exotique `Object.prototype.__proto__` au lieu de créer une propriété propre — le contenu imbriqué devenait un PROTOTYPE, invisible à `Object.keys`, donc jamais gelé. Corrigé par `Object.defineProperty` (crée toujours une propriété littérale, quel que soit le nom).
+- `construireIndexNotions` relisait `matiere`/`relecteur` d'une entrée de `notions` **deux fois** (vérification de cohérence, puis stockage) — un getter changeant de valeur entre les deux lectures pouvait router sur une paire jamais vérifiée. Corrigé par le même traitement que pour une candidate (aller-retour JSON, une lecture figée).
+- **Limite confirmée et acceptée, pas un bug** : la garde set_id↔notion_id et le dédoublonnage `(set_id, item_id)` sont scopés à **un seul appel** de `deposerEnRelecture` — une collision entre deux appels successifs reste possible (le référentiel réel a 12 slugs distincts, ce scénario ne s'y produit pas aujourd'hui). Le contrat est explicitement "dans ce lot", pas global.
 
 **Écart constaté avec le mécanisme de relecture existant (BOX - Selection Prof)** : ce workflow route aujourd'hui vers l'email du prof **soumissionnaire** (`prof_email`), pas vers un relecteur nommé (Justine/Éric) — il n'a ni champ `statut`, ni `relecteur`. `deposerEnRelecture` produit une structure prête à être câblée dans ce mécanisme, mais ce câblage (nouveau workflow ou adaptation de l'email vers Justine/Éric selon `matiere`) **n'est pas fait** — hors scope T6 (zéro action n8n), tracé comme dette ouverte dans `AVANCEMENT.md`.
 

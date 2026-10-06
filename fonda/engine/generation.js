@@ -126,10 +126,21 @@ function extraireSlugNotion(notionId) {
 //     RELECTEUR_ATTENDU que pour une candidate) — une entrée de référentiel mal
 //     formée (`matiere:"maths"` + `relecteur:"justine"`) est elle aussi retirée de
 //     l'index, jamais utilisée pour router "tel que déclaré".
+// 3e critique Codex (T6a) : `n.matiere`/`n.relecteur` étaient relus deux fois
+// (vérification de cohérence, puis stockage dans l'index) — un getter qui change
+// de valeur entre les deux lectures pouvait router sur une paire JAMAIS vérifiée.
+// Même traitement que pour une candidate (aller-retour JSON, UNE lecture figée)
+// avant toute utilisation du champ, ici aussi.
 function construireIndexNotions(notions) {
   const index = new Map();
   const vus = new Set();
-  (isArray(notions) ? notions : []).forEach((n) => {
+  (isArray(notions) ? notions : []).forEach((brut) => {
+    let n;
+    try {
+      n = JSON.parse(JSON.stringify(brut));
+    } catch {
+      return; // non sérialisable -> ni ajouté, ni empoisonné : simplement ignoré.
+    }
     if (!n || !isNonEmptyString(n.id)) return;
     if (vus.has(n.id)) {
       index.delete(n.id); // id dupliqué -> empoisonné, jamais "la dernière entrée gagne"
@@ -169,11 +180,22 @@ function setIdCoherentAvecNotion(setId, notionId, palier) {
 // T6a : un champ imbriqué quelconque, ex. `meta.review.ok`, échappait au clonage
 // spécial précédent). S'arrête aux primitifs (chaîne, nombre, booléen, null) —
 // immuables par nature, rien à cloner/geler.
+//
+// `Object.defineProperty` plutôt que `clone[k] = …` (3e critique Codex, point #1) :
+// une clé littéralement nommée "__proto__" dans l'objet SOURCE (ex. produite par
+// `JSON.parse('{"__proto__":{...}}')`, aucun code/getter requis) ferait, avec une
+// AFFECTATION PAR CROCHETS, basculer sur le setter exotique `Object.prototype.
+// __proto__` au lieu de créer une propriété propre — le clone se retrouverait avec
+// un PROTOTYPE (invisible à `Object.keys`, donc jamais gelé par `gelProfond`) au
+// lieu d'une propriété "__proto__" ordinaire. `defineProperty` crée toujours une
+// propriété propre littérale, quel que soit son nom.
 function clonerProfond(valeur) {
   if (isArray(valeur)) return valeur.map(clonerProfond);
   if (valeur && typeof valeur === 'object') {
     const clone = {};
-    Object.keys(valeur).forEach((k) => { clone[k] = clonerProfond(valeur[k]); });
+    Object.keys(valeur).forEach((k) => {
+      Object.defineProperty(clone, k, { value: clonerProfond(valeur[k]), writable: true, enumerable: true, configurable: true });
+    });
     return clone;
   }
   return valeur;
