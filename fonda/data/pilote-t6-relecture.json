@@ -1,5 +1,6 @@
 {
   "version": "T6-pilote-1",
+  "nature": "FIXTURE TECHNIQUE — exerce la chaîne de génération (ids système, schéma candidate, anti-clone, routage par relecteur). PAS un échantillon validé de qualité pédagogique : rejoué contre fonda/engine/correction.js, 42/144 réponses de référence échouent (incompatibilités de profil de correction — unités, encadrement) ; des défauts éditoriaux (variété, biais de réponse) ont aussi été relevés par critique Codex. Voir AVANCEMENT.md section T6a.",
   "ts_generation": "2026-10-06T09:00:00.000Z",
   "notions_couvertes": 12,
   "total_jeux": 24,

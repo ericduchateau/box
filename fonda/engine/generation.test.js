@@ -179,10 +179,24 @@ describe('validerJeu — anti-clone : condition NÉCESSAIRE mais PAS SUFFISANTE 
   });
 });
 
-describe('deposerEnRelecture — routage par relecteur (G4/§12), jamais de publication, jamais d\'exception', () => {
-  test('partitionne les candidates valides par relecteur', () => {
-    const justineCard = { ...CANDIDATE_VALIDE, notion_id: 'fr.lexique', matiere: 'français', relecteur: 'justine', item_id: 'it02' };
-    const r = deposerEnRelecture([CANDIDATE_VALIDE, justineCard]);
+// Fixture référentiel RÉEL (sous-ensemble) — seule source de vérité pour matiere/
+// relecteur au dépôt (T6a). Ne PAS lire matiere/relecteur depuis la candidate.
+const NOTIONS_FIXTURE = Object.freeze([
+  Object.freeze({ id: 'maths.geometrie', matiere: 'maths', relecteur: 'eric' }),
+  Object.freeze({ id: 'fr.lexique', matiere: 'français', relecteur: 'justine' }),
+]);
+
+describe('deposerEnRelecture — routage par relecteur (G4/§12), IMPRENABLE (T6a), jamais d\'exception', () => {
+  test('partitionne les candidates valides par relecteur (dérivé du référentiel)', () => {
+    const justineCard = {
+      ...CANDIDATE_VALIDE,
+      set_id: 'set_fonda_lexique_nI_01',
+      notion_id: 'fr.lexique',
+      matiere: 'français',
+      relecteur: 'justine',
+      item_id: 'it02',
+    };
+    const r = deposerEnRelecture([CANDIDATE_VALIDE, justineCard], { notions: NOTIONS_FIXTURE });
     assert.equal(r.total, 2);
     assert.equal(r.parRelecteur.eric.length, 1);
     assert.equal(r.parRelecteur.justine.length, 1);
@@ -191,20 +205,84 @@ describe('deposerEnRelecture — routage par relecteur (G4/§12), jamais de publ
 
   test('une candidate invalide est écartée dans invalides, jamais incluse silencieusement', () => {
     const invalide = { ...CANDIDATE_VALIDE, set_id: 'texte-libre' };
-    const r = deposerEnRelecture([CANDIDATE_VALIDE, invalide]);
+    const r = deposerEnRelecture([CANDIDATE_VALIDE, invalide], { notions: NOTIONS_FIXTURE });
     assert.equal(r.total, 1);
     assert.equal(r.invalides.length, 1);
     assert.equal(r.invalides[0].index, 1);
   });
 
   test('entrée non-tableau ou vide -> jamais d\'exception, résultat vide', () => {
-    assert.deepEqual(deposerEnRelecture(null).parRelecteur, { justine: [], eric: [] });
-    assert.equal(deposerEnRelecture(undefined).total, 0);
-    assert.equal(deposerEnRelecture([]).total, 0);
+    assert.deepEqual(deposerEnRelecture(null, { notions: NOTIONS_FIXTURE }).parRelecteur, { justine: [], eric: [] });
+    assert.equal(deposerEnRelecture(undefined, { notions: NOTIONS_FIXTURE }).total, 0);
+    assert.equal(deposerEnRelecture([], { notions: NOTIONS_FIXTURE }).total, 0);
   });
 
-  test('les candidates déposées sont gelées (jamais mutables après dépôt)', () => {
-    const r = deposerEnRelecture([CANDIDATE_VALIDE]);
+  test('`notions` absent/vide -> tout est rejeté (échoue fermé, jamais de routage par défaut)', () => {
+    const r1 = deposerEnRelecture([CANDIDATE_VALIDE]);
+    assert.equal(r1.total, 0);
+    assert.equal(r1.invalides.length, 1);
+    const r2 = deposerEnRelecture([CANDIDATE_VALIDE], { notions: [] });
+    assert.equal(r2.total, 0);
+  });
+
+  test('G4 — statut entrant "validée" (ou "rejetée") est FORCÉ à "attente" au dépôt', () => {
+    const preValidee = { ...CANDIDATE_VALIDE, statut: 'validée' };
+    const r = deposerEnRelecture([preValidee], { notions: NOTIONS_FIXTURE });
+    assert.equal(r.total, 1);
+    assert.equal(r.parRelecteur.eric[0].statut, 'attente');
+
+    const preRejetee = { ...CANDIDATE_VALIDE, statut: 'rejetée' };
+    const r2 = deposerEnRelecture([preRejetee], { notions: NOTIONS_FIXTURE });
+    assert.equal(r2.parRelecteur.eric[0].statut, 'attente');
+  });
+
+  test('G4 — matiere/relecteur sont DÉRIVÉS du référentiel via notion_id, jamais lus depuis la candidate', () => {
+    // Candidate interne cohérente (français/justine) mais FORGÉE sur une notion maths.
+    const forgee = { ...CANDIDATE_VALIDE, matiere: 'français', relecteur: 'justine' };
+    const r = deposerEnRelecture([forgee], { notions: NOTIONS_FIXTURE });
+    assert.equal(r.total, 1);
+    // Routée chez Éric (référentiel), PAS Justine (déclaration de la candidate ignorée).
+    assert.equal(r.parRelecteur.eric.length, 1);
+    assert.equal(r.parRelecteur.justine.length, 0);
+    assert.equal(r.parRelecteur.eric[0].matiere, 'maths');
+    assert.equal(r.parRelecteur.eric[0].relecteur, 'eric');
+  });
+
+  test('G4 — notion_id absent du référentiel fourni -> rejet (jamais de routage par défaut)', () => {
+    const inconnue = { ...CANDIDATE_VALIDE, notion_id: 'maths.inexistante', set_id: 'set_fonda_inexistante_nI_01' };
+    const r = deposerEnRelecture([inconnue], { notions: NOTIONS_FIXTURE });
+    assert.equal(r.total, 0);
+    assert.equal(r.invalides.length, 1);
+  });
+
+  test('set_id incohérent avec notion_id/palier -> rejet', () => {
+    const paliersIncoherents = { ...CANDIDATE_VALIDE, set_id: 'set_fonda_geometrie_nF_01' }; // palier déclaré nI
+    const r1 = deposerEnRelecture([paliersIncoherents], { notions: NOTIONS_FIXTURE });
+    assert.equal(r1.total, 0);
+
+    const autreNotion = { ...CANDIDATE_VALIDE, set_id: 'set_fonda_lexique_nI_01' }; // notion déclarée maths.geometrie
+    const r2 = deposerEnRelecture([autreNotion], { notions: NOTIONS_FIXTURE });
+    assert.equal(r2.total, 0);
+  });
+
+  test('unicité (set_id, item_id) dans le lot déposé — le doublon (pas le premier) est rejeté', () => {
+    const doublon = { ...CANDIDATE_VALIDE }; // même set_id/item_id que CANDIDATE_VALIDE
+    const r = deposerEnRelecture([CANDIDATE_VALIDE, doublon], { notions: NOTIONS_FIXTURE });
+    assert.equal(r.total, 1);
+    assert.equal(r.invalides.length, 1);
+    assert.equal(r.invalides[0].index, 1);
+  });
+
+  test('les candidates déposées sont gelées en PROFONDEUR (candidate + reponses_acceptees)', () => {
+    const r = deposerEnRelecture([CANDIDATE_VALIDE], { notions: NOTIONS_FIXTURE });
     assert.throws(() => { r.parRelecteur.eric[0].question = 'autre chose'; }, /read.only|frozen|Cannot assign/i);
+    assert.throws(() => { r.parRelecteur.eric[0].reponses_acceptees.push('autre'); }, /read.only|frozen|Cannot add|not extensible/i);
+  });
+
+  test('muter le tableau reponses_acceptees D\'ORIGINE (passé par l\'appelant) ne mute PAS la candidate déposée', () => {
+    const original = { ...CANDIDATE_VALIDE, reponses_acceptees: ['15 cm²', '15'] };
+    const r = deposerEnRelecture([original], { notions: NOTIONS_FIXTURE });
+    original.reponses_acceptees.push('valeur ajoutée après coup');
+    assert.deepEqual(r.parRelecteur.eric[0].reponses_acceptees, ['15 cm²', '15']);
   });
 });

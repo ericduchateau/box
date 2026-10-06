@@ -249,7 +249,7 @@ Relevées par les 2ᵉ et 3ᵉ critiques Codex, volontairement laissées telles 
 
 # `generation.js` — chaîne de génération assistée + dépôt en file de relecture (T6)
 
-Référence : [`docs/PRD-Box-FONDA.md`](../../docs/PRD-Box-FONDA.md) §3.6, §5.1, §9, §11, §12 ; `AGENTS.md` G3/G4/G5. Logique pure (zéro DOM, zéro fetch, zéro appel réseau/n8n) : ids système, schéma candidate, anti-clone, routage par relecteur. `node --test fonda/engine/generation.test.js` (27 tests).
+Référence : [`docs/PRD-Box-FONDA.md`](../../docs/PRD-Box-FONDA.md) §3.6, §5.1, §9, §11, §12 ; `AGENTS.md` G3/G4/G5. Logique pure (zéro DOM, zéro fetch, zéro appel réseau/n8n) : ids système, schéma candidate, anti-clone, routage par relecteur. `node --test fonda/engine/generation.test.js` (**34 tests** — 27 + 7 ajoutés en T6a suite critique Codex, voir ci-dessous).
 
 **Ce module ne génère aucun texte de carte.** Le contenu pédagogique du lot pilote T6 est rédigé à la main (`fonda/scripts/generer-pilote-t6.js`) — voir ce fichier et `AVANCEMENT.md` pour ce qui est fait vs ce qui reste une dette.
 
@@ -264,7 +264,7 @@ relecteurDepuisMatiere('français');        // → 'justine'
 
 validerCandidate(candidate, { notionIdsConnus }); // → { valide, erreurs? }
 validerJeu(cartesDuJeu);                           // → { valide, erreurs? } — anti-clone, voir ci-dessous
-deposerEnRelecture(candidates);                    // → { parRelecteur: {justine, eric}, total, invalides }
+deposerEnRelecture(candidates, { notions });       // → { parRelecteur: {justine, eric}, total, invalides } — `notions` = referentiel.json.notions, OBLIGATOIRE (voir G4 ci-dessous)
 ```
 
 ## Dette T6 (ids) — LEVÉE : `set_id`/`item_id` système, jamais du texte
@@ -275,9 +275,17 @@ deposerEnRelecture(candidates);                    // → { parRelecteur: {justi
 
 Ferme la dette ouverte par T3/T4 (voir `evenements.js` ci-dessus, « garantie d'anonymat déléguée à T6 ») : un appelant qui source `item_id`/`set_id` depuis ce module ne peut plus produire un id dérivé de texte libre.
 
-## Routage par relecteur (G4/§12)
+## Routage par relecteur (G4/§12) — IMPRENABLE au dépôt (révisé T6a)
 
-`relecteurDepuisMatiere` est l'unique table `matiere -> relecteur` (identique à `RELECTEUR_ATTENDU` de `fonda/scripts/validate.js` — ne jamais diverger). `validerCandidate` revérifie la cohérence même si l'appelant a renseigné `matiere` et `relecteur` séparément. `deposerEnRelecture` partitionne les candidates **valides** par `relecteur`, ne publie jamais (`statut` reste tel que fourni par l'appelant — toujours `"attente"` pour une candidate neuve), et n'écarte jamais silencieusement une candidate invalide (elle sort dans `invalides`, avec des raisons de diagnostic, jamais la valeur fautive).
+`relecteurDepuisMatiere` est l'unique table `matiere -> relecteur` (identique à `RELECTEUR_ATTENDU` de `fonda/scripts/validate.js` — ne jamais diverger). `validerCandidate` revérifie la cohérence des champs `matiere`/`relecteur` **déclarés** sur la candidate — un contrôle de forme utile en isolation, mais PAS une garantie suffisante pour G4 (une candidate peut être forgée avec une paire interne cohérente mais fausse par rapport à sa vraie notion).
+
+**`deposerEnRelecture` ne fait confiance à rien de ce que déclare la candidate pour router ou publier** (révisé après critique Codex — la 1ʳᵉ version du dépôt prenait `matiere`/`relecteur`/`statut` tels que fournis) :
+- `matiere`/`relecteur` sont **dérivés du référentiel réel** (`notions`, option obligatoire — `referentiel.json.notions` ou équivalent) via `notion_id`, puis écrasent les champs déclarés sur la candidate avant dépôt. `notion_id` absent de `notions` (ou notion mal formée) → **rejet**, jamais un routage par défaut. `notions` omis/vide → tout est rejeté (échoue fermé).
+- `statut` est **forcé à `"attente"`** sur chaque candidate déposée, quelle que soit la valeur entrante (`"validée"`/`"rejetée"` sont écrasées).
+- `set_id` doit cohérer avec `(notion_id, palier)` (motif `set_fonda_{slug}_{palier}_..`) et `(set_id, item_id)` doit être unique dans le lot déposé — sinon rejet.
+- Chaque candidate déposée est **gelée en profondeur** (candidate + `reponses_acceptees`, clonés avant gel) : muter après coup le tableau d'origine passé par l'appelant ne mute plus la candidate déposée.
+
+Une candidate invalide/rejetée n'est jamais incluse silencieusement dans `parRelecteur` : elle sort dans `invalides`, avec des raisons de diagnostic (jamais la valeur fautive).
 
 **Écart constaté avec le mécanisme de relecture existant (BOX - Selection Prof)** : ce workflow route aujourd'hui vers l'email du prof **soumissionnaire** (`prof_email`), pas vers un relecteur nommé (Justine/Éric) — il n'a ni champ `statut`, ni `relecteur`. `deposerEnRelecture` produit une structure prête à être câblée dans ce mécanisme, mais ce câblage (nouveau workflow ou adaptation de l'email vers Justine/Éric selon `matiere`) **n'est pas fait** — hors scope T6 (zéro action n8n), tracé comme dette ouverte dans `AVANCEMENT.md`.
 

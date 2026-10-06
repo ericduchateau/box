@@ -65,15 +65,22 @@ Jeu d'événements **synthétiques et anonymes** (aucune donnée réelle d'élè
 
 ---
 
-## `pilote-t6-relecture.json` (T6)
+## `pilote-t6-relecture.json` (T6a) — FIXTURE TECHNIQUE, pas un échantillon de qualité
 
-Lot pilote déposé en file de relecture (PRD §3.6, §9, §12) : 24 jeux (12 notions du référentiel × paliers `nI`/`nF`), 6 cartes par jeu, soit 144 candidates, partitionnées par `relecteur` (72 Justine / 72 Éric, équilibre exact des 6 notions français / 6 notions maths). **Rien n'est publié** : `statut` vaut `"attente"` pour toutes les cartes, `source` vaut `"T6-pilote"`.
+**Requalifié après critique Codex (T6a)** : ce fichier exerce la **chaîne** de génération (ids système, schéma candidate, anti-clone, routage par relecteur) — ce n'est **pas** un échantillon validé de qualité pédagogique. 24 jeux (12 notions du référentiel × paliers `nI`/`nF`), 6 cartes par jeu, 144 candidates, partitionnées par `relecteur` (72 Justine / 72 Éric). **Rien n'est publié** : `statut` vaut `"attente"` pour toutes les cartes (**forcé** au dépôt, voir `deposerEnRelecture` ci-dessous — pas seulement déclaré), `source` vaut `"T6-pilote"`.
 
-Produit par [`fonda/scripts/generer-pilote-t6.js`](../scripts/generer-pilote-t6.js) (script one-shot, zéro appel réseau) à partir d'un contenu **rédigé à la main** — pas d'appel API à un modèle (aucune credential modèle n'est câblée dans cet environnement). La chaîne elle-même ([`fonda/engine/generation.js`](../engine/generation.js) : ids système, schéma candidate, anti-clone, routage) est testée ; **le texte des 144 cartes ne l'est pas** — il est relu à la main avant tout usage réel.
+**Pourquoi la requalification** : rejoué contre le vrai correcteur (`fonda/engine/correction.js`), **42/144 réponses de référence échouent** — 11 par symbole `€` (hors grammaire des unités du profil `numerique`), 1 encadrement à deux valeurs (« 5 et 6 ») en profil `numerique` (qui attend une valeur unique), 30 par absence d'un champ `unite` sur des cartes dont la réponse porte une unité physique (m, m², km, L, g, min, °C...). Un classement (a) *correcteur à élargir* (ex. € et unités monétaires) / (b) *carte mal typée* (ex. l'encadrement) a été produit et soumis à Éric pour validation — **rien n'a été modifié ni dans `correction.js` ni dans le contenu des cartes** tant que cette répartition n'est pas tranchée. Des défauts éditoriaux (biais de réponse répétitif, amorces proches de `enonce_modele`, cartes qui mesurent autre chose que la compétence visée) ont aussi été relevés par la critique — **non corrigés ici** : c'est le rôle de la relecture humaine (Justine/Éric), pas du code.
 
-**Deux dettes distinctes, ne pas les confondre** :
+Produit par [`fonda/scripts/generer-pilote-t6.js`](../scripts/generer-pilote-t6.js) (script one-shot, zéro appel réseau) à partir d'un contenu **rédigé à la main** — pas d'appel API à un modèle (aucune credential modèle n'est câblée dans cet environnement). La chaîne elle-même ([`fonda/engine/generation.js`](../engine/generation.js)) est testée (34 tests) ; **le texte des 144 cartes ne l'est pas** au sens pédagogique — seule sa conformité de *forme* l'est.
+
+**`deposerEnRelecture()` est IMPRENABLE au dépôt (T6a)**, pas seulement par confiance dans la candidate reçue :
+- `statut` est **forcé** à `"attente"` — toute valeur entrante (`"validée"`, `"rejetée"`) est écrasée.
+- `matiere`/`relecteur` sont **dérivés du référentiel réel** (`notions`, passé en option) via `notion_id` — jamais lus depuis la candidate. `notion_id` absent du référentiel fourni → rejet.
+- Gel **profond** (candidate + `reponses_acceptees`, clonés avant gel) ; unicité `(set_id, item_id)` et cohérence `set_id` ↔ `notion_id` ↔ `palier` vérifiées au dépôt.
+
+**Trois dettes/écarts distincts, ne pas les confondre** :
 - **Dette ids (T6) — LEVÉE.** `set_id`/`item_id` sont dérivés uniquement de `(notion_id, palier, séquence)` / d'un index, jamais du texte de la carte. Voir `fonda/engine/README.md`.
-- **Dette génération API réelle — OUVERTE.** Le texte des cartes est écrit à la main, pas généré par un appel à un modèle fort (Sonnet, G5). Reste à câbler (hors scope T6).
+- **🔖 Dette T6b — OUVERTE.** Génération réelle par API via workflow n8n (canal A), sortie en file de relecture, jamais au catalogue ; le vrai lot pilote sera généré puis relu avec Justine/Éric. Remplace la dette "génération API réelle" du 1ᵉʳ T6.
 - **Écart constaté (pas une dette T6 à proprement parler, mais à corriger avant tout usage réel)** : le mécanisme de relecture existant (`BOX - Selection Prof`, n8n) route par email du prof **soumissionnaire**, pas par relecteur nommé (Justine/Éric) — il n'a ni `statut` ni `relecteur`. Ce fichier est prêt à être consommé par un futur câblage (nouveau workflow ou email adapté), **non fait ici** (zéro action n8n en T6).
 
 Schéma d'une candidate (PRD §3.6 + §5.1, adapté T6) :

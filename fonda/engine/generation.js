@@ -12,17 +12,34 @@
 // reste une dette ouverte, pas câblée par ce module.
 //
 // Garde-fous (non négociables) :
-//   - G4 (humain dans la boucle) : `deposerEnRelecture` ne PUBLIE jamais — il
-//     partitionne par `relecteur`, statut imposé par l'appelant (toujours "attente"
-//     pour une candidate neuve), jamais écrit au catalogue.
+//   - G4 (humain dans la boucle), IMPRENABLE au dépôt — révisé après critique Codex
+//     (T6a) qui a montré que la 1ʳᵉ version du dépôt faisait CONFIANCE à la candidate
+//     entrante pour `statut`/`matiere`/`relecteur`, ce qui les rendait falsifiables en
+//     théorie (pas d'exploit réel faute de consommateur, mais une garantie "de
+//     confiance" n'est pas une garantie) :
+//       * `deposerEnRelecture` FORCE `statut: "attente"` sur CHAQUE candidate
+//         déposée — toute valeur entrante (`"validée"`, `"rejetée"`, absente) est
+//         ignorée et écrasée. Aucune candidate ne peut entrer pré-validée.
+//       * `matiere`/`relecteur` sont DÉRIVÉS du référentiel (`notions`, fourni par
+//         l'appelant) via `notion_id` — JAMAIS lus/conservés depuis la candidate.
+//         Une candidate dont le `notion_id` n'existe pas dans `notions` est rejetée
+//         (dans `invalides`), jamais déposée avec un routage par défaut.
+//   - Intégrité structurelle au dépôt (T6a, suite critique #12) :
+//       * Gel PROFOND (candidate + `reponses_acceptees`) : muter après coup le
+//         tableau D'ORIGINE passé par l'appelant ne mute plus la candidate déposée
+//         (le dépôt en clone une copie avant de geler, jamais la référence reçue).
+//       * Unicité `(set_id, item_id)` et cohérence `set_id` ↔ `notion_id` ↔ `palier`
+//         vérifiées AU DÉPÔT (pas seulement au schéma d'une candidate isolée) —
+//         un id de jeu d'une autre notion/palier, ou un doublon, est rejeté.
 //   - Routage par relecteur (§12, AGENTS.md "Conventions") : `relecteurDepuisMatiere`
 //     est l'UNIQUE table matiere -> relecteur, strictement identique à celle de
 //     fonda/scripts/validate.js (RELECTEUR_ATTENDU) — ne jamais dupliquer/diverger.
-//     `validerCandidate` revérifie la cohérence matiere/relecteur même si l'appelant
-//     a renseigné les deux champs séparément (comme pour la notion du référentiel).
-//   - Dette T6 (ids) : `set_id`/`item_id` remplacent `card_id` (PRD §3.6) par une
-//     paire dérivée UNIQUEMENT de (notion_id, palier, séquence) / (index) — jamais du
-//     texte de la carte. Motif vérifiable par regex, pas une convention informelle.
+//     `validerCandidate` revérifie la cohérence matiere/relecteur DÉCLARÉS (un
+//     contrôle de forme, pas de confiance — le dépôt, lui, ne fait confiance à
+//     aucun des deux champs, voir ci-dessus).
+//   - Dette T6 (ids) — LEVÉE : `set_id`/`item_id` remplacent `card_id` (PRD §3.6) par
+//     une paire dérivée UNIQUEMENT de (notion_id, palier, séquence) / (index) —
+//     jamais du texte de la carte. Motif vérifiable par regex.
 //   - Anti-clone (`validerJeu`) : condition NÉCESSAIRE (étiquettes `contexte`
 //     deux-à-deux distinctes dans un jeu) mais PAS SUFFISANTE — ne prouve aucune
 //     diversité pédagogique réelle du contenu. La variété de fond reste jugée à la
@@ -81,6 +98,41 @@ function extraireSlugNotion(notionId) {
   if (typeof notionId !== 'string') return null;
   const m = notionId.match(NOTION_ID_PATTERN);
   return m ? m[2] : null;
+}
+
+// Index notion_id -> {matiere, relecteur} depuis le référentiel RÉEL (fonda/data/
+// referentiel.json, `notions`). Seule source de vérité pour le dépôt (T6a) — jamais
+// la candidate elle-même. `notions` manquant/vide -> index vide -> toute candidate
+// est rejetée (échoue fermé, jamais un routage par défaut).
+function construireIndexNotions(notions) {
+  const index = new Map();
+  (isArray(notions) ? notions : []).forEach((n) => {
+    if (n && isNonEmptyString(n.id)) {
+      index.set(n.id, { matiere: n.matiere, relecteur: n.relecteur });
+    }
+  });
+  return index;
+}
+
+// Cohérence set_id <-> (notion_id, palier) : le slug ET le palier encodés dans
+// set_id doivent correspondre à ceux de la candidate — un id de jeu d'une autre
+// notion ou d'un autre palier, recopié par erreur ou forgé, est détecté ici.
+function setIdCoherentAvecNotion(setId, notionId, palier) {
+  const slug = extraireSlugNotion(notionId);
+  if (!slug || !isNonEmptyString(setId)) return false;
+  const attendu = new RegExp(`^set_fonda_${slug}_${palier}_\\d{2}$`);
+  return attendu.test(setId);
+}
+
+// Gel PROFOND d'une candidate avant dépôt : clone `reponses_acceptees` (jamais la
+// référence reçue) puis gèle le clone ET l'objet — muter après coup le tableau
+// D'ORIGINE passé par l'appelant ne peut plus muter la candidate déposée.
+function gelCandidate(c) {
+  const clone = { ...c };
+  if (isArray(clone.reponses_acceptees)) {
+    clone.reponses_acceptees = Object.freeze([...clone.reponses_acceptees]);
+  }
+  return Object.freeze(clone);
 }
 
 /**
@@ -202,25 +254,69 @@ function validerJeu(cartes) {
 }
 
 /**
- * Dépôt en file de relecture (G4/§12) — partitionne les candidates VALIDES par
- * `relecteur`. Ne publie jamais, ne touche ni le disque ni n8n : retourne une
- * structure pure que l'appelant committe/câble. Ne jette jamais ; une candidate
- * invalide est écartée dans `invalides` (raisons de diagnostic, jamais la valeur
- * fautive), jamais incluse silencieusement dans `parRelecteur`.
+ * Dépôt en file de relecture (G4/§12), IMPRENABLE (T6a) — partitionne les
+ * candidates VALIDES par `relecteur`. Ne publie JAMAIS, ne touche ni le disque ni
+ * n8n : retourne une structure pure que l'appelant committe/câble.
+ *
+ * Protections appliquées AU DÉPÔT (pas seulement au schéma d'une candidate
+ * isolée) — aucune ne fait confiance à la candidate entrante :
+ *   1. `statut` est FORCÉ à `"attente"` pour toute candidate déposée — toute
+ *      valeur entrante est écrasée.
+ *   2. `matiere`/`relecteur` sont DÉRIVÉS de `notions` (référentiel réel) via
+ *      `notion_id` — jamais lus depuis la candidate. `notion_id` absent de
+ *      `notions` -> rejet.
+ *   3. `set_id` doit cohérer avec `(notion_id, palier)` -> sinon rejet.
+ *   4. `(set_id, item_id)` doit être unique dans le lot déposé -> le doublon
+ *      (pas le premier) est rejeté.
+ * Ne jette jamais ; une candidate invalide/rejetée est écartée dans `invalides`
+ * (raisons de diagnostic, jamais la valeur fautive), jamais incluse
+ * silencieusement dans `parRelecteur`.
+ *
  * @param {object[]} candidates
+ * @param {{notions: object[]}} options - `notions` = `referentiel.json.notions` (ou équivalent) ; omis/vide -> tout est rejeté.
  * @returns {{ parRelecteur: {justine: object[], eric: object[]}, total: number, invalides: {index:number, raisons:string[]}[] }}
  */
-function deposerEnRelecture(candidates) {
+function deposerEnRelecture(candidates, options) {
+  const { notions } = options || {};
+  const indexNotions = construireIndexNotions(notions);
   const parRelecteur = { justine: [], eric: [] };
   const invalides = [];
+  const dejaDeposes = new Set();
+
   (isArray(candidates) ? candidates : []).forEach((c, i) => {
-    const v = validerCandidate(c);
-    if (!v.valide) {
-      invalides.push({ index: i, raisons: v.erreurs });
+    const forme = validerCandidate(c);
+    if (!forme.valide) {
+      invalides.push({ index: i, raisons: forme.erreurs });
       return;
     }
-    parRelecteur[c.relecteur].push(Object.freeze({ ...c }));
+
+    const ref = indexNotions.get(c.notion_id);
+    if (!ref || !RELECTEURS.has(ref.relecteur) || (ref.matiere !== 'français' && ref.matiere !== 'maths')) {
+      invalides.push({ index: i, raisons: [`notion_id "${c.notion_id}" absent du référentiel fourni ou notion mal formée`] });
+      return;
+    }
+
+    if (!setIdCoherentAvecNotion(c.set_id, c.notion_id, c.palier)) {
+      invalides.push({ index: i, raisons: ['set_id incohérent avec notion_id/palier'] });
+      return;
+    }
+
+    const cleUnicite = JSON.stringify([c.set_id, c.item_id]);
+    if (dejaDeposes.has(cleUnicite)) {
+      invalides.push({ index: i, raisons: [`(set_id, item_id) déjà déposé dans ce lot`] });
+      return;
+    }
+    dejaDeposes.add(cleUnicite);
+
+    const depose = gelCandidate({
+      ...c,
+      matiere: ref.matiere,
+      relecteur: ref.relecteur,
+      statut: 'attente',
+    });
+    parRelecteur[ref.relecteur].push(depose);
   });
+
   return {
     parRelecteur,
     total: parRelecteur.justine.length + parRelecteur.eric.length,

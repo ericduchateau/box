@@ -1,15 +1,27 @@
 #!/usr/bin/env node
-// Script one-shot — construit le LOT PILOTE T6 (chaîne de génération testée +
-// contenu pédagogique rédigé À LA MAIN) et le dépose en file de relecture.
+// Script one-shot — construit une FIXTURE TECHNIQUE (T6a) qui exerce la chaîne de
+// génération (ids, schéma, anti-clone, routage) sur un contenu rédigé À LA MAIN, et
+// la dépose en file de relecture.
 // Référence : docs/PRD-Box-FONDA.md §3.6, §5.1, §9, §11, §12 ; AGENTS.md G3, G4, G5 ;
 // fonda/data/referentiel.json (v2, convention.variete_generation).
+//
+// REQUALIFIÉ après critique Codex (T6a, voir AVANCEMENT.md) : CE N'EST PAS un
+// échantillon validé de qualité pédagogique. Rejoué contre le vrai correcteur
+// (fonda/engine/correction.js), 42/144 réponses de référence de ce lot échouent —
+// 11 par symbole `€` (hors grammaire des unités), 1 encadrement à deux valeurs en
+// profil `numerique`, 30 par absence d'un champ `unite` sur des cartes dont la
+// réponse porte une unité physique. Classement (a) correcteur à élargir / (b) carte
+// mal typée produit et soumis à Éric — AUCUNE correction appliquée ici tant qu'il
+// n'a pas validé la répartition (ticket T6a, point 3). Des défauts éditoriaux
+// (biais de réponse, amorces proches du modèle, mesure à côté de la compétence)
+// ont aussi été relevés — non corrigés ici, c'est le rôle de la relecture humaine.
 //
 // CE QUE CE SCRIPT EST : la chaîne (ids système, schéma, anti-clone, routage —
 // fonda/engine/generation.js) exercée sur un contenu RÉEL mais écrit à la main par
 // Éric/Claude Code, PAS par un appel API à un modèle. Aucune credential modèle n'est
 // câblée dans cet environnement ; l'appel réel à un modèle fort (Sonnet, G5) pour
-// générer ce contenu reste une DETTE OUVERTE (voir AVANCEMENT.md), distincte de la
-// dette ids (celle-ci, levée par fonda/engine/generation.js).
+// générer le VRAI lot pilote reste la dette ouverte 🔖 T6b (voir AVANCEMENT.md),
+// distincte de la dette ids (celle-ci, levée par fonda/engine/generation.js).
 //
 // CE QUE CE SCRIPT N'EST PAS : pas un moteur de génération récurrent (Moteur B,
 // §9 — déclenchement auto sur ⬛, hors scope T6), pas une écriture n8n (zéro appel
@@ -361,11 +373,11 @@ function construireLotPilote() {
     });
   });
 
-  return { erreurs, toutesLesCartes, manifesteJeux, notionsCouvertes: referentiel.notions.length };
+  return { erreurs, toutesLesCartes, manifesteJeux, notionsCouvertes: referentiel.notions.length, notions: referentiel.notions };
 }
 
 function main() {
-  const { erreurs, toutesLesCartes, manifesteJeux, notionsCouvertes } = construireLotPilote();
+  const { erreurs, toutesLesCartes, manifesteJeux, notionsCouvertes, notions } = construireLotPilote();
 
   if (erreurs.length > 0) {
     console.log(`${erreurs.length} erreur(s) — rien n'est écrit :\n`);
@@ -374,7 +386,7 @@ function main() {
     return;
   }
 
-  const depot = deposerEnRelecture(toutesLesCartes);
+  const depot = deposerEnRelecture(toutesLesCartes, { notions });
   if (depot.invalides.length > 0 || depot.total !== toutesLesCartes.length) {
     console.log(`deposerEnRelecture a écarté ${depot.invalides.length} candidate(s) — rien n'est écrit :`);
     depot.invalides.forEach((inv) => console.log(`  ✗ index ${inv.index} : ${inv.raisons.join(', ')}`));
@@ -384,6 +396,7 @@ function main() {
 
   const sortie = {
     version: 'T6-pilote-1',
+    nature: 'FIXTURE TECHNIQUE — exerce la chaîne de génération (ids système, schéma candidate, anti-clone, routage par relecteur). PAS un échantillon validé de qualité pédagogique : rejoué contre fonda/engine/correction.js, 42/144 réponses de référence échouent (incompatibilités de profil de correction — unités, encadrement) ; des défauts éditoriaux (variété, biais de réponse) ont aussi été relevés par critique Codex. Voir AVANCEMENT.md section T6a.',
     ts_generation: TS_GENERATION,
     notions_couvertes: notionsCouvertes,
     total_jeux: manifesteJeux.length,
