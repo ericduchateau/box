@@ -65,6 +65,33 @@ Jeu d'événements **synthétiques et anonymes** (aucune donnée réelle d'élè
 
 ---
 
+## `pilote-t6-relecture.json` (T6)
+
+Lot pilote déposé en file de relecture (PRD §3.6, §9, §12) : 24 jeux (12 notions du référentiel × paliers `nI`/`nF`), 6 cartes par jeu, soit 144 candidates, partitionnées par `relecteur` (72 Justine / 72 Éric, équilibre exact des 6 notions français / 6 notions maths). **Rien n'est publié** : `statut` vaut `"attente"` pour toutes les cartes, `source` vaut `"T6-pilote"`.
+
+Produit par [`fonda/scripts/generer-pilote-t6.js`](../scripts/generer-pilote-t6.js) (script one-shot, zéro appel réseau) à partir d'un contenu **rédigé à la main** — pas d'appel API à un modèle (aucune credential modèle n'est câblée dans cet environnement). La chaîne elle-même ([`fonda/engine/generation.js`](../engine/generation.js) : ids système, schéma candidate, anti-clone, routage) est testée ; **le texte des 144 cartes ne l'est pas** — il est relu à la main avant tout usage réel.
+
+**Deux dettes distinctes, ne pas les confondre** :
+- **Dette ids (T6) — LEVÉE.** `set_id`/`item_id` sont dérivés uniquement de `(notion_id, palier, séquence)` / d'un index, jamais du texte de la carte. Voir `fonda/engine/README.md`.
+- **Dette génération API réelle — OUVERTE.** Le texte des cartes est écrit à la main, pas généré par un appel à un modèle fort (Sonnet, G5). Reste à câbler (hors scope T6).
+- **Écart constaté (pas une dette T6 à proprement parler, mais à corriger avant tout usage réel)** : le mécanisme de relecture existant (`BOX - Selection Prof`, n8n) route par email du prof **soumissionnaire**, pas par relecteur nommé (Justine/Éric) — il n'a ni `statut` ni `relecteur`. Ce fichier est prêt à être consommé par un futur câblage (nouveau workflow ou email adapté), **non fait ici** (zéro action n8n en T6).
+
+Schéma d'une candidate (PRD §3.6 + §5.1, adapté T6) :
+```
+{ set_id, item_id,                               // ids système (remplacent card_id), motif vérifiable
+  notion_id, matiere, relecteur,                   // relecteur dérivé de matiere, cohérence revérifiée
+  palier ("nI"|"nF"), difficulte ("facile"|"moyen"|"difficile"),  // convention BOX existante
+  question, reponse,
+  profil_correction ("sens"|"orthographe"|"numerique"|"exact"),   // §5.1
+  reponses_acceptees[], seconde_chance (bool, défaut false),
+  statut ("attente"|"validée"|"rejetée"), source, ts,
+  contexte }                                       // AJOUT T6, absent du PRD — anti-clone, voir ci-dessous
+```
+
+**Anti-clone (`validerJeu`) : condition nécessaire, pas suffisante.** Le validateur vérifie que les `contexte` d'un même jeu sont deux-à-deux distincts — il ne lit pas `question` et ne prouve donc aucune diversité pédagogique réelle. La variété de fond (règle `convention.variete_generation` de `referentiel.json` : les `enonce_modele` sont des amorces, jamais un moule) reste jugée à la **relecture humaine**.
+
+Validé par `node --test fonda/scripts/generer-pilote-t6.test.js` (8 tests : schéma, anti-clone, équilibre 72/72, motifs d'id, intégration CLI).
+
 ## `classes.json` (T3)
 
 Liste fermée des 20 classes de l'année, format canonique **3 chiffres sans lettre** (ex. `"601"`, pas `"6e1"`). C'est la seule source de vérité pour la validité d'un `grp` — voir [`fonda/engine/evenements.js`](../engine/evenements.js). À remettre à jour chaque rentrée.

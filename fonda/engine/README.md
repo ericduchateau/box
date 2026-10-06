@@ -244,3 +244,43 @@ Relevées par les 2ᵉ et 3ᵉ critiques Codex, volontairement laissées telles 
 - ~~Nombres non finis~~ — **corrigé** (voir « Robustesse » ci-dessus).
 - ~~Attendu incohérent (unité contradictoire, fraction malformée)~~ — **corrigé** : voir `carte_invalide` ci-dessus.
 - ~~Moins en exposant (`⁻`) non normalisé~~ — **corrigé** : voir « numerique — unité » ci-dessus.
+
+---
+
+# `generation.js` — chaîne de génération assistée + dépôt en file de relecture (T6)
+
+Référence : [`docs/PRD-Box-FONDA.md`](../../docs/PRD-Box-FONDA.md) §3.6, §5.1, §9, §11, §12 ; `AGENTS.md` G3/G4/G5. Logique pure (zéro DOM, zéro fetch, zéro appel réseau/n8n) : ids système, schéma candidate, anti-clone, routage par relecteur. `node --test fonda/engine/generation.test.js` (27 tests).
+
+**Ce module ne génère aucun texte de carte.** Le contenu pédagogique du lot pilote T6 est rédigé à la main (`fonda/scripts/generer-pilote-t6.js`) — voir ce fichier et `AVANCEMENT.md` pour ce qui est fait vs ce qui reste une dette.
+
+## API
+
+```js
+const { genererSetId, genererItemId, relecteurDepuisMatiere, validerCandidate, validerJeu, deposerEnRelecture } = require('./generation.js');
+
+genererSetId('maths.geometrie', 'nI', 1); // → 'set_fonda_geometrie_nI_01' (ou null)
+genererItemId(3);                          // → 'it03' (ou null)
+relecteurDepuisMatiere('français');        // → 'justine'
+
+validerCandidate(candidate, { notionIdsConnus }); // → { valide, erreurs? }
+validerJeu(cartesDuJeu);                           // → { valide, erreurs? } — anti-clone, voir ci-dessous
+deposerEnRelecture(candidates);                    // → { parRelecteur: {justine, eric}, total, invalides }
+```
+
+## Dette T6 (ids) — LEVÉE : `set_id`/`item_id` système, jamais du texte
+
+`card_id` (PRD §3.6) est réalisé comme la paire `(set_id, item_id)`, cohérente avec le schéma événement (§3.2) déjà utilisé par `evenements.js`. Motifs vérifiables, dérivés UNIQUEMENT de `(notion_id, palier, séquence)` / d'un index — jamais du texte de la carte :
+- `set_id` : `^set_fonda_[a-z0-9-]+_n[IF]_\d{2}$` (ex. `set_fonda_geometrie_nI_01`)
+- `item_id` : `^it\d{2}$` (ex. `it01`)
+
+Ferme la dette ouverte par T3/T4 (voir `evenements.js` ci-dessus, « garantie d'anonymat déléguée à T6 ») : un appelant qui source `item_id`/`set_id` depuis ce module ne peut plus produire un id dérivé de texte libre.
+
+## Routage par relecteur (G4/§12)
+
+`relecteurDepuisMatiere` est l'unique table `matiere -> relecteur` (identique à `RELECTEUR_ATTENDU` de `fonda/scripts/validate.js` — ne jamais diverger). `validerCandidate` revérifie la cohérence même si l'appelant a renseigné `matiere` et `relecteur` séparément. `deposerEnRelecture` partitionne les candidates **valides** par `relecteur`, ne publie jamais (`statut` reste tel que fourni par l'appelant — toujours `"attente"` pour une candidate neuve), et n'écarte jamais silencieusement une candidate invalide (elle sort dans `invalides`, avec des raisons de diagnostic, jamais la valeur fautive).
+
+**Écart constaté avec le mécanisme de relecture existant (BOX - Selection Prof)** : ce workflow route aujourd'hui vers l'email du prof **soumissionnaire** (`prof_email`), pas vers un relecteur nommé (Justine/Éric) — il n'a ni champ `statut`, ni `relecteur`. `deposerEnRelecture` produit une structure prête à être câblée dans ce mécanisme, mais ce câblage (nouveau workflow ou adaptation de l'email vers Justine/Éric selon `matiere`) **n'est pas fait** — hors scope T6 (zéro action n8n), tracé comme dette ouverte dans `AVANCEMENT.md`.
+
+## Anti-clone (`validerJeu`) — condition NÉCESSAIRE, PAS SUFFISANTE
+
+Vérifie que les `contexte` (slug de situation, champ T6 — absent du PRD §3.6) d'un jeu sont deux-à-deux distincts. **Ne prouve aucune diversité pédagogique réelle** : deux questions quasi identiques avec un `contexte` distinct passent ce contrôle (verrouillé par un test dédié, `generation.test.js`). La variété de fond (la règle `convention.variete_generation` de `referentiel.json`) reste jugée à la **relecture humaine** — ce contrôle n'est qu'un filet mécanique contre le clonage le plus grossier (copier-coller de l'énoncé modèle sans rien changer).

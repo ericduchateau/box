@@ -280,9 +280,13 @@ Documentation ajoutée (README `fonda/engine/`) pour les points 2 et 3, avec tes
 - DoD : un POST d'événement arrive au Sheet ; les 9 workflows existants intacts.
 - Codex : OUI (casse d'un workflow existant ? fuite de donnée ?).
 
-### ☐ T6 — Génération initiale équilibrée (seed Moteur B)
-- But : 1er lot de candidates équilibré facile/difficile + nI/nF, modèle plus puissant (Sonnet) avec spec de clarté, routage relecture (fr → Justine, maths → Éric).
-- Impact prod : nul (rien publié).
-- DoD : candidates EN FILE DE RELECTURE, rien publié automatiquement ; énoncés conformes à la spec de clarté (§5.1/§11).
-- Décisions ouvertes : volume du premier lot ; répartition par notion.
-- Codex : non (relecture humaine = Justine/Éric).
+### ☑ T6 — Chaîne de génération + lot pilote de référence — fait le 2026-10-06
+- But : la **chaîne** (ids système, schéma candidate, anti-clone, routage relecture) + un **lot pilote de référence rédigé à la main** (24 jeux, 144 cartes), pas l'industrialisation (Moteur B auto = Lot 2).
+- **Ne pas confondre avec « génération automatique faite »** : la génération API réelle (appel à un modèle fort, Sonnet, G5) n'est **pas câblée** — aucune credential modèle dans cet environnement. Le texte des 144 cartes est écrit à la main (Claude Code), validé programmatiquement par la chaîne.
+- Fichiers : `fonda/engine/generation.js` (+ `generation.test.js`, 27 tests) ; `fonda/scripts/generer-pilote-t6.js` (+ test, 8 tests) ; `fonda/data/pilote-t6-relecture.json` (sortie committée, statut `"attente"` partout, rien publié).
+- DoD : 222/222 tests (T1-T6, suite complète `fonda/engine/*.test.js fonda/page/*.test.js fonda/scripts/*.test.js`), `node fonda/scripts/validate.js` toujours 32/32 (non touché — hors scope) ; 24 jeux (12 notions × nI/nF), 144 cartes, équilibre exact 72 Justine / 72 Éric (6 notions français / 6 notions maths) ; `set_id`/`item_id` conformes au motif système.
+- **Dette ids (T6) LEVÉE** : `set_id`/`item_id` dérivés uniquement de `(notion_id, palier, séquence)`/index, jamais du texte de la carte — motif vérifiable (`^set_fonda_[a-z0-9-]+_n[IF]_\d{2}$`, `^it\d{2}$`). Voir `fonda/engine/README.md`.
+- **🔖 DETTE OUVERTE — génération API réelle** : câbler un appel à un modèle fort (Sonnet) pour générer le contenu des cartes reste à faire. Ce ticket ne l'a pas fait (pas de canal/credential propre dans cet environnement) ; le lot pilote est une référence qualité écrite à la main, pas une preuve que l'automatisation fonctionne.
+- **Écart constaté (relecture) — à corriger avant tout usage réel, pas une dette T6 au sens strict** : le mécanisme de relecture existant (`BOX - Selection Prof`, n8n) route par email du prof **soumissionnaire** (`prof_email`), pas par relecteur nommé — il n'a ni `statut` ni `relecteur`. Le PRD §12 suppose ce routage déjà en place ; il ne l'est pas. `deposerEnRelecture()` produit une structure prête à être câblée (nouveau workflow, ou email adapté selon `matiere`), mais ce câblage n'est pas fait ici (zéro action n8n en T6, AGENTS.md).
+- **Anti-clone : condition nécessaire, pas suffisante** — `validerJeu()` vérifie que les `contexte` d'un jeu sont deux-à-deux distincts (étiquettes), pas que le contenu l'est réellement. La variété pédagogique de fond reste jugée à la **relecture humaine** (Justine/Éric) — ne jamais présenter ce contrôle comme une garantie de diversité de contenu.
+- Branche `feat/fonda-lot1-generation`. **Prêt pour critique Codex (G4 + variété/clarté), puis attente du feu vert explicite d'Éric avant toute fusion.**
