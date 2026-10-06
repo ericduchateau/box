@@ -4,7 +4,9 @@ Ticket T-SEC, déclenché par une critique Codex sur la SPEC T6b : 5 correctifs 
 
 **Révisé après une critique Codex de confirmation** (sur la 1ʳᵉ version, commit `0ec2522`) qui a trouvé 6 défauts dans cette 1ʳᵉ version elle-même : secret HMAC non réellement configuré (mauvaise version du nœud `Crypto`), câblage cassé du GET `box-select` (deux branches vers un même nœud, sans fusion), `c.numero` non échappé, liens email des copies de TEST pointant vers la **prod**, `responseCode` mal placé (jamais un vrai 404), et une procédure de test incohérente avec le double filet du catalogue. **Tous corrigés.**
 
-**Révisé une 2ᵉ fois après une 2ᵉ critique de confirmation** (commit `77dff11`) qui a validé les 6 points mais trouvé 2 oublis **hors du périmètre initial** des 6 points : la page de succès de l'ancien lien `/box-validate` (jamais retouchée depuis le tout premier commit) interpolait `notion` sans échappement, et les emails HTML (page de relecture + aperçus des 2 générations) interpolaient `notion`/`numero` sans échappement malgré `emailType: "html"`. **Balayage complet refait** sur les 4 workflows qui produisent du HTML (pages ET emails) — voir tableau ci-dessous. Rien n'a été importé entre les versions.
+**Révisé une 2ᵉ fois après une 2ᵉ critique de confirmation** (commit `77dff11`) qui a validé les 6 points mais trouvé 2 oublis **hors du périmètre initial** des 6 points : la page de succès de l'ancien lien `/box-validate` (jamais retouchée depuis le tout premier commit) interpolait `notion` sans échappement, et les emails HTML (page de relecture + aperçus des 2 générations) interpolaient `notion`/`numero` sans échappement malgré `emailType: "html"`. **Balayage complet refait** sur les 4 workflows qui produisent du HTML (pages ET emails).
+
+**Révisé une 3ᵉ fois après une critique de confirmation ciblée uniquement sur l'échappement** (commit `1e720f6`) qui a trouvé 3 défauts supplémentaires, découverts par une recherche exhaustive incluant les expressions n8n `{{ }}` (pas seulement les template literals JS) : (1) `nb_cartes` dans `box-validation-prof.json` n'était pas *garanti* numérique (`flashcards.nb_cartes || flashcards.cartes.length` laisse passer une chaîne si le champ existe et n'est pas vide) — corrigé en forçant via `Number.isFinite`/`Array.isArray` à la source, plutôt qu'en échappant un nombre (ce qui n'aurait pas de sens) ; (2) les deux générations acceptaient `cartes` comme un objet non-tableau avec une fausse propriété `length` (`cartes.length === 0` ne rejette pas `{length: "<script>"}`) — corrigé par un vrai `Array.isArray(parsed.cartes)` ; (3) les emails d'erreur (`Email Erreur`, `Email Erreur Generation`, hors du périmètre JS puisqu'ils utilisent des expressions n8n `{{ }}` dans `parameters.message`) interpolaient `notion`/`matiere`/`error` bruts — corrigé en ajoutant des champs `_html` pré-échappés en amont (même principe que `notion_html`) et en pointant les expressions vers ces champs. **Tous corrigés et revérifiés par exécution locale.** Rien n'a été importé entre les versions.
 
 ## Les 5 correctifs
 
@@ -22,11 +24,12 @@ Même fonction `escapeHtml()` (dupliquée dans chaque nœud, les nœuds n8n ne p
 
 | Fichier / nœud | Champ interpolé | Statut |
 |---|---|---|
+| `box-validation-prof.json` → `Verifier code` | `nb_cartes` | **corrigé** : `Number.isFinite(...)` / `Array.isArray(...).length` — garanti numérique à la source, jamais une chaîne lue telle quelle |
 | `box-validation-prof.json` → `Preparer Email Confirmation` | `notion` (×2), `matiere`, `niveau` | échappé |
-| ″ | `nb_cartes` | sûr (nombre) |
+| ″ | `nb_cartes` | sûr (nombre, garanti par `Verifier code`) |
 | ″ | `studentUrl` (dérivé de `data.id`, généré par notre code, format fermé) | échappé (uniformité) |
 | `box-validation-prof.json` → `Preparer Page Succes` | `notion` | échappé |
-| ″ | `nb_cartes` | sûr (nombre) |
+| ″ | `nb_cartes` | sûr (nombre, garanti par `Verifier code`) |
 | ″ | `studentUrl` | échappé (uniformité) |
 | `box-selection-prof.json` → `Construire page selection` (page de relecture) | `numero`, `difficulte`, `question`, `reponse`, `matiere`, `niveau`, `notion`, `file_id`, `code`, `token` | échappé |
 | ″ | `diffColor(difficulte)` | sûr (fonction qui ne renvoie que l'un de 3 littéraux hex fixes) |
@@ -38,13 +41,16 @@ Même fonction `escapeHtml()` (dupliquée dans chaque nœud, les nœuds n8n ne p
 | `box-selection-prof.json` → `Preparer Page Succes` | `notion_html` | déjà échappé (calculé dans `Verifier et filtrer`) |
 | ″ | `nb_cartes`, `removed_count` | sûr (nombres) |
 | ″ | `studentUrl` | échappé (uniformité) |
+| `box-generation-flashcards.json`/`tally.json` → `Parser reponse Claude` | `cartes` (réponse du modèle) | **corrigé** : `Array.isArray(parsed.cartes)` — un objet forgé `{length: "<script>"}` ne passe plus le test `cartes.length === 0`, qui ne vérifiait pas le TYPE |
 | `box-generation-flashcards.json`/`tally.json` → `Preparer Email Validation` | `numero`, `question`, `reponse`, `difficulte.toUpperCase()`, `matiere`, `niveau`, `notion`, `id`, `code` | échappé |
 | ″ | `diff` (sélecteur de couleur) | sûr (même motif que `diffColor`, 3 littéraux hex fixes) |
-| ″ | `cartes.length`, `cartes.length - maxPreview` | sûr (nombres) |
+| ″ | `cartes.length`, `cartes.length - maxPreview` | sûr (nombres, garanti par le `Array.isArray` ci-dessus) |
 | ″ | `cartesHtml` | sûr (composée d'éléments déjà échappés) |
 | ″ | `selectUrl` (dérivé de `driveFileId`, format Drive, et `code` déjà `encodeURIComponent`-é) | échappé (uniformité) |
+| `box-generation-flashcards.json`/`tally.json` → `Email Erreur` (expression n8n `{{ }}`, pas un template JS) | `notion` | **corrigé** → `notion_html` (calculé dans `Valider entree`/`Parser Tally`) |
+| `box-generation-flashcards.json`/`tally.json` → `Email Erreur Generation` (expression n8n `{{ }}`) | `notion`, `matiere`, `error` | **corrigé** → `notion_html`/`matiere_html`/`error_html` (calculés dans `Parser reponse Claude`, propagés via `...prevData`) |
 
-**Chaque ligne vérifiée par exécution locale** (harnais Node, charge `<img src=x onerror=alert(1)>` injectée dans chaque champ texte) : aucune des 6 sorties (2 pages + 4 emails) ne laisse la charge brute survivre dans le HTML produit.
+**Chaque ligne vérifiée par exécution locale** (harnais Node, charge `<img src=x onerror=alert(1)>` injectée dans chaque champ texte, y compris les deux défauts de type ci-dessus avec une charge logée dans `nb_cartes`/`cartes.length`) : aucune des 8 sorties (2 pages + 6 emails, incluant les 2 emails d'erreur) ne laisse la charge brute survivre dans le HTML produit.
 
 ## Fichiers livrés
 

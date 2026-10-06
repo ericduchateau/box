@@ -124,7 +124,7 @@
         -100
       ],
       "parameters": {
-        "jsCode": "const query = $('Extraire parametres').first().json;\nconst buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst flashcards = JSON.parse(buffer.toString('utf-8'));\n\nif (flashcards.code_suppression !== query.code) {\n  return [{ json: { verified: false, error: 'Code de validation invalide' } }];\n}\n\n// T-SEC (2026-10-06) : un jeu Box-FONDA (type === \"fonda\") DOIT etre relu carte par\n// carte via box-select avant publication - ce lien historique (validation en bloc)\n// ne peut plus le publier. Condition en LISTE BLANCHE POSITIVE : on ne refuse QUE si\n// type vaut EXACTEMENT \"fonda\" ET que revue_carte_par_carte n'est pas exactement\n// true. Un champ absent, une valeur differente, ou un ancien jeu sans aucun des deux\n// champs -> jamais refuse, publie comme avant (regle d'or : en cas de doute, laisser\n// passer). Les jeux BOX ordinaires ne sont PAS concernes par ce controle.\nif (flashcards.type === 'fonda' && flashcards.revue_carte_par_carte !== true) {\n  return [{ json: {\n    verified: false,\n    error: 'Ce jeu Box-FONDA doit etre relu carte par carte via le lien de selection recu par email, pas valide en bloc depuis cet ancien lien.',\n  } }];\n}\n\nreturn [{ json: {\n  verified: true,\n  id: flashcards.id,\n  matiere: flashcards.matiere,\n  niveau: flashcards.niveau,\n  notion: flashcards.notion,\n  prof_nom: flashcards.prof_nom,\n  prof_email: flashcards.prof_email,\n  nb_cartes: flashcards.nb_cartes || flashcards.cartes.length,\n  date_creation: flashcards.date_creation,\n  drive_file_id: query.file_id\n} }];"
+        "jsCode": "const query = $('Extraire parametres').first().json;\nconst buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst flashcards = JSON.parse(buffer.toString('utf-8'));\n\nif (flashcards.code_suppression !== query.code) {\n  return [{ json: { verified: false, error: 'Code de validation invalide' } }];\n}\n\n// T-SEC (2026-10-06) : un jeu Box-FONDA (type === \"fonda\") DOIT etre relu carte par\n// carte via box-select avant publication - ce lien historique (validation en bloc)\n// ne peut plus le publier. Condition en LISTE BLANCHE POSITIVE : on ne refuse QUE si\n// type vaut EXACTEMENT \"fonda\" ET que revue_carte_par_carte n'est pas exactement\n// true. Un champ absent, une valeur differente, ou un ancien jeu sans aucun des deux\n// champs -> jamais refuse, publie comme avant (regle d'or : en cas de doute, laisser\n// passer). Les jeux BOX ordinaires ne sont PAS concernes par ce controle.\nif (flashcards.type === 'fonda' && flashcards.revue_carte_par_carte !== true) {\n  return [{ json: {\n    verified: false,\n    error: 'Ce jeu Box-FONDA doit etre relu carte par carte via le lien de selection recu par email, pas valide en bloc depuis cet ancien lien.',\n  } }];\n}\n\nreturn [{ json: {\n  verified: true,\n  id: flashcards.id,\n  matiere: flashcards.matiere,\n  niveau: flashcards.niveau,\n  notion: flashcards.notion,\n  prof_nom: flashcards.prof_nom,\n  prof_email: flashcards.prof_email,\n  // T-SEC (2026-10-06, 4e passe) : nb_cartes GARANTI numerique, jamais une chaine\n  // lue telle quelle depuis le fichier Drive - sinon son interpolation non echappee\n  // dans les pages/emails pourrait vehiculer du HTML. Array.isArray() avant .length\n  // (pas juste 'truthy') pour aussi se proteger d'un fichier malforme.\n  nb_cartes: Number.isFinite(flashcards.nb_cartes) ? flashcards.nb_cartes : (Array.isArray(flashcards.cartes) ? flashcards.cartes.length : 0),\n  date_creation: flashcards.date_creation,\n  drive_file_id: query.file_id\n} }];"
       }
     },
     {
@@ -233,7 +233,7 @@
         -200
       ],
       "parameters": {
-        "jsCode": "// T-SEC (2026-10-06) - DOUBLE FILET DE TEST : remplace l'upload HTTP reel (PATCH\n// vers Google Drive) par un simple passage en memoire, meme si 'Download Catalogue\n// (TEST)' pointait par erreur sur le VRAI catalogue - aucune ecriture n'a lieu.\nconsole.log('[TEST] Upload Catalogue neutralise - rien ecrit sur Drive. Payload (non envoye), 300 premiers caracteres :', String($json.catalogue_json || '').slice(0, 300));\nreturn [{ json: { notion: $json.notion, already_published: $json.already_published } }];"
+        "jsCode": "console.log('[TEST] Upload Catalogue neutralise - rien ecrit sur Drive.', String($json.catalogue_json || '').slice(0, 300));\nreturn [{ json: { notion: $json.notion, already_published: $json.already_published } }];"
       }
     },
     {
@@ -295,7 +295,7 @@
         "emailType": "html",
         "message": "={{ $json.email_html }}"
       },
-      "notes": "ATTENTION : envoie un vrai email a prof_email tel que lu dans le fichier Drive de test. Utiliser un fichier de test dont prof_email est une adresse a Eric, jamais un vrai email de collegue."
+      "notes": "ATTENTION : envoie un vrai email a prof_email tel que lu dans le fichier Drive de test."
     },
     {
       "id": "prep_page_succes",
