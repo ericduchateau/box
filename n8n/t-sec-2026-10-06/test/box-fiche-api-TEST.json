@@ -1,0 +1,272 @@
+{
+  "id": "box-set-TEST-0001",
+  "name": "BOX - Fiche API (TEST)",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "path": "box-set-test",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "wh_set",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "box-set-test-wh-001"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "CATALOGUE_TEST_ID"
+        },
+        "options": {}
+      },
+      "id": "gd_catalogue",
+      "name": "Download Catalogue (TEST)",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        240,
+        0
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "cukxQDNwWIqOAK02",
+          "name": "Google Drive la bonne!"
+        }
+      },
+      "notes": "Pointe sur la copie de test du catalogue (CATALOGUE_TEST_ID a remplacer par Eric). Lecture seule, rien n'est jamais ecrit ici."
+    },
+    {
+      "parameters": {
+        "jsCode": "const fileId = $('Webhook').first().json.query.file_id || '';\n\nlet catalogue;\ntry {\n  const buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\n  let parsed = JSON.parse(buffer.toString('utf-8'));\n  if (typeof parsed === 'string') parsed = JSON.parse(parsed);\n  catalogue = (parsed && Array.isArray(parsed.sets)) ? parsed : { sets: [] };\n} catch (e) {\n  catalogue = { sets: [] };\n}\n\nconst publie = fileId !== '' && catalogue.sets.some((s) => s.drive_file_id === fileId);\n\nreturn [{ json: { file_id: fileId, publie } }];"
+      },
+      "id": "code_verif_pub",
+      "name": "Verifier publication",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.publie }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "if_publie",
+      "name": "Publie ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.file_id }}"
+        },
+        "options": {}
+      },
+      "id": "gd_set",
+      "name": "Download Fiche",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        960,
+        -100
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "cukxQDNwWIqOAK02",
+          "name": "Google Drive la bonne!"
+        }
+      },
+      "notes": "Telecharge le fichier JSON de la fiche depuis Google Drive. Le file_id est passe en query param par le frontend."
+    },
+    {
+      "parameters": {
+        "jsCode": "const buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst fiche = JSON.parse(buffer.toString('utf-8'));\n\n// Retirer les champs sensibles avant envoi au frontend\ndelete fiche.prof_email;\ndelete fiche.code_suppression;\n\nreturn [{ json: fiche }];"
+      },
+      "id": "code_set",
+      "name": "Parse et nettoyer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "id": "resp_set",
+      "name": "Repondre",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1440,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseCode": 404,
+        "responseBody": "={{ { \"error\": \"Fiche non publiee ou introuvable.\" } }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "id": "resp_non_publie",
+      "name": "Repondre Non Publiee",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        200
+      ],
+      "notes": "T-SEC (2026-10-06) : 404 si le file_id demande n'est pas (encore) au catalogue — empeche de lire une candidate avant validation en connaissant juste son file_id."
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Download Catalogue (TEST)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Catalogue (TEST)": {
+      "main": [
+        [
+          {
+            "node": "Verifier publication",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verifier publication": {
+      "main": [
+        [
+          {
+            "node": "Publie ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publie ?": {
+      "main": [
+        [
+          {
+            "node": "Download Fiche",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Repondre Non Publiee",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Fiche": {
+      "main": [
+        [
+          {
+            "node": "Parse et nettoyer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse et nettoyer": {
+      "main": [
+        [
+          {
+            "node": "Repondre",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "pinData": {}
+}

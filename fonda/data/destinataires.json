@@ -2,5 +2,13 @@
   "6e": [],
   "5e": [],
   "4e": [],
-  "3e": []
+  "3e": [],
+  "_comment_relecteurs": "Adresses de TEST pour le routage de relecture (matiere -> relecteur, independant du niveau) — preparation SPEC T6b. Jamais de donnee eleve.",
+  "relecteurs": {
+    "eric": { "email": "duchateauphysiquechimie@gmail.com" },
+    "justine": {
+      "email": "ericdnews@yahoo.fr",
+      "_TEST": "remplacer par le vrai mail de Justine avant mise en service"
+    }
+  }
 }
