@@ -2,17 +2,49 @@
 
 Ticket T-SEC, déclenché par une critique Codex sur la SPEC T6b : 5 correctifs sur des workflows **existants**, livrés en JSON, importés et testés par Éric lui-même — rien n'a été touché dans n8n depuis cette session. `BOX - Rejet Prof` est **strictement inchangé**, aucun fichier ne le concerne.
 
-**Révisé après une critique Codex de confirmation** (sur la 1ʳᵉ version, commit `0ec2522`) qui a trouvé 6 défauts dans cette 1ʳᵉ version elle-même : secret HMAC non réellement configuré (mauvaise version du nœud `Crypto`), câblage cassé du GET `box-select` (deux branches vers un même nœud, sans fusion), `c.numero` non échappé, liens email des copies de TEST pointant vers la **prod**, `responseCode` mal placé (jamais un vrai 404), et une procédure de test incohérente avec le double filet du catalogue. **Tous corrigés dans cette version.** Rien n'a été importé entre les deux versions.
+**Révisé après une critique Codex de confirmation** (sur la 1ʳᵉ version, commit `0ec2522`) qui a trouvé 6 défauts dans cette 1ʳᵉ version elle-même : secret HMAC non réellement configuré (mauvaise version du nœud `Crypto`), câblage cassé du GET `box-select` (deux branches vers un même nœud, sans fusion), `c.numero` non échappé, liens email des copies de TEST pointant vers la **prod**, `responseCode` mal placé (jamais un vrai 404), et une procédure de test incohérente avec le double filet du catalogue. **Tous corrigés.**
+
+**Révisé une 2ᵉ fois après une 2ᵉ critique de confirmation** (commit `77dff11`) qui a validé les 6 points mais trouvé 2 oublis **hors du périmètre initial** des 6 points : la page de succès de l'ancien lien `/box-validate` (jamais retouchée depuis le tout premier commit) interpolait `notion` sans échappement, et les emails HTML (page de relecture + aperçus des 2 générations) interpolaient `notion`/`numero` sans échappement malgré `emailType: "html"`. **Balayage complet refait** sur les 4 workflows qui produisent du HTML (pages ET emails) — voir tableau ci-dessous. Rien n'a été importé entre les versions.
 
 ## Les 5 correctifs
 
 1. **`box-validate` refuse les jeux Box-FONDA non relus** : `type === "fonda"` ET `revue_carte_par_carte !== true` → refus. Toute autre combinaison (y compris absence des deux champs = ancien jeu) → publié comme avant. *(`box-validation-prof.json`)*
 2. **`revue_carte_par_carte`** : posé à `false` par les deux générations (`box-generation-flashcards.json`, `box-generation-tally.json`) ; posé à `true` **uniquement** par `box-select-confirm` au moment de la publication filtrée. *(4 fichiers)*
 3. **Jeton HMAC-SHA256 anti-POST-direct** sur `box-select-confirm` : la page `box-select` calcule un jeton (nœud `Crypto` **v2** — c'est la version qui lit réellement le secret depuis la credential `crypto`, v1 ignore cette credential) lié à `(file_id, code)` et l'embarque en champ caché ; la confirmation recalcule le même jeton et refuse si absent/différent. Calcul placé en **chaîne strictement séquentielle** avant le téléchargement Drive (pas deux branches parallèles sans fusion). *(`box-selection-prof.json`)*
-4. **Échappement HTML** de `question`/`reponse`/`difficulte`/`matiere`/`niveau`/`notion`/**`numero`** dans la page de relecture `box-select`, et de `notion` dans les pages de succès/rejet après confirmation. *(`box-selection-prof.json`)*
+4. **Échappement HTML complet** — tout champ texte libre (`question`/`reponse`/`difficulte`/`matiere`/`niveau`/`notion`/`numero`), **dans toutes les pages ET tous les emails HTML**, pas seulement la page de relecture : `box-select` (page + confirmation), l'ancien `/box-validate` (page de succès), et les aperçus email des 2 workflows de génération. Balayage complet, voir tableau dédié ci-dessous. *(4 fichiers)*
 5. **`box-set` vérifie la présence au catalogue** avant de servir une fiche — vrai `404` (`options.responseCode`, pas un paramètre de 1er niveau ignoré) sinon. *(`box-fiche-api.json`)*
 
 **🔖 Dette inscrite, pas traitée ici** : le jeton HMAC prouve qu'un jeton a été obtenu pour `(file_id, code)` — il n'est ni daté (pas d'expiration), ni lié au contenu précis des cartes présentées. Il n'atteste donc pas qu'une relecture humaine a effectivement eu lieu sur cette version exacte du fichier, seulement qu'une requête a transité par la page GET. Durcissement de 2e niveau (expiration, liaison à un hash du contenu) à envisager plus tard si le besoin se confirme.
+
+## Balayage complet de l'échappement HTML (pages + emails)
+
+Même fonction `escapeHtml()` (dupliquée dans chaque nœud, les nœuds n8n ne partagent pas de scope) partout — aucune variante. Tout point d'interpolation `${…}` dans un template HTML, sur les 4 workflows qui en produisent, listé et classé : **échappé**, ou **sûr** (nombre calculé par notre propre code, jamais du texte issu du formulaire/de la génération/du fichier Drive).
+
+| Fichier / nœud | Champ interpolé | Statut |
+|---|---|---|
+| `box-validation-prof.json` → `Preparer Email Confirmation` | `notion` (×2), `matiere`, `niveau` | échappé |
+| ″ | `nb_cartes` | sûr (nombre) |
+| ″ | `studentUrl` (dérivé de `data.id`, généré par notre code, format fermé) | échappé (uniformité) |
+| `box-validation-prof.json` → `Preparer Page Succes` | `notion` | échappé |
+| ″ | `nb_cartes` | sûr (nombre) |
+| ″ | `studentUrl` | échappé (uniformité) |
+| `box-selection-prof.json` → `Construire page selection` (page de relecture) | `numero`, `difficulte`, `question`, `reponse`, `matiere`, `niveau`, `notion`, `file_id`, `code`, `token` | échappé |
+| ″ | `diffColor(difficulte)` | sûr (fonction qui ne renvoie que l'un de 3 littéraux hex fixes) |
+| ″ | `cardsHtml` | sûr (string déjà composée d'éléments eux-mêmes échappés ci-dessus) |
+| `box-selection-prof.json` → `Preparer Email Confirmation` | `notion` (×2), `matiere`, `niveau` | échappé |
+| ″ | `nb_cartes`, `removed_count` | sûr (nombres) |
+| ″ | `removedLine` | sûr (composée uniquement d'un nombre) |
+| ″ | `studentUrl` | échappé (uniformité) |
+| `box-selection-prof.json` → `Preparer Page Succes` | `notion_html` | déjà échappé (calculé dans `Verifier et filtrer`) |
+| ″ | `nb_cartes`, `removed_count` | sûr (nombres) |
+| ″ | `studentUrl` | échappé (uniformité) |
+| `box-generation-flashcards.json`/`tally.json` → `Preparer Email Validation` | `numero`, `question`, `reponse`, `difficulte.toUpperCase()`, `matiere`, `niveau`, `notion`, `id`, `code` | échappé |
+| ″ | `diff` (sélecteur de couleur) | sûr (même motif que `diffColor`, 3 littéraux hex fixes) |
+| ″ | `cartes.length`, `cartes.length - maxPreview` | sûr (nombres) |
+| ″ | `cartesHtml` | sûr (composée d'éléments déjà échappés) |
+| ″ | `selectUrl` (dérivé de `driveFileId`, format Drive, et `code` déjà `encodeURIComponent`-é) | échappé (uniformité) |
+
+**Chaque ligne vérifiée par exécution locale** (harnais Node, charge `<img src=x onerror=alert(1)>` injectée dans chaque champ texte) : aucune des 6 sorties (2 pages + 4 emails) ne laisse la charge brute survivre dans le HTML produit.
 
 ## Fichiers livrés
 
@@ -24,9 +56,9 @@ n8n/t-sec-2026-10-06/
 
 | Workflow réel | Correctif(s) | Copie de test |
 |---|---|---|
-| `BOX - Generation Flashcards` | #2, #4 (lien email) | `box-generation-flashcards-TEST.json` (déclenchement manuel, trigger Sheets remplacé) |
-| `BOX - Generation Tally` | #2, #4 (lien email) | `box-generation-tally-TEST.json` (webhook `/box-tally-test`) |
-| `BOX - Validation Prof` | #1 | `box-validation-prof-TEST.json` (webhook `/box-validate-test`) |
+| `BOX - Generation Flashcards` | #2, #4 (lien email + échappement aperçu) | `box-generation-flashcards-TEST.json` (déclenchement manuel, trigger Sheets remplacé) |
+| `BOX - Generation Tally` | #2, #4 (lien email + échappement aperçu) | `box-generation-tally-TEST.json` (webhook `/box-tally-test`) |
+| `BOX - Validation Prof` | #1, #4 (échappement page de succès) | `box-validation-prof-TEST.json` (webhook `/box-validate-test`) |
 | `BOX - Selection Prof` | #2, #3, #4 | `box-selection-prof-TEST.json` (webhooks `/box-select-test`, `/box-select-confirm-test`) |
 | `BOX - Fiche API` | #5 | `box-fiche-api-TEST.json` (webhook `/box-set-test`) |
 | `BOX - Rejet Prof` | — | *(aucun fichier, inchangé)* |

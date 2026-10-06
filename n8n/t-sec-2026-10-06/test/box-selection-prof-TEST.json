@@ -112,7 +112,7 @@
           "name": "Box-FONDA secret relecture (TEST)"
         }
       },
-      "notes": "T-SEC (2026-10-06, corrige en 2e passe) - TEST : secret de TEST distinct du secret de prod, typeVersion 2 (credential reellement lue). Meme credential que 'Recalculer Token' ci-dessous, sinon la verification echoue toujours."
+      "notes": "T-SEC (2026-10-06) - TEST : secret de TEST distinct du secret de prod, typeVersion 2 (credential reellement lue). Meme credential que 'Recalculer Token' ci-dessous."
     },
     {
       "id": "gd_dl_get",
@@ -343,7 +343,7 @@
           "name": "Box-FONDA secret relecture (TEST)"
         }
       },
-      "notes": "T-SEC (2026-10-06, corrige en 2e passe) - TEST : MEME credential 'crypto' de TEST que 'Calculer Token' (GET /box-select-test), typeVersion 2."
+      "notes": "T-SEC (2026-10-06) - TEST : MEME credential 'crypto' de TEST que 'Calculer Token' (GET /box-select-test), typeVersion 2."
     },
     {
       "id": "if_token_valid",
@@ -689,7 +689,7 @@
         450
       ],
       "parameters": {
-        "jsCode": "// T-SEC (2026-10-06) - DOUBLE FILET DE TEST : remplace l'upload HTTP reel (PATCH\n// vers Google Drive) par un simple passage en memoire, meme si 'Download Catalogue\n// (TEST)' pointait par erreur sur le VRAI catalogue - aucune ecriture n'a lieu.\n// CONSEQUENCE (voir README) : le catalogue de TEST ne recoit donc JAMAIS reellement\n// l'entree - une etape de verification 'relue au catalogue TEST' ne peut pas\n// fonctionner telle quelle, c'est un choix delibere (double filet), pas un oubli.\nconsole.log('[TEST] Upload Catalogue neutralise - rien ecrit sur Drive. Payload (non envoye), 300 premiers caracteres :', String($json.catalogue_json || '').slice(0, 300));\nreturn [{ json: { notion: $json.notion, already_published: $json.already_published } }];"
+        "jsCode": "// T-SEC (2026-10-06) - DOUBLE FILET DE TEST : remplace l'upload HTTP reel (PATCH\n// vers Google Drive) par un simple passage en memoire, meme si 'Download Catalogue\n// (TEST)' pointait par erreur sur le VRAI catalogue - aucune ecriture n'a lieu.\nconsole.log('[TEST] Upload Catalogue neutralise - rien ecrit sur Drive. Payload (non envoye), 300 premiers caracteres :', String($json.catalogue_json || '').slice(0, 300));\nreturn [{ json: { notion: $json.notion, already_published: $json.already_published } }];"
       }
     },
     {
@@ -702,7 +702,7 @@
         120
       ],
       "parameters": {
-        "jsCode": "const data = $('Verifier et filtrer').first().json;\nconst studentUrl = `https://ericduchateau.github.io/box/?set=${data.id}`;\nconst removedLine = data.removed_count > 0\n  ? `<p style=\"color:#d97706;font-size:13px\">${data.removed_count} carte(s) retiree(s) lors de votre relecture &mdash; ${data.nb_cartes} carte(s) publiee(s) au total.</p>`\n  : '';\n\nconst emailHtml = `<div style=\"font-family:sans-serif;max-width:600px;margin:0 auto\">\n  <h2 style=\"color:#16a34a\">&#9989; Vos fiches sont publiees et accessibles aux eleves !</h2>\n  <p>\n    <strong>Notion :</strong> ${data.notion}<br>\n    <strong>Matiere :</strong> ${data.matiere} &mdash; ${data.niveau}<br>\n    <strong>Nombre de fiches :</strong> ${data.nb_cartes}\n  </p>\n  ${removedLine}\n  <hr>\n  <h3>&#128279; Lien direct a partager avec vos eleves :</h3>\n  <div style=\"background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;margin:16px 0\">\n    <p style=\"margin:0 0 8px 0;font-size:13px;color:#64748b\">Copiez ce lien dans votre cahier de texte numerique :</p>\n    <p style=\"margin:0 0 12px 0;background:white;border:1px solid #dbeafe;border-radius:4px;padding:10px;font-family:monospace;word-break:break-all;font-size:14px;font-weight:bold\">${studentUrl}</p>\n    <a href=\"${studentUrl}\" style=\"color:#2563eb;font-size:14px\">Ouvrir les fiches &rarr;</a>\n  </div>\n  <p style=\"color:#64748b;font-size:12px\">Ce lien ouvrira directement le jeu de fiches <strong>${data.notion}</strong> pour vos eleves, sans passer par le catalogue.</p>\n</div>`;\n\nreturn [{ json: { prof_email: data.prof_email, notion: data.notion, nb_cartes: data.nb_cartes, email_html: emailHtml } }];"
+        "jsCode": "const data = $('Verifier et filtrer').first().json;\n\nfunction escapeHtml(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#39;');\n}\n\n// T-SEC (2026-10-06, 3e passe) : email en emailType 'html' (pas du texte simple,\n// corrige le commentaire errone de la passe precedente) - notion/matiere/niveau/\n// studentUrl echappes, comme sur la page de relecture.\nconst studentUrl = escapeHtml(`https://ericduchateau.github.io/box/?set=${data.id}`);\nconst removedLine = data.removed_count > 0\n  ? `<p style=\"color:#d97706;font-size:13px\">${data.removed_count} carte(s) retiree(s) lors de votre relecture &mdash; ${data.nb_cartes} carte(s) publiee(s) au total.</p>`\n  : '';\n\nconst emailHtml = `<div style=\"font-family:sans-serif;max-width:600px;margin:0 auto\">\n  <h2 style=\"color:#16a34a\">&#9989; Vos fiches sont publiees et accessibles aux eleves !</h2>\n  <p>\n    <strong>Notion :</strong> ${escapeHtml(data.notion)}<br>\n    <strong>Matiere :</strong> ${escapeHtml(data.matiere)} &mdash; ${escapeHtml(data.niveau)}<br>\n    <strong>Nombre de fiches :</strong> ${data.nb_cartes}\n  </p>\n  ${removedLine}\n  <hr>\n  <h3>&#128279; Lien direct a partager avec vos eleves :</h3>\n  <div style=\"background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;margin:16px 0\">\n    <p style=\"margin:0 0 8px 0;font-size:13px;color:#64748b\">Copiez ce lien dans votre cahier de texte numerique :</p>\n    <p style=\"margin:0 0 12px 0;background:white;border:1px solid #dbeafe;border-radius:4px;padding:10px;font-family:monospace;word-break:break-all;font-size:14px;font-weight:bold\">${studentUrl}</p>\n    <a href=\"${studentUrl}\" style=\"color:#2563eb;font-size:14px\">Ouvrir les fiches &rarr;</a>\n  </div>\n  <p style=\"color:#64748b;font-size:12px\">Ce lien ouvrira directement le jeu de fiches <strong>${escapeHtml(data.notion)}</strong> pour vos eleves, sans passer par le catalogue.</p>\n</div>`;\n\nreturn [{ json: { prof_email: data.prof_email, notion: data.notion, nb_cartes: data.nb_cartes, email_html: emailHtml } }];"
       }
     },
     {
@@ -727,7 +727,7 @@
           "name": "Gmail n8n iazimut2026"
         }
       },
-      "notes": "ATTENTION : envoie un vrai email a prof_email tel que lu dans le fichier Drive de test. Utiliser un fichier de test dont prof_email est une adresse a Eric, jamais un vrai email de collegue."
+      "notes": "ATTENTION : envoie un vrai email a prof_email tel que lu dans le fichier Drive de test."
     },
     {
       "id": "prep_page_post",
@@ -739,7 +739,7 @@
         400
       ],
       "parameters": {
-        "jsCode": "const data = $('Verifier et filtrer').first().json;\nconst studentUrl = 'https://ericduchateau.github.io/box/?set=' + data.id;\nconst removedLine = data.removed_count > 0\n  ? `<p style=\\\"margin:8px 0 0;color:#d97706;font-size:13px\\\">${data.removed_count} carte(s) retiree(s) lors de votre relecture.</p>`\n  : '';\n\nconst html = `<html>\n<body style=\"font-family:sans-serif;text-align:center;padding:60px\">\n  <div style=\"max-width:540px;margin:0 auto\">\n    <h2 style=\"color:#16a34a\">&#9989; Fiches publiees !</h2>\n    <p style=\"font-size:18px\">Les fiches <strong>${data.notion_html}</strong> (${data.nb_cartes} cartes) sont maintenant accessibles aux eleves.</p>\n    ${removedLine}\n    <div style=\"background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;margin:24px 0;text-align:left\">\n      <p style=\"margin:0 0 8px 0;font-weight:bold;color:#1e40af\">&#128279; Lien a partager avec vos eleves :</p>\n      <p style=\"margin:0 0 10px 0;background:white;border:1px solid #dbeafe;border-radius:4px;padding:10px;font-family:monospace;word-break:break-all;font-size:13px\">${studentUrl}</p>\n      <p style=\"margin:0;color:#16a34a;font-size:13px\">&#128231; Ce lien vous a aussi ete envoye par email.</p>\n    </div>\n    <p style=\"margin-top:24px\"><a href=\"https://ericduchateau.github.io/box/\" style=\"color:#2563eb\">Aller sur la page BOX &rarr;</a></p>\n  </div>\n</body>\n</html>`;\n\nreturn [{ json: { html } }];"
+        "jsCode": "const data = $('Verifier et filtrer').first().json;\n\nfunction escapeHtml(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#39;');\n}\n\n// T-SEC (2026-10-06, 3e passe) : studentUrl echappe par uniformite (notion deja\n// protegee par notion_html depuis la 2e passe).\nconst studentUrl = escapeHtml('https://ericduchateau.github.io/box/?set=' + data.id);\nconst removedLine = data.removed_count > 0\n  ? `<p style=\\\"margin:8px 0 0;color:#d97706;font-size:13px\\\">${data.removed_count} carte(s) retiree(s) lors de votre relecture.</p>`\n  : '';\n\nconst html = `<html>\n<body style=\"font-family:sans-serif;text-align:center;padding:60px\">\n  <div style=\"max-width:540px;margin:0 auto\">\n    <h2 style=\"color:#16a34a\">&#9989; Fiches publiees !</h2>\n    <p style=\"font-size:18px\">Les fiches <strong>${data.notion_html}</strong> (${data.nb_cartes} cartes) sont maintenant accessibles aux eleves.</p>\n    ${removedLine}\n    <div style=\"background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;margin:24px 0;text-align:left\">\n      <p style=\"margin:0 0 8px 0;font-weight:bold;color:#1e40af\">&#128279; Lien a partager avec vos eleves :</p>\n      <p style=\"margin:0 0 10px 0;background:white;border:1px solid #dbeafe;border-radius:4px;padding:10px;font-family:monospace;word-break:break-all;font-size:13px\">${studentUrl}</p>\n      <p style=\"margin:0;color:#16a34a;font-size:13px\">&#128231; Ce lien vous a aussi ete envoye par email.</p>\n    </div>\n    <p style=\"margin-top:24px\"><a href=\"https://ericduchateau.github.io/box/\" style=\"color:#2563eb\">Aller sur la page BOX &rarr;</a></p>\n  </div>\n</body>\n</html>`;\n\nreturn [{ json: { html } }];"
       }
     },
     {
