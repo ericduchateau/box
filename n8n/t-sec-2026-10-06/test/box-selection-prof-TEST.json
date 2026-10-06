@@ -91,38 +91,13 @@
       }
     },
     {
-      "id": "gd_dl_get",
-      "name": "Download Flashcards",
-      "type": "n8n-nodes-base.googleDrive",
-      "typeVersion": 3,
-      "position": [
-        720,
-        -140
-      ],
-      "parameters": {
-        "operation": "download",
-        "fileId": {
-          "__rl": true,
-          "mode": "id",
-          "value": "={{ $json.file_id }}"
-        },
-        "options": {}
-      },
-      "credentials": {
-        "googleDriveOAuth2Api": {
-          "id": "cukxQDNwWIqOAK02",
-          "name": "Google Drive la bonne!"
-        }
-      }
-    },
-    {
       "id": "calc_token",
       "name": "Calculer Token",
       "type": "n8n-nodes-base.crypto",
-      "typeVersion": 1,
+      "typeVersion": 2,
       "position": [
         720,
-        60
+        -100
       ],
       "parameters": {
         "action": "hmac",
@@ -137,7 +112,33 @@
           "name": "Box-FONDA secret relecture (TEST)"
         }
       },
-      "notes": "T-SEC (2026-10-06) - TEST : secret de TEST distinct du secret de prod. Meme credential que 'Recalculer Token' ci-dessous, sinon la verification echoue toujours."
+      "notes": "T-SEC (2026-10-06, corrige en 2e passe) - TEST : secret de TEST distinct du secret de prod, typeVersion 2 (credential reellement lue). Meme credential que 'Recalculer Token' ci-dessous, sinon la verification echoue toujours."
+    },
+    {
+      "id": "gd_dl_get",
+      "name": "Download Flashcards",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        960,
+        -100
+      ],
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Extraire parametres').item.json.file_id }}"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "cukxQDNwWIqOAK02",
+          "name": "Google Drive la bonne!"
+        }
+      },
+      "notes": "T-SEC : fileId lu via $('Extraire parametres') (reference croisee par nom), pas $json.file_id - $json a change de forme depuis que 'Calculer Token' precede ce noeud dans la chaine."
     },
     {
       "id": "build_page",
@@ -145,11 +146,11 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        960,
+        1200,
         -100
       ],
       "parameters": {
-        "jsCode": "const query = $('Extraire parametres').first().json;\nconst buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst flashcards = JSON.parse(buffer.toString('utf-8'));\n\nif (flashcards.code_suppression !== query.code) {\n  return [{ json: { verified: false, error: 'Code invalide' } }];\n}\n\nconst token = $('Calculer Token').first().json.data;\n\n// T-SEC (2026-10-06) : echappement HTML (question/reponse/difficulte, texte libre\n// issu de la generation) - un contenu genere contenant du HTML actif ne doit plus\n// pouvoir alterer cette page.\nfunction escapeHtml(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#39;');\n}\n\nconst cartes = flashcards.cartes || [];\nfunction diffColor(d) { return d === 'facile' ? '#16a34a' : d === 'moyen' ? '#d97706' : '#dc2626'; }\n\nlet cardsHtml = '';\nfor (const c of cartes) {\n  cardsHtml += `<label style=\"display:block;border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px;margin-bottom:10px;cursor:pointer\">\n    <div style=\"display:flex;align-items:flex-start;gap:12px\">\n      <input type=\"checkbox\" name=\"cartes\" value=\"${c.numero}\" checked class=\"carte-checkbox\" style=\"margin-top:4px;width:18px;height:18px;flex:0 0 auto\">\n      <div style=\"flex:1\">\n        <div style=\"color:${diffColor(c.difficulte)};font-size:11px;font-weight:bold;text-transform:uppercase;margin-bottom:4px\">${escapeHtml(c.difficulte || '')}</div>\n        <div style=\"font-weight:bold;margin-bottom:4px\">Q${c.numero} : ${escapeHtml(c.question)}</div>\n        <div style=\"color:#475569;font-size:14px\">${escapeHtml(c.reponse)}</div>\n      </div>\n    </div>\n  </label>`;\n}\n\nconst html = `<html>\n<head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"></head>\n<body style=\"font-family:sans-serif;background:#f8fafc;margin:0;padding:24px\">\n  <div style=\"max-width:640px;margin:0 auto\">\n    <h2 style=\"margin-bottom:4px\">BOX &mdash; Choisissez les cartes a publier</h2>\n    <p style=\"color:#64748b;margin-top:0\">${escapeHtml(flashcards.matiere)} &mdash; ${escapeHtml(flashcards.niveau)} &mdash; ${escapeHtml(flashcards.notion)}</p>\n    <div style=\"margin:16px 0\">\n      <button type=\"button\" onclick=\"document.querySelectorAll('.carte-checkbox').forEach(c=>c.checked=true)\" style=\"background:#e2e8f0;border:none;border-radius:6px;padding:8px 14px;margin-right:8px;cursor:pointer\">Tout selectionner</button>\n      <button type=\"button\" onclick=\"document.querySelectorAll('.carte-checkbox').forEach(c=>c.checked=false)\" style=\"background:#e2e8f0;border:none;border-radius:6px;padding:8px 14px;cursor:pointer\">Tout deselectionner</button>\n    </div>\n    <form method=\"POST\" action=\"https://n8n.srv868991.hstgr.cloud/webhook/box-select-confirm-test\">\n      <input type=\"hidden\" name=\"file_id\" value=\"${escapeHtml(query.file_id)}\">\n      <input type=\"hidden\" name=\"code\" value=\"${escapeHtml(query.code)}\">\n      <input type=\"hidden\" name=\"token\" value=\"${escapeHtml(token)}\">\n      ${cardsHtml}\n      <button type=\"submit\" style=\"background:#16a34a;color:white;border:none;border-radius:8px;padding:14px 32px;font-size:16px;font-weight:bold;cursor:pointer;width:100%;margin-top:8px\">Publier la selection</button>\n    </form>\n    <p style=\"color:#94a3b8;font-size:12px;text-align:center;margin-top:16px\">Decochez une carte pour l'exclure. Si vous decochez tout, rien ne sera publie.</p>\n  </div>\n</body>\n</html>`;\n\nreturn [{ json: { verified: true, html } }];"
+        "jsCode": "const query = $('Extraire parametres').first().json;\nconst buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst flashcards = JSON.parse(buffer.toString('utf-8'));\n\nif (flashcards.code_suppression !== query.code) {\n  return [{ json: { verified: false, error: 'Code invalide' } }];\n}\n\nconst token = $('Calculer Token').first().json.data;\n\n// T-SEC (2026-10-06) : echappement HTML (TOUS les champs texte libre interpoles,\n// y compris c.numero - oublie dans la 1re passe) - un contenu genere contenant du\n// HTML actif ne doit plus pouvoir alterer cette page.\nfunction escapeHtml(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#39;');\n}\n\nconst cartes = flashcards.cartes || [];\nfunction diffColor(d) { return d === 'facile' ? '#16a34a' : d === 'moyen' ? '#d97706' : '#dc2626'; }\n\nlet cardsHtml = '';\nfor (const c of cartes) {\n  cardsHtml += `<label style=\"display:block;border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px;margin-bottom:10px;cursor:pointer\">\n    <div style=\"display:flex;align-items:flex-start;gap:12px\">\n      <input type=\"checkbox\" name=\"cartes\" value=\"${escapeHtml(c.numero)}\" checked class=\"carte-checkbox\" style=\"margin-top:4px;width:18px;height:18px;flex:0 0 auto\">\n      <div style=\"flex:1\">\n        <div style=\"color:${diffColor(c.difficulte)};font-size:11px;font-weight:bold;text-transform:uppercase;margin-bottom:4px\">${escapeHtml(c.difficulte || '')}</div>\n        <div style=\"font-weight:bold;margin-bottom:4px\">Q${escapeHtml(c.numero)} : ${escapeHtml(c.question)}</div>\n        <div style=\"color:#475569;font-size:14px\">${escapeHtml(c.reponse)}</div>\n      </div>\n    </div>\n  </label>`;\n}\n\nconst html = `<html>\n<head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"></head>\n<body style=\"font-family:sans-serif;background:#f8fafc;margin:0;padding:24px\">\n  <div style=\"max-width:640px;margin:0 auto\">\n    <h2 style=\"margin-bottom:4px\">BOX &mdash; Choisissez les cartes a publier</h2>\n    <p style=\"color:#64748b;margin-top:0\">${escapeHtml(flashcards.matiere)} &mdash; ${escapeHtml(flashcards.niveau)} &mdash; ${escapeHtml(flashcards.notion)}</p>\n    <div style=\"margin:16px 0\">\n      <button type=\"button\" onclick=\"document.querySelectorAll('.carte-checkbox').forEach(c=>c.checked=true)\" style=\"background:#e2e8f0;border:none;border-radius:6px;padding:8px 14px;margin-right:8px;cursor:pointer\">Tout selectionner</button>\n      <button type=\"button\" onclick=\"document.querySelectorAll('.carte-checkbox').forEach(c=>c.checked=false)\" style=\"background:#e2e8f0;border:none;border-radius:6px;padding:8px 14px;cursor:pointer\">Tout deselectionner</button>\n    </div>\n    <form method=\"POST\" action=\"https://n8n.srv868991.hstgr.cloud/webhook/box-select-confirm-test\">\n      <input type=\"hidden\" name=\"file_id\" value=\"${escapeHtml(query.file_id)}\">\n      <input type=\"hidden\" name=\"code\" value=\"${escapeHtml(query.code)}\">\n      <input type=\"hidden\" name=\"token\" value=\"${escapeHtml(token)}\">\n      ${cardsHtml}\n      <button type=\"submit\" style=\"background:#16a34a;color:white;border:none;border-radius:8px;padding:14px 32px;font-size:16px;font-weight:bold;cursor:pointer;width:100%;margin-top:8px\">Publier la selection</button>\n    </form>\n    <p style=\"color:#94a3b8;font-size:12px;text-align:center;margin-top:16px\">Decochez une carte pour l'exclure. Si vous decochez tout, rien ne sera publie.</p>\n  </div>\n</body>\n</html>`;\n\nreturn [{ json: { verified: true, html } }];"
       }
     },
     {
@@ -324,7 +325,7 @@
       "id": "calc_token_confirm",
       "name": "Recalculer Token",
       "type": "n8n-nodes-base.crypto",
-      "typeVersion": 1,
+      "typeVersion": 2,
       "position": [
         720,
         440
@@ -342,7 +343,7 @@
           "name": "Box-FONDA secret relecture (TEST)"
         }
       },
-      "notes": "T-SEC (2026-10-06) - TEST : MEME credential 'crypto' de TEST que 'Calculer Token' (GET /box-select-test)."
+      "notes": "T-SEC (2026-10-06, corrige en 2e passe) - TEST : MEME credential 'crypto' de TEST que 'Calculer Token' (GET /box-select-test), typeVersion 2."
     },
     {
       "id": "if_token_valid",
@@ -437,7 +438,7 @@
         400
       ],
       "parameters": {
-        "jsCode": "const query = $('Extraire parametres Confirmation').first().json;\nconst buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst flashcards = JSON.parse(buffer.toString('utf-8'));\n\nif (flashcards.code_suppression !== query.code) {\n  return [{ json: { verified: false, error: 'Code invalide' } }];\n}\n\nconst allCartes = flashcards.cartes || [];\nconst selectedSet = new Set(query.selected);\nconst kept = allCartes.filter(c => selectedSet.has(c.numero));\nconst removedCount = allCartes.length - kept.length;\n\n// T-SEC (2026-10-06) : ce fichier EST passe par la relecture carte-par-carte -\n// revue_carte_par_carte: true, quel que soit le type de jeu (BOX ordinaire ou\n// Box-FONDA). C'est la SEULE etape qui pose ce champ a true dans tout le systeme.\nreturn [{ json: {\n  verified: true,\n  empty: kept.length === 0,\n  file_id: query.file_id,\n  code: query.code,\n  id: flashcards.id,\n  matiere: flashcards.matiere,\n  niveau: flashcards.niveau,\n  notion: flashcards.notion,\n  prof_nom: flashcards.prof_nom,\n  prof_email: flashcards.prof_email,\n  date_creation: flashcards.date_creation,\n  cartes_json: JSON.stringify({ ...flashcards, cartes: kept, nb_cartes: kept.length, revue_carte_par_carte: true }),\n  nb_cartes: kept.length,\n  removed_count: removedCount\n} }];"
+        "jsCode": "const query = $('Extraire parametres Confirmation').first().json;\nconst buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst flashcards = JSON.parse(buffer.toString('utf-8'));\n\nif (flashcards.code_suppression !== query.code) {\n  return [{ json: { verified: false, error: 'Code invalide' } }];\n}\n\nconst allCartes = flashcards.cartes || [];\nconst selectedSet = new Set(query.selected);\nconst kept = allCartes.filter(c => selectedSet.has(c.numero));\nconst removedCount = allCartes.length - kept.length;\n\n// T-SEC (2026-10-06) : notion_html - version echappee pour toute page HTML en\n// aval (Repondre Rejet, Preparer Page Succes) qui l'interpole. 'notion' (brut)\n// reste disponible pour l'email (texte simple cote email, risque different).\nfunction escapeHtml(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#39;');\n}\n\n// T-SEC (2026-10-06) : ce fichier EST passe par la relecture carte-par-carte -\n// revue_carte_par_carte: true, quel que soit le type de jeu (BOX ordinaire ou\n// Box-FONDA). C'est la SEULE etape qui pose ce champ a true dans tout le systeme.\nreturn [{ json: {\n  verified: true,\n  empty: kept.length === 0,\n  file_id: query.file_id,\n  code: query.code,\n  id: flashcards.id,\n  matiere: flashcards.matiere,\n  niveau: flashcards.niveau,\n  notion: flashcards.notion,\n  notion_html: escapeHtml(flashcards.notion),\n  prof_nom: flashcards.prof_nom,\n  prof_email: flashcards.prof_email,\n  date_creation: flashcards.date_creation,\n  cartes_json: JSON.stringify({ ...flashcards, cartes: kept, nb_cartes: kept.length, revue_carte_par_carte: true }),\n  nb_cartes: kept.length,\n  removed_count: removedCount\n} }];"
       }
     },
     {
@@ -567,7 +568,7 @@
       ],
       "parameters": {
         "respondWith": "text",
-        "responseBody": "=<html><head><meta http-equiv=\"refresh\" content=\"3;url=https://ericduchateau.github.io/box/\"></head><body style=\"font-family:sans-serif;text-align:center;padding:60px\"><div style=\"max-width:500px;margin:0 auto\"><h2 style=\"color:#f59e0b\">Aucune carte selectionnee</h2><p style=\"font-size:18px\">Les fiches <strong>{{ $('Verifier et filtrer').item.json.notion }}</strong> n'ont pas ete publiees.</p><p style=\"color:#64748b\">Redirection vers la page BOX dans 3 secondes...</p></div></body></html>",
+        "responseBody": "=<html><head><meta http-equiv=\"refresh\" content=\"3;url=https://ericduchateau.github.io/box/\"></head><body style=\"font-family:sans-serif;text-align:center;padding:60px\"><div style=\"max-width:500px;margin:0 auto\"><h2 style=\"color:#f59e0b\">Aucune carte selectionnee</h2><p style=\"font-size:18px\">Les fiches <strong>{{ $('Verifier et filtrer').item.json.notion_html }}</strong> n'ont pas ete publiees.</p><p style=\"color:#64748b\">Redirection vers la page BOX dans 3 secondes...</p></div></body></html>",
         "options": {
           "responseHeaders": {
             "entries": [
@@ -688,7 +689,7 @@
         450
       ],
       "parameters": {
-        "jsCode": "// T-SEC (2026-10-06) - DOUBLE FILET DE TEST : remplace l'upload HTTP reel (PATCH\n// vers Google Drive) par un simple passage en memoire, meme si 'Download Catalogue\n// (TEST)' pointait par erreur sur le VRAI catalogue - aucune ecriture n'a lieu.\nconsole.log('[TEST] Upload Catalogue neutralise - rien ecrit sur Drive. Payload (non envoye), 300 premiers caracteres :', String($json.catalogue_json || '').slice(0, 300));\nreturn [{ json: { notion: $json.notion, already_published: $json.already_published } }];"
+        "jsCode": "// T-SEC (2026-10-06) - DOUBLE FILET DE TEST : remplace l'upload HTTP reel (PATCH\n// vers Google Drive) par un simple passage en memoire, meme si 'Download Catalogue\n// (TEST)' pointait par erreur sur le VRAI catalogue - aucune ecriture n'a lieu.\n// CONSEQUENCE (voir README) : le catalogue de TEST ne recoit donc JAMAIS reellement\n// l'entree - une etape de verification 'relue au catalogue TEST' ne peut pas\n// fonctionner telle quelle, c'est un choix delibere (double filet), pas un oubli.\nconsole.log('[TEST] Upload Catalogue neutralise - rien ecrit sur Drive. Payload (non envoye), 300 premiers caracteres :', String($json.catalogue_json || '').slice(0, 300));\nreturn [{ json: { notion: $json.notion, already_published: $json.already_published } }];"
       }
     },
     {
@@ -738,7 +739,7 @@
         400
       ],
       "parameters": {
-        "jsCode": "const data = $('Verifier et filtrer').first().json;\nconst studentUrl = 'https://ericduchateau.github.io/box/?set=' + data.id;\nconst removedLine = data.removed_count > 0\n  ? `<p style=\\\"margin:8px 0 0;color:#d97706;font-size:13px\\\">${data.removed_count} carte(s) retiree(s) lors de votre relecture.</p>`\n  : '';\n\nconst html = `<html>\n<body style=\"font-family:sans-serif;text-align:center;padding:60px\">\n  <div style=\"max-width:540px;margin:0 auto\">\n    <h2 style=\"color:#16a34a\">&#9989; Fiches publiees !</h2>\n    <p style=\"font-size:18px\">Les fiches <strong>${data.notion}</strong> (${data.nb_cartes} cartes) sont maintenant accessibles aux eleves.</p>\n    ${removedLine}\n    <div style=\"background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;margin:24px 0;text-align:left\">\n      <p style=\"margin:0 0 8px 0;font-weight:bold;color:#1e40af\">&#128279; Lien a partager avec vos eleves :</p>\n      <p style=\"margin:0 0 10px 0;background:white;border:1px solid #dbeafe;border-radius:4px;padding:10px;font-family:monospace;word-break:break-all;font-size:13px\">${studentUrl}</p>\n      <p style=\"margin:0;color:#16a34a;font-size:13px\">&#128231; Ce lien vous a aussi ete envoye par email.</p>\n    </div>\n    <p style=\"margin-top:24px\"><a href=\"https://ericduchateau.github.io/box/\" style=\"color:#2563eb\">Aller sur la page BOX &rarr;</a></p>\n  </div>\n</body>\n</html>`;\n\nreturn [{ json: { html } }];"
+        "jsCode": "const data = $('Verifier et filtrer').first().json;\nconst studentUrl = 'https://ericduchateau.github.io/box/?set=' + data.id;\nconst removedLine = data.removed_count > 0\n  ? `<p style=\\\"margin:8px 0 0;color:#d97706;font-size:13px\\\">${data.removed_count} carte(s) retiree(s) lors de votre relecture.</p>`\n  : '';\n\nconst html = `<html>\n<body style=\"font-family:sans-serif;text-align:center;padding:60px\">\n  <div style=\"max-width:540px;margin:0 auto\">\n    <h2 style=\"color:#16a34a\">&#9989; Fiches publiees !</h2>\n    <p style=\"font-size:18px\">Les fiches <strong>${data.notion_html}</strong> (${data.nb_cartes} cartes) sont maintenant accessibles aux eleves.</p>\n    ${removedLine}\n    <div style=\"background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;margin:24px 0;text-align:left\">\n      <p style=\"margin:0 0 8px 0;font-weight:bold;color:#1e40af\">&#128279; Lien a partager avec vos eleves :</p>\n      <p style=\"margin:0 0 10px 0;background:white;border:1px solid #dbeafe;border-radius:4px;padding:10px;font-family:monospace;word-break:break-all;font-size:13px\">${studentUrl}</p>\n      <p style=\"margin:0;color:#16a34a;font-size:13px\">&#128231; Ce lien vous a aussi ete envoye par email.</p>\n    </div>\n    <p style=\"margin-top:24px\"><a href=\"https://ericduchateau.github.io/box/\" style=\"color:#2563eb\">Aller sur la page BOX &rarr;</a></p>\n  </div>\n</body>\n</html>`;\n\nreturn [{ json: { html } }];"
       }
     },
     {
@@ -793,11 +794,6 @@
       "main": [
         [
           {
-            "node": "Download Flashcards",
-            "type": "main",
-            "index": 0
-          },
-          {
             "node": "Calculer Token",
             "type": "main",
             "index": 0
@@ -812,18 +808,18 @@
         ]
       ]
     },
-    "Download Flashcards": {
+    "Calculer Token": {
       "main": [
         [
           {
-            "node": "Construire page selection",
+            "node": "Download Flashcards",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Calculer Token": {
+    "Download Flashcards": {
       "main": [
         [
           {

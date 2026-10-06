@@ -95,9 +95,9 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseCode": 404,
         "responseBody": "={{ { \"error\": \"Fiche non publiee ou introuvable.\" } }}",
         "options": {
+          "responseCode": 404,
           "responseHeaders": {
             "entries": [
               { "name": "Access-Control-Allow-Origin", "value": "*" },
@@ -111,7 +111,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [960, 200],
-      "notes": "T-SEC (2026-10-06) : 404 si le file_id demande n'est pas (encore) au catalogue — empeche de lire une candidate avant validation en connaissant juste son file_id."
+      "notes": "T-SEC (2026-10-06, corrige en 2e passe) : responseCode doit etre dans options.responseCode (collection), pas un parametre de 1er niveau - sinon le node Respond to Webhook l'ignore et renvoie 200 avec le corps d'erreur dedans. 404 si le file_id demande n'est pas (encore) au catalogue — empeche de lire une candidate avant validation en connaissant juste son file_id."
     }
   ],
   "connections": {
