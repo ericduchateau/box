@@ -91,37 +91,13 @@
       }
     },
     {
-      "id": "calc_token",
-      "name": "Calculer Token",
-      "type": "n8n-nodes-base.crypto",
-      "typeVersion": 2,
-      "position": [
-        720,
-        -100
-      ],
-      "parameters": {
-        "action": "hmac",
-        "type": "SHA256",
-        "value": "={{ $json.file_id + '|' + $json.code }}",
-        "dataPropertyName": "data",
-        "encoding": "hex"
-      },
-      "credentials": {
-        "crypto": {
-          "id": "CRYPTO_SECRET_CREDENTIAL_ID_TEST",
-          "name": "Box-FONDA secret relecture (TEST)"
-        }
-      },
-      "notes": "T-SEC (2026-10-06) - TEST : secret de TEST distinct du secret de prod, typeVersion 2 (credential reellement lue). Meme credential que 'Recalculer Token' ci-dessous."
-    },
-    {
       "id": "gd_dl_get",
       "name": "Download Flashcards",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
       "position": [
-        960,
-        -100
+        720,
+        -96
       ],
       "parameters": {
         "operation": "download",
@@ -137,20 +113,21 @@
           "id": "cukxQDNwWIqOAK02",
           "name": "Google Drive la bonne!"
         }
-      },
-      "notes": "T-SEC : fileId lu via $('Extraire parametres') (reference croisee par nom), pas $json.file_id - $json a change de forme depuis que 'Calculer Token' precede ce noeud dans la chaine."
+      }
     },
     {
-      "id": "build_page",
-      "name": "Construire page selection",
+      "id": "verifier_code_get",
+      "name": "Verifier code (GET)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1200,
-        -100
+        960,
+        -96
       ],
       "parameters": {
-        "jsCode": "const query = $('Extraire parametres').first().json;\nconst buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst flashcards = JSON.parse(buffer.toString('utf-8'));\n\nif (flashcards.code_suppression !== query.code) {\n  return [{ json: { verified: false, error: 'Code invalide' } }];\n}\n\nconst token = $('Calculer Token').first().json.data;\n\n// T-SEC (2026-10-06) : echappement HTML (TOUS les champs texte libre interpoles,\n// y compris c.numero - oublie dans la 1re passe) - un contenu genere contenant du\n// HTML actif ne doit plus pouvoir alterer cette page.\nfunction escapeHtml(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#39;');\n}\n\nconst cartes = flashcards.cartes || [];\nfunction diffColor(d) { return d === 'facile' ? '#16a34a' : d === 'moyen' ? '#d97706' : '#dc2626'; }\n\nlet cardsHtml = '';\nfor (const c of cartes) {\n  cardsHtml += `<label style=\"display:block;border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px;margin-bottom:10px;cursor:pointer\">\n    <div style=\"display:flex;align-items:flex-start;gap:12px\">\n      <input type=\"checkbox\" name=\"cartes\" value=\"${escapeHtml(c.numero)}\" checked class=\"carte-checkbox\" style=\"margin-top:4px;width:18px;height:18px;flex:0 0 auto\">\n      <div style=\"flex:1\">\n        <div style=\"color:${diffColor(c.difficulte)};font-size:11px;font-weight:bold;text-transform:uppercase;margin-bottom:4px\">${escapeHtml(c.difficulte || '')}</div>\n        <div style=\"font-weight:bold;margin-bottom:4px\">Q${escapeHtml(c.numero)} : ${escapeHtml(c.question)}</div>\n        <div style=\"color:#475569;font-size:14px\">${escapeHtml(c.reponse)}</div>\n      </div>\n    </div>\n  </label>`;\n}\n\nconst html = `<html>\n<head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"></head>\n<body style=\"font-family:sans-serif;background:#f8fafc;margin:0;padding:24px\">\n  <div style=\"max-width:640px;margin:0 auto\">\n    <h2 style=\"margin-bottom:4px\">BOX &mdash; Choisissez les cartes a publier</h2>\n    <p style=\"color:#64748b;margin-top:0\">${escapeHtml(flashcards.matiere)} &mdash; ${escapeHtml(flashcards.niveau)} &mdash; ${escapeHtml(flashcards.notion)}</p>\n    <div style=\"margin:16px 0\">\n      <button type=\"button\" onclick=\"document.querySelectorAll('.carte-checkbox').forEach(c=>c.checked=true)\" style=\"background:#e2e8f0;border:none;border-radius:6px;padding:8px 14px;margin-right:8px;cursor:pointer\">Tout selectionner</button>\n      <button type=\"button\" onclick=\"document.querySelectorAll('.carte-checkbox').forEach(c=>c.checked=false)\" style=\"background:#e2e8f0;border:none;border-radius:6px;padding:8px 14px;cursor:pointer\">Tout deselectionner</button>\n    </div>\n    <form method=\"POST\" action=\"https://n8n.srv868991.hstgr.cloud/webhook/box-select-confirm-test\">\n      <input type=\"hidden\" name=\"file_id\" value=\"${escapeHtml(query.file_id)}\">\n      <input type=\"hidden\" name=\"code\" value=\"${escapeHtml(query.code)}\">\n      <input type=\"hidden\" name=\"token\" value=\"${escapeHtml(token)}\">\n      ${cardsHtml}\n      <button type=\"submit\" style=\"background:#16a34a;color:white;border:none;border-radius:8px;padding:14px 32px;font-size:16px;font-weight:bold;cursor:pointer;width:100%;margin-top:8px\">Publier la selection</button>\n    </form>\n    <p style=\"color:#94a3b8;font-size:12px;text-align:center;margin-top:16px\">Decochez une carte pour l'exclure. Si vous decochez tout, rien ne sera publie.</p>\n  </div>\n</body>\n</html>`;\n\nreturn [{ json: { verified: true, html } }];"
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const query = $('Extraire parametres').first().json;\nconst buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst flashcards = JSON.parse(buffer.toString('utf-8'));\n\nif (flashcards.code_suppression !== query.code) {\n  return [{ json: { verified: false, error: 'Code invalide' } }];\n}\n\nreturn [{ json: { verified: true, flashcards, file_id: query.file_id, code: query.code } }];"
       }
     },
     {
@@ -160,7 +137,7 @@
       "typeVersion": 2.2,
       "position": [
         1200,
-        -100
+        -96
       ],
       "parameters": {
         "conditions": {
@@ -211,12 +188,85 @@
       }
     },
     {
+      "id": "gen_token",
+      "name": "Generer Token",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        -200
+      ],
+      "parameters": {
+        "action": "generate",
+        "dataPropertyName": "data",
+        "encodingType": "hex",
+        "stringLength": 64
+      },
+      "notes": "T-SEC (2026-10-07) : jeton aleatoire opaque (randomBytes, pas de HMAC/credential). stringLength=64 car n8n fait randomBytes(stringLength).toString('hex').slice(0,stringLength) - donc 64 ICI donne bien 64 caracteres hex = 32 octets d'alea. Action 'generate' ne necessite aucune credential (verifie)."
+    },
+    {
+      "id": "prep_write_token",
+      "name": "Preparer jeton pour Drive",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        -200
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const prev = $('Verifier code (GET)').first().json;\nconst token = $json.data; // sortie de \"Generer Token\" (hex, 64 caracteres = 32 octets)\n\nconst updated = { ...prev.flashcards, review_token: token };\n\nreturn [{ json: {\n  file_id: prev.file_id,\n  review_token: token,\n  cartes_json: JSON.stringify(updated)\n} }];"
+      }
+    },
+    {
+      "id": "write_token_drive",
+      "name": "Ecrire Token sur Drive",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2160,
+        -200
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://www.googleapis.com/upload/drive/v3/files/{{ $json.file_id }}?uploadType=media",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.cartes_json }}",
+        "options": {}
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "cukxQDNwWIqOAK02",
+          "name": "Google Drive la bonne!"
+        }
+      },
+      "notes": "T-SEC (2026-10-07) : ecrit le jeton dans le fichier flashcards (PAS le catalogue, pas neutralise par le double filet) - ecriture reelle, chaque chargement de la page reecrit le fichier et invalide un onglet precedent deja ouvert (-> 'Lien expire ou invalide' si on soumet depuis l'ancien onglet)."
+    },
+    {
+      "id": "build_page",
+      "name": "Construire page selection",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        -200
+      ],
+      "parameters": {
+        "jsCode": "const query = $('Verifier code (GET)').first().json;\nconst flashcards = query.flashcards;\nconst token = $('Preparer jeton pour Drive').first().json.review_token;\n\nfunction escapeHtml(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#39;');\n}\n\nconst cartes = flashcards.cartes || [];\nfunction diffColor(d) { return d === 'facile' ? '#16a34a' : d === 'moyen' ? '#d97706' : '#dc2626'; }\n\nlet cardsHtml = '';\nfor (const c of cartes) {\n  cardsHtml += `<label style=\"display:block;border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px;margin-bottom:10px;cursor:pointer\">\n    <div style=\"display:flex;align-items:flex-start;gap:12px\">\n      <input type=\"checkbox\" name=\"cartes\" value=\"${escapeHtml(c.numero)}\" checked class=\"carte-checkbox\" style=\"margin-top:4px;width:18px;height:18px;flex:0 0 auto\">\n      <div style=\"flex:1\">\n        <div style=\"color:${diffColor(c.difficulte)};font-size:11px;font-weight:bold;text-transform:uppercase;margin-bottom:4px\">${escapeHtml(c.difficulte || '')}</div>\n        <div style=\"font-weight:bold;margin-bottom:4px\">Q${escapeHtml(c.numero)} : ${escapeHtml(c.question)}</div>\n        <div style=\"color:#475569;font-size:14px\">${escapeHtml(c.reponse)}</div>\n      </div>\n    </div>\n  </label>`;\n}\n\nconst html = `<html>\n<head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"></head>\n<body style=\"font-family:sans-serif;background:#f8fafc;margin:0;padding:24px\">\n  <div style=\"max-width:640px;margin:0 auto\">\n    <h2 style=\"margin-bottom:4px\">BOX &mdash; Choisissez les cartes a publier</h2>\n    <p style=\"color:#64748b;margin-top:0\">${escapeHtml(flashcards.matiere)} &mdash; ${escapeHtml(flashcards.niveau)} &mdash; ${escapeHtml(flashcards.notion)}</p>\n    <div style=\"margin:16px 0\">\n      <button type=\"button\" onclick=\"document.querySelectorAll('.carte-checkbox').forEach(c=>c.checked=true)\" style=\"background:#e2e8f0;border:none;border-radius:6px;padding:8px 14px;margin-right:8px;cursor:pointer\">Tout selectionner</button>\n      <button type=\"button\" onclick=\"document.querySelectorAll('.carte-checkbox').forEach(c=>c.checked=false)\" style=\"background:#e2e8f0;border:none;border-radius:6px;padding:8px 14px;cursor:pointer\">Tout deselectionner</button>\n    </div>\n    <form method=\"POST\" action=\"https://n8n.srv868991.hstgr.cloud/webhook/box-select-confirm-test\">\n      <input type=\"hidden\" name=\"file_id\" value=\"${escapeHtml(query.file_id)}\">\n      <input type=\"hidden\" name=\"code\" value=\"${escapeHtml(query.code)}\">\n      <input type=\"hidden\" name=\"token\" value=\"${escapeHtml(token)}\">\n      ${cardsHtml}\n      <button type=\"submit\" style=\"background:#16a34a;color:white;border:none;border-radius:8px;padding:14px 32px;font-size:16px;font-weight:bold;cursor:pointer;width:100%;margin-top:8px\">Publier la selection</button>\n    </form>\n    <p style=\"color:#94a3b8;font-size:12px;text-align:center;margin-top:16px\">Decochez une carte pour l'exclure. Si vous decochez tout, rien ne sera publie.</p>\n  </div>\n</body>\n</html>`;\n\nreturn [{ json: { html } }];",
+        "notes": "T-SEC (2026-10-07) : construit uniquement le HTML. La validation du code et le jeton sont deja faits en amont (Verifier code (GET) / Generer Token / Preparer jeton pour Drive)."
+      }
+    },
+    {
       "id": "resp_page_select",
       "name": "Repondre Page Selection",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        1440,
+        2640,
         -200
       ],
       "parameters": {
@@ -228,6 +278,10 @@
               {
                 "name": "Content-Type",
                 "value": "text/html; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
               }
             ]
           }
@@ -322,95 +376,13 @@
       }
     },
     {
-      "id": "calc_token_confirm",
-      "name": "Recalculer Token",
-      "type": "n8n-nodes-base.crypto",
-      "typeVersion": 2,
-      "position": [
-        720,
-        440
-      ],
-      "parameters": {
-        "action": "hmac",
-        "type": "SHA256",
-        "value": "={{ $json.file_id + '|' + $json.code }}",
-        "dataPropertyName": "data",
-        "encoding": "hex"
-      },
-      "credentials": {
-        "crypto": {
-          "id": "CRYPTO_SECRET_CREDENTIAL_ID_TEST",
-          "name": "Box-FONDA secret relecture (TEST)"
-        }
-      },
-      "notes": "T-SEC (2026-10-06) - TEST : MEME credential 'crypto' de TEST que 'Calculer Token' (GET /box-select-test), typeVersion 2."
-    },
-    {
-      "id": "if_token_valid",
-      "name": "Token valide ?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        960,
-        500
-      ],
-      "parameters": {
-        "conditions": {
-          "options": {
-            "version": 2,
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict"
-          },
-          "combinator": "and",
-          "conditions": [
-            {
-              "id": "c_token",
-              "leftValue": "={{ $('Extraire parametres Confirmation').item.json.token }}",
-              "rightValue": "={{ $('Recalculer Token').item.json.data }}",
-              "operator": {
-                "type": "string",
-                "operation": "equals"
-              }
-            }
-          ]
-        },
-        "options": {}
-      }
-    },
-    {
-      "id": "resp_err_token",
-      "name": "Repondre Erreur Token",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.1,
-      "position": [
-        1200,
-        700
-      ],
-      "parameters": {
-        "respondWith": "text",
-        "responseBody": "=<html><body style=\"font-family:sans-serif;text-align:center;padding:40px\"><h2 style=\"color:#dc2626\">Lien expire ou invalide</h2><p>Relancez la relecture depuis le lien recu par email.</p></body></html>",
-        "options": {
-          "responseHeaders": {
-            "entries": [
-              {
-                "name": "Content-Type",
-                "value": "text/html; charset=utf-8"
-              }
-            ]
-          }
-        }
-      },
-      "notes": "T-SEC (2026-10-06) : refuse toute confirmation qui n'a pas d'abord charge la page GET /box-select correspondante (pas de jeton valide = pas de POST direct accepte)."
-    },
-    {
       "id": "gd_dl_post",
       "name": "Download Flashcards Confirmation",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
       "position": [
-        1200,
-        400
+        720,
+        500
       ],
       "parameters": {
         "operation": "download",
@@ -434,11 +406,12 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1440,
-        400
+        960,
+        500
       ],
       "parameters": {
-        "jsCode": "const query = $('Extraire parametres Confirmation').first().json;\nconst buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst flashcards = JSON.parse(buffer.toString('utf-8'));\n\nif (flashcards.code_suppression !== query.code) {\n  return [{ json: { verified: false, error: 'Code invalide' } }];\n}\n\nconst allCartes = flashcards.cartes || [];\nconst selectedSet = new Set(query.selected);\nconst kept = allCartes.filter(c => selectedSet.has(c.numero));\nconst removedCount = allCartes.length - kept.length;\n\n// T-SEC (2026-10-06) : notion_html - version echappee pour toute page HTML en\n// aval (Repondre Rejet, Preparer Page Succes) qui l'interpole. 'notion' (brut)\n// reste disponible pour l'email (texte simple cote email, risque different).\nfunction escapeHtml(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#39;');\n}\n\n// T-SEC (2026-10-06) : ce fichier EST passe par la relecture carte-par-carte -\n// revue_carte_par_carte: true, quel que soit le type de jeu (BOX ordinaire ou\n// Box-FONDA). C'est la SEULE etape qui pose ce champ a true dans tout le systeme.\nreturn [{ json: {\n  verified: true,\n  empty: kept.length === 0,\n  file_id: query.file_id,\n  code: query.code,\n  id: flashcards.id,\n  matiere: flashcards.matiere,\n  niveau: flashcards.niveau,\n  notion: flashcards.notion,\n  notion_html: escapeHtml(flashcards.notion),\n  prof_nom: flashcards.prof_nom,\n  prof_email: flashcards.prof_email,\n  date_creation: flashcards.date_creation,\n  cartes_json: JSON.stringify({ ...flashcards, cartes: kept, nb_cartes: kept.length, revue_carte_par_carte: true }),\n  nb_cartes: kept.length,\n  removed_count: removedCount\n} }];"
+        "jsCode": "const query = $('Extraire parametres Confirmation').first().json;\nconst buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst flashcards = JSON.parse(buffer.toString('utf-8'));\n\nif (flashcards.code_suppression !== query.code) {\n  return [{ json: { verified: false, error: 'Code invalide' } }];\n}\n\nif (!query.token || query.token !== flashcards.review_token) {\n  return [{ json: { verified: false, error: 'Lien expire ou invalide, relancez la relecture depuis votre email.' } }];\n}\n\nconst allCartes = flashcards.cartes || [];\nconst selectedSet = new Set(query.selected);\nconst kept = allCartes.filter(c => selectedSet.has(c.numero));\nconst removedCount = allCartes.length - kept.length;\n\n// T-SEC (2026-10-06) : notion_html - version echappee pour toute page HTML en\n// aval (Repondre Rejet, Preparer Page Succes) qui l'interpole. 'notion' (brut)\n// reste disponible pour l'email (texte simple cote email, risque different).\nfunction escapeHtml(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#39;');\n}\n\n// T-SEC (2026-10-06) : ce fichier EST passe par la relecture carte-par-carte -\n// revue_carte_par_carte: true, quel que soit le type de jeu (BOX ordinaire ou\n// Box-FONDA). C'est la SEULE etape qui pose ce champ a true dans tout le systeme.\nconst republie = { ...flashcards, cartes: kept, nb_cartes: kept.length, revue_carte_par_carte: true };\ndelete republie.review_token; // T-SEC (2026-10-07) : jeton a usage unique, retire de l'objet republie\n\nreturn [{ json: {\n  verified: true,\n  empty: kept.length === 0,\n  file_id: query.file_id,\n  code: query.code,\n  id: flashcards.id,\n  matiere: flashcards.matiere,\n  niveau: flashcards.niveau,\n  notion: flashcards.notion,\n  notion_html: escapeHtml(flashcards.notion),\n  prof_nom: flashcards.prof_nom,\n  prof_email: flashcards.prof_email,\n  date_creation: flashcards.date_creation,\n  cartes_json: JSON.stringify(republie),\n  nb_cartes: kept.length,\n  removed_count: removedCount\n} }];",
+        "notes": "T-SEC (2026-10-07) : verifie code_suppression ET review_token (egalite stricte avec le jeton stocke dans le fichier par le GET). Retire review_token de l'objet republie."
       }
     },
     {
@@ -447,8 +420,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        1680,
-        400
+        1200,
+        500
       ],
       "parameters": {
         "conditions": {
@@ -480,8 +453,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        1920,
-        620
+        1440,
+        700
       ],
       "parameters": {
         "respondWith": "text",
@@ -504,7 +477,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        1920,
+        1440,
         400
       ],
       "parameters": {
@@ -532,12 +505,39 @@
       }
     },
     {
+      "id": "clear_before_delete",
+      "name": "Vider fichier avant suppression",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        650
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://www.googleapis.com/upload/drive/v3/files/{{ $json.file_id }}?uploadType=media",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.cartes_json }}",
+        "options": {}
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "cukxQDNwWIqOAK02",
+          "name": "Google Drive la bonne!"
+        }
+      },
+      "notes": "T-SEC (2026-10-07) : rend le rejet terminal - vide le contenu (cartes:[], pas de review_token, deja le cas dans cartes_json de Verifier et filtrer) AVANT la mise a la corbeille, pour qu'un rejeu via le fichier trashe (accessible tant qu'il n'est pas purge definitivement) ne retrouve plus rien a publier."
+    },
+    {
       "id": "gd_delete_post",
       "name": "Supprimer fichier",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
       "position": [
-        2160,
+        1680,
         550
       ],
       "parameters": {
@@ -563,7 +563,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        2400,
+        1920,
         550
       ],
       "parameters": {
@@ -587,7 +587,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2160,
+        1680,
         250
       ],
       "parameters": {
@@ -613,7 +613,7 @@
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
       "position": [
-        2400,
+        1920,
         250
       ],
       "parameters": {
@@ -639,7 +639,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2640,
+        2160,
         250
       ],
       "parameters": {
@@ -652,7 +652,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        2880,
+        2400,
         250
       ],
       "parameters": {
@@ -685,7 +685,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2880,
+        2400,
         450
       ],
       "parameters": {
@@ -698,7 +698,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3160,
+        2680,
         120
       ],
       "parameters": {
@@ -711,7 +711,7 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2,
       "position": [
-        3400,
+        2920,
         120
       ],
       "parameters": {
@@ -735,7 +735,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3160,
+        2680,
         400
       ],
       "parameters": {
@@ -748,7 +748,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        3400,
+        2920,
         400
       ],
       "parameters": {
@@ -794,7 +794,7 @@
       "main": [
         [
           {
-            "node": "Calculer Token",
+            "node": "Download Flashcards",
             "type": "main",
             "index": 0
           }
@@ -808,29 +808,18 @@
         ]
       ]
     },
-    "Calculer Token": {
-      "main": [
-        [
-          {
-            "node": "Download Flashcards",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Download Flashcards": {
       "main": [
         [
           {
-            "node": "Construire page selection",
+            "node": "Verifier code (GET)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Construire page selection": {
+    "Verifier code (GET)": {
       "main": [
         [
           {
@@ -845,7 +834,7 @@
       "main": [
         [
           {
-            "node": "Repondre Page Selection",
+            "node": "Generer Token",
             "type": "main",
             "index": 0
           }
@@ -853,6 +842,50 @@
         [
           {
             "node": "Repondre Erreur Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generer Token": {
+      "main": [
+        [
+          {
+            "node": "Preparer jeton pour Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparer jeton pour Drive": {
+      "main": [
+        [
+          {
+            "node": "Ecrire Token sur Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ecrire Token sur Drive": {
+      "main": [
+        [
+          {
+            "node": "Construire page selection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Construire page selection": {
+      "main": [
+        [
+          {
+            "node": "Repondre Page Selection",
             "type": "main",
             "index": 0
           }
@@ -885,35 +918,6 @@
       "main": [
         [
           {
-            "node": "Recalculer Token",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Repondre Erreur Params Confirmation",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Recalculer Token": {
-      "main": [
-        [
-          {
-            "node": "Token valide ?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Token valide ?": {
-      "main": [
-        [
-          {
             "node": "Download Flashcards Confirmation",
             "type": "main",
             "index": 0
@@ -921,7 +925,7 @@
         ],
         [
           {
-            "node": "Repondre Erreur Token",
+            "node": "Repondre Erreur Params Confirmation",
             "type": "main",
             "index": 0
           }
@@ -972,7 +976,7 @@
       "main": [
         [
           {
-            "node": "Supprimer fichier",
+            "node": "Vider fichier avant suppression",
             "type": "main",
             "index": 0
           }
@@ -980,6 +984,17 @@
         [
           {
             "node": "Upload Flashcards Filtrees",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vider fichier avant suppression": {
+      "main": [
+        [
+          {
+            "node": "Supprimer fichier",
             "type": "main",
             "index": 0
           }

@@ -67,7 +67,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst fiche = JSON.parse(buffer.toString('utf-8'));\n\n// Retirer les champs sensibles avant envoi au frontend\ndelete fiche.prof_email;\ndelete fiche.code_suppression;\n\nreturn [{ json: fiche }];"
+        "jsCode": "const buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst fiche = JSON.parse(buffer.toString('utf-8'));\n\n// Retirer les champs sensibles avant envoi au frontend\ndelete fiche.prof_email;\ndelete fiche.code_suppression;\ndelete fiche.review_token; // T-SEC (2026-10-07) : jeton anti-CSRF de la relecture, jamais public\n\nreturn [{ json: fiche }];"
       },
       "id": "code_set",
       "name": "Parse et nettoyer",
