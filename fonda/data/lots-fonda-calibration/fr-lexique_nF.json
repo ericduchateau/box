@@ -1,0 +1,83 @@
+{
+  "id": "box_e2n78jnq",
+  "matiere": "Français",
+  "niveau": "Fondamentaux — Final (abouti)",
+  "notion": "Mobiliser précisément le lexique",
+  "prof_nom": "Box-FONDA (génération automatique)",
+  "prof_email": "ericdnews@yahoo.fr",
+  "code_suppression": "SUP-FW40S95Q",
+  "date_creation": "2026-10-10",
+  "nb_cartes": 4,
+  "source": "fonda-seed",
+  "type": "fonda",
+  "revue_carte_par_carte": false,
+  "cartes": [
+    {
+      "numero": 1,
+      "question": "Complète : « Le stade a connu une grande ___ pour la finale, toutes les places ont été vendues en une heure. » Choisis le mot qui convient. A) influence B) affluence C) abondance",
+      "reponse": "B",
+      "difficulte": "moyen",
+      "palier": "nF",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "B",
+        "affluence"
+      ],
+      "contexte": "stade-affluence-finale",
+      "set_id": "set_fonda_lexique_nF_01",
+      "item_id": "it01",
+      "notion_id": "fr.lexique"
+    },
+    {
+      "numero": 2,
+      "question": "Complète : « La vétérinaire a demandé aux propriétaires d'___ leur chien à la clinique avant 18 heures. » A) emmener B) emporter C) apporter",
+      "reponse": "A",
+      "difficulte": "difficile",
+      "palier": "nF",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "A",
+        "emmener"
+      ],
+      "contexte": "veterinaire-emmener-chien",
+      "set_id": "set_fonda_lexique_nF_01",
+      "item_id": "it02",
+      "notion_id": "fr.lexique"
+    },
+    {
+      "numero": 3,
+      "question": "Léa fixait la porte du jury, les mains moites, la gorge serrée, répétant sans cesse son discours dans sa tête. En un mot, quel est son état ?",
+      "reponse": "anxieuse",
+      "difficulte": "difficile",
+      "palier": "nF",
+      "profil_correction": "sens",
+      "reponses_acceptees": [
+        "anxieuse",
+        "nerveuse",
+        "stressée",
+        "inquiète",
+        "angoissée"
+      ],
+      "contexte": "jury-oral-etat-personnage",
+      "set_id": "set_fonda_lexique_nF_01",
+      "item_id": "it03",
+      "notion_id": "fr.lexique"
+    },
+    {
+      "numero": 4,
+      "question": "Complète : « Face au danger ___, les habitants ont été évacués en urgence. » A) éminent B) immanent C) imminent",
+      "reponse": "C",
+      "difficulte": "moyen",
+      "palier": "nF",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "C",
+        "imminent"
+      ],
+      "contexte": "evacuation-danger-imminent",
+      "set_id": "set_fonda_lexique_nF_01",
+      "item_id": "it04",
+      "notion_id": "fr.lexique"
+    }
+  ]
+}

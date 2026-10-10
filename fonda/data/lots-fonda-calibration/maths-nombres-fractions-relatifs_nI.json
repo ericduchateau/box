@@ -1,0 +1,80 @@
+{
+  "id": "box_ni82km4m",
+  "matiere": "Mathématiques",
+  "niveau": "Fondamentaux — Initial (accessible)",
+  "notion": "Maîtriser nombres, fractions et relatifs",
+  "prof_nom": "Box-FONDA (génération automatique)",
+  "prof_email": "duchateauphysiquechimie@gmail.com",
+  "code_suppression": "SUP-L4BRE0GE",
+  "date_creation": "2026-10-10",
+  "nb_cartes": 4,
+  "source": "fonda-seed",
+  "type": "fonda",
+  "revue_carte_par_carte": false,
+  "cartes": [
+    {
+      "numero": 1,
+      "question": "À Moscou, le thermomètre indiquait -8 °C ce matin. En début d'après-midi, la température a augmenté de 5 °C. Quelle température fait-il en début d'après-midi ?",
+      "reponse": "-3 °C",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "-3 °C",
+        "-3"
+      ],
+      "unite": "°C",
+      "contexte": "temperature-moscou-matin",
+      "set_id": "set_fonda_nombres-fractions-relatifs_nI_01",
+      "item_id": "it01",
+      "notion_id": "maths.nombres-fractions-relatifs"
+    },
+    {
+      "numero": 2,
+      "question": "Parmi ces fractions, laquelle est égale à 0,6 ? A) 3/5 B) 2/3 C) 5/6",
+      "reponse": "A",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "A"
+      ],
+      "contexte": "fraction-egale-zero-virgule-six",
+      "set_id": "set_fonda_nombres-fractions-relatifs_nI_01",
+      "item_id": "it02",
+      "notion_id": "maths.nombres-fractions-relatifs"
+    },
+    {
+      "numero": 3,
+      "question": "Entre quels deux entiers consécutifs se situe la fraction 27/4 ? A) 5 et 6 B) 6 et 7 C) 7 et 8",
+      "reponse": "B",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "B"
+      ],
+      "contexte": "encadrement-fraction-vingt-sept-quarts",
+      "set_id": "set_fonda_nombres-fractions-relatifs_nI_01",
+      "item_id": "it03",
+      "notion_id": "maths.nombres-fractions-relatifs"
+    },
+    {
+      "numero": 4,
+      "question": "Le compte bancaire d'Inès affiche un solde de -45 €. Elle effectue un dépôt de 60 €. Quel est le nouveau solde de son compte ?",
+      "reponse": "15 €",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "15 €",
+        "15"
+      ],
+      "unite": "€",
+      "contexte": "solde-bancaire-ines",
+      "set_id": "set_fonda_nombres-fractions-relatifs_nI_01",
+      "item_id": "it04",
+      "notion_id": "maths.nombres-fractions-relatifs"
+    }
+  ]
+}

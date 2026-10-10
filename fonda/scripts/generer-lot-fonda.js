@@ -68,6 +68,14 @@ const SOURCE_FONDA_SEED = 'T6b-seed';
 // toujours au moment de l'appel réel ; ces identifiants peuvent changer.
 const MODELE = 'claude-sonnet-5';
 
+// 8192 (pas 4096) : laisse de la marge entre le budget de "réflexion" interne du
+// modèle et le JSON final. Trouvé en calibration réelle (2026-10-10,
+// maths.nombres-fractions-relatifs/nI) : avec 4096, le modèle a parfois épuisé
+// tout son budget dans le bloc "thinking" sans jamais produire de bloc "text"
+// (stop_reason: "max_tokens", 0 carte) — voir la gestion dédiée dans
+// genererLotPourNotionPalier ci-dessous.
+const MAX_TOKENS_REPONSE = 8192;
+
 // Notions qui NE PEUVENT PAS être évaluées en texte seul (figures/schémas/cartes
 // indispensables à l'item lui-même, pas juste au style de l'énoncé). Vérifié au
 // chargement du référentiel, AVANT tout appel réseau — un notion_id de cette liste
@@ -139,6 +147,8 @@ PROFIL DE CORRECTION — choisis pour chaque carte le profil qui correspond le m
 
 RÉPONSES ACCEPTÉES — fournis toujours au moins une forme dans "reponses_acceptees" ; si plusieurs formulations/orthographes sont réellement équivalentes (ex. "40 m²" et "40"), liste-les toutes.
 
+QCM (lettre + mot entier) — PIÈGE À ÉVITER : si "reponses_acceptees" contient à la fois la lettre ("A") ET le mot entier de l'option choisie ("terrifié"), le profil "exact" rendrait ce mot sensible à l'orthographe au caractère près — un piège parasite si la notion testée n'est pas l'orthographe (ex. lexique, sens d'un mot). Dans ce cas précis, deux choix possibles : (a) ne mets QUE la lettre dans "reponses_acceptees" (pas le mot), ou (b) si tu veux aussi accepter le mot entier, choisis le profil "sens" pour cette carte (jamais "exact").
+
 FORMAT DE SORTIE — réponds UNIQUEMENT avec un JSON valide, sans texte avant ni après, exactement cette forme :
 {
   "cartes": [
@@ -167,7 +177,7 @@ function appellerModeleClaude(prompt) {
 
   const requestBody = JSON.stringify({
     model: MODELE,
-    max_tokens: 4096,
+    max_tokens: MAX_TOKENS_REPONSE,
     messages: [{ role: 'user', content: prompt }],
   });
 
@@ -199,7 +209,7 @@ function appellerModeleClaude(prompt) {
             // (1er appel T6b, 2026-10-10) : content[0].type === 'thinking' n'a pas de
             // champ .text, ce qui résolvait silencieusement vers undefined.
             const blocTexte = (Array.isArray(parsed.content) ? parsed.content : []).find((b) => b && b.type === 'text');
-            resolve(blocTexte ? blocTexte.text : '');
+            resolve({ texte: blocTexte ? blocTexte.text : '', stopReason: parsed.stop_reason });
           } catch (e) {
             reject(new Error(`Réponse API non parsable : ${e.message}`));
           }
@@ -332,7 +342,19 @@ function construireFichierBoxSelect({ notion, palier, candidats, destinataires }
 async function genererLotPourNotionPalier({ notion, palier, nCartes, contextesAutresPaliers = [] }) {
   const contextesDejaUtilises = [];
   const prompt = construirePrompt({ notion, palier, nCartes, contextesDejaUtilises, contextesAutresPaliers });
-  const texteReponse = await appellerModeleClaude(prompt);
+  const { texte: texteReponse, stopReason } = await appellerModeleClaude(prompt);
+
+  // Signalé distinctement du cas générique "pas de JSON" : ici le modèle n'a
+  // produit AUCUN texte (budget "thinking" épuisé avant la réponse finale),
+  // pas un texte malformé — le diagnostic doit pointer vers max_tokens, pas
+  // vers un problème de format de sortie.
+  if (!texteReponse && stopReason === 'max_tokens') {
+    return {
+      ok: false,
+      erreur: `le modèle a épuisé son budget de réflexion (max_tokens=${MAX_TOKENS_REPONSE}) avant de produire une réponse — 0 carte générée. Revoir le prompt/référentiel pour cette notion, ou augmenter MAX_TOKENS_REPONSE.`,
+    };
+  }
+
   const parse = parserReponseModele(texteReponse);
   if (!parse.ok) return { ok: false, erreur: parse.erreur };
 

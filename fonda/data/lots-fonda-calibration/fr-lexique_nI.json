@@ -1,0 +1,79 @@
+{
+  "id": "box_o8abimui",
+  "matiere": "Français",
+  "niveau": "Fondamentaux — Initial (accessible)",
+  "notion": "Mobiliser précisément le lexique",
+  "prof_nom": "Box-FONDA (génération automatique)",
+  "prof_email": "ericdnews@yahoo.fr",
+  "code_suppression": "SUP-IS9U06HA",
+  "date_creation": "2026-10-10",
+  "nb_cartes": 4,
+  "source": "fonda-seed",
+  "type": "fonda",
+  "revue_carte_par_carte": false,
+  "cartes": [
+    {
+      "numero": 1,
+      "question": "Le cuisinier ___ délicatement la sauce sur les pâtes. Quel mot convient le mieux ? A) renverse B) verse C) déverse",
+      "reponse": "B",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "B",
+        "verse"
+      ],
+      "contexte": "cuisine-sauce-pates",
+      "set_id": "set_fonda_lexique_nI_01",
+      "item_id": "it01",
+      "notion_id": "fr.lexique"
+    },
+    {
+      "numero": 2,
+      "question": "Quel mot signifie « avoir très peur, de façon soudaine et intense » ? A) terrifié B) inquiet C) perplexe",
+      "reponse": "A",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "A",
+        "terrifié"
+      ],
+      "contexte": "definition-peur-intense",
+      "set_id": "set_fonda_lexique_nI_01",
+      "item_id": "it02",
+      "notion_id": "fr.lexique"
+    },
+    {
+      "numero": 3,
+      "question": "Après la tempête, le ciel s'est éclairci et le vent s'est calmé : il était devenu ___. A) orageux B) menaçant C) serein",
+      "reponse": "C",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "C",
+        "serein"
+      ],
+      "contexte": "lettre-apres-tempete",
+      "set_id": "set_fonda_lexique_nI_01",
+      "item_id": "it03",
+      "notion_id": "fr.lexique"
+    },
+    {
+      "numero": 4,
+      "question": "Tous ces mots sont proches de « rapide » sauf un : lequel ? véloce, prompt, maussade, leste",
+      "reponse": "maussade",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "maussade"
+      ],
+      "contexte": "liste-mots-rapidite",
+      "set_id": "set_fonda_lexique_nI_01",
+      "item_id": "it04",
+      "notion_id": "fr.lexique"
+    }
+  ]
+}
