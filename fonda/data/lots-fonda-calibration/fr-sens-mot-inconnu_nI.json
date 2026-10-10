@@ -1,0 +1,85 @@
+{
+  "id": "box_7e7tcooh",
+  "matiere": "Français",
+  "niveau": "Fondamentaux — Initial (accessible)",
+  "notion": "Construire le sens d'un mot inconnu",
+  "prof_nom": "Box-FONDA (génération automatique)",
+  "prof_email": "ericdnews@yahoo.fr",
+  "code_suppression": "SUP-VJ80HFTR",
+  "date_creation": "2026-10-10",
+  "nb_cartes": 4,
+  "source": "fonda-seed",
+  "type": "fonda",
+  "revue_carte_par_carte": false,
+  "cartes": [
+    {
+      "numero": 1,
+      "question": "Dans la phrase : « Le randonneur, épuisé par l'ascension, décida de bivouaquer au pied du sommet avant de poursuivre le lendemain », que signifie le mot « bivouaquer » ?",
+      "reponse": "camper",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "sens",
+      "reponses_acceptees": [
+        "camper",
+        "passer la nuit dehors",
+        "dormir en plein air",
+        "installer un campement"
+      ],
+      "contexte": "randonnee-bivouaquer",
+      "set_id": "set_fonda_sens-mot-inconnu_nI_01",
+      "item_id": "it01",
+      "notion_id": "fr.sens-mot-inconnu"
+    },
+    {
+      "numero": 2,
+      "question": "Le préfixe « bi- » signifie « deux ». Sachant cela, que signifie l'adjectif « bilingue » ?",
+      "reponse": "qui parle deux langues",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "sens",
+      "reponses_acceptees": [
+        "qui parle deux langues",
+        "qui utilise deux langues",
+        "capable de parler deux langues"
+      ],
+      "contexte": "prefixe-bi-bilingue",
+      "set_id": "set_fonda_sens-mot-inconnu_nI_01",
+      "item_id": "it02",
+      "notion_id": "fr.sens-mot-inconnu"
+    },
+    {
+      "numero": 3,
+      "question": "Le suffixe « -phobie » signifie « peur de ». Sachant cela, que signifie « claustrophobie » ?",
+      "reponse": "peur des espaces fermés",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "sens",
+      "reponses_acceptees": [
+        "peur des espaces fermés",
+        "peur d'être enfermé",
+        "peur des lieux clos"
+      ],
+      "contexte": "suffixe-phobie-claustrophobie",
+      "set_id": "set_fonda_sens-mot-inconnu_nI_01",
+      "item_id": "it03",
+      "notion_id": "fr.sens-mot-inconnu"
+    },
+    {
+      "numero": 4,
+      "question": "Le mot « inoubliable » appartient à la famille du mot « oublier ». Sachant cela, que signifie « inoubliable » ?",
+      "reponse": "qui ne peut pas être oublié",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "sens",
+      "reponses_acceptees": [
+        "qui ne peut pas être oublié",
+        "qu'on ne peut pas oublier",
+        "impossible à oublier"
+      ],
+      "contexte": "famille-oublier-inoubliable",
+      "set_id": "set_fonda_sens-mot-inconnu_nI_01",
+      "item_id": "it04",
+      "notion_id": "fr.sens-mot-inconnu"
+    }
+  ]
+}

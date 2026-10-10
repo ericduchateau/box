@@ -1,0 +1,67 @@
+{
+  "id": "box_2invz07b",
+  "matiere": "Mathématiques",
+  "niveau": "Fondamentaux — Final (abouti)",
+  "notion": "Raisonner avec proportionnalité et pourcentages",
+  "prof_nom": "Box-FONDA (génération automatique)",
+  "prof_email": "duchateauphysiquechimie@gmail.com",
+  "code_suppression": "SUP-35ORS9L6",
+  "date_creation": "2026-10-10",
+  "nb_cartes": 3,
+  "source": "fonda-seed",
+  "type": "fonda",
+  "revue_carte_par_carte": false,
+  "cartes": [
+    {
+      "numero": 1,
+      "question": "Sur une carte à l'échelle 1/25 000, deux refuges sont séparés de 8 cm. Un randonneur avance à 4 km/h en moyenne. Combien de temps lui faudra-t-il pour relier les deux refuges ?",
+      "reponse": "30 min",
+      "difficulte": "difficile",
+      "palier": "nF",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "30 min",
+        "30"
+      ],
+      "unite": "min",
+      "contexte": "carte-echelle-randonnee",
+      "set_id": "set_fonda_proportionnalite_nF_01",
+      "item_id": "it01",
+      "notion_id": "maths.proportionnalite"
+    },
+    {
+      "numero": 2,
+      "question": "Un manteau coûte 50 €. Un premier rabais de 20% est appliqué, puis un rabais supplémentaire de 10% sur le nouveau prix pour les adhérents. Quel est le prix final payé par un adhérent ?",
+      "reponse": "36 €",
+      "difficulte": "moyen",
+      "palier": "nF",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "36 €",
+        "36"
+      ],
+      "unite": "€",
+      "contexte": "manteau-double-remise",
+      "set_id": "set_fonda_proportionnalite_nF_01",
+      "item_id": "it02",
+      "notion_id": "maths.proportionnalite"
+    },
+    {
+      "numero": 3,
+      "question": "Un village compte 1200 habitants. Le taux de natalité annuel est de 15 pour mille et le taux de mortalité annuel est de 10 pour mille (hors déménagements). Combien d'habitants supplémentaires ce village gagnera-t-il en un an ?",
+      "reponse": "6 habitants",
+      "difficulte": "difficile",
+      "palier": "nF",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "6 habitants",
+        "6"
+      ],
+      "unite": "habitants",
+      "contexte": "village-natalite-mortalite",
+      "set_id": "set_fonda_proportionnalite_nF_01",
+      "item_id": "it03",
+      "notion_id": "maths.proportionnalite"
+    }
+  ]
+}
