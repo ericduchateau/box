@@ -1,0 +1,212 @@
+{
+  "name": "BOX-FONDA - Collecte evenements",
+  "active": false,
+  "nodes": [
+    {
+      "id": "wh_post",
+      "name": "Webhook POST",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "box-fonda-events-post-001",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "box-fonda-events",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "https://ericduchateau.github.io"
+        }
+      },
+      "notes": "CONFIGURER : verifier que 'allowedOrigins' correspond bien au domaine reel de la page GitHub Pages avant activation."
+    },
+    {
+      "id": "wh_options",
+      "name": "Webhook OPTIONS (CORS preflight)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 300],
+      "webhookId": "box-fonda-events-options-001",
+      "parameters": {
+        "httpMethod": "OPTIONS",
+        "path": "box-fonda-events",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "notes": "Repond immediatement au preflight CORS envoye par le navigateur avant un POST JSON cross-origin. A tester explicitement (voir README) : certaines versions de n8n gerent ce preflight automatiquement via 'allowedOrigins' du node POST, ce node est un filet de securite si ce n'est pas le cas."
+    },
+    {
+      "id": "resp_options",
+      "name": "Repondre OPTIONS",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "",
+        "options": {
+          "responseCode": 204,
+          "responseHeaders": {
+            "entries": [
+              { "name": "Access-Control-Allow-Origin", "value": "https://ericduchateau.github.io" },
+              { "name": "Access-Control-Allow-Methods", "value": "POST, OPTIONS" },
+              { "name": "Access-Control-Allow-Headers", "value": "Content-Type" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "config_sheet",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [240, 0],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "sheet_id_assignment",
+              "name": "sheet_id",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "notes": "CONFIGURER : renseigner l'ID du Google Sheet BOX-FONDA (partie de son URL entre /d/ et /edit). Un seul endroit a modifier - le node Google Sheets ci-dessous le lit via une expression, jamais en dur."
+    },
+    {
+      "id": "valider_corps",
+      "name": "Valider corps",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 0],
+      "parameters": {
+        "jsCode": "const body = $('Webhook POST').first().json.body || {};\n\n// Liste blanche stricte du schema PRD §3.2 - EXACTEMENT ces 11 champs, rien d'autre.\n// Un champ supplementaire (uuid, ip, nom, device...) est un rejet, pas un avertissement.\nconst CHAMPS_AUTORISES = ['ts', 'grp', 'defi_id', 'notion_id', 'palier', 'set_id', 'item_id', 'result', 'ctx', 'rang_local', 'dt_jours'];\nconst erreurs = [];\n\nconst champsEtrangers = Object.keys(body).filter((k) => !CHAMPS_AUTORISES.includes(k));\nif (champsEtrangers.length > 0) erreurs.push('champ(s) hors schema : ' + champsEtrangers.length + ' champ(s)');\n\nfunction estChaineNonVide(v) { return typeof v === 'string' && v.length > 0; }\n\nif (!estChaineNonVide(body.ts) || Number.isNaN(Date.parse(body.ts))) erreurs.push('ts invalide');\nif (!estChaineNonVide(body.grp)) erreurs.push('grp invalide');\nif (!estChaineNonVide(body.defi_id)) erreurs.push('defi_id invalide');\nif (!estChaineNonVide(body.notion_id)) erreurs.push('notion_id invalide');\nif (body.palier !== 'nI' && body.palier !== 'nF') erreurs.push('palier invalide');\nif (!estChaineNonVide(body.set_id)) erreurs.push('set_id invalide');\nif (!estChaineNonVide(body.item_id)) erreurs.push('item_id invalide');\nif (body.result !== 0 && body.result !== 1) erreurs.push('result invalide');\nif (!['df', 'maison', 'classe'].includes(body.ctx)) erreurs.push('ctx invalide');\nif (!Number.isInteger(body.rang_local) || body.rang_local < 1) erreurs.push('rang_local invalide');\nif (body.dt_jours !== null && !(typeof body.dt_jours === 'number' && body.dt_jours >= 0)) erreurs.push('dt_jours invalide');\n\n// Controle de FORME, au-dela des noms de champs et des types basiques (defense en\n// profondeur contre un appel direct au webhook qui contournerait entierement\n// fonda/engine/evenements.js cote navigateur - releve par une critique Codex sur ce\n// ticket). Miroir de fonda/engine/evenements.js::formeEvenementPlausible : meme regles,\n// dupliquees ici car ce Code node ne peut pas require() le depot.\nconst PATTERN_DEFI_ID = /^defi_(\\d{4})-w(\\d{1,2})_([0-9]{3})_([a-z0-9-]+)$/;\nconst PATTERN_NOTION_ID = /^(fr|maths)\\.[a-z0-9-]+$/;\nconst PATTERN_ID_TECHNIQUE = /^[A-Za-z0-9._-]{1,64}$/;\nconst PATTERN_GRP = /^[0-9]{3}$/;\n\nif (estChaineNonVide(body.grp) && !PATTERN_GRP.test(body.grp)) erreurs.push('grp : forme inattendue');\nconst matchDefi = estChaineNonVide(body.defi_id) ? body.defi_id.match(PATTERN_DEFI_ID) : null;\nif (!matchDefi) erreurs.push('defi_id : forme inattendue');\nelse if (matchDefi[3] !== body.grp) erreurs.push('grp incoherent avec defi_id');\nif (estChaineNonVide(body.notion_id) && !PATTERN_NOTION_ID.test(body.notion_id)) erreurs.push('notion_id : forme inattendue');\nif (estChaineNonVide(body.set_id) && !PATTERN_ID_TECHNIQUE.test(body.set_id)) erreurs.push('set_id : forme inattendue (texte libre ?)');\nif (estChaineNonVide(body.item_id) && !PATTERN_ID_TECHNIQUE.test(body.item_id)) erreurs.push('item_id : forme inattendue (texte libre ?)');\nif (estChaineNonVide(body.ts)) {\n  const d = new Date(body.ts);\n  if (!Number.isNaN(d.getTime()) && (d.getUTCMinutes() !== 0 || d.getUTCSeconds() !== 0 || d.getUTCMilliseconds() !== 0)) {\n    erreurs.push('ts non tronque a l\\'heure (anti-reidentification)');\n  }\n}\n\n// Jamais un spread de body : les champs sont repris un par un, pour que meme un corps\n// deja filtre cote navigateur (T5, livrable A) ne puisse pas faire passer un champ\n// etranger ici par accident (defense en profondeur, G3).\nreturn [{\n  json: {\n    valide: erreurs.length === 0,\n    erreurs: erreurs,\n    ts: body.ts,\n    grp: body.grp,\n    defi_id: body.defi_id,\n    notion_id: body.notion_id,\n    palier: body.palier,\n    set_id: body.set_id,\n    item_id: body.item_id,\n    result: body.result,\n    ctx: body.ctx,\n    rang_local: body.rang_local,\n    dt_jours: body.dt_jours\n  }\n}];"
+      },
+      "notes": "Ne lit/n'ecrit JAMAIS l'IP de l'appelant ($request.headers ou equivalent) : seul body est utilise. Les erreurs retournees sont des noms de champs generiques, jamais les valeurs recues. Controle de forme (pas seulement les noms de champs) ajoute suite critique Codex : grp/defi_id/notion_id/set_id/item_id/ts verifies, pas seulement presents."
+    },
+    {
+      "id": "if_valide",
+      "name": "Corps valide ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [720, 0],
+      "parameters": {
+        "conditions": {
+          "options": { "version": 2, "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "combinator": "and",
+          "conditions": [
+            { "id": "c1", "leftValue": "={{ $json.valide }}", "rightValue": true, "operator": { "type": "boolean", "operation": "equals" } }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "resp_erreur",
+      "name": "Repondre Erreur",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [960, 200],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, erreurs: $json.erreurs } }}",
+        "options": {
+          "responseCode": 400,
+          "responseHeaders": {
+            "entries": [
+              { "name": "Access-Control-Allow-Origin", "value": "https://ericduchateau.github.io" }
+            ]
+          }
+        }
+      },
+      "notes": "Ne renvoie jamais les valeurs recues, seulement des noms de champs/compteurs generiques (G3 - pas d'echo de donnee, meme non nominative, dans la reponse)."
+    },
+    {
+      "id": "sheets_append",
+      "name": "Ajouter ligne Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [960, -100],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Config').item.json.sheet_id }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Evenements"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ts": "={{ $json.ts }}",
+            "grp": "={{ $json.grp }}",
+            "defi_id": "={{ $json.defi_id }}",
+            "notion_id": "={{ $json.notion_id }}",
+            "palier": "={{ $json.palier }}",
+            "set_id": "={{ $json.set_id }}",
+            "item_id": "={{ $json.item_id }}",
+            "result": "={{ $json.result }}",
+            "ctx": "={{ $json.ctx }}",
+            "rang_local": "={{ $json.rang_local }}",
+            "dt_jours": "={{ $json.dt_jours }}",
+            "recu_serveur_ts": "={{ $now.toISO() }}"
+          }
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "",
+          "name": ""
+        }
+      },
+      "notes": "CONFIGURER : attacher un credential Google Sheets OAuth2 (peut reutiliser la connexion du meme compte Google que les autres workflows BOX, via une nouvelle credential de type 'Google Sheets'). 12 colonnes exactement : les 11 du schema PRD §3.2 + 'recu_serveur_ts' (horodatage de reception serveur, explicitement autorise par le ticket). JAMAIS de colonne IP/adresse/appareil."
+    },
+    {
+      "id": "resp_ok",
+      "name": "Repondre OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1200, -100],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true } }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              { "name": "Access-Control-Allow-Origin", "value": "https://ericduchateau.github.io" }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook POST": { "main": [[{ "node": "Config", "type": "main", "index": 0 }]] },
+    "Webhook OPTIONS (CORS preflight)": { "main": [[{ "node": "Repondre OPTIONS", "type": "main", "index": 0 }]] },
+    "Config": { "main": [[{ "node": "Valider corps", "type": "main", "index": 0 }]] },
+    "Valider corps": { "main": [[{ "node": "Corps valide ?", "type": "main", "index": 0 }]] },
+    "Corps valide ?": {
+      "main": [
+        [{ "node": "Ajouter ligne Sheet", "type": "main", "index": 0 }],
+        [{ "node": "Repondre Erreur", "type": "main", "index": 0 }]
+      ]
+    },
+    "Ajouter ligne Sheet": { "main": [[{ "node": "Repondre OK", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "pinData": {}
+}

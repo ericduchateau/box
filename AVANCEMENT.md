@@ -272,13 +272,42 @@ Documentation ajoutée (README `fonda/engine/`) pour les points 2 et 3, avec tes
 1. « Même JS exécuté » pas littéralement exact : le test du flag et l'export CommonJS sont évalués en plus, sans aucun effet observable (ni DOM, ni requête) — c'est le « strict minimum » explicitement autorisé par le ticket.
 2. `initFonda()` ne revérifie pas elle-même le flag — un appel manuel `App.initFonda()` depuis la console l'activerait. Codex confirme lui-même qu'aucun parcours BOX existant ne fait cet appel : pas un chemin d'exécution réel, juste une garantie théorique « trop forte » pour être exigée.
 
-- Branche `feat/fonda-lot1-mode-page`. **Prêt pour fusion — en attente du feu vert explicite d'Éric. T5 non démarré.**
+**Fusionné** le 2026-10-05 sur feu vert explicite d'Éric, vérifié aussi à l'œil en navigateur local (BOX ordinaire inchangé, console propre) : hash de merge `f9d5817`. Branche `feat/fonda-lot1-mode-page` supprimée (locale + origin).
 
-### ☐ T5 — Collecte n8n → Sheet
-- But : nouveau workflow d'ingestion des événements, livré en JSON à importer, testé sur copie.
-- Impact prod : nul si importé/testé hors live.
-- DoD : un POST d'événement arrive au Sheet ; les 9 workflows existants intacts.
-- Codex : OUI (casse d'un workflow existant ? fuite de donnée ?).
+### Intermède — sauvegarde n8n + garde-fou production (avant T5)
+Avant de toucher à la collecte réseau : export en lecture seule (`n8n_list_workflows`/`n8n_get_workflow`, MCP n8n) des 9 workflows BOX actifs en prod → `/n8n/backup-2026-10-05/` (un fichier par workflow + README listant rôle/webhook de chacun). **Aucun workflow modifié, activé ni désactivé.** Clé API Anthropic en clair dans 2 workflows (génération) → **redigée** avant commit (repo public GitHub Pages, la committer en clair l'aurait rendue indexable) ; vraie valeur consultable uniquement dans n8n. Commit `6d3f1aa` sur `design`.
+
+Ajout d'un garde-fou permanent dans `AGENTS.md` (section G1-G7) : interdiction de créer/modifier/activer/désactiver un workflow de prod sans validation explicite d'Éric dans la conversation ; tout nouveau workflow a son propre chemin de webhook et ne touche aucun des 9 existants ; testé en exécution manuelle avant activation. Commit `141e26e` sur `design`.
+
+### ☑ T5 — Collecte des événements : webhook n8n + émission depuis la file locale — fait le 2026-10-05
+- But : vider la file locale (T3) vers un nouveau workflow n8n `POST /box-fonda-events` qui ajoute une ligne au Sheet BOX-FONDA. Rien d'autre (pas de tableau de bord, pas de calcul, pas de génération).
+- Impact prod : nul — workflow livré **inactif**, importé/activé par Éric uniquement ; aucune action n8n faite par l'IA (règle n8n-production).
+- DoD :
+  - Émetteur navigateur (`fonda/engine/emission.js`, 11 tests) ✅ : file vidée dans l'ordre ; succès → retiré de la file ; échec (réseau, exception, réponse négative) → reste en file, **même objet** renvoyé au réessai (même `ts`) ; un échec n'empêche pas les suivants ; corps strictement limité aux 11 champs (reconstruit champ par champ, jamais par spread — vérifié même avec un événement en file volontairement corrompu avec des champs étrangers) ; `webhookUrl` absente → mode dégradé, aucune tentative, aucune exception, révision jamais bloquée.
+  - Workflow n8n (`n8n/fonda-collecte/box-fonda-events.json`, livré inactif) : liste blanche stricte des 11 champs côté serveur aussi (défense en profondeur) ; CORS prévu (node OPTIONS dédié + `allowedOrigins` + en-têtes `Access-Control-Allow-Origin` sur les 3 réponses) ; ID du Sheet référencé via un node `Config` dédié (un seul endroit à éditer), jamais en dur dans le node Google Sheets ; aucune IP écrite ni utilisée pour dédoublonner ; 12ᵉ colonne optionnelle `recu_serveur_ts` (horodatage serveur, explicitement autorisé par le ticket), rien d'autre.
+  - `node fonda/scripts/validate.js` toujours 31/31. **184/184 tests** (suite complète T1-T5 après la critique ci-dessous, hors workflow n8n lui-même, non testable en Node).
+- Fichiers : `fonda/engine/emission.js` + `emission.test.js`, `fonda/engine/evenements.js` (étendu, purement additif : `lireFile()`/`retirerDeFile()` exportés — 170 tests T1-T4 revérifiés inchangés), `n8n/fonda-collecte/box-fonda-events.json`, `n8n/fonda-collecte/README.md` (procédure d'import pas à pas pour Éric).
+
+**Décisions prises** :
+- `evenements.js` étendu plutôt que dupliqué : `emission.js` a besoin de lire/retirer des entrées de la file sans connaître la forme interne du blob `fonda_evt_mesure` — `lireFile()`/`retirerDeFile()` réutilisent `lireMesure()` déjà existant, une seule écriture comme `soumettreTentative`.
+- Retrait de la file **par événement, immédiatement après confirmation** (pas en lot à la fin du passage) : minimise la fenêtre où un crash pourrait faire perdre la trace qu'un événement a déjà été confirmé envoyé.
+- Identité d'un événement en file = `(defi_id, item_id)` (même clé que le verrou T3, par construction au plus un événement scellé par couple) — pas une égalité profonde de l'objet, robuste si l'appelant reconstruit un événement plutôt que de garder la référence.
+- **Limite documentée, pas corrigée** : pas d'exactly-once réseau — si la réponse serveur se perd après un traitement réussi, l'événement est réémis au prochain passage (ligne dupliquée possible dans ce seul scénario, jamais de perte). Nécessiterait un jeton d'idempotence côté serveur, hors scope de ce ticket.
+- Workflow n8n : credential Google Sheets laissé vide (type distinct du credential Drive des autres workflows, même si même compte Google) — deviner un ID aurait été une fabrication, pas une configuration.
+
+**Critique Codex** (lecture seule, double angle anonymat + non-régression n8n, commit `88fb7b2`) :
+- **Non-régression n8n : aucune collision trouvée.** Comparaison systématique avec les 9 sauvegardes (`n8n/backup-2026-10-05/`) : aucun chemin partagé, aucune référence à leurs IDs de workflow/fichier/dossier/credential. `active: false` confirmé ; aucun import/activation réel possible (Codex n'avait accès qu'aux fichiers, pas au MCP n8n).
+- **Anonymat : 1 défaut réel, gravité moyenne** — reproduit avec des données synthétiques : la liste blanche des 11 champs protège les **noms**, pas le **contenu**. Un événement altéré avec `set_id: "IP=192.0.2.10; device=synthetic"` passait la validation (clés présentes, types basiques corrects) aussi bien côté émetteur navigateur que côté workflow n8n ; de même un `ts` précis à la milliseconde (au lieu de tronqué à l'heure) n'était pas rejeté. Chemin d'exploitation : file locale altérée (devtools) ou appel direct au webhook contournant `soumettreTentative`.
+- Précision non retenue comme défaut : le Sheet a 12 colonnes (11 + `recu_serveur_ts`) — explicitement pré-autorisé par le ticket, pas une fuite.
+
+**Corrigé** (tests d'abord, 3 nouveaux tests emission.js) :
+- `evenements.js::formeEvenementPlausible()` (export additif) : contrôle de FORME au-delà des noms de champs — `grp` 3 chiffres cohérent avec le grp encodé dans `defi_id`, `notion_id` au pattern référentiel, `set_id`/`item_id` sans texte libre (réutilise `estIdentifiantPlausible` déjà en place), `ts` tronqué à l'heure.
+- `emission.js` appelle ce contrôle juste avant l'envoi, en plus de `validerEvenement()` — même traitement que les autres événements invalides (`invalides`, jamais envoyé, ne bloque pas les suivants).
+- **Même règle dupliquée dans `n8n/fonda-collecte/box-fonda-events.json`** (le Code node ne peut pas `require()` le dépôt) — les trois cas reproduits par Codex (métadonnée dans `set_id`, `ts` non tronqué, `grp` incohérent) revérifiés rejetés après le correctif, cas normal toujours accepté.
+
+184/184 tests (suite complète T1-T5), `node fonda/scripts/validate.js` toujours 31/31.
+
+- Branche `feat/fonda-lot1-collecte`. **Prêt pour fusion — en attente du feu vert explicite d'Éric. T6 non démarré.**
 
 ### ☐ T6 — Génération initiale équilibrée (seed Moteur B)
 - But : 1er lot de candidates équilibré facile/difficile + nI/nF, modèle plus puissant (Sonnet) avec spec de clarté, routage relecture (fr → Justine, maths → Éric).
