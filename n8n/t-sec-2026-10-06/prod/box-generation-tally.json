@@ -1,0 +1,432 @@
+{
+  "id": "aKRunzvTw7Y3WnTT",
+  "name": "BOX - Generation Tally",
+  "active": true,
+  "nodes": [
+    {
+      "id": "wh_tally",
+      "name": "Tally Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "box-tally-wh-001",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "box-tally",
+        "responseMode": "onReceived",
+        "options": {}
+      }
+    },
+    {
+      "id": "parse_tally",
+      "name": "Parser Tally",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "jsCode": "function escapeHtml(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#39;');\n}\n\nconst body = $input.first().json;\n// n8n webhook enveloppe la payload dans body.body\nconst payload = body.body || body;\nconst fields = (payload.data && payload.data.fields) ? payload.data.fields : (payload.fields || []);\nconst errors = [];\n\n// Trouve un champ par sous-chaine dans le label (ignore la casse)\nfunction getField(substr) {\n  return fields.find(f => f.label && f.label.toLowerCase().includes(substr.toLowerCase()));\n}\n\n// Pour DROPDOWN/CHECKBOXES, Tally envoie des UUIDs dans value[]\n// Il faut resoudre vers le texte via le tableau options[]\nfunction resolveValue(field) {\n  if (!field) return null;\n  const v = field.value;\n  if ((field.type === 'DROPDOWN' || field.type === 'CHECKBOXES' || field.type === 'MULTIPLE_CHOICE') && Array.isArray(v) && field.options) {\n    const texts = v.map(id => {\n      const opt = field.options.find(o => o.id === id);\n      return opt ? opt.text : id;\n    }).filter(Boolean);\n    return field.type === 'DROPDOWN' ? (texts[0] || '') : texts.join(', ');\n  }\n  return v;\n}\n\nconst matiere = String(resolveValue(getField('atière') || getField('atiere')) || '').trim();\nconst niveau = String(resolveValue(getField('iveau')) || '').trim();\nconst notion = String(resolveValue(getField('otion')) || '').trim();\nconst profNom = String(resolveValue(getField('om du professeur')) || '').trim();\nconst profEmail = String(resolveValue(getField('mail')) || '').trim();\nconst nbCartesRaw = resolveValue(getField('ombre de cartes'));\nconst nbCartes = parseInt(String(nbCartesRaw || '15')) || 15;\nconst instructions = String(resolveValue(getField('nstructions')) || '').trim();\n\n// FILE_UPLOAD : value = [{url, name, mimeType, size}]\nconst fichierField = getField('ichier PDF') || getField('ichier pdf') || getField('PDF');\nconst fichierRaw = fichierField ? fichierField.value : null;\nlet pdfUrl = '';\nlet pdfFilename = 'cours.pdf';\nif (Array.isArray(fichierRaw) && fichierRaw.length > 0 && fichierRaw[0].url) {\n  pdfUrl = fichierRaw[0].url;\n  pdfFilename = fichierRaw[0].name || 'cours.pdf';\n}\n\nif (!matiere) errors.push('Matière manquante');\nif (!niveau) errors.push('Niveau manquant');\nif (!notion) errors.push('Notion manquante');\nif (!profEmail || !profEmail.includes('@')) errors.push('Email invalide');\nif (!pdfUrl) errors.push('Fichier PDF manquant');\n\nconst id = 'box_' + Math.random().toString(36).substring(2, 10);\nconst codeSup = 'SUP-' + Math.random().toString(36).substring(2, 10).toUpperCase();\n\n// T-SEC (2026-10-06, 4e passe) : notion_html ajoute pour l'email d'erreur de\n// soumission (Email Erreur), echappement complet.\nreturn [{ json: {\n  valid: errors.length === 0,\n  errors: errors.join(', '),\n  matiere,\n  niveau,\n  notion,\n  notion_html: escapeHtml(notion),\n  prof_nom: profNom,\n  prof_email: profEmail,\n  nb_cartes: nbCartes,\n  instructions,\n  pdf_url: pdfUrl,\n  pdf_filename: pdfFilename,\n  id,\n  code_suppression: codeSup,\n  date_creation: new Date().toISOString().split('T')[0]\n} }];"
+      }
+    },
+    {
+      "id": "if_valid",
+      "name": "Valide ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "gmail_err",
+      "name": "Email Erreur",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        720,
+        200
+      ],
+      "parameters": {
+        "sendTo": "={{ $json.prof_email }}",
+        "subject": "BOX - Erreur dans votre soumission",
+        "message": "=<h3>Erreur lors du traitement de votre fiche</h3><p>Votre soumission pour la notion \"{{ $json.notion_html }}\" comporte des erreurs :</p><p><strong>{{ $json.errors }}</strong></p><p>Merci de vérifier et soumettre à nouveau via le formulaire.</p><p style=\"color:#64748b;font-size:12px\">BOX - Système de fiches de révision</p>",
+        "options": {}
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "iIgjFF3qL44wl8uE",
+          "name": "Gmail n8n iazimut2026"
+        }
+      }
+    },
+    {
+      "id": "dl_pdf",
+      "name": "Telecharger PDF Tally",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        -100
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Parser Tally').first().json.pdf_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "prep_claude",
+      "name": "Preparer requete Claude",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        -100
+      ],
+      "parameters": {
+        "jsCode": "const prevData = $('Parser Tally').first().json;\nconst binaryData = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst base64Pdf = binaryData.toString('base64');\n\nconst prompt = `Tu es un assistant pédagogique pour un collège français. Tu crées des fiches de révision (flashcards) au format question/réponse à partir du contenu d'un cours.\n\nCONTEXTE :\n- Matière : ${prevData.matiere}\n- Niveau : ${prevData.niveau}\n- Notion/Chapitre : ${prevData.notion}\n- Nombre de cartes demandé : ${prevData.nb_cartes}\n${prevData.instructions ? '- Instructions du professeur : ' + prevData.instructions : ''}\n\nCONSIGNES :\n1. Génère exactement ${prevData.nb_cartes} flashcards question/réponse.\n2. Les questions doivent couvrir les points essentiels : définitions, mécanismes, dates, formules, exemples.\n3. Les réponses doivent être CONCISES (2-3 phrases maximum) mais COMPLÈTES et EXACTES.\n4. Adapte le vocabulaire au niveau ${prevData.niveau} (collège français).\n5. Varie les types de questions : \"Qu'est-ce que...\", \"Comment...\", \"Pourquoi...\", \"Cite...\", \"Quelle est la différence entre...\".\n6. Attribue un niveau de difficulté à chaque carte : \"facile\", \"moyen\", ou \"difficile\".\n7. Ne modifie PAS les informations du cours.\n\nIMPORTANT : Réponds UNIQUEMENT avec un JSON valide, sans texte avant ni après :\n{\n  \"cartes\": [\n    { \"numero\": 1, \"question\": \"...\", \"reponse\": \"...\", \"difficulte\": \"facile\" }\n  ],\n  \"notes\": \"Commentaire optionnel si contenu insuffisant\"\n}`;\n\nconst requestBody = {\n  model: 'claude-haiku-4-5-20251001',\n  max_tokens: 4096,\n  messages: [{\n    role: 'user',\n    content: [\n      { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64Pdf } },\n      { type: 'text', text: prompt }\n    ]\n  }]\n};\n\nreturn [{ json: { requestBody, ...prevData } }];"
+      }
+    },
+    {
+      "id": "claude_api",
+      "name": "Claude API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        -100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "__REDACTED_SEE_N8N_CREDENTIAL_NOT_IN_GIT__"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.requestBody) }}",
+        "options": {
+          "timeout": 60000
+        }
+      }
+    },
+    {
+      "id": "parse_response",
+      "name": "Parser reponse Claude",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        -100
+      ],
+      "parameters": {
+        "jsCode": "function escapeHtml(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#39;');\n}\n\nconst prevData = $('Preparer requete Claude').first().json;\nconst claudeResponse = $input.first().json;\n\nlet content = '';\nif (claudeResponse.content && claudeResponse.content[0]) {\n  content = claudeResponse.content[0].text || '';\n}\n\nlet parsed;\ntry {\n  const jsonMatch = content.match(/\\{[\\s\\S]*\\}/);\n  if (jsonMatch) {\n    parsed = JSON.parse(jsonMatch[0]);\n  } else {\n    throw new Error('Pas de JSON dans la réponse');\n  }\n} catch (e) {\n  return [{ json: { parse_ok: false, error: 'Erreur de parsing : ' + e.message, error_html: escapeHtml('Erreur de parsing : ' + e.message), matiere_html: escapeHtml(prevData.matiere), ...prevData } }];\n}\n\n// T-SEC (2026-10-06, 4e passe) : Array.isArray() plutot qu'un simple fallback\n// 'truthy' - une reponse modele malformee ou forgee ({cartes:{length:'<script>'}})\n// ne doit jamais faire passer un cartes.length non numerique en aval.\nconst cartes = Array.isArray(parsed.cartes) ? parsed.cartes : [];\nif (cartes.length === 0) {\n  return [{ json: { parse_ok: false, error: 'Aucune carte générée', error_html: escapeHtml('Aucune carte générée'), matiere_html: escapeHtml(prevData.matiere), ...prevData } }];\n}\n\n// T-SEC (2026-10-06) : pose explicitement revue_carte_par_carte: false a la\n// generation. Seul box-select-confirm (relecture carte par carte) le passe a\n// true - box-validate (validation en bloc) ne le pose jamais. 'type' n'est PAS\n// pose ici : ce workflow genere des jeux BOX ordinaires, jamais Box-FONDA.\nconst flashcardFile = {\n  id: prevData.id,\n  matiere: prevData.matiere,\n  niveau: prevData.niveau,\n  notion: prevData.notion,\n  prof_nom: prevData.prof_nom,\n  prof_email: prevData.prof_email,\n  code_suppression: prevData.code_suppression,\n  date_creation: prevData.date_creation,\n  nb_cartes: cartes.length,\n  source: 'tally',\n  source_filename: prevData.pdf_filename || 'cours.pdf',\n  cartes,\n  revue_carte_par_carte: false\n};\n\nconst jsonStr = JSON.stringify(flashcardFile, null, 2);\nconst buffer = Buffer.from(jsonStr, 'utf-8');\n\nreturn [{\n  json: { parse_ok: true, nb_cartes_generees: cartes.length, notes: parsed.notes || '', flashcard_file: flashcardFile, ...prevData },\n  binary: { data: await this.helpers.prepareBinaryData(buffer, prevData.id + '.json', 'application/json') }\n}];"
+      }
+    },
+    {
+      "id": "if_parsed",
+      "name": "Parse OK ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1680,
+        -100
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c2",
+              "leftValue": "={{ $json.parse_ok }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "gmail_parse_err",
+      "name": "Email Erreur Generation",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1920,
+        100
+      ],
+      "parameters": {
+        "sendTo": "={{ $json.prof_email }}",
+        "subject": "=BOX - Erreur de génération pour \"{{ $json.notion }}\"",
+        "message": "=<h3>Erreur lors de la génération des fiches</h3><p>Le système n'a pas pu générer les fiches pour \"{{ $json.notion_html }}\" ({{ $json.matiere_html }}).</p><p><strong>Erreur :</strong> {{ $json.error_html }}</p><p>Vous pouvez re-soumettre le document via le formulaire.</p>",
+        "options": {}
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "iIgjFF3qL44wl8uE",
+          "name": "Gmail n8n iazimut2026"
+        }
+      }
+    },
+    {
+      "id": "gd_upload",
+      "name": "Upload Flashcards",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1920,
+        -200
+      ],
+      "parameters": {
+        "name": "={{ $json.id }}.json",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "11KWo13pczVB_eOXw-FHUXWuutfSQqbbT"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "cukxQDNwWIqOAK02",
+          "name": "Google Drive la bonne!"
+        }
+      }
+    },
+    {
+      "id": "prep_email",
+      "name": "Preparer Email Validation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        -200
+      ],
+      "parameters": {
+        "jsCode": "const prevData = $('Parser reponse Claude').first().json;\nconst uploadResult = $('Upload Flashcards').first().json;\nconst driveFileId = uploadResult.id || uploadResult.fileId || '';\nconst code = prevData.code_suppression;\n\nfunction escapeHtml(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#39;');\n}\n\nconst cartes = prevData.flashcard_file.cartes || [];\nconst maxPreview = Math.min(cartes.length, 5);\nlet cartesHtml = '';\nfor (let i = 0; i < maxPreview; i++) {\n  const c = cartes[i];\n  const diff = c.difficulte === 'facile' ? '#16a34a' : c.difficulte === 'moyen' ? '#d97706' : '#dc2626';\n  cartesHtml += `<div style=\"background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin:8px 0\">\n    <div style=\"color:${diff};font-size:12px;font-weight:bold;margin-bottom:4px\">${escapeHtml((c.difficulte || '').toUpperCase())}</div>\n    <div style=\"font-weight:bold;margin-bottom:6px\">Q${escapeHtml(c.numero)}: ${escapeHtml(c.question)}</div>\n    <div style=\"color:#475569\">${escapeHtml(c.reponse)}</div>\n  </div>`;\n}\nif (cartes.length > maxPreview) {\n  cartesHtml += `<p style=\"color:#64748b;text-align:center\">... et ${cartes.length - maxPreview} autres cartes</p>`;\n}\n\nconst baseUrl = 'https://n8n.srv868991.hstgr.cloud/webhook';\n// T-SEC (2026-10-06, 3e passe) : echappement etendu a cet apercu email (balayage\n// complet demande par Eric) - meme fonction escapeHtml que partout ailleurs.\nconst selectUrl = escapeHtml(`${baseUrl}/box-select?file_id=${driveFileId}&code=${encodeURIComponent(code)}`);\n\nconst emailHtml = `<h2>BOX - Fiches à valider</h2>\n<p><strong>Matière :</strong> ${escapeHtml(prevData.matiere)}<br>\n<strong>Niveau :</strong> ${escapeHtml(prevData.niveau)}<br>\n<strong>Notion :</strong> ${escapeHtml(prevData.notion)}<br>\n<strong>Nombre de cartes :</strong> ${cartes.length}</p>\n<hr>\n<h3>Aperçu des cartes générées :</h3>\n${cartesHtml}\n<hr>\n<p style=\"text-align:center;margin:24px 0\">\n  <a href=\"${selectUrl}\" style=\"background:#2563eb;color:white;padding:14px 32px;border-radius:8px;text-decoration:none;font-size:16px;font-weight:bold\">&#128203; Relire et choisir les cartes</a>\n</p>\n<p style=\"color:#64748b;font-size:12px;text-align:center\">Vous pourrez décocher les cartes à exclure avant publication.<br>\nLes fiches sélectionnées seront accessibles aux élèves sur <a href=\"https://ericduchateau.github.io/box/\">la page BOX</a>.<br>\nCode de suppression (à conserver) : <code>${escapeHtml(prevData.id)}</code> / <code>${escapeHtml(code)}</code></p>`;\n\nreturn [{ json: { prof_email: prevData.prof_email, notion: prevData.notion, email_html: emailHtml } }];"
+      }
+    },
+    {
+      "id": "gmail_val",
+      "name": "Email Validation",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2400,
+        -200
+      ],
+      "parameters": {
+        "sendTo": "={{ $json.prof_email }}",
+        "subject": "=BOX - Fiches \"{{ $json.notion }}\" à valider",
+        "message": "={{ $json.email_html }}",
+        "options": {}
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "iIgjFF3qL44wl8uE",
+          "name": "Gmail n8n iazimut2026"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Tally Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parser Tally",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parser Tally": {
+      "main": [
+        [
+          {
+            "node": "Valide ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valide ?": {
+      "main": [
+        [
+          {
+            "node": "Telecharger PDF Tally",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email Erreur",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telecharger PDF Tally": {
+      "main": [
+        [
+          {
+            "node": "Preparer requete Claude",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparer requete Claude": {
+      "main": [
+        [
+          {
+            "node": "Claude API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude API": {
+      "main": [
+        [
+          {
+            "node": "Parser reponse Claude",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parser reponse Claude": {
+      "main": [
+        [
+          {
+            "node": "Parse OK ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse OK ?": {
+      "main": [
+        [
+          {
+            "node": "Upload Flashcards",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email Erreur Generation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Flashcards": {
+      "main": [
+        [
+          {
+            "node": "Preparer Email Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparer Email Validation": {
+      "main": [
+        [
+          {
+            "node": "Email Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "pinData": null
+}

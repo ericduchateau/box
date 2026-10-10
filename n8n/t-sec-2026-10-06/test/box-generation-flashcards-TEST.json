@@ -1,0 +1,468 @@
+{
+  "id": "box-generation-flashcards-TEST-0001",
+  "name": "BOX - Generation Flashcards (TEST)",
+  "active": false,
+  "nodes": [
+    {
+      "id": "manual_trigger_test",
+      "name": "Execution manuelle (TEST)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "set_test_row",
+      "name": "Simuler une ligne du Sheet (TEST)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        -140
+      ],
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"Matière\": \"Mathématiques\",\n  \"Niveau\": \"6e\",\n  \"Notion / Chapitre\": \"[TEST T-SEC] Test revue_carte_par_carte\",\n  \"Nom du professeur\": \"Test\",\n  \"Email du professeur - pour validation des cartes\": \"PROF_EMAIL_TEST_A_REMPLACER\",\n  \"Nombre de cartes souhaite\": \"3\",\n  \"Instructions supplémentaires pour la création des cartes\": \"\",\n  \"Le fichier pdf contenant les notions importantes\": \"FICHIER_PDF_TEST_ID_A_REMPLACER\"\n}",
+        "options": {}
+      },
+      "notes": "A REMPLIR avant execution : PROF_EMAIL_TEST_A_REMPLACER et FICHIER_PDF_TEST_ID_A_REMPLACER."
+    },
+    {
+      "parameters": {
+        "jsCode": "function escapeHtml(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#39;');\n}\n\nconst item = $input.first().json;\nconst errors = [];\n\nconst matiere = item['Matière'] || item['Matiere'] || '';\nconst niveau = item['Niveau'] || '';\nconst notion = item['Notion / Chapitre'] || item['Notion'] || '';\nconst profNom = item['Nom du professeur'] || '';\nconst profEmail = item['Email du professeur - pour validation des cartes']\n  || item['Email du professeur']\n  || item['Votre email - pour votre validation finale des cartes créées']\n  || item['Votre email - pour votre validation finale des cartes creees']\n  || '';\nconst nbCartes = parseInt(\n  item['Nombre de cartes souhaite']\n  || item['Nombre de cartes souhaité']\n  || '15'\n) || 15;\nconst instructions = item['Instructions supplémentaires pour la création des cartes']\n  || item['Instructions supplementaires']\n  || '';\n\nconst fichierUrl = item['Le fichier pdf contenant les notions importantes']\n  || item['Joindre le fichier pdf contenant les notions importantes']\n  || item['Fichier PDF']\n  || '';\n\nif (!matiere) errors.push('Matiere manquante');\nif (!niveau) errors.push('Niveau manquant');\nif (!notion) errors.push('Notion manquante');\nif (!profEmail || !profEmail.includes('@')) errors.push('Email invalide');\nif (!fichierUrl) errors.push('Fichier PDF manquant');\n\nlet fileId = '';\nconst match = fichierUrl.match(/[-\\w]{25,}/);\nif (match) fileId = match[0];\nelse if (fichierUrl) errors.push(\"Impossible d'extraire l'ID du fichier\");\n\nconst id = 'box_' + Math.random().toString(36).substring(2, 10);\nconst codeSup = 'SUP-' + Math.random().toString(36).substring(2, 10).toUpperCase();\n\n// T-SEC (2026-10-06, 4e passe) : notion_html ajoute pour l'email d'erreur de\n// soumission (Email Erreur), echappement complet.\nreturn [{\n  json: {\n    valid: errors.length === 0,\n    errors: errors.join(', '),\n    matiere: matiere.trim(),\n    niveau: niveau.trim(),\n    notion: notion.trim(),\n    notion_html: escapeHtml(notion.trim()),\n    prof_nom: profNom.trim(),\n    prof_email: profEmail.trim(),\n    nb_cartes: nbCartes,\n    instructions: instructions.trim(),\n    source_file_id: fileId,\n    id: id,\n    code_suppression: codeSup,\n    date_creation: new Date().toISOString().split('T')[0],\n    row_number: item.row_number || item['row_number'] || 0\n  }\n}];"
+      },
+      "id": "validate",
+      "name": "Valider entree",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        0
+      ],
+      "notes": "T-SEC (2026-10-06) - TEST : lit les memes cles que la vraie ligne de Sheet."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "if_valid",
+      "name": "Valide ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        512,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.prof_email }}",
+        "subject": "BOX - Erreur dans votre soumission",
+        "message": "=<h3>Erreur lors du traitement de votre fiche</h3><p>Votre soumission pour la notion \"{{ $json.notion_html }}\" comporte des erreurs :</p><p><strong>{{ $json.errors }}</strong></p><p>Merci de verifier et soumettre a nouveau via le formulaire.</p><p style=\"color:#64748b;font-size:12px\">BOX - Systeme de fiches de revision</p>",
+        "options": {}
+      },
+      "id": "gmail_err",
+      "name": "Email Erreur",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        752,
+        208
+      ],
+      "webhookId": "a4d08f98-1e8a-4487-8267-6703f5e3faf2",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "iIgjFF3qL44wl8uE",
+          "name": "Gmail n8n iazimut2026"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.source_file_id }}"
+        },
+        "options": {}
+      },
+      "id": "gd_pdf",
+      "name": "Telecharger PDF",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        752,
+        -96
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "cukxQDNwWIqOAK02",
+          "name": "Google Drive la bonne!"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const prevData = $('Valider entree').first().json;\nconst binaryData = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst base64Pdf = binaryData.toString('base64');\n\n// Construire le prompt\nconst prompt = `Tu es un assistant pedagogique pour un college francais. Tu crees des fiches de revision (flashcards) au format question/reponse a partir du contenu d'un cours.\n\nCONTEXTE :\n- Matiere : ${prevData.matiere}\n- Niveau : ${prevData.niveau}\n- Notion/Chapitre : ${prevData.notion}\n- Nombre de cartes demande : ${prevData.nb_cartes}\n${prevData.instructions ? '- Instructions du professeur : ' + prevData.instructions : ''}\n\nCONSIGNES :\n1. Genere exactement ${prevData.nb_cartes} flashcards question/reponse.\n2. Les questions doivent couvrir les points essentiels : definitions, mecanismes, dates, formules, exemples.\n3. Les reponses doivent etre CONCISES (2-3 phrases maximum) mais COMPLETES et EXACTES.\n4. Adapte le vocabulaire au niveau ${prevData.niveau} (college francais).\n5. Varie les types de questions : \"Qu'est-ce que...\", \"Comment...\", \"Pourquoi...\", \"Cite...\", \"Quelle est la difference entre...\".\n6. Attribue un niveau de difficulte a chaque carte : \"facile\", \"moyen\", ou \"difficile\".\n7. Ne modifie PAS les informations du cours.\n\nIMPORTANT : Reponds UNIQUEMENT avec un JSON valide, sans texte avant ni apres :\n{\n  \"cartes\": [\n    { \"numero\": 1, \"question\": \"...\", \"reponse\": \"...\", \"difficulte\": \"facile\" }\n  ],\n  \"notes\": \"Commentaire optionnel si contenu insuffisant\"\n}`;\n\n// Corps de la requete Claude avec PDF en base64\nconst requestBody = {\n  model: 'claude-haiku-4-5-20251001',\n  max_tokens: 4096,\n  messages: [{\n    role: 'user',\n    content: [\n      {\n        type: 'document',\n        source: {\n          type: 'base64',\n          media_type: 'application/pdf',\n          data: base64Pdf\n        }\n      },\n      {\n        type: 'text',\n        text: prompt\n      }\n    ]\n  }]\n};\n\nreturn [{\n  json: {\n    requestBody: requestBody,\n    ...prevData\n  }\n}];"
+      },
+      "id": "prep_claude",
+      "name": "Preparer requete Claude",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        992,
+        -96
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "__REDACTED_SEE_N8N_CREDENTIAL_NOT_IN_GIT__"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.requestBody) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "claude_api",
+      "name": "Claude API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1232,
+        -96
+      ],
+      "notes": "CONFIGURER : remplacer VOTRE_CLE_API_ANTHROPIC par votre cle API Anthropic (sk-ant-...) -- REDACTED dans cette sauvegarde, voir n8n directement pour la vraie valeur"
+    },
+    {
+      "parameters": {
+        "jsCode": "function escapeHtml(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#39;');\n}\n\nconst prevData = $('Preparer requete Claude').first().json;\nconst claudeResponse = $input.first().json;\n\nlet content = '';\nif (claudeResponse.content && claudeResponse.content[0]) {\n  content = claudeResponse.content[0].text || '';\n}\n\nlet parsed;\ntry {\n  const jsonMatch = content.match(/\\{[\\s\\S]*\\}/);\n  if (jsonMatch) {\n    parsed = JSON.parse(jsonMatch[0]);\n  } else {\n    throw new Error('Pas de JSON dans la reponse');\n  }\n} catch (e) {\n  return [{\n    json: {\n      parse_ok: false,\n      error: 'Erreur de parsing : ' + e.message,\n      error_html: escapeHtml('Erreur de parsing : ' + e.message),\n      matiere_html: escapeHtml(prevData.matiere),\n      ...prevData\n    }\n  }];\n}\n\n// T-SEC (2026-10-06, 4e passe) : Array.isArray() plutot qu'un simple fallback\n// 'truthy' - une reponse modele malformee ou forgee ({cartes:{length:'<script>'}})\n// ne doit jamais faire passer un cartes.length non numerique en aval.\nconst cartes = Array.isArray(parsed.cartes) ? parsed.cartes : [];\nif (cartes.length === 0) {\n  return [{\n    json: {\n      parse_ok: false,\n      error: 'Aucune carte generee',\n      error_html: escapeHtml('Aucune carte generee'),\n      matiere_html: escapeHtml(prevData.matiere),\n      ...prevData\n    }\n  }];\n}\n\n// Construire le fichier flashcard complet\n// T-SEC (2026-10-06) : pose explicitement revue_carte_par_carte: false a la\n// generation. Seul box-select-confirm (relecture carte par carte) le passe a\n// true - box-validate (validation en bloc) ne le pose jamais. 'type' n'est PAS\n// pose ici : ce workflow genere des jeux BOX ordinaires, jamais Box-FONDA.\nconst flashcardFile = {\n  id: prevData.id,\n  matiere: prevData.matiere,\n  niveau: prevData.niveau,\n  notion: prevData.notion,\n  prof_nom: prevData.prof_nom,\n  prof_email: prevData.prof_email,\n  code_suppression: prevData.code_suppression,\n  date_creation: prevData.date_creation,\n  nb_cartes: cartes.length,\n  source_filename: 'upload.pdf',\n  cartes: cartes,\n  revue_carte_par_carte: false\n};\n\n// Preparer en binaire pour upload Drive\nconst jsonStr = JSON.stringify(flashcardFile, null, 2);\nconst buffer = Buffer.from(jsonStr, 'utf-8');\n\nreturn [{\n  json: {\n    parse_ok: true,\n    nb_cartes_generees: cartes.length,\n    notes: parsed.notes || '',\n    flashcard_file: flashcardFile,\n    ...prevData\n  },\n  binary: {\n    data: await this.helpers.prepareBinaryData(buffer, prevData.id + '.json', 'application/json')\n  }\n}];"
+      },
+      "id": "parse_response",
+      "name": "Parser reponse Claude",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1472,
+        -96
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c2",
+              "leftValue": "={{ $json.parse_ok }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "if_parsed",
+      "name": "Parse OK ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1712,
+        -96
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.prof_email }}",
+        "subject": "BOX - Erreur de generation pour \"{{ $json.notion }}\"",
+        "message": "=<h3>Erreur lors de la generation des fiches</h3><p>Le systeme n'a pas pu generer les fiches pour \"{{ $json.notion_html }}\" ({{ $json.matiere_html }}).</p><p><strong>Erreur :</strong> {{ $json.error_html }}</p><p>Vous pouvez re-soumettre le document via le formulaire.</p>",
+        "options": {}
+      },
+      "id": "gmail_parse_err",
+      "name": "Email Erreur Generation",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1952,
+        112
+      ],
+      "webhookId": "e21f389b-97e9-4ac0-8e5f-a95c05ec69e5",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "iIgjFF3qL44wl8uE",
+          "name": "Gmail n8n iazimut2026"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "={{ $json.id }}.json",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "11KWo13pczVB_eOXw-FHUXWuutfSQqbbT"
+        },
+        "options": {}
+      },
+      "id": "gd_upload",
+      "name": "Upload Flashcards",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1952,
+        -208
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "cukxQDNwWIqOAK02",
+          "name": "Google Drive la bonne!"
+        }
+      },
+      "notes": "CONFIGURER : remplacer FLASHCARDS_FOLDER_ID par l'ID du dossier BOX-Flashcards sur Google Drive"
+    },
+    {
+      "id": "prep_email",
+      "name": "Preparer Email Validation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2192,
+        -208
+      ],
+      "parameters": {
+        "jsCode": "const prevData = $('Parser reponse Claude').first().json;\nconst uploadResult = $('Upload Flashcards').first().json;\nconst driveFileId = uploadResult.id || uploadResult.fileId || '';\nconst code = prevData.code_suppression;\n\nfunction escapeHtml(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#39;');\n}\n\n// Construire l'apercu des cartes (max 5 en preview)\nconst cartes = prevData.flashcard_file.cartes || [];\nconst maxPreview = Math.min(cartes.length, 5);\nlet cartesHtml = '';\nfor (let i = 0; i < maxPreview; i++) {\n  const c = cartes[i];\n  const diff = c.difficulte === 'facile' ? '#16a34a' : c.difficulte === 'moyen' ? '#d97706' : '#dc2626';\n  cartesHtml += `<div style=\"background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin:8px 0\">\n    <div style=\"color:${diff};font-size:12px;font-weight:bold;margin-bottom:4px\">${escapeHtml((c.difficulte || '').toUpperCase())}</div>\n    <div style=\"font-weight:bold;margin-bottom:6px\">Q${escapeHtml(c.numero)}: ${escapeHtml(c.question)}</div>\n    <div style=\"color:#475569\">${escapeHtml(c.reponse)}</div>\n  </div>`;\n}\nif (cartes.length > maxPreview) {\n  cartesHtml += `<p style=\"color:#64748b;text-align:center\">... et ${cartes.length - maxPreview} autres cartes</p>`;\n}\n\nconst baseUrl = 'https://n8n.srv868991.hstgr.cloud/webhook';\n// T-SEC (2026-10-06, 3e passe) : echappement etendu a cet aperçu email (balayage\n// complet demande par Eric) - meme fonction escapeHtml que partout ailleurs.\nconst selectUrl = escapeHtml(`${baseUrl}/box-select-test?file_id=${driveFileId}&code=${encodeURIComponent(code)}`);\n\nconst emailHtml = `<h2>BOX - Fiches a valider</h2>\n<p><strong>Matiere :</strong> ${escapeHtml(prevData.matiere)}<br>\n<strong>Niveau :</strong> ${escapeHtml(prevData.niveau)}<br>\n<strong>Notion :</strong> ${escapeHtml(prevData.notion)}<br>\n<strong>Nombre de cartes :</strong> ${cartes.length}</p>\n<hr>\n<h3>Apercu des cartes generees :</h3>\n${cartesHtml}\n<hr>\n<p style=\"text-align:center;margin:24px 0\">\n  <a href=\"${selectUrl}\" style=\"background:#2563eb;color:white;padding:14px 32px;border-radius:8px;text-decoration:none;font-size:16px;font-weight:bold\">&#128203; Relire et choisir les cartes</a>\n</p>\n<p style=\"color:#64748b;font-size:12px;text-align:center\">Vous pourrez decocher les cartes a exclure avant publication.<br>\nLes fiches selectionnees seront accessibles aux eleves sur <a href=\"https://ericduchateau.github.io/box/\">la page BOX</a>.<br>\nCode de suppression (a conserver) : <code>${escapeHtml(prevData.id)}</code> / <code>${escapeHtml(code)}</code></p>`;\n\nreturn [{ json: {\n  prof_email: prevData.prof_email,\n  notion: prevData.notion,\n  email_html: emailHtml\n} }];"
+      },
+      "notes": "T-SEC (2026-10-06) - TEST : lien pointant vers /box-select-test (pas /box-select)."
+    },
+    {
+      "id": "gmail_val",
+      "name": "Email Validation",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2432,
+        -208
+      ],
+      "parameters": {
+        "sendTo": "={{ $json.prof_email }}",
+        "subject": "=BOX - Fiches \"{{ $json.notion }}\" a valider",
+        "message": "={{ $json.email_html }}",
+        "options": {}
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "iIgjFF3qL44wl8uE",
+          "name": "Gmail n8n iazimut2026"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Valider entree": {
+      "main": [
+        [
+          {
+            "node": "Valide ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valide ?": {
+      "main": [
+        [
+          {
+            "node": "Telecharger PDF",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email Erreur",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telecharger PDF": {
+      "main": [
+        [
+          {
+            "node": "Preparer requete Claude",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparer requete Claude": {
+      "main": [
+        [
+          {
+            "node": "Claude API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude API": {
+      "main": [
+        [
+          {
+            "node": "Parser reponse Claude",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parser reponse Claude": {
+      "main": [
+        [
+          {
+            "node": "Parse OK ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse OK ?": {
+      "main": [
+        [
+          {
+            "node": "Upload Flashcards",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email Erreur Generation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Flashcards": {
+      "main": [
+        [
+          {
+            "node": "Preparer Email Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparer Email Validation": {
+      "main": [
+        [
+          {
+            "node": "Email Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execution manuelle (TEST)": {
+      "main": [
+        [
+          {
+            "node": "Simuler une ligne du Sheet (TEST)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simuler une ligne du Sheet (TEST)": {
+      "main": [
+        [
+          {
+            "node": "Valider entree",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": {
+    "node:Google Sheets Trigger": {
+      "documentId": "1HCJZ0mWtpOsCCVpLUd3dyRGB-7btiVSXBcQCmGCd4AE",
+      "sheetId": 1924231454,
+      "lastIndexChecked": 16
+    }
+  },
+  "pinData": {}
+}

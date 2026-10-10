@@ -69,9 +69,11 @@ Jeu d'événements **synthétiques et anonymes** (aucune donnée réelle d'élè
 
 Liste fermée des 20 classes de l'année, format canonique **3 chiffres sans lettre** (ex. `"601"`, pas `"6e1"`). C'est la seule source de vérité pour la validité d'un `grp` — voir [`fonda/engine/evenements.js`](../engine/evenements.js). À remettre à jour chaque rentrée.
 
-## `destinataires.json` (T3)
+## `destinataires.json` (T3, étendu en préparation T6b)
 
 Structure par niveau (`6e`/`5e`/`4e`/`3e`), vide à T3 — **adresses de collègues adultes** (relecture par matière), jamais de donnée élève. Non consommé par le moteur d'événements ; posé en prévision d'un usage ultérieur (notifications de relecture).
+
+**`relecteurs`** (ajouté en préparation de la SPEC T6b, §5) : adresses de **TEST** pour le routage de relecture par matière (indépendant du niveau) — `eric` (adresse réelle d'Éric) et `justine` (adresse de TEST, marquée `_TEST` : **à remplacer par la vraie adresse de Justine avant toute mise en service**, jamais utilisée comme adresse réelle d'envoi).
 
 ---
 
