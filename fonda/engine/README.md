@@ -7,7 +7,7 @@ Révisé le 2026-10-05, **trois passes** suite critiques Codex successives (lect
 ## Fichiers
 
 - **`correction.js`** — moteur de correction pur (zéro DOM, zéro dépendance). Format UMD : `require()`-able en Node (tests, futurs scripts de calcul) et chargeable en `<script>` classique dans le navigateur (pose `window.FondaCorrection`), cohérent avec le style du front BOX existant (pas de bundler).
-- **`correction.test.js`** — suite de tests (80 cas), écrite **avant** chaque révision du moteur. `node --test fonda/engine/correction.test.js`.
+- **`correction.test.js`** — suite de tests (**93 cas**, dont 6 ajoutés en T6a pour l'élargissement aux unités monétaires, voir « numerique — unité » ci-dessous), écrite **avant** chaque révision du moteur. `node --test fonda/engine/correction.test.js`.
 - **`carte-reponse-produite.js`** — composant vanilla JS (saisie courte → validation → feedback). Charge `window.FondaCorrection`, donc à inclure **après** `correction.js` dans la page. **Développé isolé, non branché à `index.html`** (impact prod nul) — le câblage dans la page existante est T4.
 - **`carte-reponse-produite.test.js`** — test d'intégration du contrat seconde chance (`tentative`/`scored`) et du feedback affiché, avec un DOM factice minimal maison (zéro dépendance, pas de jsdom).
 
@@ -68,6 +68,8 @@ Seuls `. ! ?` sont pardonnés, et **uniquement en position externe** (début/fin
 | valeur correcte, **reliquat alphabétique** (`8 banane`) | non exigée | **`faux`** |
 
 La comparaison d'unité est **sensible à la casse** et **symétrique** : l'unité exigée par la carte passe par la même canonisation typographique (apostrophes/tirets/espaces) que la saisie de l'élève, et les exposants Unicode sont normalisés en chiffres des deux côtés (`cm²` ≡ `cm2`, dans un sens comme dans l'autre), **y compris le moins en exposant** (`⁻` → `-`, donc `m·s⁻¹` ≡ `m·s-1`, quel que soit le côté qui utilise la forme exposant).
+
+**Unités monétaires (T6a)** : la grammaire d'unité plausible (`RE_UNITE_PLAUSIBLE`, voir « carte_invalide » ci-dessous) inclut désormais `\p{Sc}` (catégorie Unicode *Symbol, Currency* — €, $, £, ¥...), **pas une liste en dur** : toute devise de cette catégorie est reconnue automatiquement. Déclenché par un lot de cartes T6a dont 11 réponses en € échouaient à tort en `carte_invalide`. Comme pour toute autre unité : **reste `faux` (pas `juste`) si la carte ne déclare pas `unite`** — c'est la règle générale « unité exigée seulement si la carte le précise », pas une exception pour les devises. `%` était déjà géré avant ce changement (présent explicitement dans la grammaire).
 
 ### numerique — `carte_invalide` : attendu incohérent (problème d'auteur, pas de l'élève)
 
@@ -277,3 +279,59 @@ Relevées par les 2ᵉ et 3ᵉ critiques Codex, volontairement laissées telles 
 - ~~Nombres non finis~~ — **corrigé** (voir « Robustesse » ci-dessus).
 - ~~Attendu incohérent (unité contradictoire, fraction malformée)~~ — **corrigé** : voir `carte_invalide` ci-dessus.
 - ~~Moins en exposant (`⁻`) non normalisé~~ — **corrigé** : voir « numerique — unité » ci-dessus.
+
+---
+
+# `generation.js` — chaîne de génération assistée + dépôt en file de relecture (T6)
+
+Référence : [`docs/PRD-Box-FONDA.md`](../../docs/PRD-Box-FONDA.md) §3.6, §5.1, §9, §11, §12 ; `AGENTS.md` G3/G4/G5. Logique pure (zéro DOM, zéro fetch, zéro appel réseau/n8n) : ids système, schéma candidate, anti-clone, routage par relecteur. `node --test fonda/engine/generation.test.js` (**45 tests** — 27 d'origine + 7 (1ʳᵉ critique Codex) + 7 (2ᵉ critique, moteur durci) + 4 (3ᵉ critique, confirmation — a aussi trouvé et fait corriger 2 défauts réels, voir ci-dessous).
+
+**Ce module ne génère aucun texte de carte.** Le contenu pédagogique du lot pilote T6 est rédigé à la main (`fonda/scripts/generer-pilote-t6.js`) — voir ce fichier et `AVANCEMENT.md` pour ce qui est fait vs ce qui reste une dette.
+
+## API
+
+```js
+const { genererSetId, genererItemId, relecteurDepuisMatiere, validerCandidate, validerJeu, deposerEnRelecture } = require('./generation.js');
+
+genererSetId('maths.geometrie', 'nI', 1); // → 'set_fonda_geometrie_nI_01' (ou null)
+genererItemId(3);                          // → 'it03' (ou null)
+relecteurDepuisMatiere('français');        // → 'justine'
+
+validerCandidate(candidate, { notionIdsConnus }); // → { valide, erreurs? }
+validerJeu(cartesDuJeu);                           // → { valide, erreurs? } — anti-clone, voir ci-dessous
+deposerEnRelecture(candidates, { notions });       // → { parRelecteur: {justine, eric}, total, invalides } — `notions` = referentiel.json.notions, OBLIGATOIRE (voir G4 ci-dessous)
+```
+
+## Dette T6 (ids) — LEVÉE : `set_id`/`item_id` système, jamais du texte
+
+`card_id` (PRD §3.6) est réalisé comme la paire `(set_id, item_id)`, cohérente avec le schéma événement (§3.2) déjà utilisé par `evenements.js`. Motifs vérifiables, dérivés UNIQUEMENT de `(notion_id, palier, séquence)` / d'un index — jamais du texte de la carte :
+- `set_id` : `^set_fonda_[a-z0-9-]+_n[IF]_\d{2}$` (ex. `set_fonda_geometrie_nI_01`)
+- `item_id` : `^it\d{2}$` (ex. `it01`)
+
+Ferme la dette ouverte par T3/T4 (voir `evenements.js` ci-dessus, « garantie d'anonymat déléguée à T6 ») : un appelant qui source `item_id`/`set_id` depuis ce module ne peut plus produire un id dérivé de texte libre.
+
+## Routage par relecteur (G4/§12) — IMPRENABLE au dépôt (révisé T6a)
+
+`relecteurDepuisMatiere` est l'unique table `matiere -> relecteur` (identique à `RELECTEUR_ATTENDU` de `fonda/scripts/validate.js` — ne jamais diverger). `validerCandidate` revérifie la cohérence des champs `matiere`/`relecteur` **déclarés** sur la candidate — un contrôle de forme utile en isolation, mais PAS une garantie suffisante pour G4 (une candidate peut être forgée avec une paire interne cohérente mais fausse par rapport à sa vraie notion).
+
+**`deposerEnRelecture` ne fait confiance à rien de ce que déclare la candidate pour router ou publier** (révisé après une 1ʳᵉ critique Codex — la toute première version du dépôt prenait `matiere`/`relecteur`/`statut` tels que fournis — PUIS renforcé après une 2ᵉ critique ciblée sur ce moteur durci lui-même) :
+- `matiere`/`relecteur` sont **dérivés du référentiel réel** (`notions`, option obligatoire — `referentiel.json.notions` ou équivalent) via `notion_id`, puis écrasent les champs déclarés sur la candidate avant dépôt. `notion_id` absent de `notions` → **rejet**. Une entrée de `notions` elle-même **mal formée** (matiere/relecteur incohérents) ou **dupliquée** (même `id` répété) est retirée de l'index (2ᵉ critique, point #1) — jamais utilisée pour router "telle que déclarée", jamais "la dernière entrée gagne" sur un id en double. `notions` omis/vide → tout est rejeté (échoue fermé).
+- `statut` est **forcé à `"attente"`** sur chaque candidate déposée, quelle que soit la valeur entrante (`"validée"`/`"rejetée"` sont écrasées).
+- `set_id` doit cohérer avec `(notion_id, palier)` (motif `set_fonda_{slug}_{palier}_..`) ; `(set_id, item_id)` doit être unique dans le lot ; et un même `set_id` ne peut pas être revendiqué par deux `notion_id` différents dans le même lot (2ᵉ critique, point #3 — la comparaison set_id↔notion ne porte que sur le slug, pas le préfixe `fr.`/`maths.` : cette garde couvre le cas où deux notions de matières différentes partageraient un slug) — sinon rejet.
+- Chaque candidate déposée est **clonée puis gelée EN PROFONDEUR, récursivement, à tout niveau d'imbrication** (pas seulement `reponses_acceptees` — 2ᵉ critique, point #2) : muter après coup N'IMPORTE QUEL champ (y compris imbriqué) de l'objet d'origine passé par l'appelant ne mute plus la candidate déposée. Un vrai `Object.freeze` (pas un `Object.seal`, qui laisserait réaffecter un élément de tableau existant — verrouillé par test, point #6).
+- Chaque candidate est lue via un **aller-retour JSON unique** avant toute validation (2ᵉ critique, point #4, risque théorique) : neutralise un getter/`toJSON` forgé qui répondrait des valeurs différentes selon le moment de la lecture — ce qui aurait pu faire diverger ce qui est validé de ce qui est déposé. Nécessite un objet JS avec du code, pas un `JSON.parse` ordinaire ; le script pilote ne construit que des objets simples.
+
+Une candidate invalide/rejetée n'est jamais incluse silencieusement dans `parRelecteur` : elle sort dans `invalides`, avec des raisons de diagnostic (jamais la valeur fautive).
+
+**Nuance assumée (2ᵉ critique, point #5)** : les champs `matiere`/`relecteur`/`statut` **déclarés** sur la candidate sont encore vérifiés en amont par `validerCandidate` (contrôle de forme/cohérence interne, utile isolément) — une candidate structurellement invalide est rejetée avant même d'atteindre le référentiel. Ce qu'ils ne font PLUS, depuis le durcissement : décider du **routage final** ou du **contenu déposé**, entièrement repris du référentiel après admission.
+
+**3ᵉ critique Codex (confirmation, a trouvé 2 défauts réels en plus, corrigés)** :
+- `clonerProfond` utilisait `clone[k] = …` (affectation par crochets) : une clé **littéralement nommée `"__proto__"`** dans l'objet source (du JSON ordinaire, `JSON.parse('{"__proto__":{...}}')`, aucun getter requis) basculait sur le setter exotique `Object.prototype.__proto__` au lieu de créer une propriété propre — le contenu imbriqué devenait un PROTOTYPE, invisible à `Object.keys`, donc jamais gelé. Corrigé par `Object.defineProperty` (crée toujours une propriété littérale, quel que soit le nom).
+- `construireIndexNotions` relisait `matiere`/`relecteur` d'une entrée de `notions` **deux fois** (vérification de cohérence, puis stockage) — un getter changeant de valeur entre les deux lectures pouvait router sur une paire jamais vérifiée. Corrigé par le même traitement que pour une candidate (aller-retour JSON, une lecture figée).
+- **Limite confirmée et acceptée, pas un bug** : la garde set_id↔notion_id et le dédoublonnage `(set_id, item_id)` sont scopés à **un seul appel** de `deposerEnRelecture` — une collision entre deux appels successifs reste possible (le référentiel réel a 12 slugs distincts, ce scénario ne s'y produit pas aujourd'hui). Le contrat est explicitement "dans ce lot", pas global.
+
+**Écart constaté avec le mécanisme de relecture existant (BOX - Selection Prof)** : ce workflow route aujourd'hui vers l'email du prof **soumissionnaire** (`prof_email`), pas vers un relecteur nommé (Justine/Éric) — il n'a ni champ `statut`, ni `relecteur`. `deposerEnRelecture` produit une structure prête à être câblée dans ce mécanisme, mais ce câblage (nouveau workflow ou adaptation de l'email vers Justine/Éric selon `matiere`) **n'est pas fait** — hors scope T6 (zéro action n8n), tracé comme dette ouverte dans `AVANCEMENT.md`.
+
+## Anti-clone (`validerJeu`) — condition NÉCESSAIRE, PAS SUFFISANTE
+
+Vérifie que les `contexte` (slug de situation, champ T6 — absent du PRD §3.6) d'un jeu sont deux-à-deux distincts. **Ne prouve aucune diversité pédagogique réelle** : deux questions quasi identiques avec un `contexte` distinct passent ce contrôle (verrouillé par un test dédié, `generation.test.js`). La variété de fond (la règle `convention.variete_generation` de `referentiel.json`) reste jugée à la **relecture humaine** — ce contrôle n'est qu'un filet mécanique contre le clonage le plus grossier (copier-coller de l'énoncé modèle sans rien changer).

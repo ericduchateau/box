@@ -65,6 +65,47 @@ Jeu d'événements **synthétiques et anonymes** (aucune donnée réelle d'élè
 
 ---
 
+## `pilote-t6-relecture.json` (T6a) — FIXTURE TECHNIQUE, pas un échantillon de qualité
+
+**Requalifié après critique Codex (T6a)** : ce fichier exerce la **chaîne** de génération (ids système, schéma candidate, anti-clone, routage par relecteur) — ce n'est **pas** un échantillon validé de qualité pédagogique. 24 jeux (12 notions du référentiel × paliers `nI`/`nF`), 143 candidates (1 carte retirée, voir point (b) ci-dessous), partitionnées par `relecteur` (72 Justine / 71 Éric). **Rien n'est publié** : `statut` vaut `"attente"` pour toutes les cartes (**forcé** au dépôt, voir `deposerEnRelecture` ci-dessous — pas seulement déclaré), `source` vaut `"T6-pilote"`.
+
+**Pourquoi la requalification, et ce qui a été tranché (Éric, répartition validée)** : rejoué contre le vrai correcteur (`fonda/engine/correction.js`), 42/144 réponses de référence échouaient initialement. Trois traitements distincts, appliqués :
+- **(a) 11 cartes en `€`** → corrigé dans **`correction.js`** : la grammaire d'unité plausible accepte désormais `\p{Sc}` (catégorie Unicode *Symbol, Currency* — €, $, £, ¥..., pas une liste en dur). Ces 11 cartes ne sont plus un faux `carte_invalide` — elles rejoignent cependant le cas (c) ci-dessous (aucune ne déclare `unite`).
+- **(b) 1 carte retirée** : l'encadrement « Entre quels deux entiers consécutifs se trouve 56/10 ? » → « 5 et 6 », deux valeurs attendues, incompatible avec le profil `numerique` qui en compare une seule. Retirée du fixture, pas « réparée » (144 → 143 candidates, 72 Éric → 71).
+- **(c) 41 cartes (30 initiales + les 11 du point a) — volontairement NON corrigées**, marquées `_fixture_note: "unite_manquante"` : leur réponse porte une unité physique ou monétaire mais la carte ne déclare pas de champ `unite` — **le correcteur a raison** (règle §5.1 : « unité exigée seulement si la carte le précise »), c'est la rédaction de ces cartes de fixture qui est incomplète. Verrouillé par test (`generer-pilote-t6.test.js`) : exactement ces 41 cartes, ni plus ni moins, peuvent diverger du correcteur ; toute autre carte DOIT le passer.
+
+Des défauts éditoriaux (biais de réponse répétitif, amorces proches de `enonce_modele`, cartes qui mesurent autre chose que la compétence visée) ont aussi été relevés par la critique — **non corrigés ici** : c'est le rôle de la relecture humaine (Justine/Éric), pas du code.
+
+Produit par [`fonda/scripts/generer-pilote-t6.js`](../scripts/generer-pilote-t6.js) (script one-shot, zéro appel réseau) à partir d'un contenu **rédigé à la main** — pas d'appel API à un modèle (aucune credential modèle n'est câblée dans cet environnement). La chaîne elle-même ([`fonda/engine/generation.js`](../engine/generation.js)) est testée (41 tests) ; **le texte des cartes ne l'est pas** au sens pédagogique — seule sa conformité de *forme* (et, depuis T6a, sa compatibilité de *correction* pour les cartes non notées) l'est.
+
+**`deposerEnRelecture()` est IMPRENABLE au dépôt (T6a, durci en 2 passes de critique Codex)**, pas seulement par confiance dans la candidate reçue :
+- `statut` est **forcé** à `"attente"` — toute valeur entrante (`"validée"`, `"rejetée"`) est écrasée.
+- `matiere`/`relecteur` sont **dérivés du référentiel réel** (`notions`, passé en option) via `notion_id` — jamais lus depuis la candidate. `notion_id` absent, ou notion du référentiel elle-même mal formée/dupliquée → rejet (jamais "la dernière entrée gagne").
+- Gel **profond récursif** (toute la candidate, à tout niveau d'imbrication) ; unicité `(set_id, item_id)`, cohérence `set_id` ↔ `notion_id` ↔ `palier`, et unicité `set_id` ↔ `notion_id` dans un même lot, vérifiées au dépôt.
+- Chaque candidate est lue par un aller-retour JSON unique avant validation (neutralise un getter/`toJSON` forgé qui ferait diverger ce qui est validé de ce qui est déposé).
+
+**Trois dettes/écarts distincts, ne pas les confondre** :
+- **Dette ids (T6) — LEVÉE.** `set_id`/`item_id` sont dérivés uniquement de `(notion_id, palier, séquence)` / d'un index, jamais du texte de la carte. Voir `fonda/engine/README.md`.
+- **🔖 Dette T6b — OUVERTE.** Génération réelle par API via workflow n8n (canal A), sortie en file de relecture, jamais au catalogue ; le vrai lot pilote sera généré puis relu avec Justine/Éric. Règle à respecter dès la vraie génération : **toute carte dont la réponse porte une unité DOIT déclarer le champ `unite`** — c'est l'absence de cette règle qui a produit les 41 cartes `_fixture_note` de ce fixture technique.
+- **Écart constaté (pas une dette T6 à proprement parler, mais à corriger avant tout usage réel)** : le mécanisme de relecture existant (`BOX - Selection Prof`, n8n) route par email du prof **soumissionnaire**, pas par relecteur nommé (Justine/Éric) — il n'a ni `statut` ni `relecteur`. Ce fichier est prêt à être consommé par un futur câblage (nouveau workflow ou email adapté), **non fait ici** (zéro action n8n en T6).
+
+Schéma d'une candidate (PRD §3.6 + §5.1, adapté T6) :
+```
+{ set_id, item_id,                               // ids système (remplacent card_id), motif vérifiable
+  notion_id, matiere, relecteur,                   // relecteur dérivé de matiere, cohérence revérifiée
+  palier ("nI"|"nF"), difficulte ("facile"|"moyen"|"difficile"),  // convention BOX existante
+  question, reponse,
+  profil_correction ("sens"|"orthographe"|"numerique"|"exact"),   // §5.1
+  reponses_acceptees[], seconde_chance (bool, défaut false),
+  statut ("attente"|"validée"|"rejetée"), source, ts,
+  contexte,                                        // AJOUT T6, absent du PRD — anti-clone, voir ci-dessous
+  _fixture_note }                                  // optionnel, UNIQUEMENT dans ce fixture technique T6a — jamais dans le futur vrai lot (dette T6b)
+```
+
+**Anti-clone (`validerJeu`) : condition nécessaire, pas suffisante.** Le validateur vérifie que les `contexte` d'un même jeu sont deux-à-deux distincts — il ne lit pas `question` et ne prouve donc aucune diversité pédagogique réelle. La variété de fond (règle `convention.variete_generation` de `referentiel.json` : les `enonce_modele` sont des amorces, jamais un moule) reste jugée à la **relecture humaine**.
+
+Validé par `node --test fonda/scripts/generer-pilote-t6.test.js` (8 tests : schéma, anti-clone, équilibre 72/72, motifs d'id, intégration CLI).
+
 ## `classes.json` (T3)
 
 Liste fermée des 20 classes de l'année, format canonique **3 chiffres sans lettre** (ex. `"601"`, pas `"6e1"`). C'est la seule source de vérité pour la validité d'un `grp` — voir [`fonda/engine/evenements.js`](../engine/evenements.js). À remettre à jour chaque rentrée.
