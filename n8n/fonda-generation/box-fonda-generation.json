@@ -1,0 +1,123 @@
+{
+  "name": "BOX-FONDA - Generation (distribution lot calibre)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "id": "trigger_manual",
+      "name": "Declenchement manuel",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "parameters": {}
+    },
+    {
+      "id": "set_lot_json",
+      "name": "Coller lot FONDA",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [240, 0],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "lot_json_field",
+              "name": "lot_json",
+              "type": "object",
+              "value": "{\n  \"_INSTRUCTION\": \"Remplace tout ce contenu par le JSON COMPLET produit par fonda/scripts/generer-lot-fonda.js (ex. fonda/data/lots-fonda-calibration/maths-proportionnalite_nI.json). Colle le fichier entier ici, tel quel.\"\n}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "code_prep",
+      "name": "Preparer fichier et destinataire",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 0],
+      "parameters": {
+        "jsCode": "// Plomberie uniquement : AUCUNE regenerationde contenu, AUCUN appel reseau ici.\n// Le lot est deja valide (correcteur + G4) par generer-lot-fonda.js en amont.\n// Ce noeud fait seulement : (1) extraire les champs utiles, (2) construire le\n// buffer binaire pour l'upload Drive, (3) re-deriver le destinataire depuis\n// 'matiere' -- ne JAMAIS faire confiance au champ prof_email du JSON colle\n// (routage T6b point b : robuste a un copier-coller errone).\n\nconst raw = $json.lot_json;\nconst data = typeof raw === 'string' ? JSON.parse(raw) : raw;\n\nif (!data || typeof data !== 'object' || data._INSTRUCTION) {\n  throw new Error('Colle le JSON complet d\\'un lot FONDA dans le noeud \"Coller lot FONDA\" avant d\\'executer ce workflow.');\n}\nif (!data.id) throw new Error('Champ \"id\" manquant dans le JSON colle.');\nif (!Array.isArray(data.cartes) || data.cartes.length === 0) throw new Error('Champ \"cartes\" manquant ou vide dans le JSON colle.');\n\n// Routage par matiere (AGENTS.md : francais -> Justine, maths -> Eric).\n// Adresse Justine = adresse de TEST (ericdnews@yahoo.fr) tant que la vraie\n// adresse n'est pas mise en service -- voir README de ce workflow.\nfunction routerEmail(matiereLabel) {\n  const m = String(matiereLabel || '').toLowerCase();\n  if (m.startsWith('fran')) return 'ericdnews@yahoo.fr'; // Justine -- TEST\n  if (m.startsWith('math')) return 'duchateauphysiquechimie@gmail.com'; // Eric\n  throw new Error('Matiere non reconnue pour le routage de relecture : \"' + matiereLabel + '\"');\n}\n\nconst jsonStr = JSON.stringify(data, null, 2);\nconst buffer = Buffer.from(jsonStr, 'utf-8');\n\nreturn [{\n  json: {\n    id: data.id,\n    matiere: data.matiere,\n    niveau: data.niveau,\n    notion: data.notion,\n    code_suppression: data.code_suppression,\n    cartes: data.cartes,\n    nb_cartes: data.cartes.length,\n    prof_email_route: routerEmail(data.matiere)\n  },\n  binary: {\n    data: await this.helpers.prepareBinaryData(buffer, data.id + '.json', 'application/json')\n  }\n}];"
+      }
+    },
+    {
+      "id": "gd_upload",
+      "name": "Upload Flashcards",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [720, 0],
+      "parameters": {
+        "name": "={{ $json.id }}.json",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "11KWo13pczVB_eOXw-FHUXWuutfSQqbbT"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "cukxQDNwWIqOAK02",
+          "name": "Google Drive la bonne!"
+        }
+      },
+      "notes": "Reutilise a l'identique la config du workflow BOX - Generation Flashcards (meme dossier Drive BOX-Flashcards, meme credential)."
+    },
+    {
+      "id": "code_email_prep",
+      "name": "Preparer Email Validation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 0],
+      "parameters": {
+        "jsCode": "// Repris tel quel de BOX - Generation Flashcards / \"Preparer Email Validation\"\n// (version post-T-SEC, escapeHtml sur tous les champs inseres -- injection HTML\n// particulierement sensible ici car les cartes viennent d'un modele).\n// Seules 2 adaptations : (1) cartes lues directement sur prevData.cartes (pas\n// de flashcard_file, ce workflow ne fait pas d'appel Claude) ; (2) prof_email\n// = prevData.prof_email_route (derive de la matiere), jamais un champ prof_email\n// qui viendrait du JSON colle.\n\nconst prevData = $('Preparer fichier et destinataire').first().json;\nconst uploadResult = $('Upload Flashcards').first().json;\nconst driveFileId = uploadResult.id || uploadResult.fileId || '';\nconst code = prevData.code_suppression;\n\nfunction escapeHtml(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#39;');\n}\n\nconst cartes = prevData.cartes || [];\nconst maxPreview = Math.min(cartes.length, 5);\nlet cartesHtml = '';\nfor (let i = 0; i < maxPreview; i++) {\n  const c = cartes[i];\n  const diff = c.difficulte === 'facile' ? '#16a34a' : c.difficulte === 'moyen' ? '#d97706' : '#dc2626';\n  cartesHtml += `<div style=\"background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin:8px 0\">\n    <div style=\"color:${diff};font-size:12px;font-weight:bold;margin-bottom:4px\">${escapeHtml((c.difficulte || '').toUpperCase())}</div>\n    <div style=\"font-weight:bold;margin-bottom:6px\">Q${escapeHtml(c.numero)}: ${escapeHtml(c.question)}</div>\n    <div style=\"color:#475569\">${escapeHtml(c.reponse)}</div>\n  </div>`;\n}\nif (cartes.length > maxPreview) {\n  cartesHtml += `<p style=\"color:#64748b;text-align:center\">... et ${cartes.length - maxPreview} autres cartes</p>`;\n}\n\nconst baseUrl = 'https://n8n.srv868991.hstgr.cloud/webhook';\nconst selectUrl = escapeHtml(`${baseUrl}/box-select?file_id=${driveFileId}&code=${encodeURIComponent(code)}`);\n\nconst emailHtml = `<h2>BOX-FONDA - Fiches a valider</h2>\n<p><strong>Matiere :</strong> ${escapeHtml(prevData.matiere)}<br>\n<strong>Niveau :</strong> ${escapeHtml(prevData.niveau)}<br>\n<strong>Notion :</strong> ${escapeHtml(prevData.notion)}<br>\n<strong>Nombre de cartes :</strong> ${cartes.length}</p>\n<hr>\n<h3>Apercu des cartes generees :</h3>\n${cartesHtml}\n<hr>\n<p style=\"text-align:center;margin:24px 0\">\n  <a href=\"${selectUrl}\" style=\"background:#2563eb;color:white;padding:14px 32px;border-radius:8px;text-decoration:none;font-size:16px;font-weight:bold\">&#128203; Relire et choisir les cartes</a>\n</p>\n<p style=\"color:#64748b;font-size:12px;text-align:center\">Vous pourrez decocher les cartes a exclure avant publication.<br>\nLes fiches selectionnees seront accessibles aux eleves sur <a href=\"https://ericduchateau.github.io/box/\">la page BOX</a>.<br>\nCode de suppression (a conserver) : <code>${escapeHtml(prevData.id)}</code> / <code>${escapeHtml(code)}</code></p>`;\n\nreturn [{ json: {\n  prof_email: prevData.prof_email_route,\n  notion: prevData.notion,\n  email_html: emailHtml\n} }];"
+      }
+    },
+    {
+      "id": "gmail_send",
+      "name": "Email Validation",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1200, 0],
+      "parameters": {
+        "sendTo": "={{ $json.prof_email }}",
+        "subject": "=BOX-FONDA - Fiches \"{{ $json.notion }}\" a valider",
+        "message": "={{ $json.email_html }}",
+        "options": {}
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "iIgjFF3qL44wl8uE",
+          "name": "Gmail n8n iazimut2026"
+        }
+      },
+      "notes": "Reutilise a l'identique la credential Gmail du workflow BOX - Generation Flashcards."
+    }
+  ],
+  "connections": {
+    "Declenchement manuel": {
+      "main": [[{ "node": "Coller lot FONDA", "type": "main", "index": 0 }]]
+    },
+    "Coller lot FONDA": {
+      "main": [[{ "node": "Preparer fichier et destinataire", "type": "main", "index": 0 }]]
+    },
+    "Preparer fichier et destinataire": {
+      "main": [[{ "node": "Upload Flashcards", "type": "main", "index": 0 }]]
+    },
+    "Upload Flashcards": {
+      "main": [[{ "node": "Preparer Email Validation", "type": "main", "index": 0 }]]
+    },
+    "Preparer Email Validation": {
+      "main": [[{ "node": "Email Validation", "type": "main", "index": 0 }]]
+    }
+  }
+}

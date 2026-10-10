@@ -1,0 +1,84 @@
+{
+  "id": "box_6npprjai",
+  "matiere": "Mathématiques",
+  "niveau": "Fondamentaux — Initial (accessible)",
+  "notion": "Raisonner avec proportionnalité et pourcentages",
+  "prof_nom": "Box-FONDA (génération automatique)",
+  "prof_email": "duchateauphysiquechimie@gmail.com",
+  "code_suppression": "SUP-0DM9POG3",
+  "date_creation": "2026-10-10",
+  "nb_cartes": 4,
+  "source": "fonda-seed",
+  "type": "fonda",
+  "revue_carte_par_carte": false,
+  "cartes": [
+    {
+      "numero": 1,
+      "question": "Pour préparer un jus, on mélange toujours 3 L de jus d'orange pour 2 L d'eau. Quelle quantité d'eau faut-il pour 9 L de jus d'orange ?",
+      "reponse": "6 L",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "6 L",
+        "6"
+      ],
+      "unite": "L",
+      "contexte": "jus-orange-eau-melange",
+      "set_id": "set_fonda_proportionnalite_nI_01",
+      "item_id": "it01",
+      "notion_id": "maths.proportionnalite"
+    },
+    {
+      "numero": 2,
+      "question": "Un pressing facture 4,50 € pour laver 3 chemises, au même tarif pour chaque chemise. Quel est le prix pour laver 1 seule chemise ?",
+      "reponse": "1,50 €",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "1,50 €",
+        "1,5 €",
+        "1,50",
+        "1,5"
+      ],
+      "unite": "€",
+      "contexte": "pressing-prix-chemises",
+      "set_id": "set_fonda_proportionnalite_nI_01",
+      "item_id": "it02",
+      "notion_id": "maths.proportionnalite"
+    },
+    {
+      "numero": 3,
+      "question": "Un parking affiche ces tarifs : 1 h = 2 €, 2 h = 4 €, 3 h = 7 €. Ce tarif est-il proportionnel au temps de stationnement ? (Oui/Non)",
+      "reponse": "Non",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "Non"
+      ],
+      "contexte": "parking-tarif-horaire",
+      "set_id": "set_fonda_proportionnalite_nI_01",
+      "item_id": "it03",
+      "notion_id": "maths.proportionnalite"
+    },
+    {
+      "numero": 4,
+      "question": "Dans un collège de 400 élèves, 25 % des élèves viennent à vélo. Combien d'élèves viennent à vélo ?",
+      "reponse": "100 élèves",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "100 élèves",
+        "100"
+      ],
+      "unite": "élèves",
+      "contexte": "college-eleves-velo",
+      "set_id": "set_fonda_proportionnalite_nI_01",
+      "item_id": "it04",
+      "notion_id": "maths.proportionnalite"
+    }
+  ]
+}
