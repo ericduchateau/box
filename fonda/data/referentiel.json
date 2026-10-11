@@ -40,8 +40,8 @@
       "libelle": "Changer de représentation (texte, tableau, graphique, schéma, carte)",
       "micro_competence": "Relier et faire correspondre les registres : texte <-> tableau <-> graphique <-> schéma <-> carte.",
       "enonce_modele": [
-        "La carte illustre une information du texte : laquelle ? (Volcans Q04)",
-        "À partir d'un court texte chiffré, compléter un tableau ou choisir le graphique correspondant."
+        "Un tableau (texte) reprend les mêmes données qu'un passage du texte : quelle information du texte retrouve-t-on dans le tableau ? (reformulation texte-compatible de Volcans Q04)",
+        "À partir d'un court texte chiffré, compléter un tableau de données correspondant."
       ],
       "taux_eval": { "domaine": "transversal — lecture de documents composites", "satisfaisant_college": 27.3, "items": [28.9] },
       "priorite_initiale": "rouge",
@@ -159,7 +159,7 @@
       "enonce_modele": [
         "Calculer 7 − (−5). (Automatismes Q14)",
         "Choisir l'encadrement correct de 56/10 par deux entiers. (Automatismes Q22)",
-        "Identifier la figure où 3/4 de la surface est colorié. (Automatismes Q13)"
+        "Parmi ces trois fractions, laquelle est égale à 0,75 ? A) 3/4 B) 2/3 C) 4/5 (réponse A — reformulation texte-compatible de Automatismes Q13, sans figure)"
       ],
       "taux_eval": { "domaine": "Nombres et calculs", "satisfaisant_college": 30.9, "items": [18.2, 27.3, 22.7] },
       "priorite_initiale": "ambre",

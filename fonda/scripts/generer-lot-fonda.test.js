@@ -247,6 +247,12 @@ describe('construirePrompt — points de vigilance (règle 1 réponse courte, r�
     assert.match(prompt, /0,6 L.*600 mL/);
   });
 
+  test('règle QCM lettre+mot : "exact" interdit quand reponses_acceptees mélange lettre et mot entier, "sens" recommandé à la place (retour de calibration lexique)', () => {
+    const prompt = construirePrompt(args);
+    assert.match(prompt, /PIÈGE À ÉVITER/);
+    assert.match(prompt, /jamais "exact"/);
+  });
+
   test('contextesAutresPaliers (contextes déjà utilisés dans l\'autre palier nI/nF) apparaissent dans l\'interdiction de réutilisation', () => {
     const prompt = construirePrompt({ ...args, contextesAutresPaliers: ['recette-riz-portions', 'carnet-billets-concert'] });
     assert.match(prompt, /recette-riz-portions/);
