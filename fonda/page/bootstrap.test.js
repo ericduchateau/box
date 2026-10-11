@@ -159,7 +159,10 @@ describe('?page=niveau SANS niveau -> sélecteur de niveau (plus l\'ancien messa
   });
 
   test('niveaux proposés dérivés de la semaine courante quand elle a des défis (pas les 4 par défaut à l\'aveugle)', async () => {
-    const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau', calendrier: CALENDRIER });
+    // &semaine=41 : cible explicitement SEMAINE_41 plutôt que de compter sur
+    // new Date() pour tomber dans sa plage (2026-10-05..11) — sans ça, ce test
+    // casse tout seul le jour où il tourne hors de cette fenêtre (relecture Codex).
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau&semaine=41', calendrier: CALENDRIER });
     const bloc = trouverParClasse(root, 'fonda-niveau-picker');
     const grille = trouverParClasse(bloc, 'fonda-niveau-picker__grille');
     const libelles = grille.children.map((a) => a.textContent);
@@ -185,7 +188,8 @@ describe('?page=niveau AVEC niveau -> comportement inchangé, plus la persistanc
 
   test('localStorage indisponible (navigation privée) : aucune exception, page toujours rendue', async () => {
     global.localStorage = { getItem() { throw new Error('indisponible'); }, setItem() { throw new Error('indisponible'); } };
-    const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau&niveau=6e', calendrier: CALENDRIER });
+    // &semaine=41 : même raison que ci-dessus, pas de dépendance à new Date().
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau&niveau=6e&semaine=41', calendrier: CALENDRIER });
     delete global.localStorage;
     const liste = trouverParClasse(root, 'fonda-liens-niveau');
     assert.ok(liste, 'la page doit continuer de se rendre malgré le repli localStorage');
