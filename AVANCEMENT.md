@@ -417,3 +417,10 @@ PR #1 (`feat/box-fonda-theme-switch` → `design`, commit `5ea01ba`) relue par C
 - **Carte 5 régénérée** (par Éric, clé API en main — commande fournie par Claude Code, script ponctuel non committé) : nouvelle carte (profil `exact`, pas un QCM) — sélectionner le bon champ dans une fiche d'inscription à 8 champs. Passe le correcteur zéro tolérance. Intégrée dans `fr-comprendre-consigne_nI.json` à la place de l'ancienne carte 5 (même `item_id`/`set_id`).
 - **Vérifié : aucune autre carte QCM du lot de validation (8 fichiers) ne tombe dans ce piège** — une seule autre carte QCM existe (`fr.inference-implicite/nF` carte 4, « la troisième fois » → réponse B), sans correspondance numérique.
 - Suite de tests : 308/309 (même artefact connu, sans lien).
+
+### Auto-correction reponse/reponses_acceptees + carte 6 régénérée (2026-10-11)
+
+- **`autoCorrigerCarte()` ajoutée** (`generer-lot-fonda.js`) : avant rejet définitif, une carte dont la réponse-or échoue à son propre correcteur est testée avec chacune des formes déjà déclarées dans sa propre `reponses_acceptees` à la place de `reponse` — la première qui passe est retenue. **Aucun contenu inventé** (`reponses_acceptees` jamais modifié), invariant conservé (aucune carte dont la réponse-or est rejetée par son propre correcteur n'est émise). Si aucune forme ne passe, rejet inchangé. 5 nouveaux tests.
+- **Carte 6 de `fr-inference-implicite_nF.json` (box_hrelpt8q) régénérée** avec cette garantie (par Éric, clé API en main) : « ciel sombre + sortie d'école + fuite de la pluie → après-midi », profil `sens`. Passée directement sans correction nécessaire. **Lot `fr.inference-implicite/nF` de retour à 6/6.**
+- Suite de tests : 313/314 (même artefact connu, sans lien).
+- **Bilan final du lot de validation T6b** : 48/48 cartes retenues sur les 4 notions (après la correction de la carte 5 biaisée et l'ajout de la carte 6), toutes passées au correcteur zéro tolérance, toujours **candidates uniquement — rien publié, aucun n8n touché** (G4).

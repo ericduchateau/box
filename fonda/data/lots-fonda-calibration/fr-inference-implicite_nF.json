@@ -7,7 +7,7 @@
   "prof_email": "ericdnews@yahoo.fr",
   "code_suppression": "SUP-9J2DMNYH",
   "date_creation": "2026-10-11",
-  "nb_cartes": 5,
+  "nb_cartes": 6,
   "source": "fonda-seed",
   "type": "fonda",
   "revue_carte_par_carte": false,
@@ -96,6 +96,24 @@
       "contexte": "cuisine-residus-patisserie",
       "set_id": "set_fonda_inference-implicite_nF_01",
       "item_id": "it05",
+      "notion_id": "fr.inference-implicite"
+    },
+    {
+      "numero": 6,
+      "question": "Le ciel s'était assombri si brusquement que Camille alluma la lampe du salon. Dans la rue, les enfants rentraient de l'école en courant, leurs cartables sur le dos, pressés d'éviter l'averse. À quel moment de la journée se déroule cette scène ?",
+      "reponse": "après-midi",
+      "difficulte": "difficile",
+      "palier": "nF",
+      "profil_correction": "sens",
+      "reponses_acceptees": [
+        "après-midi",
+        "fin d'après-midi",
+        "sortie des classes",
+        "après l'école"
+      ],
+      "contexte": "ciel-sombre-sortie-ecole",
+      "set_id": "set_fonda_inference-implicite_nF_01",
+      "item_id": "it06",
       "notion_id": "fr.inference-implicite"
     }
   ]
