@@ -674,7 +674,7 @@ a:hover { text-decoration: underline; }
   --fonda-mut:    #9BAEC9;
   --fonda-line:   #31496B;
   --fonda-green:  #5BAE6C;
-  --fonda-green-d:#3F8F50;
+  --fonda-green-d:#2E7D46;
   --fonda-amber:  #E0A43B;
   --fonda-red:    #C8403A;
   --fonda-card:      #FDFDFD;
@@ -779,7 +779,7 @@ body[data-theme="fonda"] .navbar { display: none; }
 .fonda-question { font-size: 21px; line-height: 1.42; font-weight: 500; margin: 0 0 20px; }
 .fonda-reponse-input {
   width: 100%; font-family: var(--font); font-size: 17px; padding: 12px 14px;
-  border: 2px solid #D4DCE8; border-radius: 11px; color: var(--fonda-card-ink);
+  border: 2px solid #8A8A8A; border-radius: 11px; color: var(--fonda-card-ink);
   outline: none; box-sizing: border-box;
 }
 .fonda-reponse-input:focus { border-color: #3E73B5; }
@@ -812,19 +812,19 @@ body[data-theme="fonda"] .navbar { display: none; }
 .fonda-feedback[data-reussite="false"] .fonda-feedback__mark { background: var(--fonda-red); }
 
 .fonda-feedback__detail { margin-top: 10px; font-size: 14.5px; line-height: 1.5; color: #2B3B55; }
-.fonda-feedback__detail .fonda-feedback__lbl { font-size: 11px; font-weight: 700; color: #5C7599; text-transform: uppercase; letter-spacing: .05em; display: block; margin-bottom: 2px; }
+.fonda-feedback__detail .fonda-feedback__lbl { font-size: 11px; font-weight: 700; color: #45526B; text-transform: uppercase; letter-spacing: .05em; display: block; margin-bottom: 2px; }
 
-.fonda-feedback__accept { margin-top: 8px; font-size: 13px; color: #5C7599; }
+.fonda-feedback__accept { margin-top: 8px; font-size: 13px; color: #45526B; }
 .fonda-feedback__accept code {
   background: #EEF2F7; border-radius: 5px; padding: 2px 7px; font-family: var(--font);
   color: #2B3B55; margin: 4px 4px 0 0; display: inline-block;
 }
 
-.fonda-feedback__profil { margin-top: 10px; font-size: 12px; color: #5C7599; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; }
+.fonda-feedback__profil { margin-top: 10px; font-size: 12px; color: #45526B; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; }
 
 .fonda-feedback__relecteur {
   margin-top: 14px; display: flex; align-items: center; gap: 8px; font-size: 12.5px;
-  color: #5C7599; border-top: 1px solid #E6EBF1; padding-top: 12px;
+  color: #45526B; border-top: 1px solid #E6EBF1; padding-top: 12px;
 }
 .fonda-feedback__relecteur .fonda-feedback__chk { color: var(--fonda-green); font-weight: 800; }
 
