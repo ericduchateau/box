@@ -39,8 +39,15 @@ const App = {
 
   // Chargement conditionnel : zéro <script>/<link> statique pointant vers /fonda/
   // dans index.html, donc zéro requête réseau en plus quand le flag est absent.
+  // Poppins (signature FONDA uniquement) injecté ici pour la même raison (relecture
+  // Codex #7) : BOX clair n'a jamais eu besoin de cette police, le lien statique
+  // dans <head> l'aurait chargée sur CHAQUE page BOX, flag absent ou pas.
   initFonda() {
     document.body.dataset.theme = 'fonda';
+    const font = document.createElement('link');
+    font.rel = 'stylesheet';
+    font.href = 'https://fonts.googleapis.com/css2?family=Poppins:wght@700;800&display=swap';
+    document.head.appendChild(font);
     const s = document.createElement('script');
     s.src = 'fonda/page/bootstrap.js?v=1';
     document.head.appendChild(s);

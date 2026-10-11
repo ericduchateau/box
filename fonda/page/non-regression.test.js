@@ -117,7 +117,7 @@ describe('non-régression — flag OFF : exactement le comportement d\'avant T4'
   });
 });
 
-describe('non-régression — flag ON : le chemin normal n\'est JAMAIS exécuté, un seul script est injecté', () => {
+describe('non-régression — flag ON : le chemin normal n\'est JAMAIS exécuté, un seul script + une police injectés', () => {
   test('?fonda=1 déclenche initFonda() et RIEN du chemin normal', () => {
     const { App, document } = chargerAppAvecFlag('?fonda=1');
     const appels = [];
@@ -128,9 +128,14 @@ describe('non-régression — flag ON : le chemin normal n\'est JAMAIS exécuté
     App.showScreen = () => appels.push('showScreen');
     App.init();
     assert.deepEqual(appels, [], 'aucune fonction du chemin normal ne doit être appelée');
-    assert.equal(document.head.children.length, 1);
-    assert.equal(document.head.children[0].tagName, 'script');
-    assert.ok(document.head.children[0].src.startsWith('fonda/'), 'le script injecté doit venir de /fonda/');
+    // 2 éléments injectés dans <head>, tous deux spécifiques à FONDA (relecture
+    // Codex #7 : Poppins ne doit JAMAIS être chargé sans ?fonda=1, donc injecté ici
+    // plutôt que statiquement dans index.html).
+    assert.equal(document.head.children.length, 2);
+    assert.equal(document.head.children[0].tagName, 'link');
+    assert.match(document.head.children[0].href, /fonts\.googleapis\.com.*Poppins/);
+    assert.equal(document.head.children[1].tagName, 'script');
+    assert.ok(document.head.children[1].src.startsWith('fonda/'), 'le script injecté doit venir de /fonda/');
   });
 });
 
