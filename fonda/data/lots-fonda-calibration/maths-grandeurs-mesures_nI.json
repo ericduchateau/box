@@ -1,0 +1,118 @@
+{
+  "id": "box_dohgzzy8",
+  "matiere": "Mathématiques",
+  "niveau": "Fondamentaux — Initial (accessible)",
+  "notion": "Maîtriser grandeurs, mesures et unités",
+  "prof_nom": "Box-FONDA (génération automatique)",
+  "prof_email": "duchateauphysiquechimie@gmail.com",
+  "code_suppression": "SUP-86YMFWA8",
+  "date_creation": "2026-10-11",
+  "nb_cartes": 6,
+  "source": "fonda-seed",
+  "type": "fonda",
+  "revue_carte_par_carte": false,
+  "cartes": [
+    {
+      "numero": 1,
+      "question": "Un bus roule à une vitesse constante de 60 km/h pendant 2 h. Quelle distance parcourt-il ?",
+      "reponse": "120 km",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "120 km",
+        "120"
+      ],
+      "unite": "km",
+      "contexte": "bus-vitesse-distance",
+      "set_id": "set_fonda_grandeurs-mesures_nI_01",
+      "item_id": "it01",
+      "notion_id": "maths.grandeurs-mesures"
+    },
+    {
+      "numero": 2,
+      "question": "Un terrain rectangulaire mesure 12 m de long et 5 m de large. Quelle est son aire ?",
+      "reponse": "60 m²",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "60 m²",
+        "60"
+      ],
+      "unite": "m²",
+      "contexte": "terrain-rectangulaire-aire",
+      "set_id": "set_fonda_grandeurs-mesures_nI_01",
+      "item_id": "it02",
+      "notion_id": "maths.grandeurs-mesures"
+    },
+    {
+      "numero": 3,
+      "question": "Un sac de farine pèse 3,5 kg. Combien cela représente-t-il de grammes ?",
+      "reponse": "3500 g",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "3500 g",
+        "3500"
+      ],
+      "unite": "g",
+      "contexte": "sac-farine-conversion-masse",
+      "set_id": "set_fonda_grandeurs-mesures_nI_01",
+      "item_id": "it03",
+      "notion_id": "maths.grandeurs-mesures"
+    },
+    {
+      "numero": 4,
+      "question": "Un film dure 2,5 h. Combien de minutes cela représente-t-il ?",
+      "reponse": "150 min",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "150 min",
+        "150"
+      ],
+      "unite": "min",
+      "contexte": "film-duree-conversion",
+      "set_id": "set_fonda_grandeurs-mesures_nI_01",
+      "item_id": "it04",
+      "notion_id": "maths.grandeurs-mesures"
+    },
+    {
+      "numero": 5,
+      "question": "Un kilogramme de pommes coûte 2,50 €. Combien coûtent 4 kg de pommes ?",
+      "reponse": "10 €",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "10 €",
+        "10"
+      ],
+      "unite": "€",
+      "contexte": "marche-pommes-prix",
+      "set_id": "set_fonda_grandeurs-mesures_nI_01",
+      "item_id": "it05",
+      "notion_id": "maths.grandeurs-mesures"
+    },
+    {
+      "numero": 6,
+      "question": "Une boîte en forme de pavé droit mesure 4 cm de longueur, 3 cm de largeur et 2 cm de hauteur. Quel est son volume ?",
+      "reponse": "24 cm³",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "24 cm³",
+        "24"
+      ],
+      "unite": "cm³",
+      "contexte": "boite-carton-volume",
+      "set_id": "set_fonda_grandeurs-mesures_nI_01",
+      "item_id": "it06",
+      "notion_id": "maths.grandeurs-mesures"
+    }
+  ]
+}

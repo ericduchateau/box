@@ -1,0 +1,116 @@
+{
+  "id": "box_x2j1cbsv",
+  "matiere": "Français",
+  "niveau": "Fondamentaux — Initial (accessible)",
+  "notion": "Comprendre l'implicite et faire une inférence",
+  "prof_nom": "Box-FONDA (génération automatique)",
+  "prof_email": "ericdnews@yahoo.fr",
+  "code_suppression": "SUP-XTT953P3",
+  "date_creation": "2026-10-11",
+  "nb_cartes": 6,
+  "source": "fonda-seed",
+  "type": "fonda",
+  "revue_carte_par_carte": false,
+  "cartes": [
+    {
+      "numero": 1,
+      "question": "Marc enfila sa blouse blanche, ajusta son stéthoscope autour du cou et consulta la liste des patients affichée à l'accueil. Quel est le métier de Marc ?",
+      "reponse": "médecin",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "sens",
+      "reponses_acceptees": [
+        "médecin",
+        "docteur"
+      ],
+      "contexte": "medecin-indices-blouse-stethoscope",
+      "set_id": "set_fonda_inference-implicite_nI_01",
+      "item_id": "it01",
+      "notion_id": "fr.inference-implicite"
+    },
+    {
+      "numero": 2,
+      "question": "Les vagues se brisaient contre la jetée pendant que des mouettes tournoyaient au-dessus des bateaux de pêche amarrés le long du quai. Où se déroule cette scène ?",
+      "reponse": "port",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "sens",
+      "reponses_acceptees": [
+        "port",
+        "un port",
+        "au port"
+      ],
+      "contexte": "port-vagues-bateaux-peche",
+      "set_id": "set_fonda_inference-implicite_nI_01",
+      "item_id": "it02",
+      "notion_id": "fr.inference-implicite"
+    },
+    {
+      "numero": 3,
+      "question": "Les feuilles rousses tombaient en tourbillonnant devant la fenêtre, et Léa sortit son écharpe et ses gants du placard avant de partir. À quelle saison se déroule la scène ?",
+      "reponse": "automne",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "sens",
+      "reponses_acceptees": [
+        "automne",
+        "en automne"
+      ],
+      "contexte": "automne-feuilles-echarpe",
+      "set_id": "set_fonda_inference-implicite_nI_01",
+      "item_id": "it03",
+      "notion_id": "fr.inference-implicite"
+    },
+    {
+      "numero": 4,
+      "question": "Les mains de Sarah tremblaient, elle relisait sans cesse sa copie et évitait le regard du professeur qui s'apprêtait à annoncer les résultats. Que ressent Sarah ?",
+      "reponse": "peur",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "sens",
+      "reponses_acceptees": [
+        "peur",
+        "angoisse",
+        "anxiété",
+        "stress",
+        "inquiétude"
+      ],
+      "contexte": "sarah-anxiete-resultats",
+      "set_id": "set_fonda_inference-implicite_nI_01",
+      "item_id": "it04",
+      "notion_id": "fr.inference-implicite"
+    },
+    {
+      "numero": 5,
+      "question": "Thomas accrocha des ballons multicolores au plafond du salon, disposa un gâteau avec des bougies sur la table et cacha un cadeau emballé derrière le canapé avant que la sonnette ne retentisse. Quel événement prépare-t-il ?",
+      "reponse": "anniversaire",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "sens",
+      "reponses_acceptees": [
+        "anniversaire",
+        "un anniversaire"
+      ],
+      "contexte": "thomas-ballons-gateau-cadeau",
+      "set_id": "set_fonda_inference-implicite_nI_01",
+      "item_id": "it05",
+      "notion_id": "fr.inference-implicite"
+    },
+    {
+      "numero": 6,
+      "question": "Léna enfila ses bottes en caoutchouc, ouvrit son parapluie et regarda les flaques d'eau se former sur le trottoir avant de sortir. Quel temps fait-il dehors ?",
+      "reponse": "il pleut",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "sens",
+      "reponses_acceptees": [
+        "il pleut",
+        "pluie"
+      ],
+      "contexte": "lena-bottes-parapluie-flaques",
+      "set_id": "set_fonda_inference-implicite_nI_01",
+      "item_id": "it06",
+      "notion_id": "fr.inference-implicite"
+    }
+  ]
+}
