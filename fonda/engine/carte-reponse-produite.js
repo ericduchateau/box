@@ -44,13 +44,16 @@
 
 const { evaluerReponse, compteCommeReussite, calculerCibleAffichee } = root.FondaCorrection;
 
-// Verdict affiché : jamais "presque" présenté comme un échec (PRD §5.1, compte juste
-// en sens/numerique) — seul "faux"/"carte_invalide" affiche la marque rouge ✗.
-const VERDICTS = {
-  juste: { mark: '✓', texte: 'Bonne réponse' },
-  presque: { mark: '✓', texte: 'Presque ! (voir ci-dessous)' },
-  faux: { mark: '✗', texte: 'Pas tout à fait' },
-  carte_invalide: { mark: '✗', texte: 'Carte à vérifier (signalée pour relecture)' },
+// Texte du verdict par statut — l'icône/couleur, elles, sont dérivées de la
+// RÉUSSITE RÉELLE (compteCommeReussite), pas du statut seul (relecture Codex #2) :
+// "presque" compte juste en sens/numerique mais FAUX en orthographe (PRD §5.1,
+// l'accent/le pluriel y est la cible) — l'icône doit refléter cette distinction,
+// jamais un ✓ systématique qui contredirait la mesure.
+const TEXTES_VERDICT = {
+  juste: () => 'Bonne réponse',
+  presque: (succes) => (succes ? 'Presque ! (voir ci-dessous)' : 'Pas tout à fait (voir ci-dessous)'),
+  faux: () => 'Pas tout à fait',
+  carte_invalide: () => 'Carte à vérifier (signalée pour relecture)',
 };
 
 const LABELS_PROFIL = {
@@ -103,19 +106,22 @@ function montrerCarteReponseProduite(container, carte, options = {}) {
   // docs/box-fonda-design/demo-reference.html (verdict + icône, réponse attendue,
   // réponses acceptées, profil, mention relecteur). Purement présentationnel :
   // ne change ni la logique d'évaluation ni le contrat onResultat ci-dessous.
-  function rendreFeedback(statut) {
+  function rendreFeedback(statut, reussite) {
     feedback.innerHTML = '';
     feedback.dataset.statut = statut;
+    // data-reussite pilote l'icône/couleur (css/style.css) — jamais le statut brut,
+    // pour que "presque" en orthographe s'affiche bien comme un échec (voir ci-dessus).
+    feedback.dataset.reussite = String(reussite);
 
-    const verdict = VERDICTS[statut] || VERDICTS.carte_invalide;
+    const texteFn = TEXTES_VERDICT[statut] || TEXTES_VERDICT.carte_invalide;
 
     const ligneVerdict = document.createElement('p');
     ligneVerdict.className = 'fonda-feedback__verdict';
     const mark = document.createElement('span');
     mark.className = 'fonda-feedback__mark';
-    mark.textContent = verdict.mark;
+    mark.textContent = reussite ? '✓' : '✗';
     const texteVerdict = document.createElement('span');
-    texteVerdict.textContent = verdict.texte;
+    texteVerdict.textContent = texteFn(reussite);
     ligneVerdict.append(mark, texteVerdict);
 
     const detail = document.createElement('p');
@@ -129,8 +135,20 @@ function montrerCarteReponseProduite(container, carte, options = {}) {
 
     feedback.append(ligneVerdict, detail);
 
-    const formesAcceptees = carte.reponses_acceptees || [];
-    if (formesAcceptees.length > 1) {
+    // "Aussi acceptées" : exclu en profil numerique (relecture Codex #4). En
+    // numerique, reponses_acceptees est une liste de RÉFÉRENCES pour le calcul
+    // (fractions/valeurs brutes avant arrondi/unité) — pas des chaînes littéralement
+    // acceptables telles quelles (ex. "1/3" listé alors que le correcteur exige
+    // "0,33" avec arrondi:2 ; ou "9" listé alors qu'il exige "9 km" et ne donnerait
+    // que "presque" sans l'unité). "Réponse attendue" (cibleAffichee, ci-dessus) est
+    // déjà la forme correcte et unique à afficher pour ce profil. Pour les profils
+    // littéraux (sens/exact/orthographe), les formes SONT des chaînes littéralement
+    // acceptées, sans post-traitement — la liste reste fiable.
+    // Array.isArray : une carte malformée (reponses_acceptees non-tableau) ne doit
+    // jamais faire planter le rendu avant que onResultat() soit appelé (relecture
+    // Codex #5 — régression constatée avec un .forEach() sur une donnée non-tableau).
+    const formesAcceptees = Array.isArray(carte.reponses_acceptees) ? carte.reponses_acceptees : [];
+    if (carte.profil_correction !== 'numerique' && formesAcceptees.length > 1) {
       const accept = document.createElement('p');
       accept.className = 'fonda-feedback__accept';
       const lblAccept = document.createElement('span');
@@ -150,7 +168,9 @@ function montrerCarteReponseProduite(container, carte, options = {}) {
     profil.textContent = LABELS_PROFIL[carte.profil_correction] || '';
     feedback.append(profil);
 
-    if (carte.relecteur) {
+    // Pas de mention de validation sur une carte signalée incohérente : ce n'est
+    // précisément PAS une carte que la relecture a validée dans cet état-là.
+    if (carte.relecteur && statut !== 'carte_invalide') {
       const relecteur = document.createElement('p');
       relecteur.className = 'fonda-feedback__relecteur';
       const chk = document.createElement('span');
@@ -176,9 +196,9 @@ function montrerCarteReponseProduite(container, carte, options = {}) {
       arrondi: carte.arrondi ?? null,
     });
 
-    rendreFeedback(statut);
-
     const reussite = compteCommeReussite(statut, carte.profil_correction);
+    rendreFeedback(statut, reussite);
+
     const scored = tentative === 1; // PRD §5.1 : on score la 1ère tentative, jamais la seconde chance
     // Seconde chance : relance immédiate après un "presque", seulement sur la 1ère tentative.
     const proposerSecondeChance = statut === 'presque' && carte.seconde_chance && tentative === 1;

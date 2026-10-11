@@ -787,26 +787,23 @@ body[data-theme="fonda"] {
 .fonda-feedback {
   margin: 20px 0 0; border-radius: 13px; padding: 16px 18px 14px;
 }
-.fonda-feedback[data-statut="juste"],
-.fonda-feedback[data-statut="presque"] { background: #E9F5EC; border: 1px solid #BEE2C6; }
-.fonda-feedback[data-statut="faux"],
-.fonda-feedback[data-statut="carte_invalide"] { background: #FBEAE8; border: 1px solid #F0C9C5; }
+/* Piloté par data-reussite (booléen réel, compteCommeReussite), PAS data-statut :
+   "presque" compte faux en orthographe et doit s'afficher comme un échec, jamais
+   comme ✓ vert par réflexe sur le statut seul (relecture Codex #2). */
+.fonda-feedback[data-reussite="true"] { background: #E9F5EC; border: 1px solid #BEE2C6; }
+.fonda-feedback[data-reussite="false"] { background: #FBEAE8; border: 1px solid #F0C9C5; }
 
 .fonda-feedback__verdict { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 16px; margin: 0; }
-.fonda-feedback[data-statut="juste"] .fonda-feedback__verdict,
-.fonda-feedback[data-statut="presque"] .fonda-feedback__verdict { color: var(--fonda-green-d); }
-.fonda-feedback[data-statut="faux"] .fonda-feedback__verdict,
-.fonda-feedback[data-statut="carte_invalide"] .fonda-feedback__verdict { color: #B23A33; }
+.fonda-feedback[data-reussite="true"] .fonda-feedback__verdict { color: var(--fonda-green-d); }
+.fonda-feedback[data-reussite="false"] .fonda-feedback__verdict { color: #B23A33; }
 
 .fonda-feedback__mark {
   width: 24px; height: 24px; border-radius: 50%; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
   color: #fff; font-size: 14px;
 }
-.fonda-feedback[data-statut="juste"] .fonda-feedback__mark,
-.fonda-feedback[data-statut="presque"] .fonda-feedback__mark { background: var(--fonda-green); }
-.fonda-feedback[data-statut="faux"] .fonda-feedback__mark,
-.fonda-feedback[data-statut="carte_invalide"] .fonda-feedback__mark { background: var(--fonda-red); }
+.fonda-feedback[data-reussite="true"] .fonda-feedback__mark { background: var(--fonda-green); }
+.fonda-feedback[data-reussite="false"] .fonda-feedback__mark { background: var(--fonda-red); }
 
 .fonda-feedback__detail { margin-top: 10px; font-size: 14.5px; line-height: 1.5; color: #2B3B55; }
 .fonda-feedback__detail .fonda-feedback__lbl { font-size: 11px; font-weight: 700; color: #5C7599; text-transform: uppercase; letter-spacing: .05em; display: block; margin-bottom: 2px; }

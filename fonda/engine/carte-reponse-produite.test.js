@@ -322,8 +322,73 @@ describe('carte-reponse-produite — rendu enrichi par profil (thème FONDA)', (
 
     const feedback = container.children[3];
     assert.equal(feedback.dataset.statut, 'presque');
+    assert.equal(feedback.dataset.reussite, 'true');
     const verdict = trouverEnfant(feedback, 'fonda-feedback__verdict');
     const mark = trouverEnfant(verdict, 'fonda-feedback__mark');
-    assert.equal(mark.textContent, '✓', 'presque ne doit jamais afficher la croix rouge');
+    assert.equal(mark.textContent, '✓', 'presque compte juste en numerique : pas la croix rouge');
+  });
+
+  test('statut "presque" en profil orthographe : icône ✗ (compte FAUX — l\'accent/le pluriel est la cible, PRD §5.1 ; relecture Codex #2)', () => {
+    const { input, bouton, container } = monterCarte({
+      question: 'Quel mois sommes-nous ?',
+      profil_correction: 'orthographe',
+      reponses_acceptees: ['été'],
+    });
+    input.value = 'ete'; // accent manquant -> presque au sens du moteur, mais FAUX en orthographe
+    bouton.__click();
+
+    const feedback = container.children[3];
+    assert.equal(feedback.dataset.statut, 'presque');
+    assert.equal(feedback.dataset.reussite, 'false', 'presque compte faux en orthographe, data-reussite doit le refléter');
+    const verdict = trouverEnfant(feedback, 'fonda-feedback__verdict');
+    const mark = trouverEnfant(verdict, 'fonda-feedback__mark');
+    assert.equal(mark.textContent, '✗', 'jamais un ✓ qui contredirait la mesure en orthographe');
+    assert.doesNotMatch(verdict.textContent, /Bonne réponse|^Presque ! \(voir/, 'le texte ne doit pas sous-entendre une réussite');
+  });
+
+  test('profil "numerique" : jamais de bloc "aussi acceptées", même avec plusieurs formes (relecture Codex #4 — formes brutes trompeuses avant arrondi/unité)', () => {
+    const { input, bouton, container } = monterCarte({
+      question: 'Combien vaut 1/3, arrondi à 2 décimales ?',
+      profil_correction: 'numerique',
+      reponses_acceptees: ['1/3', '0,33'],
+      arrondi: 2,
+    });
+    input.value = '0,33';
+    bouton.__click();
+
+    const feedback = container.children[3];
+    assert.equal(trouverEnfant(feedback, 'fonda-feedback__accept'), undefined, '"1/3" listé tel quel serait trompeur (le correcteur le refuse avec arrondi:2)');
+    const detail = trouverEnfant(feedback, 'fonda-feedback__detail');
+    assert.match(detail.textContent, /0,33/, 'la réponse attendue correcte (arrondie) reste affichée');
+  });
+
+  test('"reponses_acceptees" malformé (pas un tableau) : ne plante pas, onResultat est quand même appelé (relecture Codex #5)', () => {
+    const { input, bouton, resultats, container } = monterCarte({
+      question: 'Capitale de la France ?',
+      profil_correction: 'exact',
+      reponses_acceptees: 'Paris', // malformé : chaîne au lieu de tableau
+    });
+    input.value = 'Paris';
+    assert.doesNotThrow(() => bouton.__click());
+
+    assert.equal(resultats.length, 1, 'onResultat doit être appelé malgré la donnée malformée');
+    const feedback = container.children[3];
+    assert.equal(trouverEnfant(feedback, 'fonda-feedback__accept'), undefined);
+  });
+
+  test('statut "carte_invalide" : aucune mention relecteur même si "relecteur" est fourni (ce n\'est pas une carte validée dans cet état)', () => {
+    const { input, bouton, container } = monterCarte({
+      question: 'Quelle est la masse ?',
+      profil_correction: 'numerique',
+      reponses_acceptees: ['8 kg'],
+      unite: 'cm', // incohérent avec reponses_acceptees -> carte_invalide
+      relecteur: 'Éric Duchateau',
+    });
+    input.value = '8 cm';
+    bouton.__click();
+
+    const feedback = container.children[3];
+    assert.equal(feedback.dataset.statut, 'carte_invalide');
+    assert.equal(trouverEnfant(feedback, 'fonda-feedback__relecteur'), undefined, 'ne pas affirmer une validation sur une carte signalée incohérente');
   });
 });
