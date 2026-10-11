@@ -253,6 +253,12 @@ describe('construirePrompt — points de vigilance (règle 1 réponse courte, r�
     assert.match(prompt, /jamais "exact"/);
   });
 
+  test('règle QCM anti-biais de position : la bonne réponse ne doit pas être déductible d\'un repère ordinal cité dans l\'énoncé (retour de lot de validation, fr.comprendre-consigne/nI)', () => {
+    const prompt = construirePrompt(args);
+    assert.match(prompt, /ANTI-BIAIS DE POSITION/);
+    assert.match(prompt, /question 2.*option B/);
+  });
+
   test('contextesAutresPaliers (contextes déjà utilisés dans l\'autre palier nI/nF) apparaissent dans l\'interdiction de réutilisation', () => {
     const prompt = construirePrompt({ ...args, contextesAutresPaliers: ['recette-riz-portions', 'carnet-billets-concert'] });
     assert.match(prompt, /recette-riz-portions/);

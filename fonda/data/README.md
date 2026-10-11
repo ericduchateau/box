@@ -104,6 +104,8 @@ Schéma d'une candidate (PRD §3.6 + §5.1, adapté T6) :
 
 **Anti-clone (`validerJeu`) : condition nécessaire, pas suffisante.** Le validateur vérifie que les `contexte` d'un même jeu sont deux-à-deux distincts — il ne lit pas `question` et ne prouve donc aucune diversité pédagogique réelle. La variété de fond (règle `convention.variete_generation` de `referentiel.json` : les `enonce_modele` sont des amorces, jamais un moule) reste jugée à la **relecture humaine**.
 
+**QCM — anti-biais de position (convention, pas un champ vérifié par le code) : la lettre de la bonne réponse ne doit jamais être déductible de l'énoncé.** Trouvé en lot de validation (2026-10-11, `fr.comprendre-consigne/nI`) : une carte citait « réponds uniquement à la question **2** » et plaçait la bonne réponse en option **B** — déductible par simple comptage de position, sans lire le contenu. En particulier, si la consigne/l'énoncé cite un repère ordinal (« la question 2 », « le 3e », « ligne B »…), la bonne réponse ne doit **pas** se trouver à la position correspondante — à vérifier à la relecture humaine pour tout lot écrit à la main ou généré ; appliqué comme consigne de prompt dans `generer-lot-fonda.js` (règle 4) pour la génération automatique, mais **non vérifiable automatiquement** (comme la variété de fond ci-dessus).
+
 Validé par `node --test fonda/scripts/generer-pilote-t6.test.js` (8 tests : schéma, anti-clone, équilibre 72/72, motifs d'id, intégration CLI).
 
 ## `classes.json` (T3)
