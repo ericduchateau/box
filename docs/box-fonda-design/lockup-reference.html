@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@700;800;900&display=swap" rel="stylesheet">
+<style>
+  /* ===== BOX-FONDA — thème sombre & lockup (réutilisable) ===== */
+  :root{
+    --fonda-navy:#1D2F4A;      /* fond */
+    --fonda-navy-2:#17263B;    /* panneaux/cartes de fond */
+    --fonda-ink:#FDFDFD;       /* texte principal */
+    --fonda-mut:#8EA2BE;       /* texte secondaire */
+    --fonda-green:#5BAE6C;     /* accent (A migrant, bonne réponse) */
+    --fonda-red:#C8403A;       /* erreur */
+    --fonda-line:#31496B;      /* filets */
+  }
+  *{margin:0;box-sizing:border-box}
+  body{background:var(--fonda-navy);font-family:'Poppins',sans-serif;color:var(--fonda-ink);
+    min-height:100vh;display:flex;align-items:center;justify-content:center}
+
+  /* --- Lockup logo + signature --- */
+  .fonda-lockup{display:flex;flex-direction:column;align-items:center}
+  .fonda-lockup .logo{width:560px;max-width:70vw;display:block}
+  .fonda-sign{font-weight:800;line-height:.98;letter-spacing:.01em;
+    display:flex;flex-direction:column;align-items:center;gap:6px;margin-top:26px}
+  .fonda-sign .l1{font-size:84px;display:flex;align-items:center;gap:.16em}
+  .fonda-sign .l2{font-size:84px;display:flex;align-items:center;gap:.02em}
+  .fonda-sign .fond{color:var(--fonda-ink)}
+  .fonda-sign .trav{color:var(--fonda-green)}
+  .fonda-sign .card{display:inline-flex;align-items:center;justify-content:center;
+    background:var(--fonda-ink);color:var(--fonda-navy);border-radius:.17em;
+    width:.84em;height:.84em;transform:rotate(-5deg);box-shadow:0 10px 22px rgba(0,0,0,.4);margin:0 .03em}
+  .fonda-sign .bang{color:var(--fonda-green);margin-left:.08em}
+</style></head>
+<body>
+  <div class="fonda-lockup">
+    <img class="logo" src="box_crop.png" alt="BOX">
+    <div class="fonda-sign">
+      <div class="l1"><span class="trav">À</span><span class="fond">FOND</span></div>
+      <div class="l2"><span class="fond">FOND</span><span class="card">A</span><span class="bang">!</span></div>
+    </div>
+  </div>
+</body></html>

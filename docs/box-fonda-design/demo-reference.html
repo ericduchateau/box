@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BOX-FONDA — démonstration</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#1D2F4A;--navy2:#17263B;--panel:#223755;--ink:#FDFDFD;--mut:#9BAEC9;
+    --green:#5BAE6C;--green-d:#3F8F50;--red:#C8403A;--line:#31496B;
+    --card:#FDFDFD;--card-ink:#20314A;
+  }
+  *{margin:0;box-sizing:border-box}
+  body{background:var(--navy);font-family:'Inter',system-ui,sans-serif;color:var(--ink);
+    min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:28px 18px 40px}
+
+  header{width:100%;max-width:720px;display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+  .brand{display:flex;align-items:baseline;gap:10px}
+  .brand .b{font-family:'Poppins',sans-serif;font-weight:800;font-size:26px;letter-spacing:.5px}
+  .brand .b .o{color:var(--green)}
+  .brand .f{font-family:'Poppins',sans-serif;font-weight:800;font-size:15px;color:var(--mut)}
+  .brand .f .a{background:var(--ink);color:var(--navy);border-radius:4px;padding:0 4px;display:inline-block;transform:rotate(-4deg)}
+  .mode{font-size:12px;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-weight:600}
+  .sub{width:100%;max-width:720px;color:var(--mut);font-size:13.5px;margin-bottom:22px}
+
+  .wrap{width:100%;max-width:720px}
+  .meta{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .meta .notion{font-size:13px;color:var(--mut);font-weight:600}
+  .meta .notion b{color:var(--ink)}
+  .count{font-size:12px;color:var(--mut);font-weight:600;letter-spacing:.04em}
+
+  .card{background:var(--card);color:var(--card-ink);border-radius:18px;padding:30px 30px 26px;
+    box-shadow:0 20px 50px rgba(0,0,0,.35);position:relative}
+  .tag{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:700;letter-spacing:.06em;
+    text-transform:uppercase;color:#5C7599;margin-bottom:14px}
+  .tag .dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
+  .tag.maths .dot{background:#3E73B5}
+  .q{font-size:22px;line-height:1.42;font-weight:500;color:#1A2740}
+  .q b{font-weight:800}
+
+  .answer{margin-top:22px}
+  .answer label{display:block;font-size:12.5px;font-weight:700;color:#5C7599;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
+  .row{display:flex;gap:10px}
+  input[type=text]{flex:1;font-family:inherit;font-size:18px;padding:13px 15px;border:2px solid #D4DCE8;border-radius:11px;color:#1A2740;outline:none}
+  input[type=text]:focus{border-color:#3E73B5}
+  button{font-family:inherit;font-weight:700;font-size:16px;border:0;border-radius:11px;cursor:pointer;padding:13px 22px;transition:transform .05s}
+  button:active{transform:translateY(1px)}
+  .valider{background:var(--navy);color:#fff}
+  .reveal{background:none;color:#5C7599;font-weight:600;font-size:14px;padding:8px 2px;text-decoration:underline;margin-top:12px}
+
+  .feedback{margin-top:20px;border-radius:13px;padding:17px 18px;display:none}
+  .feedback.show{display:block;animation:pop .25s ease}
+  @keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .feedback.ok{background:#E9F5EC;border:1px solid #BEE2C6}
+  .feedback.no{background:#FBEAE8;border:1px solid #F0C9C5}
+  .verdict{display:flex;align-items:center;gap:10px;font-weight:800;font-size:17px}
+  .verdict .mk{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:15px;flex:none}
+  .ok .verdict{color:var(--green-d)} .ok .mk{background:var(--green)}
+  .no .verdict{color:#B23A33} .no .mk{background:var(--red)}
+  .detail{margin-top:12px;font-size:15px;line-height:1.5;color:#2B3B55}
+  .detail .lbl{font-size:11.5px;font-weight:700;color:#5C7599;text-transform:uppercase;letter-spacing:.05em}
+  .accept{margin-top:8px;font-size:13.5px;color:#5C7599}
+  .accept code{background:#EEF2F7;border-radius:5px;padding:2px 7px;font-family:inherit;color:#2B3B55;margin-right:4px;display:inline-block;margin-top:4px}
+  .relecteur{margin-top:16px;display:flex;align-items:center;gap:8px;font-size:12.5px;color:#5C7599;border-top:1px solid #E6EBF1;padding-top:13px}
+  .relecteur .chk{color:var(--green);font-weight:800}
+
+  .nav{display:flex;justify-content:flex-end;margin-top:20px}
+  .next{background:var(--green);color:#10371a;display:none}
+  .next.show{display:inline-block}
+
+  footer{max-width:720px;width:100%;margin-top:26px;color:var(--mut);font-size:12px;line-height:1.6;text-align:center}
+  .end{display:none;text-align:center;padding:40px 10px}
+  .end h2{font-family:'Poppins',sans-serif;font-size:24px;margin-bottom:10px}
+  .end p{color:var(--mut);font-size:15px;max-width:460px;margin:0 auto 22px}
+</style></head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="b">B<span class="o">O</span>X</span>
+      <span class="f">FOND<span class="a">A</span>&nbsp;!</span>
+    </div>
+    <span class="mode">Mode fondamentaux</span>
+  </header>
+  <div class="sub">Démonstration — deux fiches réelles, telles qu'un élève les voit en Devoirs Faits.</div>
+
+  <div class="wrap" id="app"></div>
+
+  <div class="wrap end" id="end">
+    <h2>C'est tout pour la démo 🎓</h2>
+    <p>Dans BOX-FONDA, ces fiches reviennent au bon rythme selon ce que l'élève réussit — et chaque fiche a été relue par un professeur avant d'arriver ici.</p>
+    <button class="valider" onclick="restart()">↻ Recommencer</button>
+  </div>
+
+  <footer>BOX-FONDA · démonstration · correction automatique par profil (sens / numérique) · aucune donnée élève envoyée à une IA</footer>
+
+<script>
+const cards=[
+ { matiere:'Français', mcls:'', notion:"Sens d'un mot inconnu (dérivation)", palier:'Initial',
+   q:'On connaît « hypotension » (tension trop basse) et « thermomètre » (qui mesure la chaleur). Que signifie le plus probablement « <b>hypothermie</b> » ?',
+   ph:'Votre réponse en quelques mots…',
+   attendu:'Une température du corps trop basse',
+   acceptees:['température trop basse','corps trop froid','chaleur du corps trop basse'],
+   profil:'sens', relecteur:'Justine Leblanc',
+   explication:'Profil « sens » : on vérifie l\'idée (hypo- = sous, -thermie = chaleur), pas l\'orthographe exacte.',
+   check:function(n){ return n.includes('froid') || (n.includes('bass') && (n.includes('temperatur')||n.includes('chaleur')||n.includes('corps'))); } },
+ { matiere:'Mathématiques', mcls:'maths', notion:'Grandeurs et mesures', palier:'Initial',
+   q:'Un cycliste roule à 18 km/h pendant 30 minutes. Quelle <b>distance</b> parcourt-il ?',
+   ph:'Ex. : 9 km',
+   attendu:'9 km',
+   acceptees:['9 km','9'],
+   profil:'numérique', relecteur:'Éric',
+   explication:'Profil « numérique » : valeur exacte. L\'obstacle visé est la conversion 30 min = 0,5 h, puis 18 × 0,5 = 9.',
+   check:function(n){ var m=n.replace(',','.').match(/-?\d+(\.\d+)?/); return !!m && parseFloat(m[0])===9; } } ];
+
+let i=0;
+function norm(s){return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();}
+
+function render(){
+  const c=cards[i];
+  document.getElementById('app').innerHTML=`
+    <div class="meta">
+      <div class="notion">${c.matiere} · <b>${c.notion}</b> — palier ${c.palier}</div>
+      <div class="count">Carte ${i+1} / ${cards.length}</div>
+    </div>
+    <div class="card">
+      <div class="tag ${c.mcls}"><span class="dot"></span>${c.matiere}</div>
+      <div class="q">${c.q}</div>
+      <div class="answer">
+        <label>Votre réponse</label>
+        <div class="row">
+          <input type="text" id="inp" placeholder="${c.ph}" autocomplete="off" spellcheck="false">
+          <button class="valider" id="go">Valider</button>
+        </div>
+        <button class="reveal" id="rev">Voir la réponse</button>
+      </div>
+      <div class="feedback" id="fb">
+        <div class="verdict"><span class="mk" id="mk"></span><span id="vtxt"></span></div>
+        <div class="detail"><span class="lbl">Réponse attendue</span><br><span id="att"></span></div>
+        <div class="accept" id="acc"></div>
+        <div class="detail" style="margin-top:12px" id="exp"></div>
+        <div class="relecteur"><span class="chk">✓</span> Fiche relue et validée par <b style="color:#2B3B55;font-weight:700">&nbsp;${c.relecteur}</b> avant publication.</div>
+      </div>
+      <div class="nav"><button class="next" id="nx">Carte suivante →</button></div>
+    </div>`;
+  const inp=document.getElementById('inp');
+  document.getElementById('go').onclick=()=>judge(true);
+  document.getElementById('rev').onclick=()=>judge(false);
+  document.getElementById('nx').onclick=next;
+  inp.addEventListener('keydown',e=>{if(e.key==='Enter')judge(true);});
+  inp.focus();
+}
+function judge(scored){
+  const c=cards[i], inp=document.getElementById('inp');
+  const val=inp.value.trim();
+  const ok = scored && val.length>0 && c.check(norm(val));
+  const fb=document.getElementById('fb');
+  fb.className='feedback show '+(ok?'ok':'no');
+  document.getElementById('mk').textContent= ok?'✓':'✗';
+  document.getElementById('vtxt').textContent= !scored ? 'Voici la réponse' : (ok?'Bonne réponse !':'Pas tout à fait');
+  document.getElementById('att').textContent=c.attendu;
+  document.getElementById('acc').innerHTML='<span class="lbl">Aussi acceptées</span><br>'+c.acceptees.map(a=>'<code>'+a+'</code>').join('');
+  document.getElementById('exp').textContent=c.explication;
+  inp.disabled=true; document.getElementById('go').disabled=true; document.getElementById('go').style.opacity=.5;
+  document.getElementById('rev').style.display='none';
+  document.getElementById('nx').classList.add('show');
+  document.getElementById('nx').focus();
+}
+function next(){ i++; if(i>=cards.length){document.getElementById('app').style.display='none';document.getElementById('end').style.display='block';} else render(); }
+function restart(){ i=0; document.getElementById('end').style.display='none'; document.getElementById('app').style.display='block'; render(); }
+render();
+</script>
+</body></html>
