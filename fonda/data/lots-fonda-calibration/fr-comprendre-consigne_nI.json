@@ -1,0 +1,115 @@
+{
+  "id": "box_ciiu49iu",
+  "matiere": "Français",
+  "niveau": "Fondamentaux — Initial (accessible)",
+  "notion": "Comprendre une consigne et sélectionner l'information utile",
+  "prof_nom": "Box-FONDA (génération automatique)",
+  "prof_email": "ericdnews@yahoo.fr",
+  "code_suppression": "SUP-N8JHCIQU",
+  "date_creation": "2026-10-11",
+  "nb_cartes": 6,
+  "source": "fonda-seed",
+  "type": "fonda",
+  "revue_carte_par_carte": false,
+  "cartes": [
+    {
+      "numero": 1,
+      "question": "Dans un magasin de sport, le vélo coûte 180 €, le casque coûte 25 € et les gants coûtent 12 €. Quel est le prix du casque ?",
+      "reponse": "25 €",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "25 €",
+        "25"
+      ],
+      "unite": "€",
+      "contexte": "fiche-produits-magasin",
+      "set_id": "set_fonda_comprendre-consigne_nI_01",
+      "item_id": "it01",
+      "notion_id": "fr.comprendre-consigne"
+    },
+    {
+      "numero": 2,
+      "question": "Le bus de la ligne A part à 8h15, celui de la ligne B part à 8h40 et celui de la ligne C part à 9h05. À quelle heure part le bus de la ligne B ?",
+      "reponse": "8h40",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "8h40",
+        "8 h 40"
+      ],
+      "contexte": "horaires-bus-lignes",
+      "set_id": "set_fonda_comprendre-consigne_nI_01",
+      "item_id": "it02",
+      "notion_id": "fr.comprendre-consigne"
+    },
+    {
+      "numero": 3,
+      "question": "Pour la pâte, il faut 250 g de farine, 100 g de sucre et 3 œufs. Pour la crème, il faut 500 mL de lait et 80 g de sucre. Quelle quantité de sucre faut-il pour préparer la crème ?",
+      "reponse": "80 g",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "80 g",
+        "80"
+      ],
+      "unite": "g",
+      "contexte": "recette-patisserie",
+      "set_id": "set_fonda_comprendre-consigne_nI_01",
+      "item_id": "it03",
+      "notion_id": "fr.comprendre-consigne"
+    },
+    {
+      "numero": 4,
+      "question": "Le lion vit en moyenne 15 ans et mesure 1,2 m au garrot. La girafe vit en moyenne 25 ans et mesure 5 m de haut. L'éléphant vit en moyenne 70 ans. Quelle est la durée de vie moyenne de la girafe ?",
+      "reponse": "25 ans",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "25 ans",
+        "25"
+      ],
+      "unite": "ans",
+      "contexte": "fiche-documentaire-animaux",
+      "set_id": "set_fonda_comprendre-consigne_nI_01",
+      "item_id": "it04",
+      "notion_id": "fr.comprendre-consigne"
+    },
+    {
+      "numero": 5,
+      "question": "Voici la fiche d'inscription de Lucas à son club de sport : Nom : Lucas Martin — Âge : 13 ans — Sport : natation — Jour du cours : mercredi — Horaire : 17h à 18h30 — Cotisation annuelle : 120 euros — Taille du maillot : M — Numéro de licence : 4521. Quel jour Lucas a-t-il son cours de natation ?",
+      "reponse": "mercredi",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "mercredi"
+      ],
+      "contexte": "fiche-inscription-club-natation",
+      "set_id": "set_fonda_comprendre-consigne_nI_01",
+      "item_id": "it05",
+      "notion_id": "fr.comprendre-consigne"
+    },
+    {
+      "numero": 6,
+      "question": "Températures relevées cette semaine : lundi 14°C, mardi 18°C, mercredi 9°C, jeudi 16°C. Quelle température a-t-il fait mercredi ?",
+      "reponse": "9°C",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "9°C",
+        "9"
+      ],
+      "unite": "°C",
+      "contexte": "releve-temperatures-semaine",
+      "set_id": "set_fonda_comprendre-consigne_nI_01",
+      "item_id": "it06",
+      "notion_id": "fr.comprendre-consigne"
+    }
+  ]
+}

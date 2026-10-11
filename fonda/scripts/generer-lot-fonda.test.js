@@ -15,6 +15,7 @@ const {
   construirePrompt,
   parserReponseModele,
   verifierContreCorrecteur,
+  autoCorrigerCarte,
   construireCandidats,
   construireFichierBoxSelect,
 } = require('./generer-lot-fonda.js');
@@ -116,6 +117,61 @@ describe('verifierContreCorrecteur — zéro tolérance', () => {
       unite: null,
     });
     assert.equal(r.ok, false);
+  });
+});
+
+describe('autoCorrigerCarte — réconciliation reponse/reponses_acceptees, jamais de contenu inventé (lot de validation 2026-10-11)', () => {
+  test('carte déjà valide : inchangée, corrigee=false', () => {
+    const carte = { profil_correction: 'exact', reponse: 'Paris', reponses_acceptees: ['Paris'] };
+    const r = autoCorrigerCarte(carte);
+    assert.equal(r.corrigee, false);
+    assert.equal(r.carte, carte);
+  });
+
+  test('cas réel "2 pots" sans unite déclarée : corrigée en "2" (déjà présent dans reponses_acceptees)', () => {
+    const carte = {
+      profil_correction: 'numerique',
+      reponse: '2 pots',
+      reponses_acceptees: ['2 pots', '2'],
+    };
+    const r = autoCorrigerCarte(carte);
+    assert.equal(r.corrigee, true);
+    assert.equal(r.ancienneReponse, '2 pots');
+    assert.equal(r.carte.reponse, '2');
+    assert.equal(verifierContreCorrecteur(r.carte).ok, true, 'la carte corrigée doit repasser le correcteur');
+    assert.deepEqual(r.carte.reponses_acceptees, ['2 pots', '2'], 'reponses_acceptees ne doit jamais être modifié par la correction');
+  });
+
+  test('cas réel "il a un examen important" (profil sens) : corrigée vers la forme courte déjà déclarée', () => {
+    const carte = {
+      profil_correction: 'sens',
+      reponse: 'il a un examen important',
+      reponses_acceptees: ['un examen important', 'une épreuve importante', 'un examen', 'un contrôle important'],
+    };
+    const r = autoCorrigerCarte(carte);
+    assert.equal(r.corrigee, true);
+    assert.equal(r.carte.reponse, 'un examen important');
+    assert.equal(verifierContreCorrecteur(r.carte).ok, true);
+  });
+
+  test('aucune forme de reponses_acceptees ne passe (incohérence structurelle, ex. unité attendue contredite) : pas de correction possible, carte inchangée', () => {
+    const carte = {
+      profil_correction: 'numerique',
+      reponse: '8 cm',
+      reponses_acceptees: ['8 kg'],
+      unite: 'cm', // incohérent avec reponses_acceptees -> carte_invalide, pas corrigeable mécaniquement
+    };
+    const r = autoCorrigerCarte(carte);
+    assert.equal(r.corrigee, false);
+    assert.equal(r.carte, carte);
+    assert.equal(verifierContreCorrecteur(r.carte).ok, false, 'reste rejetée, exactement comme avant cette fonction');
+  });
+
+  test('reponses_acceptees malformé (pas un tableau) : ne plante pas, pas de correction tentée', () => {
+    const carte = { profil_correction: 'exact', reponse: 'Paris', reponses_acceptees: 'Paris' };
+    assert.doesNotThrow(() => autoCorrigerCarte(carte));
+    const r = autoCorrigerCarte(carte);
+    assert.equal(r.corrigee, false);
   });
 });
 
@@ -251,6 +307,12 @@ describe('construirePrompt — points de vigilance (règle 1 réponse courte, r�
     const prompt = construirePrompt(args);
     assert.match(prompt, /PIÈGE À ÉVITER/);
     assert.match(prompt, /jamais "exact"/);
+  });
+
+  test('règle QCM anti-biais de position : la bonne réponse ne doit pas être déductible d\'un repère ordinal cité dans l\'énoncé (retour de lot de validation, fr.comprendre-consigne/nI)', () => {
+    const prompt = construirePrompt(args);
+    assert.match(prompt, /ANTI-BIAIS DE POSITION/);
+    assert.match(prompt, /question 2.*option B/);
   });
 
   test('contextesAutresPaliers (contextes déjà utilisés dans l\'autre palier nI/nF) apparaissent dans l\'interdiction de réutilisation', () => {

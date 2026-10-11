@@ -7,9 +7,13 @@
 // pilote T6a (fonda/engine/generation.js, réutilisé TEL QUEL — zéro duplication de
 // la logique de dépôt) + une VÉRIFICATION ZÉRO TOLÉRANCE de chaque carte contre le
 // vrai correcteur (fonda/engine/correction.js) avant toute sortie. Une carte qui ne
-// repasse pas le correcteur est REJETÉE, jamais corrigée à la main, jamais marquée
-// `_fixture_note` (ça, c'était le fixture technique T6a — ici c'est du contenu réel
-// destiné à la relecture, tolérance zéro).
+// repasse pas le correcteur est d'abord soumise à autoCorrigerCarte() (2026-10-11) :
+// AUCUN contenu n'est inventé, elle est seulement testée avec chacune des formes
+// déjà déclarées dans sa propre reponses_acceptees à la place de reponse — si une
+// seule fait passer le correcteur, c'est elle qui est retenue (log "✎ auto-corrigée").
+// Si aucune ne passe, la carte reste REJETÉE comme avant, jamais corrigée à la main,
+// jamais marquée `_fixture_note` (ça, c'était le fixture technique T6a — ici c'est du
+// contenu réel destiné à la relecture, tolérance zéro).
 //
 // CE QUE CE SCRIPT N'EST PAS : pas un appel n8n (zéro action n8n, AGENTS.md), pas
 // une publication (statut toujours "attente", rien n'est envoyé par email ni
@@ -129,7 +133,7 @@ RÈGLES NON NÉGOCIABLES (une carte qui enfreint une seule de ces règles est in
 
 3. PAS DE CLONE — chaque carte doit avoir un contexte concret différent des autres cartes de CE lot (changement de situation, de nombres, de personnages, de domaine). ${exclusionContextes} N'utilise jamais deux fois la même structure de phrase avec juste un nombre ou un nom changé.
 
-4. DISTRIBUTION DES RÉPONSES (si la carte prend la forme d'un choix A/B/C) — répartis la position de la bonne réponse entre A, B et C sur l'ensemble du lot, jamais toujours la même lettre.
+4. DISTRIBUTION DES RÉPONSES (si la carte prend la forme d'un choix A/B/C) — répartis la position de la bonne réponse entre A, B et C sur l'ensemble du lot, jamais toujours la même lettre. ANTI-BIAIS DE POSITION : la lettre de la bonne réponse ne doit JAMAIS être déductible de l'énoncé. En particulier, si la consigne/l'énoncé cite un repère ordinal ("la question 2", "le 3e", "ligne B"...), la bonne réponse ne doit PAS se trouver à la position correspondante (ex. "question 2" → la bonne réponse ne doit pas être l'option B) — mélange l'ordre des options en conséquence.
 
 5. UNITÉ OBLIGATOIRE ET UNIQUE — si la réponse est un nombre qui représente une grandeur physique ou monétaire (longueur, aire, volume, masse, durée, somme d'argent, vitesse...), la réponse DOIT porter son unité explicitement (ex. "40 m²", "9 €", pas juste "40" ou "9"), ET tu dois déclarer cette unité séparément dans le champ "unite" du JSON de sortie (ex. "m²", "€"). Une carte avec une grandeur physique/monétaire SANS le champ "unite" rempli sera automatiquement rejetée. DE PLUS, dans "reponses_acceptees", TOUTES les formes doivent être dans CETTE MÊME unité — jamais une unité différente, même équivalente. Autorisé : la même valeur avec et sans unité (ex. ["400 km", "400"]). INTERDIT : une forme dans une autre unité (ex. ["0,6 L", "600 mL"] ou ["12 min", "12 minutes"] si "minutes" diffère de l'unité déclarée "min") — une seule unité par carte, exactement celle du champ "unite". Une carte qui mélange les unités dans "reponses_acceptees" sera automatiquement rejetée.
 
@@ -260,6 +264,41 @@ function verifierContreCorrecteur(carteBrute) {
 }
 
 // ---------------------------------------------------------------------------
+// 4bis. Auto-correction d'une carte dont le champ "reponse" ne passe pas son
+//    propre correcteur — AVANT rejet définitif. Pure, testable, zéro appel
+//    réseau. Ne confond PAS avec le fixture T6a (`_fixture_note`) ni avec un
+//    assouplissement du zéro-tolérance : on ne change jamais reponses_acceptees,
+//    on ne fabrique jamais de contenu nouveau — on choisit, PARMI les formes que
+//    le modèle a lui-même déjà déclarées dans reponses_acceptees, celle qui fait
+//    passer la carte. Cas réel qui a motivé cette fonction (lot de validation
+//    2026-10-11) :
+//      - "2 pots" (reponse) vs reponses_acceptees=["2 pots","2"], unite non
+//        déclarée -> le correcteur refuse "2 pots" (reliquat alphabétique non
+//        exigé) mais accepte "2" -> reponse corrigée en "2".
+//      - "il a un examen important" (reponse, une phrase) vs
+//        reponses_acceptees=["un examen important", ...] (profil sens) -> le
+//        correcteur refuse la phrase complète mais accepte la forme courte déjà
+//        listée -> reponse corrigée en "un examen important".
+//    Si AUCUNE forme de reponses_acceptees ne fait passer la carte (ex. reponses_
+//    acceptees lui-même incohérent, cf. detecterIncoherenceAttendu), rien n'est
+//    inventé : la carte reste rejetée exactement comme avant cette fonction.
+function autoCorrigerCarte(carteBrute) {
+  if (verifierContreCorrecteur(carteBrute).ok) {
+    return { carte: carteBrute, corrigee: false };
+  }
+
+  const formes = Array.isArray(carteBrute.reponses_acceptees) ? carteBrute.reponses_acceptees : [];
+  for (const forme of formes) {
+    if (forme === carteBrute.reponse) continue; // déjà la valeur testée ci-dessus, a échoué
+    const candidate = { ...carteBrute, reponse: forme };
+    if (verifierContreCorrecteur(candidate).ok) {
+      return { carte: candidate, corrigee: true, ancienneReponse: carteBrute.reponse };
+    }
+  }
+  return { carte: carteBrute, corrigee: false };
+}
+
+// ---------------------------------------------------------------------------
 // 5. Construction des candidates G4 (dérivation, jamais confiance au modèle) —
 //    pure, testable. Réutilise generation.js tel quel pour tout ce qui est
 //    système (set_id/item_id/relecteur/statut) — cette fonction ne fait QUE
@@ -359,27 +398,30 @@ async function genererLotPourNotionPalier({ notion, palier, nCartes, contextesAu
   if (!parse.ok) return { ok: false, erreur: parse.erreur };
 
   const rejets = [];
+  const corrections = [];
   const cartesValides = [];
   parse.cartesBrutes.forEach((brute, i) => {
-    const v = verifierContreCorrecteur(brute);
+    const { carte, corrigee, ancienneReponse } = autoCorrigerCarte(brute);
+    const v = verifierContreCorrecteur(carte);
     if (!v.ok) {
       rejets.push({ index: i, raison: v.raison });
       return;
     }
-    cartesValides.push(brute);
+    if (corrigee) corrections.push({ index: i, ancienneReponse, nouvelleReponse: carte.reponse });
+    cartesValides.push(carte);
   });
 
   if (cartesValides.length === 0) {
-    return { ok: false, erreur: 'aucune carte valide après vérification correcteur', rejets };
+    return { ok: false, erreur: 'aucune carte valide après vérification correcteur', rejets, corrections };
   }
 
   const ts = new Date().toISOString();
   const candidats = construireCandidats({ notion, palier, cartesBrutes: cartesValides, sequence: 1, ts });
 
   const jeuValide = validerJeu(candidats);
-  if (!jeuValide.valide) return { ok: false, erreur: jeuValide.erreurs.join(', '), rejets };
+  if (!jeuValide.valide) return { ok: false, erreur: jeuValide.erreurs.join(', '), rejets, corrections };
 
-  return { ok: true, candidats, rejets };
+  return { ok: true, candidats, rejets, corrections };
 }
 
 async function main() {
@@ -436,6 +478,7 @@ async function main() {
       }
 
       (resultat.rejets || []).forEach((r) => console.log(`  ⚠ carte ${r.index} rejetée par le correcteur : ${r.raison}`));
+      (resultat.corrections || []).forEach((c) => console.log(`  ✎ carte ${c.index} auto-corrigée : reponse "${c.ancienneReponse}" -> "${c.nouvelleReponse}"`));
 
       // Validation G4 complète (le vrai garde-fou — generation.js, pas dupliqué ici).
       candidatsAvecValidationForme:
@@ -479,6 +522,7 @@ module.exports = {
   construirePrompt,
   parserReponseModele,
   verifierContreCorrecteur,
+  autoCorrigerCarte,
   construireCandidats,
   construireFichierBoxSelect,
   genererLotPourNotionPalier,

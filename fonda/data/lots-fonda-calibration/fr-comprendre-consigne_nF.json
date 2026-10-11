@@ -1,0 +1,112 @@
+{
+  "id": "box_tr2112g2",
+  "matiere": "Français",
+  "niveau": "Fondamentaux — Final (abouti)",
+  "notion": "Comprendre une consigne et sélectionner l'information utile",
+  "prof_nom": "Box-FONDA (génération automatique)",
+  "prof_email": "ericdnews@yahoo.fr",
+  "code_suppression": "SUP-628CVANY",
+  "date_creation": "2026-10-11",
+  "nb_cartes": 6,
+  "source": "fonda-seed",
+  "type": "fonda",
+  "revue_carte_par_carte": false,
+  "cartes": [
+    {
+      "numero": 1,
+      "question": "Le club d'escalade accepte les inscriptions si l'enfant a au moins 10 ans, fournit un certificat médical, et habite à moins de 20 km du club. Noah a 11 ans, n'a pas encore de certificat médical, et habite à 5 km du club. Peut-il s'inscrire cette année ?",
+      "reponse": "Non",
+      "difficulte": "moyen",
+      "palier": "nF",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "Non",
+        "non"
+      ],
+      "contexte": "club-escalade-inscription",
+      "set_id": "set_fonda_comprendre-consigne_nF_01",
+      "item_id": "it01",
+      "notion_id": "fr.comprendre-consigne"
+    },
+    {
+      "numero": 2,
+      "question": "Notice de montage : pour un mur en béton de moins de 10 cm d'épaisseur, utiliser des chevilles courtes ; pour un mur en béton de 10 cm ou plus, utiliser des chevilles longues. Le mur du salon de Léo est en béton et mesure 8 cm d'épaisseur. Quel type de cheville doit-il utiliser ?",
+      "reponse": "courtes",
+      "difficulte": "moyen",
+      "palier": "nF",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "courtes",
+        "chevilles courtes"
+      ],
+      "contexte": "notice-montage-etagere",
+      "set_id": "set_fonda_comprendre-consigne_nF_01",
+      "item_id": "it02",
+      "notion_id": "fr.comprendre-consigne"
+    },
+    {
+      "numero": 3,
+      "question": "À la piscine municipale : entrée adulte 5 €, entrée enfant de moins de 12 ans 3 €, gratuit pour les moins de 3 ans. Une famille se présente avec les deux parents, un enfant de 10 ans et un enfant de 2 ans. Combien la famille doit-elle payer au total ?",
+      "reponse": "13 €",
+      "difficulte": "difficile",
+      "palier": "nF",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "13 €",
+        "13"
+      ],
+      "unite": "€",
+      "contexte": "tarif-piscine-municipale",
+      "set_id": "set_fonda_comprendre-consigne_nF_01",
+      "item_id": "it03",
+      "notion_id": "fr.comprendre-consigne"
+    },
+    {
+      "numero": 4,
+      "question": "Programme de la sortie : départ du car à 8h30, arrivée au musée à 9h15, visite guidée de 10h00 à 11h30, pique-nique à 12h00. Le professeur demande aux élèves d'être prêts une demi-heure avant le départ du car. À quelle heure les élèves doivent-ils être prêts ?",
+      "reponse": "8h00",
+      "difficulte": "difficile",
+      "palier": "nF",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "8h00",
+        "08h00",
+        "8h"
+      ],
+      "contexte": "sortie-scolaire-horaire",
+      "set_id": "set_fonda_comprendre-consigne_nF_01",
+      "item_id": "it04",
+      "notion_id": "fr.comprendre-consigne"
+    },
+    {
+      "numero": 5,
+      "question": "Règle du jeu : chaque bonne réponse à une énigme rapporte 2 points, et chaque énigme sautée fait perdre 1 point. Il y a 5 énigmes en tout. L'équipe des Lions a répondu correctement à 3 énigmes et a sauté les 2 autres. Quel est le score final de l'équipe des Lions ?",
+      "reponse": "4",
+      "difficulte": "moyen",
+      "palier": "nF",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "4"
+      ],
+      "contexte": "chasse-au-tresor-score",
+      "set_id": "set_fonda_comprendre-consigne_nF_01",
+      "item_id": "it05",
+      "notion_id": "fr.comprendre-consigne"
+    },
+    {
+      "numero": 6,
+      "question": "Dans le cahier de textes : lundi 12 mars, rendre l'exercice de maths ; mardi 13 mars, lire le chapitre 2 d'histoire ; mercredi 14 mars, apprendre la poésie, le contrôle de français ayant lieu 3 jours après cette leçon. À quelle date aura lieu le contrôle de français ?",
+      "reponse": "17 mars",
+      "difficulte": "difficile",
+      "palier": "nF",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "17 mars"
+      ],
+      "contexte": "cahier-textes-dates",
+      "set_id": "set_fonda_comprendre-consigne_nF_01",
+      "item_id": "it06",
+      "notion_id": "fr.comprendre-consigne"
+    }
+  ]
+}
