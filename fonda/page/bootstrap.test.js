@@ -28,9 +28,10 @@ const CALENDRIER = { version: 1, last_updated: '2026-10-05', semaines: [SEMAINE_
 // textContent agrège récursivement depuis les enfants, comme un vrai DOM (nécessaire
 // pour vérifier le texte de la signature à deux lignes, relecture Codex #10 — voir
 // carte-reponse-produite.test.js pour le même motif).
-function creerElementFactice() {
+function creerElementFactice(tag) {
   return {
-    className: '', href: '',
+    tagName: tag, className: '', href: '', src: '', type: '', style: {},
+    value: '', disabled: false, autocomplete: '', dataset: {}, attributes: {},
     children: [],
     _text: '',
     classList: { add() {}, remove() {} },
@@ -44,36 +45,60 @@ function creerElementFactice() {
     set innerHTML(v) { this._text = v; this.children = []; },
     append(...nodes) { this.children.push(...nodes); },
     appendChild(n) { this.children.push(n); return n; },
-    addEventListener() {},
+    setAttribute(k, v) { this.attributes[k] = v; },
+    focus() {},
+    addEventListener(evt, fn) { (this._listeners = this._listeners || {})[evt] = (this._listeners[evt] || []).concat(fn); },
+    __click() { ((this._listeners || {}).click || []).forEach((fn) => fn({})); },
+    __keydown(key) { ((this._listeners || {}).keydown || []).forEach((fn) => fn({ key })); },
   };
 }
 
 function creerDocumentFactice() {
-  const body = creerElementFactice();
+  const body = creerElementFactice('body');
+  const head = creerElementFactice('head');
+  // Tout <script> ajouté à <head> "charge" avec succès au tick suivant (onload) —
+  // simule le chargement dynamique de fonda/engine/*.js (chargerScript ci-contre
+  // dans bootstrap.js). Les modules réels sont de toute façon injectés en globals
+  // ci-dessous (FondaLiens/FondaCorrection/FondaCarteReponseProduite) : ce qui compte
+  // ici est seulement que la promesse chargerScript() SE RÉSOLVE, pas qu'elle exécute
+  // réellement un fichier (ça, c'est le rôle du smoke-test manuel en navigateur).
+  head.appendChild = (el) => {
+    head.children.push(el);
+    if (el && el.tagName === 'script') setTimeout(() => { if (typeof el.onload === 'function') el.onload(); }, 0);
+    return el;
+  };
   let root = null;
   return {
-    body,
-    createElement: () => creerElementFactice(),
+    body, head,
+    createElement: (tag) => creerElementFactice(tag),
     getElementById: (id) => (id === 'fondaRoot' ? root : null),
+    querySelector: () => null, // jamais de script déjà présent : chaque test repart d'un DOM vierge
     addEventListener() {},
     _definirRoot(r) { root = r; },
   };
 }
 
-// fetch factice : répond avec les vraies données (classes/referentiel), le calendrier
-// de test, et échoue sur tout le reste.
-function creerFetchFactice({ calendrier = CALENDRIER } = {}) {
+// fetch factice : classes/referentiel/calendrier de test ; pour un lot FONDA
+// (fonda/data/lots-fonda-calibration/...), sert soit une fixture explicite (`lots`),
+// soit, par défaut, le VRAI fichier committé (cohérent pour les tests d'intégration
+// qui n'ont besoin d'aucune fixture synthétique) ; échoue sur le reste.
+function creerFetchFactice({ calendrier = CALENDRIER, lots = {} } = {}) {
   return async (chemin) => {
-    const corps = chemin.includes('classes.json') ? CLASSES
-      : chemin.includes('referentiel.json') ? REFERENTIEL
-        : chemin.includes('calendar.json') ? calendrier
-          : null;
-    if (corps === null) return { ok: false };
-    return { ok: true, json: async () => corps };
+    if (chemin.includes('classes.json')) return { ok: true, json: async () => CLASSES };
+    if (chemin.includes('referentiel.json')) return { ok: true, json: async () => REFERENTIEL };
+    if (chemin.includes('calendar.json')) return { ok: true, json: async () => calendrier };
+    if (chemin.includes('lots-fonda-calibration/')) {
+      if (lots[chemin]) return { ok: true, json: async () => lots[chemin] };
+      try {
+        const donnees = require('../' + chemin.split('fonda/')[1]);
+        return { ok: true, json: async () => donnees };
+      } catch { return { ok: false }; }
+    }
+    return { ok: false };
   };
 }
 
-async function demarrerBootstrap({ search, calendrier }) {
+async function demarrerBootstrap({ search, calendrier, lots }) {
   const doc = creerDocumentFactice();
   // document.body.appendChild('fondaRoot' div) -> on l'intercepte pour pouvoir le relire
   const originalAppendChild = doc.body.appendChild.bind(doc.body);
@@ -81,16 +106,22 @@ async function demarrerBootstrap({ search, calendrier }) {
 
   global.document = doc;
   global.window = { location: { search, origin: 'https://ericduchateau.github.io', pathname: '/box/index.html' } };
-  global.fetch = creerFetchFactice({ calendrier });
+  global.fetch = creerFetchFactice({ calendrier, lots });
   global.window.FondaLiens = require('../engine/liens.js');
   global.window.FondaEvenements = require('../engine/evenements.js');
+  // Modules réels (pas des bouchons) — mêmes motifs que carte-reponse-produite.test.js :
+  // correction.js DOIT être posé sur window avant que carte-reponse-produite.js ne soit
+  // require()-é (il lit window.FondaCorrection à l'évaluation du fichier).
+  global.window.FondaCorrection = require('../engine/correction.js');
+  delete require.cache[require.resolve('../engine/carte-reponse-produite.js')];
+  require('../engine/carte-reponse-produite.js');
 
   delete require.cache[require.resolve('./bootstrap.js')];
   require('./bootstrap.js');
 
-  // Laisse le temps à la chaîne de promesses (fetch factice, toujours déjà résolu) de
-  // se dérouler complètement avant d'inspecter le DOM factice.
-  for (let i = 0; i < 5; i += 1) await new Promise((r) => setTimeout(r, 0));
+  // Laisse le temps à la chaîne de promesses (fetch factice + "chargement" de script
+  // simulé via setTimeout ci-dessus) de se dérouler avant d'inspecter le DOM factice.
+  for (let i = 0; i < 8; i += 1) await new Promise((r) => setTimeout(r, 0));
 
   return doc.getElementById('fondaRoot');
 }
@@ -237,5 +268,128 @@ describe('?page=niveau AVEC niveau -> comportement inchangé, plus la persistanc
     assert.deepEqual(ecritures, [], 'une valeur invalide ne doit jamais être persistée');
     const bloc = trouverParClasse(root, 'fonda-niveau-picker');
     assert.ok(bloc, 'une valeur invalide doit retomber sur le sélecteur, pas sur un résultat basé sur elle');
+  });
+});
+
+// --- Câblage des fiches FONDA (chantier feat/box-fonda-cablage) --------------------
+
+// Récupère les fonctions pures exportées par bootstrap.js (adapterCarte, cheminLot)
+// — demarrer() tourne en tâche de fond (recherche vide -> branche "else", inoffensive)
+// mais le require() lui-même, synchrone, a déjà posé module.exports avant ça.
+function obtenirExportsBootstrap() {
+  global.document = creerDocumentFactice();
+  global.window = { location: { search: '' } };
+  delete require.cache[require.resolve('./bootstrap.js')];
+  return require('./bootstrap.js');
+}
+
+describe('cheminLot — convention de nommage (même motif que generer-lot-fonda.js)', () => {
+  test('notion_id à points -> tirets, palier inchangé', () => {
+    const { cheminLot } = obtenirExportsBootstrap();
+    assert.equal(cheminLot('fr.comprendre-consigne', 'nI'), 'fonda/data/lots-fonda-calibration/fr-comprendre-consigne_nI.json');
+    assert.equal(cheminLot('maths.resolution-problemes', 'nF'), 'fonda/data/lots-fonda-calibration/maths-resolution-problemes_nF.json');
+  });
+});
+
+describe('adapterCarte — relecteur LU depuis la donnée, jamais déduit (décision Éric, chantier câblage)', () => {
+  test('lit lot.relecteur quand il est présent', () => {
+    const { adapterCarte } = obtenirExportsBootstrap();
+    const carte = adapterCarte(
+      { question: 'Q ?', profil_correction: 'exact', reponses_acceptees: ['R'] },
+      { relecteur: 'Justine Leblanc', matiere: 'Français' },
+    );
+    assert.equal(carte.relecteur, 'Justine Leblanc');
+  });
+
+  test('repli générique SANS nom quand lot.relecteur est absent — ne déduit JAMAIS de matiere', () => {
+    const { adapterCarte } = obtenirExportsBootstrap();
+    const carte = adapterCarte(
+      { question: 'Q ?', profil_correction: 'exact', reponses_acceptees: ['R'] },
+      { matiere: 'Mathématiques' }, // pas de champ relecteur — ne doit PAS produire "Éric Duchateau"
+    );
+    assert.equal(carte.relecteur, 'un professeur');
+  });
+
+  test('repli générique aussi si "lot" lui-même est absent/null', () => {
+    const { adapterCarte } = obtenirExportsBootstrap();
+    const carte = adapterCarte({ question: 'Q ?', profil_correction: 'exact', reponses_acceptees: ['R'] }, null);
+    assert.equal(carte.relecteur, 'un professeur');
+  });
+
+  test('transporte question/profil_correction/reponses_acceptees/unite tels quels', () => {
+    const { adapterCarte } = obtenirExportsBootstrap();
+    const carte = adapterCarte(
+      { question: 'Combien ?', profil_correction: 'numerique', reponses_acceptees: ['8 cm', '8'], unite: 'cm', numero: 1, contexte: 'x' },
+      { relecteur: 'Éric Duchateau' },
+    );
+    assert.equal(carte.question, 'Combien ?');
+    assert.equal(carte.profil_correction, 'numerique');
+    assert.deepEqual(carte.reponses_acceptees, ['8 cm', '8']);
+    assert.equal(carte.unite, 'cm');
+  });
+});
+
+describe('Page niveau -> lien "Voir un défi de démonstration"', () => {
+  test('le lien est présent et pointe vers ?page=carte&notion=fr.comprendre-consigne&palier=nI', async () => {
+    const calendrierVide = { version: 1, last_updated: '', semaines: [] };
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau', calendrier: calendrierVide });
+    const liens = (root.children || []).filter((c) => c && c.className === 'fonda-header__back');
+    const demo = liens.find((a) => a.textContent === 'Voir un défi de démonstration');
+    assert.ok(demo, 'lien de démonstration absent de la page niveau');
+    assert.match(demo.href, /\?fonda=1&page=carte&notion=fr\.comprendre-consigne&palier=nI$/);
+  });
+});
+
+describe('?page=carte — rendu réel d\'un paquet FONDA (plus de stub "contenu à venir")', () => {
+  test('notion ou palier manquant dans le lien : message clair, pas de crash', async () => {
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=carte', calendrier: CALENDRIER });
+    const texte = (root.textContent || root.children.map((c) => c.textContent).join('')).trim();
+    assert.match(texte, /notion ou palier manquant/i);
+  });
+
+  test('lot introuvable (fetch échoue) : message clair, pas de page blanche', async () => {
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=inconnue.xyz&palier=nI', calendrier: CALENDRIER });
+    const texte = (root.textContent || root.children.map((c) => c.textContent).join('')).trim();
+    assert.ok(texte.length > 0);
+    assert.doesNotMatch(texte, /contenu à venir/, 'le stub ne doit plus jamais apparaître');
+  });
+
+  test('paquet réel (fr.comprendre-consigne/nI, fichier committé) : carte 1 rendue avec son VRAI relecteur ("Justine Leblanc")', async () => {
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI', calendrier: CALENDRIER });
+    const texte = (root.textContent || '').trim() || root.children.map((c) => c.textContent).join(' ');
+    assert.match(texte, /Comprendre une consigne/, 'le titre du lot doit apparaître');
+    assert.match(texte, /Carte 1 \/ 6/, 'le compteur doit annoncer 6 cartes (lot réel committé)');
+    assert.doesNotMatch(texte, /contenu à venir/);
+  });
+
+  test('"Carte suivante" fait avancer le paquet jusqu\'à l\'écran de fin', async () => {
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI', calendrier: CALENDRIER });
+
+    function trouverBouton(el, texteBouton) {
+      if (!el || !el.children) return null;
+      for (const c of el.children) {
+        if (c && c.textContent === texteBouton) return c;
+        const trouve = trouverBouton(c, texteBouton);
+        if (trouve) return trouve;
+      }
+      return null;
+    }
+
+    // "Valider" (carte-reponse-produite.js) doit produire un résultat pour révéler
+    // "Carte suivante" — on la clique 6 fois (6 cartes dans ce lot réel) pour
+    // atteindre l'écran de fin, sans jamais planter.
+    for (let i = 0; i < 6; i += 1) {
+      const valider = trouverBouton(root, 'Valider');
+      assert.ok(valider, `bouton "Valider" absent à l'itération ${i}`);
+      valider.__click();
+      await new Promise((r) => setTimeout(r, 0));
+      const suivant = trouverBouton(root, 'Carte suivante →');
+      assert.ok(suivant, `bouton "Carte suivante" absent à l'itération ${i}`);
+      suivant.__click();
+      await new Promise((r) => setTimeout(r, 0));
+    }
+
+    const texteFin = (root.textContent || '').trim() || root.children.map((c) => c.textContent).join(' ');
+    assert.match(texteFin, /Paquet terminé — 6 carte\(s\) vue\(s\)/);
   });
 });

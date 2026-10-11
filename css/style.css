@@ -797,6 +797,10 @@ body[data-theme="fonda"] .navbar { display: none; }
 }
 .fonda-valider:disabled { opacity: .5; cursor: default; }
 
+/* "Carte suivante" (chantier câblage) : accent vert distinct de "Valider" (navy),
+   même logique que .next dans docs/box-fonda-design/demo-reference.html. */
+.fonda-carte-suivante { background: var(--fonda-green); color: #10371a; }
+
 .fonda-feedback {
   margin: 20px 0 0; border-radius: 13px; padding: 16px 18px 14px;
 }

@@ -7,16 +7,24 @@
 // Ce fichier est volontairement MINCE : toute la logique métier (génération de liens,
 // résolution d'un defi_id) vit dans fonda/engine/liens.js, pur et testé (18 tests,
 // node --test fonda/engine/liens.test.js). Ici, uniquement du fetch + du rendu DOM —
-// non testable en Node sans navigateur, donc NON COUVERT par la suite automatisée.
+// non testable en Node sans navigateur, donc NON COUVERT par la suite automatisée
+// pour la partie rendu (les fonctions pures — adapterCarte, cheminLot — le sont, via
+// module.exports en bas de fichier, même motif que js/config.js/js/app.js).
 // À smoke-tester manuellement avant tout usage réel (voir fonda/engine/README.md).
 //
-// Portée T4 (décision Éric) : le contenu réel des cartes d'un défi dépend de T6
-// (génération), qui n'existe pas encore — ce fichier résout le contexte d'un défi et
-// expose le point de branchement vers T2 (carte-reponse-produite.js) et T3
-// (evenements.js), mais n'essaie PAS de fetcher un vrai jeu de cartes. Quand T6
-// existera, remplacer le message "contenu à venir" de lancerDefi() par un vrai fetch
-// + FondaCarteReponseProduite.montrerCarteReponseProduite(...) — le reste (résolution
-// de contexte, émission d'événement) est déjà le bon branchement.
+// Chantier câblage (2026-10-11) : lancerDefi() fetche désormais un VRAI lot FONDA
+// commité (fonda/data/lots-fonda-calibration/, format box-select) et rend les cartes
+// une à une via fonda/engine/carte-reponse-produite.js (T2) — plus un stub "contenu à
+// venir". Dépendances (liens.js/correction.js/carte-reponse-produite.js) chargées
+// dynamiquement ici (elles ne l'étaient réellement nulle part avant : seuls les tests
+// les injectaient en faux globals — un vrai navigateur aurait planté sur
+// "window.FondaLiens is undefined"). Émission d'événement réel (T3,
+// evenements.js/n8n) volontairement HORS SCOPE : onResultat ne pilote que la
+// navigation interne (carte suivante), zéro donnée envoyée nulle part (G2/G3).
+// Le flux calendrier réel (renderDefi -> lancerDefi) reste bloqué sur calendar.json
+// vide (Moteur A, absent) — sans lien avec ce chantier. Le nouveau lien "défi de
+// démonstration" (page niveau) construit un contexte synthétique et appelle la MÊME
+// lancerDefi() : le jour où Moteur A existera, aucune retouche nécessaire ici.
 
 (function () {
   'use strict';
@@ -33,6 +41,37 @@
       document.body.appendChild(el);
     }
     return el;
+  }
+
+  // Chargement dynamique IDEMPOTENT d'un <script> — même motif que
+  // js/app.js::initFonda() pour bootstrap.js lui-même (zéro <script> statique tant
+  // qu'inutile). Idempotent : un appel répété (ou concurrent) pour la même src ne
+  // réinjecte jamais le script une seconde fois. Résout seulement après exécution
+  // (onload), jamais juste après l'insertion — l'ordre entre appels séquentiels
+  // (await) est donc garanti sans avoir besoin de script.async=false.
+  const scriptsCharges = new Set();
+  function chargerScript(src) {
+    if (scriptsCharges.has(src)) return Promise.resolve();
+    if (document.querySelector(`script[src="${src}"]`)) {
+      scriptsCharges.add(src);
+      return Promise.resolve();
+    }
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload = () => { scriptsCharges.add(src); resolve(); };
+      s.onerror = () => reject(new Error('fonda: chargement impossible de ' + src));
+      document.head.appendChild(s);
+    });
+  }
+
+  // Ordre important : correction.js AVANT carte-reponse-produite.js, qui lit
+  // window.FondaCorrection à l'évaluation du fichier (pas paresseusement, dans une
+  // fonction) — await séquentiel ci-dessous, pas Promise.all, pour le garantir.
+  async function chargerDependancesFonda() {
+    await chargerScript('fonda/engine/liens.js?v=1');
+    await chargerScript('fonda/engine/correction.js?v=1');
+    await chargerScript('fonda/engine/carte-reponse-produite.js?v=1');
   }
 
   // En-tête commun (lockup logo+signature + retour BOX) — thème sombre, posé par
@@ -100,6 +139,15 @@
 
   const NIVEAUX_DEFAUT = ['6e', '5e', '4e', '3e'];
 
+  // Paquet de démonstration (chantier câblage, 2026-10-11) : UN SEUL set validé,
+  // lu directement depuis le JSON commité (fonda/data/lots-fonda-calibration/),
+  // pas le catalogue Drive. Contourne volontairement le calendrier (vide, Moteur A
+  // absent) pour ce paquet fixe. Data-driven : ajouter d'autres notions/paliers plus
+  // tard = changer ces deux constantes (ou le lien ci-dessous), aucune logique à
+  // retoucher.
+  const DEMO_NOTION_ID = 'fr.comprendre-consigne';
+  const DEMO_PALIER = 'nI';
+
   // Un niveau n'est valide que s'il figure dans les 4 niveaux par défaut OU dans les
   // défis réellement programmés cette semaine — jamais une valeur URL arbitraire
   // (relecture Codex #6 : une valeur invalide ne doit jamais être persistée ni
@@ -163,6 +211,17 @@
     bloc.appendChild(grille);
 
     root.appendChild(bloc);
+
+    const demo = document.createElement('a');
+    demo.className = 'fonda-header__back';
+    const paramsDemo = new URLSearchParams();
+    paramsDemo.set('fonda', '1');
+    paramsDemo.set('page', 'carte');
+    paramsDemo.set('notion', DEMO_NOTION_ID);
+    paramsDemo.set('palier', DEMO_PALIER);
+    demo.href = `${base}?${paramsDemo.toString()}`;
+    demo.textContent = 'Voir un défi de démonstration';
+    root.appendChild(demo);
   }
 
   async function chargerJSON(chemin) {
@@ -286,22 +345,120 @@
     lancerDefi(resolu);
   }
 
-  // Point de branchement T2 (carte-reponse-produite.js) + T3 (evenements.js). Le
-  // contexte est déjà résolu et sûr (grp/notion_id/palier/set_id viennent du vrai
-  // calendrier) ; il ne manque QUE le contenu réel de la carte (T6). Quand T6 existera,
-  // remplacer afficherMessage(...) ci-dessous par un fetch du jeu + un appel à
-  // FondaCarteReponseProduite.montrerCarteReponseProduite(...), et dans son onResultat,
-  // appeler FondaEvenements.soumettreTentative({ ...contexte, reussite, scored, ... })
-  // exactement comme documenté dans fonda/engine/README.md.
+  // Chemin du lot FONDA commité pour (notionId, palier) — même convention de nommage
+  // que fonda/scripts/generer-lot-fonda.js (nomFichier). Pure, testable.
+  function cheminLot(notionId, palier) {
+    return `fonda/data/lots-fonda-calibration/${notionId.replace(/\./g, '-')}_${palier}.json`;
+  }
+
+  // Adapte une carte au format du lot (box-select + champs FONDA) vers la forme
+  // attendue par FondaCarteReponseProduite.montrerCarteReponseProduite(). Pure,
+  // testable (module.exports en bas de fichier).
+  //
+  // "relecteur" : lu UNIQUEMENT depuis lot.relecteur (champ de fichier ajouté au
+  // chantier câblage) — JAMAIS dérivé de matiere ni d'aucun autre champ. Décision
+  // Éric : le badge "relue et validée par X" est une affirmation de confiance G4
+  // montrée à l'élève, elle doit refléter un fait enregistré, pas une déduction
+  // (un raccourci matiere->nom produirait un badge mensonger dès qu'un lot serait
+  // relu par quelqu'un d'autre). Repli générique SANS nom si le champ est absent.
+  function adapterCarte(carteBrute, lot) {
+    return {
+      question: carteBrute.question,
+      profil_correction: carteBrute.profil_correction,
+      reponses_acceptees: carteBrute.reponses_acceptees,
+      unite: carteBrute.unite,
+      relecteur: (lot && lot.relecteur) || 'un professeur',
+    };
+  }
+
+  // Rendu d'un paquet de cartes, une à la fois, via le composant T2 — "Carte
+  // suivante" après chaque résultat, écran de fin en bout de paquet. `contexte.grp`
+  // optionnel (présent pour un vrai défi de classe résolu par calendrier, absent
+  // pour le paquet de démonstration).
+  function rendrePaquetCartes(root, lot, contexte) {
+    root.innerHTML = '';
+    root.appendChild(construireHeader());
+
+    const titre = document.createElement('h2');
+    titre.textContent = contexte && contexte.grp
+      ? `Défi ${lot.notion} — classe ${contexte.grp}`
+      : lot.notion;
+    root.appendChild(titre);
+
+    const compteur = document.createElement('p');
+    compteur.className = 'fonda-message';
+    root.appendChild(compteur);
+
+    const carteHost = document.createElement('div');
+    root.appendChild(carteHost);
+
+    const suivant = document.createElement('button');
+    suivant.type = 'button';
+    suivant.className = 'fonda-valider fonda-carte-suivante';
+    suivant.textContent = 'Carte suivante →';
+    suivant.style.display = 'none';
+    root.appendChild(suivant);
+
+    let index = 0;
+
+    function afficherFin() {
+      root.innerHTML = '';
+      root.appendChild(construireHeader());
+      const fin = document.createElement('p');
+      fin.className = 'fonda-message';
+      fin.textContent = `Paquet terminé — ${lot.cartes.length} carte(s) vue(s).`;
+      root.appendChild(fin);
+    }
+
+    function afficherCarteCourante() {
+      if (index >= lot.cartes.length) { afficherFin(); return; }
+      compteur.textContent = `Carte ${index + 1} / ${lot.cartes.length}`;
+      suivant.style.display = 'none';
+      const carteAdaptee = adapterCarte(lot.cartes[index], lot);
+      window.FondaCarteReponseProduite.montrerCarteReponseProduite(carteHost, carteAdaptee, {
+        // Navigation interne uniquement — AUCUN événement émis (T3/evenements.js,
+        // hors scope de ce chantier, cf. en-tête de fichier). G2/G3 intacts.
+        onResultat() { suivant.style.display = ''; },
+      });
+    }
+
+    suivant.addEventListener('click', () => { index += 1; afficherCarteCourante(); });
+    afficherCarteCourante();
+  }
+
+  // Point de branchement T2 (carte-reponse-produite.js). Le contexte est déjà résolu
+  // et sûr quand il vient du calendrier (grp/notion_id/palier viennent du vrai
+  // calendrier, cf. renderDefi) ; pour le paquet de démonstration, renderPageCarte()
+  // construit un contexte synthétique SANS grp. Échecs de chargement (dépendances ou
+  // fetch du lot) gérés visiblement, jamais une page blanche ni une exception muette.
   function lancerDefi(contexte) {
     const root = racineFonda();
-    afficherMessage(
-      root,
-      `Défi prêt pour la classe ${contexte.grp} (${contexte.notionId}) — contenu à venir.`,
-    );
+    chargerDependancesFonda()
+      .then(() => chargerJSON(cheminLot(contexte.notionId, contexte.palier)))
+      .then((lot) => { rendrePaquetCartes(root, lot, contexte); })
+      .catch(() => {
+        afficherMessage(root, 'Impossible de charger ce défi pour le moment — réessaie plus tard.');
+      });
+  }
+
+  // --- Paquet de démonstration (page niveau -> lien "Voir un défi de démo") --------
+
+  function renderPageCarte() {
+    const notionId = param('notion');
+    const palier = param('palier');
+    if (!notionId || !palier) {
+      afficherMessage(racineFonda(), 'Démonstration : notion ou palier manquant dans le lien.');
+      return;
+    }
+    lancerDefi({ grp: null, notionId, palier });
   }
 
   async function demarrer() {
+    // page=carte (paquet de démonstration) : AUCUN besoin de classes/referentiel/
+    // calendrier (court-circuite le Promise.all ci-dessous, qui ne sert qu'aux
+    // chemins liés au calendrier/classes).
+    if (param('page') === 'carte') { renderPageCarte(); return; }
+
     const [classes, referentiel, calendrier] = await Promise.all([
       chargerJSON('fonda/data/classes.json'),
       chargerJSON('fonda/data/referentiel.json'),
@@ -315,6 +472,12 @@
     } else {
       afficherMessage(racineFonda(), 'Mode Box-FONDA : ouvre un lien de défi ou ajoute ?page=niveau&niveau=6e.');
     }
+  }
+
+  // Fonctions pures exportées pour les tests Node (même motif que js/app.js) — le
+  // reste (rendu DOM, fetch) n'est pas exporté, non testable en Node sans navigateur.
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { cheminLot, adapterCarte };
   }
 
   demarrer().catch(() => afficherMessage(racineFonda(), 'Entraînement libre — données indisponibles pour le moment.'));
