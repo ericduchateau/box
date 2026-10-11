@@ -100,6 +100,31 @@
 
   const NIVEAUX_DEFAUT = ['6e', '5e', '4e', '3e'];
 
+  // Un niveau n'est valide que s'il figure dans les 4 niveaux par défaut OU dans les
+  // défis réellement programmés cette semaine — jamais une valeur URL arbitraire
+  // (relecture Codex #6 : une valeur invalide ne doit jamais être persistée ni
+  // utilisée pour chercher des défis).
+  function niveauEstValide(niveau, semaineEntry) {
+    if (NIVEAUX_DEFAUT.includes(niveau)) return true;
+    return !!(semaineEntry && Array.isArray(semaineEntry.entrees)
+      && semaineEntry.entrees.some((e) => e && e.niveau_cible === niveau));
+  }
+
+  // Lien de sortie du "niveau mémorisé" (relecture Codex #6) : sans lui, une fois un
+  // niveau choisi, rien ne permettait d'en choisir un autre (revenir à BOX puis
+  // recliquer le switch ramenait directement au même niveau, via localStorage).
+  function construireLienChangerNiveau(semaineParam) {
+    const lien = document.createElement('a');
+    lien.className = 'fonda-header__back';
+    const params = new URLSearchParams();
+    params.set('fonda', '1');
+    params.set('page', 'niveau');
+    if (semaineParam) params.set('semaine', semaineParam);
+    lien.href = `${window.location.pathname}?${params.toString()}`;
+    lien.textContent = 'Changer de niveau';
+    return lien;
+  }
+
   // Sélecteur de niveau — remplace l'ancien message d'erreur "Niveau manquant" :
   // le switch BOX->FONDA (App.goFonda()) atterrit ici tant qu'aucun niveau n'a
   // encore été choisi (localStorage vide). Niveaux proposés dérivés de la semaine
@@ -172,18 +197,29 @@
       ? trouverSemaineParNumero(calendrier, semaineParam.replace(/^.*?w/i, ''))
       : semaineCourante(calendrier, new Date());
 
-    // Pas de niveau connu : sélecteur (remplace l'ancien message d'erreur), pas une
-    // impasse — c'est la cible du switch BOX->FONDA tant que localStorage est vide.
-    if (!niveau) { rendreSelecteurNiveau(root, { semaineEntry, semaineParam }); return; }
+    // Pas de niveau connu, ou valeur invalide (relecture Codex #6) : sélecteur
+    // (remplace l'ancien message d'erreur), pas une impasse — c'est la cible du
+    // switch BOX->FONDA tant que localStorage est vide ou contient une valeur
+    // qui ne correspond plus à rien.
+    if (!niveau || !niveauEstValide(niveau, semaineEntry)) { rendreSelecteurNiveau(root, { semaineEntry, semaineParam }); return; }
 
-    // Niveau choisi : on le retient (persistance du choix, brief §5) pour que le
-    // switch BOX->FONDA y revienne directement la prochaine fois.
+    // Niveau choisi (et validé ci-dessus) : on le retient (persistance du choix,
+    // brief §5) pour que le switch BOX->FONDA y revienne directement la prochaine
+    // fois. Jamais une valeur non validée (cf. niveauEstValide ci-dessus).
     try { localStorage.setItem('box_fonda_niveau', niveau); } catch { /* repli silencieux, G2 */ }
 
-    if (!semaineEntry) { afficherMessage(root, 'Aucun défi programmé cette semaine.'); return; }
+    if (!semaineEntry) {
+      afficherMessage(root, 'Aucun défi programmé cette semaine.');
+      root.appendChild(construireLienChangerNiveau(semaineParam));
+      return;
+    }
 
     const entreesNiveau = (semaineEntry.entrees || []).filter((e) => e && e.niveau_cible === niveau);
-    if (entreesNiveau.length === 0) { afficherMessage(root, `Aucun défi programmé pour ${niveau} cette semaine.`); return; }
+    if (entreesNiveau.length === 0) {
+      afficherMessage(root, `Aucun défi programmé pour ${niveau} cette semaine.`);
+      root.appendChild(construireLienChangerNiveau(semaineParam));
+      return;
+    }
 
     const annee = String(new Date(semaineEntry.du + 'T00:00:00').getFullYear());
     const liens = window.FondaLiens.genererLiensNiveau({
@@ -193,6 +229,7 @@
 
     root.innerHTML = '';
     root.appendChild(construireHeader());
+    root.appendChild(construireLienChangerNiveau(semaineParam));
     const titre = document.createElement('h2');
     titre.textContent = `Défis ${niveau} — semaine ${semaineEntry.iso_week}`;
     root.appendChild(titre);

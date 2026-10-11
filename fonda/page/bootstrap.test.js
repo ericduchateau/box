@@ -220,4 +220,22 @@ describe('?page=niveau AVEC niveau -> comportement inchangé, plus la persistanc
     const liste = trouverParClasse(root, 'fonda-liens-niveau');
     assert.ok(liste, 'la page doit continuer de se rendre malgré le repli localStorage');
   });
+
+  test('un lien "Changer de niveau" est présent sur la liste de défis (relecture Codex #6 — plus d\'impasse une fois un niveau choisi)', async () => {
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau&niveau=6e&semaine=41', calendrier: CALENDRIER });
+    const liens = (root.children || []).filter((c) => c && c.className === 'fonda-header__back');
+    const lienChanger = liens.find((a) => a.textContent === 'Changer de niveau');
+    assert.ok(lienChanger, 'lien "Changer de niveau" absent');
+    assert.match(lienChanger.href, /\?fonda=1&page=niveau&semaine=41$/, 'le lien ne doit pas réutiliser le niveau actuel');
+  });
+
+  test('valeur de niveau invalide (ni niveau par défaut, ni défi programmé) : sélecteur affiché, AUCUNE écriture localStorage (relecture Codex #6)', async () => {
+    const ecritures = [];
+    global.localStorage = { getItem: () => null, setItem: (k, v) => ecritures.push([k, v]) };
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau&niveau=zzz&semaine=41', calendrier: CALENDRIER });
+    delete global.localStorage;
+    assert.deepEqual(ecritures, [], 'une valeur invalide ne doit jamais être persistée');
+    const bloc = trouverParClasse(root, 'fonda-niveau-picker');
+    assert.ok(bloc, 'une valeur invalide doit retomber sur le sélecteur, pas sur un résultat basé sur elle');
+  });
 });
