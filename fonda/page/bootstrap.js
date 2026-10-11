@@ -35,12 +35,98 @@
     return el;
   }
 
+  // En-tête commun (lockup logo+signature + retour BOX) — thème sombre, posé par
+  // css/style.css (.fonda-lockup/.fonda-sign/.fonda-header__back). Chantier visuel
+  // uniquement (docs/box-fonda-design/BRIEF.md) : navigation plein-rechargement,
+  // pas de repaint en place — cohérent avec App.goFonda() côté BOX.
+  function construireHeader() {
+    const header = document.createElement('div');
+    header.className = 'fonda-header';
+
+    const lockup = document.createElement('div');
+    lockup.className = 'fonda-lockup fonda-lockup--compact';
+    const logo = document.createElement('img');
+    logo.className = 'fonda-lockup__logo';
+    logo.src = 'img/box-logo.png';
+    logo.alt = 'BOX';
+    const sign = document.createElement('span');
+    sign.className = 'fonda-sign';
+    const trav = document.createElement('span');
+    trav.className = 'trav';
+    trav.textContent = 'À';
+    const fond1 = document.createElement('span');
+    fond1.className = 'fond';
+    fond1.textContent = 'FOND';
+    const fond2 = document.createElement('span');
+    fond2.className = 'fond';
+    fond2.textContent = 'FOND';
+    const card = document.createElement('span');
+    card.className = 'card';
+    card.textContent = 'A';
+    const bang = document.createElement('span');
+    bang.className = 'bang';
+    bang.textContent = '!';
+    sign.append(trav, fond1, fond2, card, bang);
+    lockup.append(logo, sign);
+
+    const retour = document.createElement('a');
+    retour.className = 'fonda-header__back';
+    retour.href = window.location.pathname;
+    retour.textContent = '← Retour à BOX';
+
+    header.append(lockup, retour);
+    return header;
+  }
+
   function afficherMessage(root, texte) {
     root.innerHTML = '';
+    root.appendChild(construireHeader());
     const p = document.createElement('p');
     p.className = 'fonda-message';
     p.textContent = texte;
     root.appendChild(p);
+  }
+
+  const NIVEAUX_DEFAUT = ['6e', '5e', '4e', '3e'];
+
+  // Sélecteur de niveau — remplace l'ancien message d'erreur "Niveau manquant" :
+  // le switch BOX->FONDA (App.goFonda()) atterrit ici tant qu'aucun niveau n'a
+  // encore été choisi (localStorage vide). Niveaux proposés dérivés de la semaine
+  // courante si elle a des défis programmés, sinon les 4 niveaux par défaut.
+  function rendreSelecteurNiveau(root, { semaineEntry, semaineParam } = {}) {
+    root.innerHTML = '';
+    root.appendChild(construireHeader());
+
+    const niveaux = semaineEntry && Array.isArray(semaineEntry.entrees) && semaineEntry.entrees.length > 0
+      ? Array.from(new Set(semaineEntry.entrees.map((e) => e && e.niveau_cible).filter(Boolean)))
+      : NIVEAUX_DEFAUT;
+
+    const bloc = document.createElement('div');
+    bloc.className = 'fonda-niveau-picker';
+
+    const titre = document.createElement('p');
+    titre.className = 'fonda-niveau-picker__titre';
+    titre.textContent = 'Quel niveau ?';
+    bloc.appendChild(titre);
+
+    const grille = document.createElement('div');
+    grille.className = 'fonda-niveau-picker__grille';
+    const base = window.location.pathname;
+    niveaux.forEach((niveau) => {
+      const lien = document.createElement('a');
+      lien.className = 'fonda-niveau-picker__bouton';
+      lien.textContent = niveau;
+      const params = new URLSearchParams();
+      params.set('fonda', '1');
+      params.set('page', 'niveau');
+      params.set('niveau', niveau);
+      if (semaineParam) params.set('semaine', semaineParam);
+      lien.href = `${base}?${params.toString()}`;
+      grille.appendChild(lien);
+    });
+    bloc.appendChild(grille);
+
+    root.appendChild(bloc);
   }
 
   async function chargerJSON(chemin) {
@@ -70,12 +156,18 @@
   function renderPageNiveau({ classes, calendrier }) {
     const root = racineFonda();
     const niveau = param('niveau');
-    if (!niveau) { afficherMessage(root, 'Niveau manquant (?niveau=6e, 5e, 4e ou 3e).'); return; }
-
     const semaineParam = param('semaine');
     const semaineEntry = semaineParam
       ? trouverSemaineParNumero(calendrier, semaineParam.replace(/^.*?w/i, ''))
       : semaineCourante(calendrier, new Date());
+
+    // Pas de niveau connu : sélecteur (remplace l'ancien message d'erreur), pas une
+    // impasse — c'est la cible du switch BOX->FONDA tant que localStorage est vide.
+    if (!niveau) { rendreSelecteurNiveau(root, { semaineEntry, semaineParam }); return; }
+
+    // Niveau choisi : on le retient (persistance du choix, brief §5) pour que le
+    // switch BOX->FONDA y revienne directement la prochaine fois.
+    try { localStorage.setItem('box_fonda_niveau', niveau); } catch { /* repli silencieux, G2 */ }
 
     if (!semaineEntry) { afficherMessage(root, 'Aucun défi programmé cette semaine.'); return; }
 
@@ -89,6 +181,7 @@
     });
 
     root.innerHTML = '';
+    root.appendChild(construireHeader());
     const titre = document.createElement('h2');
     titre.textContent = `Défis ${niveau} — semaine ${semaineEntry.iso_week}`;
     root.appendChild(titre);

@@ -13,21 +13,34 @@ const assert = require('node:assert/strict');
 
 // --- DOM factice minimal (zéro dépendance) ---------------------------------
 
+// textContent/innerHTML : derivés comme dans un vrai DOM — textContent d'un élément
+// AVEC enfants = concaténation des textContent des enfants (pas la valeur assignée
+// avant leur ajout, qui ne compte plus, exactement comme dans un navigateur réel) ;
+// textContent d'un élément SANS enfant (feuille, ex. une icône) = la valeur assignée
+// directement. innerHTML = '' (seul usage réel ici, dans rendreFeedback()) vide les
+// enfants, comme un vrai navigateur.
 function creerElementFactice(tag) {
   const el = {
     tagName: tag,
     _listeners: {},
     children: [],
+    _text: '',
     classList: { add() {}, remove() {} },
     dataset: {},
     attributes: {},
     value: '',
     disabled: false,
-    textContent: '',
-    innerHTML: '',
     autocomplete: '',
     type: '',
     className: '',
+    get textContent() {
+      return this.children.length > 0
+        ? this.children.map((c) => (c && typeof c.textContent === 'string') ? c.textContent : '').join('')
+        : this._text;
+    },
+    set textContent(v) { this._text = v; this.children = []; },
+    get innerHTML() { return this._text; },
+    set innerHTML(v) { this._text = v; this.children = []; },
     setAttribute(k, v) { this.attributes[k] = v; },
     addEventListener(evt, fn) { (this._listeners[evt] = this._listeners[evt] || []).push(fn); },
     append(...nodes) { this.children.push(...nodes); },
@@ -188,5 +201,129 @@ describe('carte-reponse-produite — contrat seconde chance (tentative/scored)',
 
     assert.equal(resultats.length, 1);
     assert.deepEqual(resultats[0], { statut: 'juste', reussite: true, tentative: 1, scored: true });
+  });
+});
+
+// --- Rendu enrichi (docs/box-fonda-design/BRIEF.md) : verdict/icône, réponse
+// attendue, réponses acceptées, profil, mention relecteur. Purement présentationnel
+// — ne touche à aucune des assertions ci-dessus sur statut/reussite/tentative/scored.
+
+function trouverEnfant(el, classe) {
+  return (el.children || []).find((c) => c && c.className === classe);
+}
+
+describe('carte-reponse-produite — rendu enrichi par profil (thème FONDA)', () => {
+  test('statut "juste" : icône ✓, verdict "Bonne réponse", profil affiché', () => {
+    const { input, bouton, container } = monterCarte({
+      question: 'Capitale de la France ?',
+      profil_correction: 'orthographe',
+      reponses_acceptees: ['Paris'],
+    });
+    input.value = 'Paris';
+    bouton.__click();
+
+    const feedback = container.children[3];
+    assert.equal(feedback.dataset.statut, 'juste');
+    const verdict = trouverEnfant(feedback, 'fonda-feedback__verdict');
+    assert.ok(verdict, 'bloc verdict absent');
+    const mark = trouverEnfant(verdict, 'fonda-feedback__mark');
+    assert.equal(mark.textContent, '✓');
+    assert.match(verdict.textContent, /Bonne réponse/);
+    const profil = trouverEnfant(feedback, 'fonda-feedback__profil');
+    assert.match(profil.textContent, /orthographe/);
+  });
+
+  test('statut "faux" : icône ✗, verdict "Pas tout à fait", réponse attendue affichée', () => {
+    const { input, bouton, container } = monterCarte({
+      question: 'Capitale de la France ?',
+      profil_correction: 'exact',
+      reponses_acceptees: ['Paris'],
+    });
+    input.value = 'Lyon';
+    bouton.__click();
+
+    const feedback = container.children[3];
+    const verdict = trouverEnfant(feedback, 'fonda-feedback__verdict');
+    const mark = trouverEnfant(verdict, 'fonda-feedback__mark');
+    assert.equal(mark.textContent, '✗');
+    assert.match(verdict.textContent, /Pas tout à fait/);
+    const detail = trouverEnfant(feedback, 'fonda-feedback__detail');
+    assert.match(detail.textContent, /Paris/, 'la réponse attendue doit apparaître');
+  });
+
+  test('"reponses_acceptees" avec plusieurs formes : bloc "aussi acceptées" listant chaque forme', () => {
+    const { input, bouton, container } = monterCarte({
+      question: 'Sens du mot ?',
+      profil_correction: 'sens',
+      reponses_acceptees: ['camper', 'passer la nuit dehors', 'dormir en plein air'],
+    });
+    input.value = 'camper';
+    bouton.__click();
+
+    const feedback = container.children[3];
+    const accept = trouverEnfant(feedback, 'fonda-feedback__accept');
+    assert.ok(accept, 'bloc "aussi acceptées" absent alors que plusieurs formes existent');
+    assert.match(accept.textContent, /passer la nuit dehors/);
+    assert.match(accept.textContent, /dormir en plein air/);
+  });
+
+  test('"reponses_acceptees" avec une seule forme : pas de bloc "aussi acceptées" (rien à lister)', () => {
+    const { input, bouton, container } = monterCarte({
+      question: 'Capitale de la France ?',
+      profil_correction: 'exact',
+      reponses_acceptees: ['Paris'],
+    });
+    input.value = 'Paris';
+    bouton.__click();
+
+    const feedback = container.children[3];
+    assert.equal(trouverEnfant(feedback, 'fonda-feedback__accept'), undefined);
+  });
+
+  test('"relecteur" fourni : mention "Fiche relue et validée par ..." affichée', () => {
+    const { input, bouton, container } = monterCarte({
+      question: 'Capitale de la France ?',
+      profil_correction: 'exact',
+      reponses_acceptees: ['Paris'],
+      relecteur: 'Justine Leblanc',
+    });
+    input.value = 'Paris';
+    bouton.__click();
+
+    const feedback = container.children[3];
+    const relecteur = trouverEnfant(feedback, 'fonda-feedback__relecteur');
+    assert.ok(relecteur, 'bloc relecteur absent alors que "relecteur" est fourni');
+    assert.match(relecteur.textContent, /Justine Leblanc/);
+    assert.match(relecteur.textContent, /relue et validée/);
+  });
+
+  test('"relecteur" absent (comportement par défaut, rétro-compatible) : aucun bloc relecteur', () => {
+    const { input, bouton, container } = monterCarte({
+      question: 'Capitale de la France ?',
+      profil_correction: 'exact',
+      reponses_acceptees: ['Paris'],
+    });
+    input.value = 'Paris';
+    bouton.__click();
+
+    const feedback = container.children[3];
+    assert.equal(trouverEnfant(feedback, 'fonda-feedback__relecteur'), undefined);
+  });
+
+  test('statut "presque" : icône ✓ (compte comme réussite en sens/numerique, jamais présenté comme un échec)', () => {
+    const { input, bouton, container } = monterCarte({
+      question: 'Quelle est la masse ?',
+      profil_correction: 'numerique',
+      reponses_acceptees: ['8'],
+      unite: 'cm',
+    });
+    input.value = '8'; // valeur correcte, unité omise -> presque
+    bouton.__click();
+
+    const feedback = container.children[3];
+    assert.equal(feedback.dataset.statut, 'presque');
+    const verdict = trouverEnfant(feedback, 'fonda-feedback__verdict');
+    const mark = trouverEnfant(verdict, 'fonda-feedback__mark');
+    assert.equal(mark.textContent, '✓', 'presque ne doit jamais afficher la croix rouge');
   });
 });

@@ -40,9 +40,25 @@ const App = {
   // Chargement conditionnel : zéro <script>/<link> statique pointant vers /fonda/
   // dans index.html, donc zéro requête réseau en plus quand le flag est absent.
   initFonda() {
+    document.body.dataset.theme = 'fonda';
     const s = document.createElement('script');
     s.src = 'fonda/page/bootstrap.js?v=1';
     document.head.appendChild(s);
+  },
+
+  // Switch BOX -> FONDA (navbar, thème clair) : navigation plein-rechargement vers
+  // ?fonda=1&page=niveau, jamais un repaint de l'écran courant (BOX reste 100%
+  // inchangé, cf. docs/box-fonda-design/BRIEF.md §1/§2). Réutilise le dernier niveau
+  // choisi (localStorage, écrit par fonda/page/bootstrap.js au retour vers BOX) s'il
+  // existe, sinon atterrit sur le sélecteur de niveau (zéro donnée inventée).
+  goFonda() {
+    let niveau = null;
+    try { niveau = localStorage.getItem('box_fonda_niveau'); } catch { niveau = null; }
+    const params = new URLSearchParams();
+    params.set('fonda', '1');
+    params.set('page', 'niveau');
+    if (niveau) params.set('niveau', niveau);
+    window.location.href = window.location.pathname + '?' + params.toString();
   },
 
   showScreen(name) {

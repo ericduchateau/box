@@ -127,3 +127,67 @@ describe('defi résolu avec succès -> page non blanche, contenu annoncé (pas d
     assert.ok(texte.includes('601'), 'le message devrait mentionner la classe résolue');
   });
 });
+
+// --- Sélecteur de niveau (chantier visuel feat/box-fonda-theme-switch) -------------
+// Remplace l'ancien message d'erreur "Niveau manquant" : c'est la cible du switch
+// BOX->FONDA (App.goFonda()) tant qu'aucun niveau n'est connu (localStorage vide).
+
+function trouverParClasse(el, classe) {
+  return (el.children || []).find((c) => c && c.className === classe);
+}
+
+describe('?page=niveau SANS niveau -> sélecteur de niveau (plus l\'ancien message d\'erreur)', () => {
+  test('affiche le bloc .fonda-niveau-picker avec un bouton par niveau par défaut (calendrier vide)', async () => {
+    const calendrierVide = { version: 1, last_updated: '', semaines: [] };
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau', calendrier: calendrierVide });
+    const bloc = trouverParClasse(root, 'fonda-niveau-picker');
+    assert.ok(bloc, 'bloc .fonda-niveau-picker absent');
+    const grille = trouverParClasse(bloc, 'fonda-niveau-picker__grille');
+    assert.ok(grille, 'grille de boutons absente');
+    const libelles = grille.children.map((a) => a.textContent);
+    assert.deepEqual(libelles, ['6e', '5e', '4e', '3e']);
+    grille.children.forEach((a) => {
+      assert.match(a.href, /\?fonda=1&page=niveau&niveau=\dE/i);
+    });
+  });
+
+  test('ancien message "Niveau manquant" disparu : aucun fonda-message en texte brut à sa place', async () => {
+    const calendrierVide = { version: 1, last_updated: '', semaines: [] };
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau', calendrier: calendrierVide });
+    const messages = (root.children || []).filter((c) => c && c.className === 'fonda-message');
+    assert.equal(messages.length, 0, 'le sélecteur remplace le message, il ne doit plus apparaître');
+  });
+
+  test('niveaux proposés dérivés de la semaine courante quand elle a des défis (pas les 4 par défaut à l\'aveugle)', async () => {
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau', calendrier: CALENDRIER });
+    const bloc = trouverParClasse(root, 'fonda-niveau-picker');
+    const grille = trouverParClasse(bloc, 'fonda-niveau-picker__grille');
+    const libelles = grille.children.map((a) => a.textContent);
+    assert.deepEqual(libelles, ['6e'], 'seul "6e" a un défi programmé dans CALENDRIER (SEMAINE_41)');
+  });
+
+  test('un en-tête (.fonda-lockup) est présent sur la page du sélecteur', async () => {
+    const calendrierVide = { version: 1, last_updated: '', semaines: [] };
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau', calendrier: calendrierVide });
+    const header = trouverParClasse(root, 'fonda-header');
+    assert.ok(header, 'en-tête .fonda-header absent');
+  });
+});
+
+describe('?page=niveau AVEC niveau -> comportement inchangé, plus la persistance du choix', () => {
+  test('niveau connu : écrit le niveau dans localStorage (pour que le switch BOX->FONDA le retrouve)', async () => {
+    const ecritures = [];
+    global.localStorage = { getItem: () => null, setItem: (k, v) => ecritures.push([k, v]) };
+    await demarrerBootstrap({ search: '?fonda=1&page=niveau&niveau=6e', calendrier: CALENDRIER });
+    delete global.localStorage;
+    assert.deepEqual(ecritures, [['box_fonda_niveau', '6e']]);
+  });
+
+  test('localStorage indisponible (navigation privée) : aucune exception, page toujours rendue', async () => {
+    global.localStorage = { getItem() { throw new Error('indisponible'); }, setItem() { throw new Error('indisponible'); } };
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau&niveau=6e', calendrier: CALENDRIER });
+    delete global.localStorage;
+    const liste = trouverParClasse(root, 'fonda-liens-niveau');
+    assert.ok(liste, 'la page doit continuer de se rendre malgré le repli localStorage');
+  });
+});

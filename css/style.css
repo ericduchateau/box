@@ -657,3 +657,177 @@ a:hover { text-decoration: underline; }
   .hero__logo-box { width: 160px; }
   .section-title { font-size: 18px; }
 }
+
+/* ============================================
+   BOX-FONDA — thème sombre + logo/signature + switch
+   Additif uniquement : aucun token ni sélecteur BOX existant ci-dessus n'est
+   modifié. Portée : surface #fondaRoot (fonda/page/bootstrap.js, chantier T4)
+   + composant carte-reponse-produite.js (T2) + bouton .fonda-switch (navbar BOX,
+   lui reste en thème clair — il navigue, ne repeint rien en place).
+   Référence : docs/box-fonda-design/BRIEF.md.
+   ============================================ */
+
+:root {
+  --fonda-navy:   #1D2F4A;
+  --fonda-navy-2: #17263B;
+  --fonda-ink:    #FDFDFD;
+  --fonda-mut:    #9BAEC9;
+  --fonda-line:   #31496B;
+  --fonda-green:  #5BAE6C;
+  --fonda-green-d:#3F8F50;
+  --fonda-amber:  #E0A43B;
+  --fonda-red:    #C8403A;
+  --fonda-card:      #FDFDFD;
+  --fonda-card-ink:  #20314A;
+}
+
+body[data-theme="fonda"] {
+  background: var(--fonda-navy);
+  color: var(--fonda-ink);
+}
+
+#fondaRoot {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 28px 18px 48px;
+  font-family: var(--font);
+}
+
+/* --- Lockup logo + signature (repris de docs/box-fonda-design/lockup-reference.html) --- */
+
+.fonda-lockup { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+.fonda-lockup--compact { gap: 10px; }
+.fonda-lockup .fonda-lockup__logo { height: 44px; width: auto; display: block; border-radius: 6px; }
+.fonda-sign {
+  font-family: 'Poppins', sans-serif; font-weight: 800; line-height: .98;
+  display: flex; align-items: center; gap: .02em; font-size: 20px;
+}
+.fonda-sign .trav { color: var(--fonda-green); margin-right: .16em; }
+.fonda-sign .fond { color: var(--fonda-ink); }
+.fonda-sign .card {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--fonda-ink); color: var(--fonda-navy); border-radius: .17em;
+  width: .9em; height: .9em; transform: rotate(-5deg);
+  box-shadow: 0 6px 14px rgba(0,0,0,.35); margin: 0 .03em;
+}
+.fonda-sign .bang { color: var(--fonda-green); margin-left: .08em; }
+
+.fonda-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 20px; flex-wrap: wrap; gap: 10px;
+}
+.fonda-header__back {
+  font-size: 13px; color: var(--fonda-mut); text-decoration: none; font-weight: 600;
+  border: 1px solid var(--fonda-line); border-radius: 999px; padding: 6px 14px;
+}
+.fonda-header__back:hover { color: var(--fonda-ink); border-color: var(--fonda-mut); }
+
+/* --- Switch (navbar BOX, thème clair — navigue vers ?fonda=1, ne repeint rien) --- */
+
+.fonda-switch {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--fonda-navy); color: var(--fonda-ink);
+  border: none; border-radius: 999px; padding: 7px 16px;
+  font-family: var(--font); font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.fonda-switch:hover { background: var(--fonda-navy-2); }
+
+/* --- Pages fonda/page/bootstrap.js : messages, listes de défis, sélecteur de niveau --- */
+
+.fonda-message {
+  color: var(--fonda-mut); font-size: 15px; line-height: 1.6;
+  background: var(--fonda-navy-2); border: 1px solid var(--fonda-line);
+  border-radius: 13px; padding: 18px 20px;
+}
+
+.fonda-niveau-picker { display: flex; flex-direction: column; gap: 14px; }
+.fonda-niveau-picker__titre { font-size: 15px; color: var(--fonda-mut); margin: 0; }
+.fonda-niveau-picker__grille { display: flex; flex-wrap: wrap; gap: 10px; }
+.fonda-niveau-picker__bouton {
+  display: inline-block; background: var(--fonda-navy-2); color: var(--fonda-ink);
+  border: 1px solid var(--fonda-line); border-radius: 12px; padding: 14px 22px;
+  font-family: var(--font); font-weight: 700; font-size: 16px; text-decoration: none;
+}
+.fonda-niveau-picker__bouton:hover { border-color: var(--fonda-mut); }
+
+.fonda-liens-niveau { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.fonda-lien-classe {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: var(--fonda-navy-2); border: 1px solid var(--fonda-line);
+  border-radius: 11px; padding: 12px 14px;
+}
+.fonda-lien-classe__grp { font-weight: 800; color: var(--fonda-ink); min-width: 48px; }
+.fonda-lien-classe__url { color: var(--fonda-mut); font-size: 13px; word-break: break-all; }
+.fonda-lien-classe button {
+  font-family: var(--font); font-weight: 700; font-size: 13px; cursor: pointer;
+  background: var(--fonda-green); color: #10371a; border: none; border-radius: 8px; padding: 6px 12px;
+}
+
+/* --- Carte réponse produite (T2, fonda/engine/carte-reponse-produite.js) --------- */
+/* Cible visuelle : docs/box-fonda-design/demo-reference.html (carte blanche sur navy). */
+
+.fonda-carte-reponse-produite {
+  background: var(--fonda-card); color: var(--fonda-card-ink);
+  border-radius: 18px; padding: 28px 28px 24px; box-shadow: 0 20px 50px rgba(0,0,0,.35);
+}
+.fonda-question { font-size: 21px; line-height: 1.42; font-weight: 500; margin: 0 0 20px; }
+.fonda-reponse-input {
+  width: 100%; font-family: var(--font); font-size: 17px; padding: 12px 14px;
+  border: 2px solid #D4DCE8; border-radius: 11px; color: var(--fonda-card-ink);
+  outline: none; box-sizing: border-box;
+}
+.fonda-reponse-input:focus { border-color: #3E73B5; }
+.fonda-valider {
+  margin-top: 12px; font-family: var(--font); font-weight: 700; font-size: 15px;
+  border: 0; border-radius: 11px; cursor: pointer; padding: 12px 20px;
+  background: var(--fonda-navy); color: #fff;
+}
+.fonda-valider:disabled { opacity: .5; cursor: default; }
+
+.fonda-feedback {
+  margin: 20px 0 0; border-radius: 13px; padding: 16px 18px 14px;
+}
+.fonda-feedback[data-statut="juste"],
+.fonda-feedback[data-statut="presque"] { background: #E9F5EC; border: 1px solid #BEE2C6; }
+.fonda-feedback[data-statut="faux"],
+.fonda-feedback[data-statut="carte_invalide"] { background: #FBEAE8; border: 1px solid #F0C9C5; }
+
+.fonda-feedback__verdict { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 16px; margin: 0; }
+.fonda-feedback[data-statut="juste"] .fonda-feedback__verdict,
+.fonda-feedback[data-statut="presque"] .fonda-feedback__verdict { color: var(--fonda-green-d); }
+.fonda-feedback[data-statut="faux"] .fonda-feedback__verdict,
+.fonda-feedback[data-statut="carte_invalide"] .fonda-feedback__verdict { color: #B23A33; }
+
+.fonda-feedback__mark {
+  width: 24px; height: 24px; border-radius: 50%; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 14px;
+}
+.fonda-feedback[data-statut="juste"] .fonda-feedback__mark,
+.fonda-feedback[data-statut="presque"] .fonda-feedback__mark { background: var(--fonda-green); }
+.fonda-feedback[data-statut="faux"] .fonda-feedback__mark,
+.fonda-feedback[data-statut="carte_invalide"] .fonda-feedback__mark { background: var(--fonda-red); }
+
+.fonda-feedback__detail { margin-top: 10px; font-size: 14.5px; line-height: 1.5; color: #2B3B55; }
+.fonda-feedback__detail .fonda-feedback__lbl { font-size: 11px; font-weight: 700; color: #5C7599; text-transform: uppercase; letter-spacing: .05em; display: block; margin-bottom: 2px; }
+
+.fonda-feedback__accept { margin-top: 8px; font-size: 13px; color: #5C7599; }
+.fonda-feedback__accept code {
+  background: #EEF2F7; border-radius: 5px; padding: 2px 7px; font-family: var(--font);
+  color: #2B3B55; margin: 4px 4px 0 0; display: inline-block;
+}
+
+.fonda-feedback__profil { margin-top: 10px; font-size: 12px; color: #5C7599; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; }
+
+.fonda-feedback__relecteur {
+  margin-top: 14px; display: flex; align-items: center; gap: 8px; font-size: 12.5px;
+  color: #5C7599; border-top: 1px solid #E6EBF1; padding-top: 12px;
+}
+.fonda-feedback__relecteur .fonda-feedback__chk { color: var(--fonda-green); font-weight: 800; }
+
+@media (max-width: 480px) {
+  #fondaRoot { padding: 18px 14px 36px; }
+  .fonda-sign { font-size: 16px; }
+  .fonda-carte-reponse-produite { padding: 20px 20px 18px; }
+  .fonda-question { font-size: 18px; }
+}

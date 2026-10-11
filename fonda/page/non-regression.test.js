@@ -147,10 +147,17 @@ describe('non-régression — index.html : zéro référence statique à /fonda/
     assert.equal(scripts.length, 3, `attendu exactement 3 <script src=...> statiques (chimney/config/app), trouvé ${scripts.length}`);
   });
 
-  test('index.html est BYTE-IDENTIQUE à main (comparaison git directe, pas une supposition)', () => {
-    const htmlMain = execFileSync('git', ['show', 'main:index.html'], { cwd: REPO_ROOT, encoding: 'utf-8' });
-    const htmlActuel = fs.readFileSync(INDEX_HTML_PATH, 'utf-8');
-    assert.equal(htmlActuel, htmlMain);
+  // L'invariant "byte-identique à main" (T4) est volontairement levé par le chantier
+  // feat/box-fonda-theme-switch (docs/box-fonda-design/BRIEF.md) : le switch BOX<->FONDA
+  // est un ajout visuel PERMANENT et VOULU dans la navbar, visible même flag OFF — ce
+  // n'est plus "zéro élément FONDA ajouté", c'est désormais "zéro élément FONDA ajouté
+  // EN DEHORS du bouton switch lui-même, et toujours zéro requête fonda/ statique".
+  // On remplace la comparaison stricte par les invariants qui restent réellement vrais.
+  test('un seul bouton .fonda-switch dans la navbar — aucun autre élément FONDA statique dans le HTML', () => {
+    const html = fs.readFileSync(INDEX_HTML_PATH, 'utf-8');
+    const switches = html.match(/class="fonda-switch"/g) || [];
+    assert.equal(switches.length, 1, 'exactement un bouton .fonda-switch attendu dans la navbar');
+    assert.doesNotMatch(html, /id="fondaRoot"/, 'fondaRoot est injecté par bootstrap.js, jamais statique dans le HTML');
   });
 });
 
