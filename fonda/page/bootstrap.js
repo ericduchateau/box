@@ -49,14 +49,23 @@
     logo.className = 'fonda-lockup__logo';
     logo.src = 'img/box-logo.png';
     logo.alt = 'BOX';
+    // Deux lignes, structure EXACTE du lockup de référence (relecture Codex #10) :
+    // l1 "À FOND", l2 "FOND[A]!" — jamais fusionnées sur une seule ligne.
     const sign = document.createElement('span');
     sign.className = 'fonda-sign';
+
+    const l1 = document.createElement('span');
+    l1.className = 'l1';
     const trav = document.createElement('span');
     trav.className = 'trav';
     trav.textContent = 'À';
     const fond1 = document.createElement('span');
     fond1.className = 'fond';
     fond1.textContent = 'FOND';
+    l1.append(trav, fond1);
+
+    const l2 = document.createElement('span');
+    l2.className = 'l2';
     const fond2 = document.createElement('span');
     fond2.className = 'fond';
     fond2.textContent = 'FOND';
@@ -66,7 +75,9 @@
     const bang = document.createElement('span');
     bang.className = 'bang';
     bang.textContent = '!';
-    sign.append(trav, fond1, fond2, card, bang);
+    l2.append(fond2, card, bang);
+
+    sign.append(l1, l2);
     lockup.append(logo, sign);
 
     const retour = document.createElement('a');

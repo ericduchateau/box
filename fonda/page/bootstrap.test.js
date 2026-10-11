@@ -25,11 +25,23 @@ const CALENDRIER = { version: 1, last_updated: '2026-10-05', semaines: [SEMAINE_
 
 // --- DOM/fetch factices (zéro dépendance) -----------------------------------------
 
+// textContent agrège récursivement depuis les enfants, comme un vrai DOM (nécessaire
+// pour vérifier le texte de la signature à deux lignes, relecture Codex #10 — voir
+// carte-reponse-produite.test.js pour le même motif).
 function creerElementFactice() {
   return {
-    innerHTML: '', textContent: '', className: '', href: '',
+    className: '', href: '',
     children: [],
+    _text: '',
     classList: { add() {}, remove() {} },
+    get textContent() {
+      return this.children.length > 0
+        ? this.children.map((c) => (c && typeof c.textContent === 'string') ? c.textContent : '').join('')
+        : this._text;
+    },
+    set textContent(v) { this._text = v; this.children = []; },
+    get innerHTML() { return this._text; },
+    set innerHTML(v) { this._text = v; this.children = []; },
     append(...nodes) { this.children.push(...nodes); },
     appendChild(n) { this.children.push(n); return n; },
     addEventListener() {},
@@ -174,6 +186,20 @@ describe('?page=niveau SANS niveau -> sélecteur de niveau (plus l\'ancien messa
     const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau', calendrier: calendrierVide });
     const header = trouverParClasse(root, 'fonda-header');
     assert.ok(header, 'en-tête .fonda-header absent');
+  });
+
+  test('la signature est en DEUX lignes distinctes "À FOND" / "FOND[A]!" (relecture Codex #10 — jamais fusionnées sur une seule ligne)', async () => {
+    const calendrierVide = { version: 1, last_updated: '', semaines: [] };
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau', calendrier: calendrierVide });
+    const header = trouverParClasse(root, 'fonda-header');
+    const lockup = trouverParClasse(header, 'fonda-lockup fonda-lockup--compact');
+    const sign = (lockup.children || []).find((c) => c && c.className === 'fonda-sign');
+    assert.ok(sign, 'span .fonda-sign absent');
+    const l1 = trouverParClasse(sign, 'l1');
+    const l2 = trouverParClasse(sign, 'l2');
+    assert.ok(l1 && l2, 'les deux lignes l1/l2 doivent exister séparément');
+    assert.equal(l1.textContent, 'ÀFOND');
+    assert.equal(l2.textContent, 'FONDA!');
   });
 });
 
