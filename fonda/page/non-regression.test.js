@@ -198,6 +198,31 @@ describe('non-régression — index.html : zéro référence statique à /fonda/
     assert.equal(switches.length, 1, 'exactement un bouton .fonda-switch attendu dans la navbar');
     assert.doesNotMatch(html, /id="fondaRoot"/, 'fondaRoot est injecté par bootstrap.js, jamais statique dans le HTML');
   });
+
+  // Relecture Codex #9 : les invariants ci-dessus (comptage de classes/scripts) ne
+  // protègent ni le reste du HTML, ni un changement involontaire ailleurs dans le
+  // fichier. Comparaison LIGNE À LIGNE contre `design` : la SEULE différence
+  // autorisée est l'ajout du bouton .fonda-switch — tout le reste doit être
+  // strictement identique (le lien Google Fonts y compris, Poppins étant chargé
+  // dynamiquement en mode FONDA, cf. js/app.js::initFonda()).
+  test('index.html ne diffère de design QUE par l\'ajout du bouton .fonda-switch — comparaison ligne à ligne', () => {
+    const htmlDesign = execFileSync('git', ['show', 'design:index.html'], { cwd: REPO_ROOT, encoding: 'utf-8' }).split('\n');
+    const htmlActuel = fs.readFileSync(INDEX_HTML_PATH, 'utf-8').split('\n');
+
+    assert.equal(htmlActuel.length, htmlDesign.length + 1, 'une seule ligne doit avoir été ajoutée par rapport à design');
+
+    let ligneAjoutee = null;
+    let decalage = 0;
+    for (let i = 0; i < htmlActuel.length; i += 1) {
+      const ligneDesign = htmlDesign[i - decalage];
+      if (htmlActuel[i] === ligneDesign) continue;
+      assert.equal(ligneAjoutee, null, `plus d'une ligne diffère de design (déjà trouvé : "${ligneAjoutee}")`);
+      ligneAjoutee = htmlActuel[i];
+      decalage = 1;
+    }
+    assert.ok(ligneAjoutee, 'aucune ligne différente trouvée — le switch a-t-il disparu ?');
+    assert.match(ligneAjoutee.trim(), /^<button class="fonda-switch" onclick="App\.goFonda\(\)" type="button">Mode fondamentaux<\/button>$/);
+  });
 });
 
 // --- Exécute init() sur une source app.js donnée (texte), via vm (pas require()) ---
