@@ -39,10 +39,33 @@ const App = {
 
   // Chargement conditionnel : zéro <script>/<link> statique pointant vers /fonda/
   // dans index.html, donc zéro requête réseau en plus quand le flag est absent.
+  // Poppins (signature FONDA uniquement) injecté ici pour la même raison (relecture
+  // Codex #7) : BOX clair n'a jamais eu besoin de cette police, le lien statique
+  // dans <head> l'aurait chargée sur CHAQUE page BOX, flag absent ou pas.
   initFonda() {
+    document.body.dataset.theme = 'fonda';
+    const font = document.createElement('link');
+    font.rel = 'stylesheet';
+    font.href = 'https://fonts.googleapis.com/css2?family=Poppins:wght@700;800&display=swap';
+    document.head.appendChild(font);
     const s = document.createElement('script');
     s.src = 'fonda/page/bootstrap.js?v=1';
     document.head.appendChild(s);
+  },
+
+  // Switch BOX -> FONDA (navbar, thème clair) : navigation plein-rechargement vers
+  // ?fonda=1&page=niveau, jamais un repaint de l'écran courant (BOX reste 100%
+  // inchangé, cf. docs/box-fonda-design/BRIEF.md §1/§2). Réutilise le dernier niveau
+  // choisi (localStorage, écrit par fonda/page/bootstrap.js au retour vers BOX) s'il
+  // existe, sinon atterrit sur le sélecteur de niveau (zéro donnée inventée).
+  goFonda() {
+    let niveau = null;
+    try { niveau = localStorage.getItem('box_fonda_niveau'); } catch { niveau = null; }
+    const params = new URLSearchParams();
+    params.set('fonda', '1');
+    params.set('page', 'niveau');
+    if (niveau) params.set('niveau', niveau);
+    window.location.href = window.location.pathname + '?' + params.toString();
   },
 
   showScreen(name) {
@@ -59,6 +82,15 @@ const App = {
   goHome() {
     this.currentSet = null; this.isFlipped = false;
     if (this.timerInterval) { clearInterval(this.timerInterval); this.timerInterval = null; }
+    // Isolation défensive FONDA -> BOX (relecture Codex #3) : la navbar BOX est
+    // masquée en thème FONDA (css/style.css, body[data-theme="fonda"] .navbar), donc
+    // ce chemin n'est normalement plus cliquable depuis la page FONDA — mais si on y
+    // revient quand même (historique navigateur, futur appel direct), on nettoie le
+    // thème et le #fondaRoot injecté plutôt que de laisser les deux rendus se
+    // chevaucher.
+    document.body.dataset.theme = '';
+    const fondaRoot = document.getElementById('fondaRoot');
+    if (fondaRoot) fondaRoot.remove();
     window.history.pushState({}, '', window.location.pathname);
     this.loadCatalogue();
   },

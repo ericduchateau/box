@@ -25,11 +25,23 @@ const CALENDRIER = { version: 1, last_updated: '2026-10-05', semaines: [SEMAINE_
 
 // --- DOM/fetch factices (zéro dépendance) -----------------------------------------
 
+// textContent agrège récursivement depuis les enfants, comme un vrai DOM (nécessaire
+// pour vérifier le texte de la signature à deux lignes, relecture Codex #10 — voir
+// carte-reponse-produite.test.js pour le même motif).
 function creerElementFactice() {
   return {
-    innerHTML: '', textContent: '', className: '', href: '',
+    className: '', href: '',
     children: [],
+    _text: '',
     classList: { add() {}, remove() {} },
+    get textContent() {
+      return this.children.length > 0
+        ? this.children.map((c) => (c && typeof c.textContent === 'string') ? c.textContent : '').join('')
+        : this._text;
+    },
+    set textContent(v) { this._text = v; this.children = []; },
+    get innerHTML() { return this._text; },
+    set innerHTML(v) { this._text = v; this.children = []; },
     append(...nodes) { this.children.push(...nodes); },
     appendChild(n) { this.children.push(n); return n; },
     addEventListener() {},
@@ -125,5 +137,105 @@ describe('defi résolu avec succès -> page non blanche, contenu annoncé (pas d
     const texte = (root.textContent || root.children.map((c) => c.textContent).join('')).trim();
     assert.ok(texte.length > 0);
     assert.ok(texte.includes('601'), 'le message devrait mentionner la classe résolue');
+  });
+});
+
+// --- Sélecteur de niveau (chantier visuel feat/box-fonda-theme-switch) -------------
+// Remplace l'ancien message d'erreur "Niveau manquant" : c'est la cible du switch
+// BOX->FONDA (App.goFonda()) tant qu'aucun niveau n'est connu (localStorage vide).
+
+function trouverParClasse(el, classe) {
+  return (el.children || []).find((c) => c && c.className === classe);
+}
+
+describe('?page=niveau SANS niveau -> sélecteur de niveau (plus l\'ancien message d\'erreur)', () => {
+  test('affiche le bloc .fonda-niveau-picker avec un bouton par niveau par défaut (calendrier vide)', async () => {
+    const calendrierVide = { version: 1, last_updated: '', semaines: [] };
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau', calendrier: calendrierVide });
+    const bloc = trouverParClasse(root, 'fonda-niveau-picker');
+    assert.ok(bloc, 'bloc .fonda-niveau-picker absent');
+    const grille = trouverParClasse(bloc, 'fonda-niveau-picker__grille');
+    assert.ok(grille, 'grille de boutons absente');
+    const libelles = grille.children.map((a) => a.textContent);
+    assert.deepEqual(libelles, ['6e', '5e', '4e', '3e']);
+    grille.children.forEach((a) => {
+      assert.match(a.href, /\?fonda=1&page=niveau&niveau=\dE/i);
+    });
+  });
+
+  test('ancien message "Niveau manquant" disparu : aucun fonda-message en texte brut à sa place', async () => {
+    const calendrierVide = { version: 1, last_updated: '', semaines: [] };
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau', calendrier: calendrierVide });
+    const messages = (root.children || []).filter((c) => c && c.className === 'fonda-message');
+    assert.equal(messages.length, 0, 'le sélecteur remplace le message, il ne doit plus apparaître');
+  });
+
+  test('niveaux proposés dérivés de la semaine courante quand elle a des défis (pas les 4 par défaut à l\'aveugle)', async () => {
+    // &semaine=41 : cible explicitement SEMAINE_41 plutôt que de compter sur
+    // new Date() pour tomber dans sa plage (2026-10-05..11) — sans ça, ce test
+    // casse tout seul le jour où il tourne hors de cette fenêtre (relecture Codex).
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau&semaine=41', calendrier: CALENDRIER });
+    const bloc = trouverParClasse(root, 'fonda-niveau-picker');
+    const grille = trouverParClasse(bloc, 'fonda-niveau-picker__grille');
+    const libelles = grille.children.map((a) => a.textContent);
+    assert.deepEqual(libelles, ['6e'], 'seul "6e" a un défi programmé dans CALENDRIER (SEMAINE_41)');
+  });
+
+  test('un en-tête (.fonda-lockup) est présent sur la page du sélecteur', async () => {
+    const calendrierVide = { version: 1, last_updated: '', semaines: [] };
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau', calendrier: calendrierVide });
+    const header = trouverParClasse(root, 'fonda-header');
+    assert.ok(header, 'en-tête .fonda-header absent');
+  });
+
+  test('la signature est en DEUX lignes distinctes "À FOND" / "FOND[A]!" (relecture Codex #10 — jamais fusionnées sur une seule ligne)', async () => {
+    const calendrierVide = { version: 1, last_updated: '', semaines: [] };
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau', calendrier: calendrierVide });
+    const header = trouverParClasse(root, 'fonda-header');
+    const lockup = trouverParClasse(header, 'fonda-lockup fonda-lockup--compact');
+    const sign = (lockup.children || []).find((c) => c && c.className === 'fonda-sign');
+    assert.ok(sign, 'span .fonda-sign absent');
+    const l1 = trouverParClasse(sign, 'l1');
+    const l2 = trouverParClasse(sign, 'l2');
+    assert.ok(l1 && l2, 'les deux lignes l1/l2 doivent exister séparément');
+    assert.equal(l1.textContent, 'ÀFOND');
+    assert.equal(l2.textContent, 'FONDA!');
+  });
+});
+
+describe('?page=niveau AVEC niveau -> comportement inchangé, plus la persistance du choix', () => {
+  test('niveau connu : écrit le niveau dans localStorage (pour que le switch BOX->FONDA le retrouve)', async () => {
+    const ecritures = [];
+    global.localStorage = { getItem: () => null, setItem: (k, v) => ecritures.push([k, v]) };
+    await demarrerBootstrap({ search: '?fonda=1&page=niveau&niveau=6e', calendrier: CALENDRIER });
+    delete global.localStorage;
+    assert.deepEqual(ecritures, [['box_fonda_niveau', '6e']]);
+  });
+
+  test('localStorage indisponible (navigation privée) : aucune exception, page toujours rendue', async () => {
+    global.localStorage = { getItem() { throw new Error('indisponible'); }, setItem() { throw new Error('indisponible'); } };
+    // &semaine=41 : même raison que ci-dessus, pas de dépendance à new Date().
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau&niveau=6e&semaine=41', calendrier: CALENDRIER });
+    delete global.localStorage;
+    const liste = trouverParClasse(root, 'fonda-liens-niveau');
+    assert.ok(liste, 'la page doit continuer de se rendre malgré le repli localStorage');
+  });
+
+  test('un lien "Changer de niveau" est présent sur la liste de défis (relecture Codex #6 — plus d\'impasse une fois un niveau choisi)', async () => {
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau&niveau=6e&semaine=41', calendrier: CALENDRIER });
+    const liens = (root.children || []).filter((c) => c && c.className === 'fonda-header__back');
+    const lienChanger = liens.find((a) => a.textContent === 'Changer de niveau');
+    assert.ok(lienChanger, 'lien "Changer de niveau" absent');
+    assert.match(lienChanger.href, /\?fonda=1&page=niveau&semaine=41$/, 'le lien ne doit pas réutiliser le niveau actuel');
+  });
+
+  test('valeur de niveau invalide (ni niveau par défaut, ni défi programmé) : sélecteur affiché, AUCUNE écriture localStorage (relecture Codex #6)', async () => {
+    const ecritures = [];
+    global.localStorage = { getItem: () => null, setItem: (k, v) => ecritures.push([k, v]) };
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau&niveau=zzz&semaine=41', calendrier: CALENDRIER });
+    delete global.localStorage;
+    assert.deepEqual(ecritures, [], 'une valeur invalide ne doit jamais être persistée');
+    const bloc = trouverParClasse(root, 'fonda-niveau-picker');
+    assert.ok(bloc, 'une valeur invalide doit retomber sur le sélecteur, pas sur un résultat basé sur elle');
   });
 });

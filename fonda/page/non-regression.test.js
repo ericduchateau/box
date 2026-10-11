@@ -117,7 +117,7 @@ describe('non-régression — flag OFF : exactement le comportement d\'avant T4'
   });
 });
 
-describe('non-régression — flag ON : le chemin normal n\'est JAMAIS exécuté, un seul script est injecté', () => {
+describe('non-régression — flag ON : le chemin normal n\'est JAMAIS exécuté, un seul script + une police injectés', () => {
   test('?fonda=1 déclenche initFonda() et RIEN du chemin normal', () => {
     const { App, document } = chargerAppAvecFlag('?fonda=1');
     const appels = [];
@@ -128,9 +128,48 @@ describe('non-régression — flag ON : le chemin normal n\'est JAMAIS exécuté
     App.showScreen = () => appels.push('showScreen');
     App.init();
     assert.deepEqual(appels, [], 'aucune fonction du chemin normal ne doit être appelée');
-    assert.equal(document.head.children.length, 1);
-    assert.equal(document.head.children[0].tagName, 'script');
-    assert.ok(document.head.children[0].src.startsWith('fonda/'), 'le script injecté doit venir de /fonda/');
+    // 2 éléments injectés dans <head>, tous deux spécifiques à FONDA (relecture
+    // Codex #7 : Poppins ne doit JAMAIS être chargé sans ?fonda=1, donc injecté ici
+    // plutôt que statiquement dans index.html).
+    assert.equal(document.head.children.length, 2);
+    assert.equal(document.head.children[0].tagName, 'link');
+    assert.match(document.head.children[0].href, /fonts\.googleapis\.com.*Poppins/);
+    assert.equal(document.head.children[1].tagName, 'script');
+    assert.ok(document.head.children[1].src.startsWith('fonda/'), 'le script injecté doit venir de /fonda/');
+  });
+});
+
+describe('App.goHome() — isolation défensive FONDA -> BOX (relecture Codex #3)', () => {
+  test('nettoie data-theme et retire #fondaRoot, même si on y revient malgré la navbar masquée en CSS', () => {
+    const { App, document } = chargerAppAvecFlag('?fonda=1');
+    global.window.history = { pushState() {} };
+    global.window.location.pathname = '/box/index.html';
+    App.loadCatalogue = () => {};
+
+    document.body.dataset.theme = 'fonda';
+    let retire = false;
+    const fondaRootFactice = { remove: () => { retire = true; } };
+    document.getElementById = (id) => (id === 'fondaRoot' ? fondaRootFactice : null);
+
+    App.goHome();
+
+    assert.equal(document.body.dataset.theme, '', 'data-theme doit être nettoyé par goHome()');
+    assert.equal(retire, true, '#fondaRoot doit être retiré par goHome()');
+  });
+
+  test('aucune exception si #fondaRoot n\'existe pas (chemin BOX normal, cas le plus fréquent)', () => {
+    const { App, document } = chargerAppAvecFlag('');
+    global.window.history = { pushState() {} };
+    global.window.location.pathname = '/box/index.html';
+    App.loadCatalogue = () => {};
+    document.getElementById = () => null;
+
+    assert.doesNotThrow(() => App.goHome());
+  });
+
+  test('la navbar BOX est masquée en thème FONDA (règle CSS déclarative, défense en profondeur avec le nettoyage JS ci-dessus)', () => {
+    const css = fs.readFileSync(path.join(REPO_ROOT, 'css', 'style.css'), 'utf-8');
+    assert.match(css, /body\[data-theme="fonda"\]\s*\.navbar\s*\{\s*display:\s*none/);
   });
 });
 
@@ -147,10 +186,42 @@ describe('non-régression — index.html : zéro référence statique à /fonda/
     assert.equal(scripts.length, 3, `attendu exactement 3 <script src=...> statiques (chimney/config/app), trouvé ${scripts.length}`);
   });
 
-  test('index.html est BYTE-IDENTIQUE à main (comparaison git directe, pas une supposition)', () => {
-    const htmlMain = execFileSync('git', ['show', 'main:index.html'], { cwd: REPO_ROOT, encoding: 'utf-8' });
-    const htmlActuel = fs.readFileSync(INDEX_HTML_PATH, 'utf-8');
-    assert.equal(htmlActuel, htmlMain);
+  // L'invariant "byte-identique à main" (T4) est volontairement levé par le chantier
+  // feat/box-fonda-theme-switch (docs/box-fonda-design/BRIEF.md) : le switch BOX<->FONDA
+  // est un ajout visuel PERMANENT et VOULU dans la navbar, visible même flag OFF — ce
+  // n'est plus "zéro élément FONDA ajouté", c'est désormais "zéro élément FONDA ajouté
+  // EN DEHORS du bouton switch lui-même, et toujours zéro requête fonda/ statique".
+  // On remplace la comparaison stricte par les invariants qui restent réellement vrais.
+  test('un seul bouton .fonda-switch dans la navbar — aucun autre élément FONDA statique dans le HTML', () => {
+    const html = fs.readFileSync(INDEX_HTML_PATH, 'utf-8');
+    const switches = html.match(/class="fonda-switch"/g) || [];
+    assert.equal(switches.length, 1, 'exactement un bouton .fonda-switch attendu dans la navbar');
+    assert.doesNotMatch(html, /id="fondaRoot"/, 'fondaRoot est injecté par bootstrap.js, jamais statique dans le HTML');
+  });
+
+  // Relecture Codex #9 : les invariants ci-dessus (comptage de classes/scripts) ne
+  // protègent ni le reste du HTML, ni un changement involontaire ailleurs dans le
+  // fichier. Comparaison LIGNE À LIGNE contre `design` : la SEULE différence
+  // autorisée est l'ajout du bouton .fonda-switch — tout le reste doit être
+  // strictement identique (le lien Google Fonts y compris, Poppins étant chargé
+  // dynamiquement en mode FONDA, cf. js/app.js::initFonda()).
+  test('index.html ne diffère de design QUE par l\'ajout du bouton .fonda-switch — comparaison ligne à ligne', () => {
+    const htmlDesign = execFileSync('git', ['show', 'design:index.html'], { cwd: REPO_ROOT, encoding: 'utf-8' }).split('\n');
+    const htmlActuel = fs.readFileSync(INDEX_HTML_PATH, 'utf-8').split('\n');
+
+    assert.equal(htmlActuel.length, htmlDesign.length + 1, 'une seule ligne doit avoir été ajoutée par rapport à design');
+
+    let ligneAjoutee = null;
+    let decalage = 0;
+    for (let i = 0; i < htmlActuel.length; i += 1) {
+      const ligneDesign = htmlDesign[i - decalage];
+      if (htmlActuel[i] === ligneDesign) continue;
+      assert.equal(ligneAjoutee, null, `plus d'une ligne diffère de design (déjà trouvé : "${ligneAjoutee}")`);
+      ligneAjoutee = htmlActuel[i];
+      decalage = 1;
+    }
+    assert.ok(ligneAjoutee, 'aucune ligne différente trouvée — le switch a-t-il disparu ?');
+    assert.match(ligneAjoutee.trim(), /^<button class="fonda-switch" onclick="App\.goFonda\(\)" type="button">Mode fondamentaux<\/button>$/);
   });
 });
 
