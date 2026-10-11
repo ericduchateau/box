@@ -7,7 +7,7 @@
   "prof_email": "duchateauphysiquechimie@gmail.com",
   "code_suppression": "SUP-MWCOUTWZ",
   "date_creation": "2026-10-11",
-  "nb_cartes": 5,
+  "nb_cartes": 6,
   "source": "fonda-seed",
   "type": "fonda",
   "revue_carte_par_carte": false,
@@ -95,6 +95,23 @@
       "contexte": "train-arret-duree-trajet",
       "set_id": "set_fonda_grandeurs-mesures_nF_01",
       "item_id": "it05",
+      "notion_id": "maths.grandeurs-mesures"
+    },
+    {
+      "numero": 6,
+      "question": "Une pompe de chantier, qui coûte 450 €, remplit une citerne de 5 400 L à un débit constant de 90 L par minute. Combien de temps faut-il, en heures, pour remplir complètement la citerne ?",
+      "reponse": "1 h",
+      "difficulte": "difficile",
+      "palier": "nF",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "1 h",
+        "1"
+      ],
+      "unite": "h",
+      "contexte": "pompe-citerne-debit-constant",
+      "set_id": "set_fonda_grandeurs-mesures_nF_01",
+      "item_id": "it06",
       "notion_id": "maths.grandeurs-mesures"
     }
   ]
