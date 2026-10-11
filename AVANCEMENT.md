@@ -434,8 +434,14 @@ PR #1 (`feat/box-fonda-theme-switch` → `design`, commit `5ea01ba`) relue par C
 ## Merge du lot de validation dans `design` (2026-10-11)
 
 - **`feat/box-fonda-lot1-validation` mergée dans `design`** (`--no-ff`, commit `09d7b34`), zéro conflit, poussée sur origin. `main` non touché (`7ea4f28...`, vérifié avant et après). `node --test` sur `design` post-merge : **313/313, 0 échec, 1 skip** (dette ci-dessus).
-- **Prochaine étape : PUBLICATION du lot** (constituer le catalogue FONDA de départ à partir des 48 fiches relues).
 - **🔖 Dettes à solder avant toute bascule élèves réelle** :
   1. **Clé API Anthropic à régénérer** — celle utilisée pour toute la calibration/validation T6b a circulé en clair (messages, terminal) et est aussi codée en dur dans le nœud `Claude API` du workflow n8n `BOX - Generation Flashcards` (prod). Couvrir les deux à la régénération.
   2. **Vraie adresse email de Justine Leblanc** — le routage de relecture français utilise encore l'adresse de TEST (`ericdnews@yahoo.fr`, `fonda/data/destinataires.json`), à remplacer avant mise en service réelle.
   3. **Entrée orpheline `box_7e7tcooh`** dans le vrai catalogue Drive (`catalogue.json`) — fichier flashcards déjà corbeillé (test de chaîne T6b), entrée catalogue jamais retirée (risque jugé disproportionné pour une réécriture isolée, cf. section T6b plus haut) — à retirer à la prochaine occasion où le catalogue est légitimement modifié.
+
+### Publication — EN PAUSE, décision Éric (2026-10-11)
+
+- **Plan de publication proposé par Claude Code (lecture seule + plan, aucune exécution)** : upload Drive via `box-fonda-generation` + relecture réelle `/box-select` pour chacun des 8 fichiers, geste G4 non contourné. Catalogue/n8n/live non touchés à ce stade — plan uniquement, rien exécuté.
+- **Décision : publication reportée.** Raison donnée par Éric : publier maintenant afficherait les fiches FONDA en flip-cards ordinaires de BOX (mélangées aux autres matières, sans l'auto-correction par profil) — affichage dégradé et prématuré, puisque `lancerDefi()` (câblage FONDA réel) est toujours un stub. **Le prérequis est le câblage FONDA, pas la publication.**
+- **État actuel** : les 8 lots restent prêts, validés, dans `fonda/data/lots-fonda-calibration/` (48 cartes, 6/6 partout). Catalogue Drive non touché, `box_7e7tcooh` laissé tel quel, aucun workflow n8n déclenché.
+- **Prochaine étape réelle** : câblage de `lancerDefi()` (`fonda/page/bootstrap.js`) à un vrai fetch + `FondaCarteReponseProduite.montrerCarteReponseProduite()` — chantier distinct, pas encore commencé. **La publication de ce lot reprendra APRÈS**, pour un affichage FONDA correct dès le départ.
