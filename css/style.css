@@ -686,6 +686,12 @@ body[data-theme="fonda"] {
   color: var(--fonda-ink);
 }
 
+/* Isolation BOX<->FONDA (relecture Codex #3) : la navbar BOX claire (dont le
+   bouton .fonda-switch lui-même) ne doit jamais rester visible par-dessus le
+   rendu FONDA sombre — sinon son logo (onclick="App.goHome()") permet de revenir
+   à BOX en conservant data-theme="fonda", et les deux rendus ne sont plus isolés. */
+body[data-theme="fonda"] .navbar { display: none; }
+
 #fondaRoot {
   max-width: 720px;
   margin: 0 auto;

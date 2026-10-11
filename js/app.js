@@ -75,6 +75,15 @@ const App = {
   goHome() {
     this.currentSet = null; this.isFlipped = false;
     if (this.timerInterval) { clearInterval(this.timerInterval); this.timerInterval = null; }
+    // Isolation défensive FONDA -> BOX (relecture Codex #3) : la navbar BOX est
+    // masquée en thème FONDA (css/style.css, body[data-theme="fonda"] .navbar), donc
+    // ce chemin n'est normalement plus cliquable depuis la page FONDA — mais si on y
+    // revient quand même (historique navigateur, futur appel direct), on nettoie le
+    // thème et le #fondaRoot injecté plutôt que de laisser les deux rendus se
+    // chevaucher.
+    document.body.dataset.theme = '';
+    const fondaRoot = document.getElementById('fondaRoot');
+    if (fondaRoot) fondaRoot.remove();
     window.history.pushState({}, '', window.location.pathname);
     this.loadCatalogue();
   },

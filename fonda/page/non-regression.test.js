@@ -134,6 +134,40 @@ describe('non-régression — flag ON : le chemin normal n\'est JAMAIS exécuté
   });
 });
 
+describe('App.goHome() — isolation défensive FONDA -> BOX (relecture Codex #3)', () => {
+  test('nettoie data-theme et retire #fondaRoot, même si on y revient malgré la navbar masquée en CSS', () => {
+    const { App, document } = chargerAppAvecFlag('?fonda=1');
+    global.window.history = { pushState() {} };
+    global.window.location.pathname = '/box/index.html';
+    App.loadCatalogue = () => {};
+
+    document.body.dataset.theme = 'fonda';
+    let retire = false;
+    const fondaRootFactice = { remove: () => { retire = true; } };
+    document.getElementById = (id) => (id === 'fondaRoot' ? fondaRootFactice : null);
+
+    App.goHome();
+
+    assert.equal(document.body.dataset.theme, '', 'data-theme doit être nettoyé par goHome()');
+    assert.equal(retire, true, '#fondaRoot doit être retiré par goHome()');
+  });
+
+  test('aucune exception si #fondaRoot n\'existe pas (chemin BOX normal, cas le plus fréquent)', () => {
+    const { App, document } = chargerAppAvecFlag('');
+    global.window.history = { pushState() {} };
+    global.window.location.pathname = '/box/index.html';
+    App.loadCatalogue = () => {};
+    document.getElementById = () => null;
+
+    assert.doesNotThrow(() => App.goHome());
+  });
+
+  test('la navbar BOX est masquée en thème FONDA (règle CSS déclarative, défense en profondeur avec le nettoyage JS ci-dessus)', () => {
+    const css = fs.readFileSync(path.join(REPO_ROOT, 'css', 'style.css'), 'utf-8');
+    assert.match(css, /body\[data-theme="fonda"\]\s*\.navbar\s*\{\s*display:\s*none/);
+  });
+});
+
 describe('non-régression — index.html : zéro référence statique à /fonda/ (zéro requête en plus si le flag est absent)', () => {
   test('aucun <script src="fonda/...> ni <link href="fonda/..."> dans le HTML statique', () => {
     const html = fs.readFileSync(INDEX_HTML_PATH, 'utf-8');
