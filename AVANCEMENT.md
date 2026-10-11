@@ -424,3 +424,8 @@ PR #1 (`feat/box-fonda-theme-switch` → `design`, commit `5ea01ba`) relue par C
 - **Carte 6 de `fr-inference-implicite_nF.json` (box_hrelpt8q) régénérée** avec cette garantie (par Éric, clé API en main) : « ciel sombre + sortie d'école + fuite de la pluie → après-midi », profil `sens`. Passée directement sans correction nécessaire. **Lot `fr.inference-implicite/nF` de retour à 6/6.**
 - Suite de tests : 313/314 (même artefact connu, sans lien).
 - **Bilan final du lot de validation T6b** : 48/48 cartes retenues sur les 4 notions (après la correction de la carte 5 biaisée et l'ajout de la carte 6), toutes passées au correcteur zéro tolérance, toujours **candidates uniquement — rien publié, aucun n8n touché** (G4).
+
+### Clôture du lot de validation (2026-10-11)
+
+- **🔖 DETTE — test `non-regression.test.js` mis en quarantaine (`test.skip`)** : « index.html ne diffère de design QUE par l'ajout du bouton .fonda-switch » n'a de sens que depuis une branche feature non encore mergée ; exécuté depuis `design` lui-même (ou toute branche déjà au niveau de `design`, comme ce lot), `index.html` est par construction identique à `design:index.html`, donc l'assertion "+1 ligne" échoue toujours — pas une régression. **À retravailler** : comparer contre `main` (stable) plutôt que `design` (bouge à chaque merge), ou limiter son exécution à la branche `feat/box-fonda-theme-switch` avant un futur merge similaire. `node --test` redevient un vert franc (0 échec, 1 skip) tant que ce test reste en quarantaine.
+- **Carte 6 de `maths-grandeurs-mesures_nF.json` (box_za9ei4cr) régénérée** pour revenir à 6/6 — voir ci-dessous.
