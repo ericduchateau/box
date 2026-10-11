@@ -81,15 +81,15 @@
     },
     {
       "numero": 5,
-      "question": "Un texte sur les volcans contient quatre questions : 1) Où se trouve le volcan ? 2) Quelle est sa hauteur ? 3) Quand a-t-il éclaté ? 4) Combien de personnes vivent autour ? La consigne du professeur est : « Réponds uniquement à la question 2. » Que doit faire l'élève ?\nA) Répondre à la question sur la localisation\nB) Répondre à la question sur la hauteur\nC) Répondre à la question sur l'éruption",
-      "reponse": "B",
-      "difficulte": "difficile",
+      "question": "Voici la fiche d'inscription de Lucas à son club de sport : Nom : Lucas Martin — Âge : 13 ans — Sport : natation — Jour du cours : mercredi — Horaire : 17h à 18h30 — Cotisation annuelle : 120 euros — Taille du maillot : M — Numéro de licence : 4521. Quel jour Lucas a-t-il son cours de natation ?",
+      "reponse": "mercredi",
+      "difficulte": "moyen",
       "palier": "nI",
       "profil_correction": "exact",
       "reponses_acceptees": [
-        "B"
+        "mercredi"
       ],
-      "contexte": "consigne-lecture-texte-volcans",
+      "contexte": "fiche-inscription-club-natation",
       "set_id": "set_fonda_comprendre-consigne_nI_01",
       "item_id": "it05",
       "notion_id": "fr.comprendre-consigne"
