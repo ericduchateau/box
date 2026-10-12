@@ -392,3 +392,21 @@ describe('carte-reponse-produite — rendu enrichi par profil (thème FONDA)', (
     assert.equal(trouverEnfant(feedback, 'fonda-feedback__relecteur'), undefined, 'ne pas affirmer une validation sur une carte signalée incohérente');
   });
 });
+
+describe('carte-reponse-produite — correction qui plante (relecture Codex PR #2 v2, #4)', () => {
+  test('reponses_acceptees avec {toString:null} : au clic, message visible, aucune exception, onErreur appelé, rien de scoré', () => {
+    const container = creerElementFactice('div');
+    const resultats = [];
+    let erreurs = 0;
+    montrerCarteReponseProduite(container, {
+      question: 'Q ?', profil_correction: 'exact', reponses_acceptees: ['a', { toString: null }],
+    }, { onResultat: (r) => resultats.push(r), onErreur: () => { erreurs += 1; } });
+    const [, input, bouton, feedback] = container.children;
+    input.value = 'b';
+    assert.doesNotThrow(() => bouton.__click());
+    assert.match(feedback.textContent, /Impossible de corriger cette réponse/);
+    assert.equal(erreurs, 1);
+    assert.deepEqual(resultats, [], 'aucun résultat scoré pour une carte non corrigeable');
+    assert.equal(bouton.disabled, true);
+  });
+});

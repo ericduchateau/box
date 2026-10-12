@@ -185,7 +185,24 @@ function montrerCarteReponseProduite(container, carte, options = {}) {
 
   let tentative = 0;
 
+  // Exception pendant la correction (donnée de carte inattendue — relecture Codex
+  // PR #2 v2, #4) : message VISIBLE, saisie figée, et l'appelant est prévenu via
+  // options.onErreur (additif : le contrat onResultat ne change pas, et rien n'est
+  // scoré pour une carte qu'on n'a pas su corriger).
+  function signalerErreur() {
+    feedback.innerHTML = '';
+    feedback.textContent = 'Impossible de corriger cette réponse — passe à la carte suivante.';
+    feedback.dataset.statut = 'erreur';
+    input.disabled = true;
+    bouton.disabled = true;
+    if (typeof options.onErreur === 'function') options.onErreur();
+  }
+
   function soumettre() {
+    try { soumettreSansFiletDeSecurite(); } catch { signalerErreur(); }
+  }
+
+  function soumettreSansFiletDeSecurite() {
     tentative += 1;
 
     const { statut } = evaluerReponse({

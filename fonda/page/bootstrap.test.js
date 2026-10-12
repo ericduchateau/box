@@ -698,3 +698,46 @@ describe('chargerScript — expiration (relecture Codex PR #2 v2, #2)', () => {
     await new Promise((r) => setTimeout(r, 40));
   });
 });
+
+describe('réponses non textuelles (relecture Codex PR #2 v2, #4)', () => {
+  const CHEMIN = 'fonda/data/lots-fonda-calibration/fr-comprendre-consigne_nI.json';
+  const VRAI = require('../data/lots-fonda-calibration/fr-comprendre-consigne_nI.json');
+
+  const casRefuses = [
+    ['réponse {toString:null}', { reponses_acceptees: ['a', { toString: null }] }],
+    ['réponse chaîne vide', { reponses_acceptees: ['a', '  '] }],
+    ['réponse NaN', { reponses_acceptees: [Number.NaN] }],
+    ['unite non texte', { unite: 3 }],
+    ['arrondi négatif', { arrondi: -1 }],
+    ['seconde_chance non booléen', { seconde_chance: 'oui' }],
+  ];
+  for (const [libelle, champs] of casRefuses) {
+    test(`${libelle} : lot refusé avant la 1re carte`, () => {
+      const { lotEstBienForme } = obtenirExportsBootstrap();
+      const lot = { ...VRAI, cartes: [VRAI.cartes[0], { ...VRAI.cartes[1], profil_correction: 'exact', ...champs }] };
+      assert.equal(lotEstBienForme(lot), false);
+    });
+  }
+
+  test('réponse nombre fini acceptée par la validation', () => {
+    const { lotEstBienForme } = obtenirExportsBootstrap();
+    assert.equal(lotEstBienForme({ cartes: [{ question: 'Q', profil_correction: 'numerique', reponses_acceptees: [2] }] }), true);
+  });
+
+  test('au clic : si la correction plante malgré tout, message visible + « Carte suivante » révélé', async () => {
+    const root = await demarrerBootstrap({
+      search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI',
+      lots: { [CHEMIN]: VRAI },
+    });
+    // Sabote la correction APRÈS le montage (simule une donnée qui aurait passé la
+    // validation mais fait planter evaluerReponse au clic).
+    const carteHote = root.children.find((c) => c && c.classList && (c.children || []).some((x) => x.className === 'fonda-question'));
+    const valider = trouverBoutonParTexte(root, 'Valider');
+    const suivant = trouverBoutonParTexte(root, 'Carte suivante →');
+    const input = carteHote.children.find((x) => x.className === 'fonda-reponse-input');
+    Object.defineProperty(input, 'value', { get() { throw new Error('boom'); } });
+    assert.doesNotThrow(() => valider.__click());
+    assert.match(texteDe(root), /Impossible de corriger cette réponse/);
+    assert.equal(suivant.style.display, '', '« Carte suivante » doit permettre d\'avancer');
+  });
+});

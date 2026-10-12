@@ -436,7 +436,15 @@
       && lot.cartes.every((c) => !!c && typeof c === 'object'
         && typeof c.question === 'string' && c.question.trim() !== ''
         && PROFILS_CONNUS.includes(c.profil_correction)
-        && Array.isArray(c.reponses_acceptees) && c.reponses_acceptees.length > 0);
+        && Array.isArray(c.reponses_acceptees) && c.reponses_acceptees.length > 0
+        // Relecture Codex PR #2 v2, #4 : chaque réponse = texte non vide ou nombre
+        // fini (un objet sans toString plantait au clic sur « Valider ») ; types des
+        // paramètres optionnels vérifiés aussi.
+        && c.reponses_acceptees.every((r) => (typeof r === 'string' && r.trim() !== '')
+          || (typeof r === 'number' && Number.isFinite(r)))
+        && (c.unite == null || typeof c.unite === 'string')
+        && (c.arrondi == null || (Number.isInteger(c.arrondi) && c.arrondi >= 0))
+        && (c.seconde_chance == null || typeof c.seconde_chance === 'boolean'));
   }
 
   // Adapte une carte au format du lot (box-select + champs FONDA) vers la forme
@@ -511,6 +519,9 @@
         // Navigation interne uniquement — AUCUN événement émis (T3/evenements.js,
         // hors scope de ce chantier, cf. en-tête de fichier). G2/G3 intacts.
         onResultat() { suivant.style.display = ''; },
+        // Correction impossible (message déjà affiché par le composant) : on laisse
+        // l'élève avancer plutôt que de le bloquer sur cette carte.
+        onErreur() { suivant.style.display = ''; },
       });
     }
 
