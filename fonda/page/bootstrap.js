@@ -580,4 +580,9 @@
   }
 
   demarrer().catch(() => afficherMessage(racineFonda(), 'Entraînement libre — données indisponibles pour le moment.'));
+
+  // Prise en charge signalée à js/app.js::initFonda() (relecture Codex PR #2 v2, #1) :
+  // posé en DERNIER, donc seulement si toute l'évaluation synchrone a réussi — à
+  // partir d'ici, ce sont les délais et messages de ce fichier qui s'appliquent.
+  window.FondaBootstrapActif = true;
 })();

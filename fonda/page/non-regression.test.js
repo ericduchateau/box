@@ -7,7 +7,7 @@
 
 'use strict';
 
-const { test, describe } = require('node:test');
+const { test, describe, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -118,7 +118,10 @@ describe('non-régression — flag OFF : exactement le comportement d\'avant T4'
 });
 
 describe('non-régression — flag ON : le chemin normal n\'est JAMAIS exécuté, un seul script + une police injectés', () => {
-  test('?fonda=1 déclenche initFonda() et RIEN du chemin normal', () => {
+  test('?fonda=1 déclenche initFonda() et RIEN du chemin normal', (t) => {
+    // initFonda() arme un délai de garde (js/app.js, DELAI_BOOTSTRAP_MS) : horloge
+    // pilotée pour ne pas laisser un vrai minuteur de 20 s retenir la suite.
+    t.mock.timers.enable({ apis: ['setTimeout'] });
     const { App, document } = chargerAppAvecFlag('?fonda=1');
     const appels = [];
     App.initKeyboard = () => appels.push('initKeyboard');

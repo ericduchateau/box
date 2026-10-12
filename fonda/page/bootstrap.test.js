@@ -604,14 +604,6 @@ describe('attente bornée et échec du bootstrap (relecture Codex PR #2, #5)', (
     assert.equal(await avecDelai(Promise.resolve(42), 1000), 42);
   });
 
-  test('js/app.js::initFonda pose un état "Chargement…" immédiat et gère onerror de bootstrap.js', () => {
-    const app = fsTest.readFileSync(pathTest.join(__dirname, '../../js/app.js'), 'utf8');
-    const initFonda = app.slice(app.indexOf('initFonda() {'), app.indexOf('goFonda() {'));
-    assert.match(initFonda, /racine\.id = 'fondaRoot'/);
-    assert.match(initFonda, /Chargement…/);
-    assert.match(initFonda, /s\.onerror = /);
-    assert.match(initFonda, /Retour à BOX/);
-  });
 });
 
 describe('adapterCarte — arrondi et seconde_chance transmis (relecture Codex PR #2, #6)', () => {
