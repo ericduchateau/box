@@ -221,7 +221,14 @@
     bloc.appendChild(grille);
 
     root.appendChild(bloc);
+    root.appendChild(construireLienDemo());
+  }
 
+  // Lien vers le paquet de démonstration — sur le sélecteur ET sur les pages niveau
+  // sans défi programmé (relecture Codex PR #2, #11 : sinon, une fois un niveau
+  // mémorisé, le switch BOX->FONDA n'y menait plus jamais tant que le calendrier
+  // est vide).
+  function construireLienDemo() {
     const demo = document.createElement('a');
     demo.className = 'fonda-header__back';
     const paramsDemo = new URLSearchParams();
@@ -229,9 +236,9 @@
     paramsDemo.set('page', 'carte');
     paramsDemo.set('notion', DEMO_NOTION_ID);
     paramsDemo.set('palier', DEMO_PALIER);
-    demo.href = `${base}?${paramsDemo.toString()}`;
+    demo.href = `${window.location.pathname}?${paramsDemo.toString()}`;
     demo.textContent = 'Voir un défi de démonstration';
-    root.appendChild(demo);
+    return demo;
   }
 
   // Attente BORNÉE (relecture Codex PR #2, #5) : une dépendance ou un fetch qui ne
@@ -292,6 +299,7 @@
     if (!semaineEntry) {
       afficherMessage(root, 'Aucun défi programmé cette semaine.');
       root.appendChild(construireLienChangerNiveau(semaineParam));
+      root.appendChild(construireLienDemo());
       return;
     }
 
@@ -299,6 +307,7 @@
     if (entreesNiveau.length === 0) {
       afficherMessage(root, `Aucun défi programmé pour ${niveau} cette semaine.`);
       root.appendChild(construireLienChangerNiveau(semaineParam));
+      root.appendChild(construireLienDemo());
       return;
     }
 

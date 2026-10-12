@@ -662,3 +662,18 @@ describe('lot validé EN ENTIER avant affichage (relecture Codex PR #2, #9)', ()
     });
   }
 });
+
+describe('lien de démonstration aussi sur les pages niveau sans défi (relecture Codex PR #2, #11)', () => {
+  const cas = [
+    ['calendrier vide, niveau mémorisé', '?fonda=1&page=niveau&niveau=6e', { version: 1, last_updated: '', semaines: [] }],
+    ['semaine programmée mais rien pour ce niveau', '?fonda=1&page=niveau&niveau=3e&semaine=41', CALENDRIER],
+  ];
+  for (const [libelle, search, calendrier] of cas) {
+    test(libelle, async () => {
+      const root = await demarrerBootstrap({ search, calendrier });
+      const demo = (root.children || []).find((c) => c && c.textContent === 'Voir un défi de démonstration');
+      assert.ok(demo, 'lien de démonstration absent');
+      assert.match(demo.href, /\?fonda=1&page=carte&notion=fr\.comprendre-consigne&palier=nI$/);
+    });
+  }
+});
