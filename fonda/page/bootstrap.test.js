@@ -354,14 +354,14 @@ describe('adapterCarte — relecteur LU depuis la donnée, jamais déduit (déci
   });
 });
 
-describe('Page niveau -> lien "Voir un défi de démonstration"', () => {
-  test('le lien est présent et pointe vers ?page=carte&notion=fr.comprendre-consigne&palier=nI', async () => {
+describe('Page niveau -> lien vers l\'index d\'entraînement libre', () => {
+  test('le lien est présent et pointe vers ?fonda=1&page=entrainement', async () => {
     const calendrierVide = { version: 1, last_updated: '', semaines: [] };
     const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau', calendrier: calendrierVide });
     const liens = (root.children || []).filter((c) => c && c.className === 'fonda-header__back');
-    const demo = liens.find((a) => a.textContent === 'Voir un défi de démonstration');
-    assert.ok(demo, 'lien de démonstration absent de la page niveau');
-    assert.match(demo.href, /\?fonda=1&page=carte&notion=fr\.comprendre-consigne&palier=nI$/);
+    const index = liens.find((a) => a.textContent === 'S\'entraîner librement — toutes les notions');
+    assert.ok(index, 'lien vers l\'index absent de la page niveau');
+    assert.match(index.href, /\?fonda=1&page=entrainement$/);
   });
 });
 
@@ -657,7 +657,7 @@ describe('lot validé EN ENTIER avant affichage (relecture Codex PR #2, #9)', ()
   }
 });
 
-describe('lien de démonstration aussi sur les pages niveau sans défi (relecture Codex PR #2, #11)', () => {
+describe('lien vers l\'index aussi sur les pages niveau sans défi (relecture Codex PR #2, #11)', () => {
   const cas = [
     ['calendrier vide, niveau mémorisé', '?fonda=1&page=niveau&niveau=6e', { version: 1, last_updated: '', semaines: [] }],
     ['semaine programmée mais rien pour ce niveau', '?fonda=1&page=niveau&niveau=3e&semaine=41', CALENDRIER],
@@ -665,9 +665,9 @@ describe('lien de démonstration aussi sur les pages niveau sans défi (relectur
   for (const [libelle, search, calendrier] of cas) {
     test(libelle, async () => {
       const root = await demarrerBootstrap({ search, calendrier });
-      const demo = (root.children || []).find((c) => c && c.textContent === 'Voir un défi de démonstration');
-      assert.ok(demo, 'lien de démonstration absent');
-      assert.match(demo.href, /\?fonda=1&page=carte&notion=fr\.comprendre-consigne&palier=nI$/);
+      const lien = (root.children || []).find((c) => c && c.textContent === 'S\'entraîner librement — toutes les notions');
+      assert.ok(lien, 'lien vers l\'index absent');
+      assert.match(lien.href, /\?fonda=1&page=entrainement$/);
     });
   }
 });
@@ -838,5 +838,29 @@ describe('?page=entrainement — index des 8 lots publiables', () => {
     delete global.__referentielEnPanne;
     assert.equal(liensIndex(root).length, 8);
     assert.match(texteDe(root), /fr\.comprendre-consigne/);
+  });
+});
+
+describe('retour vers l\'index depuis un paquet libre', () => {
+  const versIndex = (root) => (root.children || []).find((c) => c && c.textContent === '← Toutes les notions');
+
+  test('paquet libre (page=carte) : lien « ← Toutes les notions » présent, puis encore sur l\'écran de fin', async () => {
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI' });
+    assert.ok(versIndex(root), 'retour index absent pendant le paquet');
+    assert.match(versIndex(root).href, /\?fonda=1&page=entrainement$/);
+    for (let i = 0; i < 6; i += 1) {
+      trouverBoutonParTexte(root, 'Valider').__click();
+      await new Promise((r) => setTimeout(r, 0));
+      trouverBoutonParTexte(root, 'Carte suivante →').__click();
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    assert.match(texteDe(root), /Paquet terminé/);
+    assert.ok(versIndex(root), 'retour index absent sur l\'écran de fin');
+  });
+
+  test('défi de classe (calendrier, grp) : pas de lien vers l\'index (parcours de classe inchangé)', async () => {
+    const root = await demarrerBootstrap({ search: '?fonda=1&defi=defi_2026-w41_601_resolution-problemes', calendrier: CALENDRIER });
+    assert.match(texteDe(root), /classe 601/);
+    assert.equal(versIndex(root), undefined);
   });
 });

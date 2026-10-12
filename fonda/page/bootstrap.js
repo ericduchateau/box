@@ -20,8 +20,9 @@
 // evenements.js/n8n) volontairement HORS SCOPE : onResultat ne pilote que la
 // navigation interne (carte suivante), zéro donnée envoyée nulle part (G2/G3).
 // Le flux calendrier réel (renderDefi -> lancerDefi) reste bloqué sur calendar.json
-// vide (Moteur A, absent) — sans lien avec ce chantier. Le lien "défi de
-// démonstration" construit un contexte synthétique et appelle la MÊME lancerDefi().
+// vide (Moteur A, absent) — sans lien avec ce chantier. Les liens de l'index
+// d'entraînement libre (page=entrainement -> page=carte) construisent un contexte
+// synthétique et appellent la MÊME lancerDefi().
 // ⚠ Moteur A demandera une retouche ICI (relecture Codex PR #2, #7) : lancerDefi()
 // choisit aujourd'hui le lot par (notion, palier) dans LOTS_PUBLIABLES et IGNORE le
 // setId résolu depuis le calendrier — deux jeux programmés pour la même notion et le
@@ -171,13 +172,6 @@
 
   const NIVEAUX_DEFAUT = ['6e', '5e', '4e', '3e'];
 
-  // Paquet de démonstration (chantier câblage, 2026-10-11) : UN SEUL set validé,
-  // lu directement depuis le JSON commité (fonda/data/lots-fonda-calibration/),
-  // pas le catalogue Drive. Contourne volontairement le calendrier (vide, Moteur A
-  // absent) pour ce paquet fixe. Le couple doit figurer dans LOTS_PUBLIABLES.
-  const DEMO_NOTION_ID = 'fr.comprendre-consigne';
-  const DEMO_PALIER = 'nI';
-
   // Un niveau n'est valide que s'il figure dans les 4 niveaux par défaut OU dans les
   // défis réellement programmés cette semaine — jamais une valeur URL arbitraire
   // (relecture Codex #6 : une valeur invalide ne doit jamais être persistée ni
@@ -241,24 +235,23 @@
     bloc.appendChild(grille);
 
     root.appendChild(bloc);
-    root.appendChild(construireLienDemo());
+    root.appendChild(construireLienIndex());
   }
 
-  // Lien vers le paquet de démonstration — sur le sélecteur ET sur les pages niveau
-  // sans défi programmé (relecture Codex PR #2, #11 : sinon, une fois un niveau
-  // mémorisé, le switch BOX->FONDA n'y menait plus jamais tant que le calendrier
-  // est vide).
-  function construireLienDemo() {
-    const demo = document.createElement('a');
-    demo.className = 'fonda-header__back';
-    const paramsDemo = new URLSearchParams();
-    paramsDemo.set('fonda', '1');
-    paramsDemo.set('page', 'carte');
-    paramsDemo.set('notion', DEMO_NOTION_ID);
-    paramsDemo.set('palier', DEMO_PALIER);
-    demo.href = `${window.location.pathname}?${paramsDemo.toString()}`;
-    demo.textContent = 'Voir un défi de démonstration';
-    return demo;
+  // Lien vers l'index d'entraînement libre (page=entrainement, chantier
+  // feat/box-fonda-index — remplace l'ancien lien vers UN SEUL paquet de démo) — sur
+  // le sélecteur ET sur les pages niveau sans défi programmé (relecture Codex PR #2,
+  // #11 : sinon, une fois un niveau mémorisé, le switch BOX->FONDA n'y menait plus
+  // jamais tant que le calendrier est vide).
+  function construireLienIndex(texte = 'S\'entraîner librement — toutes les notions') {
+    const lien = document.createElement('a');
+    lien.className = 'fonda-header__back';
+    const params = new URLSearchParams();
+    params.set('fonda', '1');
+    params.set('page', 'entrainement');
+    lien.href = `${window.location.pathname}?${params.toString()}`;
+    lien.textContent = texte;
+    return lien;
   }
 
   // Attente BORNÉE (relecture Codex PR #2, #5) : une dépendance ou un fetch qui ne
@@ -319,7 +312,7 @@
     if (!semaineEntry) {
       afficherMessage(root, 'Aucun défi programmé cette semaine.');
       root.appendChild(construireLienChangerNiveau(semaineParam));
-      root.appendChild(construireLienDemo());
+      root.appendChild(construireLienIndex());
       return;
     }
 
@@ -327,7 +320,7 @@
     if (entreesNiveau.length === 0) {
       afficherMessage(root, `Aucun défi programmé pour ${niveau} cette semaine.`);
       root.appendChild(construireLienChangerNiveau(semaineParam));
-      root.appendChild(construireLienDemo());
+      root.appendChild(construireLienIndex());
       return;
     }
 
@@ -479,15 +472,17 @@
   // Rendu d'un paquet de cartes, une à la fois, via le composant T2 — "Carte
   // suivante" après chaque résultat, écran de fin en bout de paquet. `contexte.grp`
   // optionnel (présent pour un vrai défi de classe résolu par calendrier, absent
-  // pour le paquet de démonstration).
+  // pour un paquet d'entraînement libre).
   function rendrePaquetCartes(root, lot, contexte) {
     root.innerHTML = '';
     root.appendChild(construireHeader());
 
+    // Entraînement libre (pas de grp) : retour vers l'index des notions.
+    const libre = !(contexte && contexte.grp);
+    if (libre) root.appendChild(construireLienIndex('← Toutes les notions'));
+
     const titre = document.createElement('h2');
-    titre.textContent = contexte && contexte.grp
-      ? `Défi ${lot.notion} — classe ${contexte.grp}`
-      : lot.notion;
+    titre.textContent = libre ? lot.notion : `Défi ${lot.notion} — classe ${contexte.grp}`;
     root.appendChild(titre);
 
     const compteur = document.createElement('p');
@@ -513,6 +508,7 @@
       fin.className = 'fonda-message';
       fin.textContent = `Paquet terminé — ${lot.cartes.length} carte(s) vue(s).`;
       root.appendChild(fin);
+      if (libre) root.appendChild(construireLienIndex('← Toutes les notions'));
     }
 
     function afficherCarteCourante() {
@@ -545,7 +541,7 @@
 
   // Point de branchement T2 (carte-reponse-produite.js). Le contexte est déjà résolu
   // et sûr quand il vient du calendrier (grp/notion_id/palier viennent du vrai
-  // calendrier, cf. renderDefi) ; pour le paquet de démonstration, renderPageCarte()
+  // calendrier, cf. renderDefi) ; pour un paquet d'entraînement libre, renderPageCarte()
   // construit un contexte synthétique SANS grp. Échecs de chargement (dépendances ou
   // fetch du lot) gérés visiblement, jamais une page blanche ni une exception muette.
   function lancerDefi(contexte) {
@@ -657,20 +653,20 @@
     });
   }
 
-  // --- Paquet de démonstration (page niveau -> lien "Voir un défi de démo") --------
+  // --- Paquet d'entraînement libre (index page=entrainement -> page=carte) ---------
 
   function renderPageCarte() {
     const notionId = param('notion');
     const palier = param('palier');
     if (!notionId || !palier) {
-      afficherMessage(racineFonda(), 'Démonstration : notion ou palier manquant dans le lien.');
+      afficherMessage(racineFonda(), 'Entraînement : notion ou palier manquant dans le lien.');
       return;
     }
     lancerDefi({ grp: null, notionId, palier });
   }
 
   async function demarrer() {
-    // page=carte (paquet de démonstration) : AUCUN besoin de classes/referentiel/
+    // page=carte (paquet d'entraînement libre) : AUCUN besoin de classes/referentiel/
     // calendrier (court-circuite le Promise.all ci-dessous, qui ne sert qu'aux
     // chemins liés au calendrier/classes).
     if (param('page') === 'carte') { renderPageCarte(); return; }
