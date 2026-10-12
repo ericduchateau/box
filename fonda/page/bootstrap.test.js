@@ -602,3 +602,20 @@ describe('attente bornée et échec du bootstrap (relecture Codex PR #2, #5)', (
     assert.match(initFonda, /Retour à BOX/);
   });
 });
+
+describe('adapterCarte — arrondi et seconde_chance transmis (relecture Codex PR #2, #6)', () => {
+  test('arrondi: 2 conservé -> "0,33" juste pour un attendu 1/3 après adaptation', () => {
+    const { adapterCarte } = obtenirExportsBootstrap();
+    const { evaluerReponse } = require('../engine/correction.js');
+    const c = adapterCarte({ question: 'Q', profil_correction: 'numerique', reponses_acceptees: ['1/3'], arrondi: 2 }, { relecteur: 'R' });
+    assert.equal(c.arrondi, 2);
+    const { statut } = evaluerReponse({ profil: c.profil_correction, reponseDonnee: '0,33', reponsesAcceptees: c.reponses_acceptees, unite: c.unite ?? null, arrondi: c.arrondi ?? null });
+    assert.equal(statut, 'juste');
+  });
+
+  test('seconde_chance conservée', () => {
+    const { adapterCarte } = obtenirExportsBootstrap();
+    const c = adapterCarte({ question: 'Q', profil_correction: 'sens', reponses_acceptees: ['a'], seconde_chance: true }, {});
+    assert.equal(c.seconde_chance, true);
+  });
+});

@@ -414,6 +414,10 @@
       profil_correction: carteBrute.profil_correction,
       reponses_acceptees: carteBrute.reponses_acceptees,
       unite: carteBrute.unite,
+      // Paramètres pédagogiques lus par carte-reponse-produite.js (relecture Codex
+      // PR #2, #6) — les perdre ici changeait silencieusement la correction.
+      arrondi: carteBrute.arrondi,
+      seconde_chance: carteBrute.seconde_chance,
       relecteur: (lot && lot.relecteur) || 'un professeur',
     };
   }
