@@ -568,6 +568,95 @@
       });
   }
 
+  // --- Index d'entraînement libre (chantier feat/box-fonda-index) -----------------
+  // Une entrée par couple notion × palier de LOTS_PUBLIABLES — DÉRIVÉE, jamais une
+  // seconde liste. Indépendant du niveau de classe : les notions fondamentales ne
+  // sont rattachées à aucun niveau dans referentiel.json (le palier nI/nF est la
+  // difficulté DANS la notion, cf. AGENTS.md). Chaque lien mène à la route déjà
+  // câblée page=carte -> lancerDefi() : G4 reste vérifié au rendu, l'index ne fait
+  // qu'afficher des liens.
+
+  // Libellés d'affichage des paliers — volontairement sobres (décision Éric) ;
+  // formulation à affiner ici seulement, aucune logique n'en dépend.
+  const PALIERS_LIBELLES = Object.freeze({ nI: 'Initial', nF: 'Final' });
+
+  // Pure, testable. Libellé/matière/ordre lus dans referentiel.json ; référentiel
+  // absent ou notion inconnue -> repli sur l'identifiant, l'entrée reste listée.
+  function construireEntreesIndex(lotsPubliables, referentiel) {
+    const notions = referentiel && Array.isArray(referentiel.notions) ? referentiel.notions : [];
+    const parId = new Map(notions.filter(Boolean).map((n) => [n.id, n]));
+    return Object.keys(lotsPubliables)
+      .map((notionId, rang) => {
+        const n = parId.get(notionId) || {};
+        return {
+          notionId,
+          libelle: typeof n.libelle === 'string' && n.libelle ? n.libelle : notionId,
+          matiere: typeof n.matiere === 'string' ? n.matiere : '',
+          ordre: Number.isFinite(n.ordre) ? n.ordre : Infinity,
+          rang,
+          paliers: lotsPubliables[notionId].map((palier) => ({
+            palier,
+            libelle: PALIERS_LIBELLES[palier] || palier,
+          })),
+        };
+      })
+      .sort((a, b) => (a.ordre - b.ordre) || (a.rang - b.rang));
+  }
+
+  function hrefLot(notionId, palier) {
+    const params = new URLSearchParams();
+    params.set('fonda', '1');
+    params.set('page', 'carte');
+    params.set('notion', notionId);
+    params.set('palier', palier);
+    return `${window.location.pathname}?${params.toString()}`;
+  }
+
+  function renderPageEntrainement(referentiel) {
+    const root = racineFonda();
+    root.innerHTML = '';
+    root.appendChild(construireHeader());
+
+    const titre = document.createElement('h2');
+    titre.textContent = 'S\'entraîner sur les fondamentaux';
+    root.appendChild(titre);
+
+    // Regroupement par matière, dans l'ordre d'apparition après tri par `ordre`.
+    const groupes = [];
+    construireEntreesIndex(LOTS_PUBLIABLES, referentiel).forEach((entree) => {
+      let g = groupes.find((x) => x.matiere === entree.matiere);
+      if (!g) { g = { matiere: entree.matiere, entrees: [] }; groupes.push(g); }
+      g.entrees.push(entree);
+    });
+
+    groupes.forEach((g) => {
+      if (g.matiere) {
+        const h = document.createElement('h3');
+        h.textContent = g.matiere.charAt(0).toUpperCase() + g.matiere.slice(1);
+        root.appendChild(h);
+      }
+      const liste = document.createElement('ul');
+      liste.className = 'fonda-liens-niveau fonda-index';
+      g.entrees.forEach((entree) => {
+        const li = document.createElement('li');
+        li.className = 'fonda-lien-classe';
+        const label = document.createElement('span');
+        label.className = 'fonda-lien-classe__url';
+        label.textContent = entree.libelle;
+        li.appendChild(label);
+        entree.paliers.forEach(({ palier, libelle }) => {
+          const a = document.createElement('a');
+          a.className = 'fonda-header__back fonda-index__lot';
+          a.href = hrefLot(entree.notionId, palier);
+          a.textContent = libelle;
+          li.appendChild(a);
+        });
+        liste.appendChild(li);
+      });
+      root.appendChild(liste);
+    });
+  }
+
   // --- Paquet de démonstration (page niveau -> lien "Voir un défi de démo") --------
 
   function renderPageCarte() {
@@ -585,6 +674,16 @@
     // calendrier (court-circuite le Promise.all ci-dessous, qui ne sert qu'aux
     // chemins liés au calendrier/classes).
     if (param('page') === 'carte') { renderPageCarte(); return; }
+
+    // page=entrainement (index des lots publiables) : SEUL referentiel.json est lu
+    // (libellés) — ni lot, ni classes, ni calendrier, ni moteur. Échec ou délai ->
+    // liste quand même rendue, sur les identifiants (jamais une impasse).
+    if (param('page') === 'entrainement') {
+      const referentiel = await avecDelai(chargerJSON('fonda/data/referentiel.json'), DELAI_CHARGEMENT_MS)
+        .catch(() => null);
+      renderPageEntrainement(referentiel);
+      return;
+    }
 
     // Dépendances AVANT tout usage de window.FondaLiens (page niveau avec défis,
     // lien de défi) — échec -> .catch de demarrer(), message visible.
@@ -609,7 +708,10 @@
   // Fonctions pures exportées pour les tests Node (même motif que js/app.js) — le
   // reste (rendu DOM, fetch) n'est pas exporté, non testable en Node sans navigateur.
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { cheminLot, adapterCarte, lotEstPubliable, LOTS_PUBLIABLES, chargerScript, avecDelai, lotEstBienForme };
+    module.exports = {
+      cheminLot, adapterCarte, lotEstPubliable, LOTS_PUBLIABLES, chargerScript, avecDelai, lotEstBienForme,
+      construireEntreesIndex, PALIERS_LIBELLES,
+    };
   }
 
   demarrer().catch(() => afficherMessage(racineFonda(), 'Entraînement libre — données indisponibles pour le moment.'));
