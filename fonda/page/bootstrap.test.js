@@ -179,6 +179,20 @@ describe('defi résolu avec succès -> page non blanche, contenu annoncé (pas d
   });
 });
 
+function trouverBoutonParTexte(el, texteBouton) {
+  if (!el || !el.children) return null;
+  for (const c of el.children) {
+    if (c && c.textContent === texteBouton) return c;
+    const trouve = trouverBoutonParTexte(c, texteBouton);
+    if (trouve) return trouve;
+  }
+  return null;
+}
+
+function texteDe(root) {
+  return (root.textContent || '').trim() || root.children.map((c) => c.textContent).join(' ');
+}
+
 // --- Sélecteur de niveau (chantier visuel feat/box-fonda-theme-switch) -------------
 // Remplace l'ancien message d'erreur "Niveau manquant" : c'est la cible du switch
 // BOX->FONDA (App.goFonda()) tant qu'aucun niveau n'est connu (localStorage vide).
@@ -369,20 +383,17 @@ describe('?page=carte — rendu réel d\'un paquet FONDA (plus de stub "contenu 
     assert.match(texte, /Comprendre une consigne/, 'le titre du lot doit apparaître');
     assert.match(texte, /Carte 1 \/ 6/, 'le compteur doit annoncer 6 cartes (lot réel committé)');
     assert.doesNotMatch(texte, /contenu à venir/);
+    // Relecture Codex PR #2 (#10) : le nom du relecteur doit réellement s'afficher
+    // (bandeau de correction, après "Valider").
+    trouverBoutonParTexte(root, 'Valider').__click();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.match(texteDe(root), /Justine Leblanc/);
   });
 
   test('"Carte suivante" fait avancer le paquet jusqu\'à l\'écran de fin', async () => {
     const root = await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI', calendrier: CALENDRIER });
 
-    function trouverBouton(el, texteBouton) {
-      if (!el || !el.children) return null;
-      for (const c of el.children) {
-        if (c && c.textContent === texteBouton) return c;
-        const trouve = trouverBouton(c, texteBouton);
-        if (trouve) return trouve;
-      }
-      return null;
-    }
+    const trouverBouton = trouverBoutonParTexte;
 
     // "Valider" (carte-reponse-produite.js) doit produire un résultat pour révéler
     // "Carte suivante" — on la clique 6 fois (6 cartes dans ce lot réel) pour
@@ -390,10 +401,14 @@ describe('?page=carte — rendu réel d\'un paquet FONDA (plus de stub "contenu 
     for (let i = 0; i < 6; i += 1) {
       const valider = trouverBouton(root, 'Valider');
       assert.ok(valider, `bouton "Valider" absent à l'itération ${i}`);
-      valider.__click();
-      await new Promise((r) => setTimeout(r, 0));
       const suivant = trouverBouton(root, 'Carte suivante →');
       assert.ok(suivant, `bouton "Carte suivante" absent à l'itération ${i}`);
+      // Relecture Codex PR #2 (#10) : "Carte suivante" n'apparaît qu'APRÈS un
+      // résultat (onResultat) — supprimer ce câblage doit faire échouer ce test.
+      assert.equal(suivant.style.display, 'none', `"Carte suivante" visible avant Valider (itération ${i})`);
+      valider.__click();
+      await new Promise((r) => setTimeout(r, 0));
+      assert.equal(suivant.style.display, '', `"Carte suivante" toujours masqué après Valider (itération ${i})`);
       suivant.__click();
       await new Promise((r) => setTimeout(r, 0));
     }
@@ -404,10 +419,6 @@ describe('?page=carte — rendu réel d\'un paquet FONDA (plus de stub "contenu 
 });
 
 // --- G4 : liste fermée + drapeau de relecture vérifié au rendu (relecture Codex PR #2) ---
-
-function texteDe(root) {
-  return (root.textContent || '').trim() || root.children.map((c) => c.textContent).join(' ');
-}
 
 describe('G4 — seuls les lots relus carte par carte sont affichables', () => {
   test('LOTS_PUBLIABLES = exactement les 8 lots du lot de validation (4 notions × nI/nF)', () => {
