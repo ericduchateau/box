@@ -433,6 +433,9 @@
   const PROFILS_CONNUS = ['sens', 'numerique', 'exact', 'orthographe'];
   function lotEstBienForme(lot) {
     return !!lot && Array.isArray(lot.cartes) && lot.cartes.length > 0
+      // relecteur affiché tel quel dans le bandeau (relecture Codex ciblée) : texte
+      // non vide, ou absent (repli générique d'adapterCarte).
+      && (lot.relecteur == null || (typeof lot.relecteur === 'string' && lot.relecteur.trim() !== ''))
       && lot.cartes.every((c) => !!c && typeof c === 'object'
         && typeof c.question === 'string' && c.question.trim() !== ''
         && PROFILS_CONNUS.includes(c.profil_correction)
@@ -443,7 +446,9 @@
         && c.reponses_acceptees.every((r) => (typeof r === 'string' && r.trim() !== '')
           || (typeof r === 'number' && Number.isFinite(r)))
         && (c.unite == null || typeof c.unite === 'string')
-        && (c.arrondi == null || (Number.isInteger(c.arrondi) && c.arrondi >= 0))
+        // Bornes IDENTIQUES à correction.js::arrondiValide (0..10) : au-delà, le
+        // correcteur ignorerait l'arrondi en silence (règle pédagogique changée).
+        && (c.arrondi == null || (Number.isInteger(c.arrondi) && c.arrondi >= 0 && c.arrondi <= 10))
         && (c.seconde_chance == null || typeof c.seconde_chance === 'boolean'));
   }
 

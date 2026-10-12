@@ -410,3 +410,18 @@ describe('carte-reponse-produite — correction qui plante (relecture Codex PR #
     assert.equal(bouton.disabled, true);
   });
 });
+
+describe('carte-reponse-produite — exception dans onResultat (relecture Codex ciblée)', () => {
+  test('n\'est PAS déguisée en « correction impossible » : elle remonte, onErreur jamais appelé', () => {
+    const container = creerElementFactice('div');
+    let erreurs = 0;
+    montrerCarteReponseProduite(container, {
+      question: 'Q ?', profil_correction: 'exact', reponses_acceptees: ['a'],
+    }, { onResultat: () => { throw new Error('bug appelant'); }, onErreur: () => { erreurs += 1; } });
+    const [, input, bouton, feedback] = container.children;
+    input.value = 'a';
+    assert.throws(() => bouton.__click(), /bug appelant/);
+    assert.equal(erreurs, 0);
+    assert.doesNotMatch(feedback.textContent, /Impossible de corriger/);
+  });
+});

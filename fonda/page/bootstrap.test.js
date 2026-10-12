@@ -741,3 +741,20 @@ describe('réponses non textuelles (relecture Codex PR #2 v2, #4)', () => {
     assert.equal(suivant.style.display, '', '« Carte suivante » doit permettre d\'avancer');
   });
 });
+
+describe('validation du lot — compléments (relecture Codex ciblée)', () => {
+  const VRAI = require('../data/lots-fonda-calibration/fr-comprendre-consigne_nI.json');
+  test('relecteur {toString:null} : lot refusé', () => {
+    const { lotEstBienForme } = obtenirExportsBootstrap();
+    assert.equal(lotEstBienForme({ ...VRAI, relecteur: { toString: null } }), false);
+    assert.equal(lotEstBienForme({ ...VRAI, relecteur: ' ' }), false);
+    const { relecteur, ...sansRelecteur } = VRAI;
+    assert.equal(lotEstBienForme(sansRelecteur), true, 'absent = repli générique, accepté');
+  });
+  test('arrondi hors bornes du correcteur (11) : lot refusé ; 10 accepté', () => {
+    const { lotEstBienForme } = obtenirExportsBootstrap();
+    const avec = (a) => ({ ...VRAI, cartes: [{ ...VRAI.cartes[0], arrondi: a }] });
+    assert.equal(lotEstBienForme(avec(11)), false);
+    assert.equal(lotEstBienForme(avec(10)), true);
+  });
+});
