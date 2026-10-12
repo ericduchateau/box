@@ -699,6 +699,22 @@ body[data-theme="fonda"] .navbar { display: none; }
   font-family: var(--font);
 }
 
+/* Top-alignement FONDA (dette layout, chantier feat/box-fonda-layout) : #fondaRoot
+   est ajouté par JS À LA FIN du <body>, donc APRÈS le .footer. Or body est un flex
+   colonne en min-height:100vh et .footer a margin-top:auto : en FONDA (navbar et
+   écrans BOX masqués), le footer absorbait tout l'espace libre au-dessus de lui ->
+   grand vide navy en haut, barre collée au-dessus du contenu. order:-1 replace
+   visuellement #fondaRoot AVANT le footer (qui retrouve sa place en bas) ;
+   width:100% garde le centrage horizontal par max-width + margin auto. Scopé
+   body[data-theme="fonda"] : BOX clair n'est pas concerné. */
+body[data-theme="fonda"] #fondaRoot { order: -1; width: 100%; }
+
+/* Isolation BOX<->FONDA : le lien « Administration » du footer ouvre l'écran BOX de
+   suppression (App.showScreen('delete')) par-dessus la page élève FONDA. Masqué en
+   FONDA ; la ligne institutionnelle (« BOX — Collège… ») reste. Le lien seul est
+   masqué : la route ?action=delete reste atteignable par URL (dette d'isolation). */
+body[data-theme="fonda"] .footer a { display: none; }
+
 /* --- Lockup logo + signature (repris de docs/box-fonda-design/lockup-reference.html) --- */
 
 .fonda-lockup { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
