@@ -56,7 +56,7 @@ const {
   deposerEnRelecture,
 } = require('../engine/generation.js');
 
-const { evaluerReponse } = require('../engine/correction.js');
+const { evaluerReponse, compteCommeReussite } = require('../engine/correction.js');
 
 const ROOT = path.resolve(__dirname, '..');
 const REFERENTIEL_PATH = path.join(ROOT, 'data', 'referentiel.json');
@@ -264,6 +264,35 @@ function verifierContreCorrecteur(carteBrute) {
 }
 
 // ---------------------------------------------------------------------------
+// 4ter. Garde-fou des FORMES ACCEPTÉES (relecture Codex PR #2, #8) — extension de
+//    verifierContreCorrecteur, qui ne testait que la réponse-or. Cas réel : "2 bus",
+//    "40 livres", "8 victoires" figuraient dans reponses_acceptees (donc affichées à
+//    l'élève comme acceptées) alors que le correcteur les note "faux" (reliquat
+//    alphabétique sans unite déclarée). Chaque forme déclarée doit donc COMPTER
+//    COMME RÉUSSITE pour son propre correcteur (compteCommeReussite) : on tolère ici
+//    "presque" là où le profil le compte comme réussi — c'est le cas voulu d'une
+//    forme nombre-seul quand la carte déclare une unite (unité oubliée = presque,
+//    réussite en numérique) — mais jamais "faux" ni "carte_invalide".
+// ---------------------------------------------------------------------------
+function verifierFormesAcceptees(carteBrute) {
+  const formes = Array.isArray(carteBrute.reponses_acceptees) ? carteBrute.reponses_acceptees : [];
+  const refusees = formes.filter((forme) => {
+    const { statut } = evaluerReponse({
+      profil: carteBrute.profil_correction,
+      reponseDonnee: String(forme),
+      reponsesAcceptees: formes,
+      unite: carteBrute.unite || null,
+      arrondi: carteBrute.arrondi ?? null,
+    });
+    return !compteCommeReussite(statut, carteBrute.profil_correction);
+  });
+  if (refusees.length > 0) {
+    return { ok: false, raison: `forme(s) déclarée(s) acceptée(s) mais refusée(s) par le correcteur (profil "${carteBrute.profil_correction}"${carteBrute.unite ? `, unite="${carteBrute.unite}"` : ''}) : ${JSON.stringify(refusees)}` };
+  }
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
 // 4bis. Auto-correction d'une carte dont le champ "reponse" ne passe pas son
 //    propre correcteur — AVANT rejet définitif. Pure, testable, zéro appel
 //    réseau. Ne confond PAS avec le fixture T6a (`_fixture_note`) ni avec un
@@ -296,6 +325,33 @@ function autoCorrigerCarte(carteBrute) {
     }
   }
   return { carte: carteBrute, corrigee: false };
+}
+
+// ---------------------------------------------------------------------------
+// 4quater. Tri des cartes brutes — pure, testable (extrait de
+//    genererLotPourNotionPalier pour que la chaîne complète auto-correction ->
+//    réponse-or -> formes acceptées soit couverte sans appel réseau).
+// ---------------------------------------------------------------------------
+function trierCartesBrutes(cartesBrutes) {
+  const rejets = [];
+  const corrections = [];
+  const cartesValides = [];
+  cartesBrutes.forEach((brute, i) => {
+    const { carte, corrigee, ancienneReponse } = autoCorrigerCarte(brute);
+    const v = verifierContreCorrecteur(carte);
+    if (!v.ok) {
+      rejets.push({ index: i, raison: v.raison });
+      return;
+    }
+    const vf = verifierFormesAcceptees(carte);
+    if (!vf.ok) {
+      rejets.push({ index: i, raison: vf.raison });
+      return;
+    }
+    if (corrigee) corrections.push({ index: i, ancienneReponse, nouvelleReponse: carte.reponse });
+    cartesValides.push(carte);
+  });
+  return { cartesValides, rejets, corrections };
 }
 
 // ---------------------------------------------------------------------------
@@ -397,19 +453,7 @@ async function genererLotPourNotionPalier({ notion, palier, nCartes, contextesAu
   const parse = parserReponseModele(texteReponse);
   if (!parse.ok) return { ok: false, erreur: parse.erreur };
 
-  const rejets = [];
-  const corrections = [];
-  const cartesValides = [];
-  parse.cartesBrutes.forEach((brute, i) => {
-    const { carte, corrigee, ancienneReponse } = autoCorrigerCarte(brute);
-    const v = verifierContreCorrecteur(carte);
-    if (!v.ok) {
-      rejets.push({ index: i, raison: v.raison });
-      return;
-    }
-    if (corrigee) corrections.push({ index: i, ancienneReponse, nouvelleReponse: carte.reponse });
-    cartesValides.push(carte);
-  });
+  const { cartesValides, rejets, corrections } = trierCartesBrutes(parse.cartesBrutes);
 
   if (cartesValides.length === 0) {
     return { ok: false, erreur: 'aucune carte valide après vérification correcteur', rejets, corrections };
@@ -522,6 +566,8 @@ module.exports = {
   construirePrompt,
   parserReponseModele,
   verifierContreCorrecteur,
+  verifierFormesAcceptees,
+  trierCartesBrutes,
   autoCorrigerCarte,
   construireCandidats,
   construireFichierBoxSelect,

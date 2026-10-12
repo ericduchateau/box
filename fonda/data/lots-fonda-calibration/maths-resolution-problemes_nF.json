@@ -38,8 +38,7 @@
       "palier": "nF",
       "profil_correction": "numerique",
       "reponses_acceptees": [
-        "40",
-        "40 livres"
+        "40"
       ],
       "contexte": "bibliotheque-livres-empruntes-retournes",
       "set_id": "set_fonda_resolution-problemes_nF_01",
@@ -89,8 +88,7 @@
       "palier": "nF",
       "profil_correction": "numerique",
       "reponses_acceptees": [
-        "8",
-        "8 victoires"
+        "8"
       ],
       "contexte": "club-foot-points-victoires",
       "set_id": "set_fonda_resolution-problemes_nF_01",

@@ -15,6 +15,8 @@ const {
   construirePrompt,
   parserReponseModele,
   verifierContreCorrecteur,
+  verifierFormesAcceptees,
+  trierCartesBrutes,
   autoCorrigerCarte,
   construireCandidats,
   construireFichierBoxSelect,
@@ -321,4 +323,50 @@ describe('construirePrompt — points de vigilance (règle 1 réponse courte, r�
     assert.match(prompt, /carnet-billets-concert/);
     assert.match(prompt, /dans ce lot ET dans l'autre palier/);
   });
+});
+
+// --- Garde-fou des formes acceptées (relecture Codex PR #2, #8) --------------------
+
+describe('verifierFormesAcceptees — chaque forme déclarée doit passer son propre correcteur', () => {
+  const carte = (extra) => ({ question: 'Q', reponse: '2', profil_correction: 'numerique', reponses_acceptees: ['2'], ...extra });
+
+  test('cas réel "2 bus" sans unite déclarée -> refusé, la forme fautive est nommée', () => {
+    const v = verifierFormesAcceptees(carte({ reponses_acceptees: ['2', '2 bus'] }));
+    assert.equal(v.ok, false);
+    assert.match(v.raison, /"2 bus"/);
+  });
+
+  test('nombre seul avec unite déclarée ("presque" = réussite en numérique) -> accepté', () => {
+    assert.equal(verifierFormesAcceptees(carte({ reponse: '9 km', reponses_acceptees: ['9 km', '9'], unite: 'km' })).ok, true);
+  });
+
+  test('profil sens/exact : toutes les formes passent -> accepté', () => {
+    assert.equal(verifierFormesAcceptees({ profil_correction: 'sens', reponse: 'a', reponses_acceptees: ['un examen', 'examen'] }).ok, true);
+  });
+
+  test('trierCartesBrutes rejette la carte "2 bus" (chaîne complète, après auto-correction)', () => {
+    const { cartesValides, rejets } = trierCartesBrutes([
+      carte({ reponses_acceptees: ['2', '2 bus'] }),
+      carte({ reponse: '3', reponses_acceptees: ['3'] }),
+    ]);
+    assert.equal(cartesValides.length, 1);
+    assert.equal(rejets.length, 1);
+    assert.equal(rejets[0].index, 0);
+  });
+});
+
+describe('les 8 lots publiables repassent TOUS les garde-fous du générateur', () => {
+  const LOTS = ['fr-comprendre-consigne', 'fr-inference-implicite', 'maths-grandeurs-mesures', 'maths-resolution-problemes']
+    .flatMap((n) => ['nI', 'nF'].map((p) => `${n}_${p}.json`));
+  for (const f of LOTS) {
+    test(f, () => {
+      const lot = require('../data/lots-fonda-calibration/' + f);
+      lot.cartes.forEach((c, i) => {
+        const v = verifierContreCorrecteur(c);
+        assert.ok(v.ok, `${f} carte ${i + 1} : ${v.raison}`);
+        const vf = verifierFormesAcceptees(c);
+        assert.ok(vf.ok, `${f} carte ${i + 1} : ${vf.raison}`);
+      });
+    });
+  }
 });

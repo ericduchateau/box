@@ -91,8 +91,7 @@
       "palier": "nI",
       "profil_correction": "numerique",
       "reponses_acceptees": [
-        "2",
-        "2 bus"
+        "2"
       ],
       "contexte": "sortie-scolaire-bus",
       "set_id": "set_fonda_resolution-problemes_nI_01",
