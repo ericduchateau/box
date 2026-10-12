@@ -864,3 +864,37 @@ describe('retour vers l\'index depuis un paquet libre', () => {
     assert.equal(versIndex(root), undefined);
   });
 });
+
+// --- Invariant G4 « listé = affichable » (décision Éric, chantier feat/box-fonda-index)
+// L'index dérive de LOTS_PUBLIABLES ; la barrière de rendu exige EN PLUS
+// revue_carte_par_carte === true et un lot bien formé. Si les deux divergeaient,
+// l'index proposerait un lien qui meurt sur « Ce défi n'est pas disponible ».
+
+describe('invariant « listé = affichable » : chaque entrée de l\'index passe la barrière de rendu', () => {
+  test('tout lot de LOTS_PUBLIABLES : fichier présent, revue_carte_par_carte === true, bien formé', () => {
+    const { LOTS_PUBLIABLES, cheminLot, lotEstPubliable, lotEstBienForme } = obtenirExportsBootstrap();
+    for (const [notion, paliers] of Object.entries(LOTS_PUBLIABLES)) {
+      for (const palier of paliers) {
+        const chemin = cheminLot(notion, palier);
+        assert.ok(fsTest.existsSync(pathTest.join(__dirname, '../..', chemin)), `fichier absent : ${chemin}`);
+        const lot = JSON.parse(fsTest.readFileSync(pathTest.join(__dirname, '../..', chemin), 'utf8'));
+        assert.equal(lot.revue_carte_par_carte, true, `${notion}/${palier} listé mais non relu -> lien mort`);
+        assert.ok(lotEstPubliable(lot) && lotEstBienForme(lot), `${notion}/${palier} bloqué au rendu`);
+      }
+    }
+  });
+
+  test('parcours réel : chacun des 8 liens de l\'index ouvre bien « Carte 1 / N » (jamais « pas disponible »)', async () => {
+    const index = await demarrerBootstrap({ search: '?fonda=1&page=entrainement' });
+    const liens = liensIndex(index);
+    assert.equal(liens.length, 8);
+    for (const a of liens) {
+      const search = '?' + a.href.split('?')[1];
+      const root = await demarrerBootstrap({ search });
+      const q = new URLSearchParams(search);
+      const lot = require('../../' + obtenirExportsBootstrap().cheminLot(q.get('notion'), q.get('palier')));
+      assert.match(texteDe(root), new RegExp(`Carte 1 / ${lot.cartes.length}`), `lien mort : ${search}`);
+      assert.doesNotMatch(texteDe(root), /pas disponible/);
+    }
+  });
+});
