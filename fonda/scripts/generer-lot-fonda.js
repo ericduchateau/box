@@ -56,7 +56,7 @@ const {
   deposerEnRelecture,
 } = require('../engine/generation.js');
 
-const { evaluerReponse, compteCommeReussite } = require('../engine/correction.js');
+const { evaluerReponse, compteCommeReussite, calculerCibleAffichee, _internal: { parseReponseNumerique } } = require('../engine/correction.js');
 
 const ROOT = path.resolve(__dirname, '..');
 const REFERENTIEL_PATH = path.join(ROOT, 'data', 'referentiel.json');
@@ -249,13 +249,27 @@ function parserReponseModele(texte) {
 //    compteCommeReussite, qui tolère aussi 'presque' en sens/numerique — ici on
 //    vérifie la cohérence interne de la carte, pas une saisie élève approximative).
 // ---------------------------------------------------------------------------
+// Forme SAISISSABLE d'une référence (relecture Codex PR #2 v2, #3). En numérique
+// avec arrondi, une forme de reponses_acceptees est une RÉFÉRENCE de calcul ("1/3"),
+// pas ce qu'un élève tape : on teste sa cible arrondie ("0,33"), en conservant son
+// propre reliquat d'unité tel quel — "2 bus" sans unite déclarée reste donc
+// détecté ("2,00 bus" -> faux). Sans arrondi : forme littérale, inchangée.
+function formeSaisissable(carteBrute, forme) {
+  const brut = String(forme);
+  if (carteBrute.profil_correction !== 'numerique' || carteBrute.arrondi == null) return brut;
+  const parse = parseReponseNumerique(brut);
+  if (Number.isNaN(parse.valeur)) return brut;
+  const cible = calculerCibleAffichee({ profil: 'numerique', reponsesAcceptees: [brut], unite: null, arrondi: carteBrute.arrondi });
+  return parse.unite ? `${cible} ${parse.unite}` : cible;
+}
+
 function verifierContreCorrecteur(carteBrute) {
   const { statut } = evaluerReponse({
     profil: carteBrute.profil_correction,
-    reponseDonnee: carteBrute.reponse,
+    reponseDonnee: formeSaisissable(carteBrute, carteBrute.reponse),
     reponsesAcceptees: carteBrute.reponses_acceptees,
     unite: carteBrute.unite || null,
-    arrondi: null,
+    arrondi: carteBrute.arrondi ?? null,
   });
   if (statut !== 'juste') {
     return { ok: false, raison: `le correcteur (profil "${carteBrute.profil_correction}") ne valide pas la réponse "${carteBrute.reponse}" contre reponses_acceptees=${JSON.stringify(carteBrute.reponses_acceptees)}${carteBrute.unite ? ` unite="${carteBrute.unite}"` : ''} (statut obtenu : "${statut}")` };
@@ -279,7 +293,7 @@ function verifierFormesAcceptees(carteBrute) {
   const refusees = formes.filter((forme) => {
     const { statut } = evaluerReponse({
       profil: carteBrute.profil_correction,
-      reponseDonnee: String(forme),
+      reponseDonnee: formeSaisissable(carteBrute, forme),
       reponsesAcceptees: formes,
       unite: carteBrute.unite || null,
       arrondi: carteBrute.arrondi ?? null,
@@ -381,6 +395,9 @@ function construireCandidats({ notion, palier, cartesBrutes, sequence, ts }) {
     ts,
     contexte: brute.contexte,
     unite: brute.unite || undefined,
+    // Transmis tel quel : la carte a été vérifiée AVEC cet arrondi (relecture Codex
+    // PR #2 v2, #3) — le perdre changerait la correction publiée.
+    arrondi: brute.arrondi ?? undefined,
   }));
 }
 
@@ -423,6 +440,7 @@ function construireFichierBoxSelect({ notion, palier, candidats, destinataires }
       profil_correction: c.profil_correction,
       reponses_acceptees: c.reponses_acceptees,
       unite: c.unite,
+      arrondi: c.arrondi,
       contexte: c.contexte,
       set_id: c.set_id,
       item_id: c.item_id,
@@ -567,6 +585,7 @@ module.exports = {
   parserReponseModele,
   verifierContreCorrecteur,
   verifierFormesAcceptees,
+  formeSaisissable,
   trierCartesBrutes,
   autoCorrigerCarte,
   construireCandidats,

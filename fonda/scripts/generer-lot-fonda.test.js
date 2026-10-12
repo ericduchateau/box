@@ -16,6 +16,7 @@ const {
   parserReponseModele,
   verifierContreCorrecteur,
   verifierFormesAcceptees,
+  formeSaisissable,
   trierCartesBrutes,
   autoCorrigerCarte,
   construireCandidats,
@@ -369,4 +370,35 @@ describe('les 8 lots publiables repassent TOUS les garde-fous du générateur', 
       });
     });
   }
+});
+
+describe('garde-fou : cible APRÈS arrondi, pas la forme littérale (relecture Codex PR #2 v2, #3)', () => {
+  const carte = (extra) => ({ question: 'Q', profil_correction: 'numerique', reponse: '1/3', reponses_acceptees: ['1/3'], arrondi: 2, ...extra });
+
+  test('reponses_acceptees ["1/3"] + arrondi 2 : accepté (forme saisissable "0,33")', () => {
+    assert.equal(formeSaisissable(carte(), '1/3'), '0,33');
+    assert.equal(verifierFormesAcceptees(carte()).ok, true);
+    assert.equal(verifierContreCorrecteur(carte()).ok, true);
+  });
+
+  test('avec unité déclarée : "1/3 cm" -> "0,33 cm", accepté', () => {
+    const c = carte({ reponse: '1/3 cm', reponses_acceptees: ['1/3 cm', '1/3'], unite: 'cm' });
+    assert.equal(formeSaisissable(c, '1/3 cm'), '0,33 cm');
+    assert.equal(verifierFormesAcceptees(c).ok, true);
+    assert.equal(verifierContreCorrecteur(c).ok, true);
+  });
+
+  test('arrondi ne masque pas le cas "2 bus" sans unite déclarée', () => {
+    const c = carte({ reponse: '2', reponses_acceptees: ['2', '2 bus'] });
+    assert.equal(verifierFormesAcceptees(c).ok, false);
+  });
+
+  test('sans arrondi : forme littérale inchangée', () => {
+    assert.equal(formeSaisissable({ profil_correction: 'numerique' }, '1/3'), '1/3');
+  });
+
+  test('arrondi transmis jusqu\'aux candidates (sinon correction publiée différente)', () => {
+    const [cand] = construireCandidats({ notion: NOTION_MATHS, palier: 'nI', cartesBrutes: [carte()], sequence: 1, ts: '2026-10-12T00:00:00Z' });
+    assert.equal(cand.arrondi, 2);
+  });
 });
