@@ -619,3 +619,35 @@ describe('adapterCarte — arrondi et seconde_chance transmis (relecture Codex P
     assert.equal(c.seconde_chance, true);
   });
 });
+
+describe('lot validé EN ENTIER avant affichage (relecture Codex PR #2, #9)', () => {
+  const CHEMIN = 'fonda/data/lots-fonda-calibration/fr-comprendre-consigne_nI.json';
+  const VRAI = require('../data/lots-fonda-calibration/fr-comprendre-consigne_nI.json');
+
+  test('les 8 lots publiables sont bien formés', () => {
+    const { cheminLot, LOTS_PUBLIABLES, lotEstBienForme } = obtenirExportsBootstrap();
+    for (const [notion, paliers] of Object.entries(LOTS_PUBLIABLES)) {
+      for (const palier of paliers) {
+        assert.ok(lotEstBienForme(require('../../' + cheminLot(notion, palier))), `${notion}/${palier}`);
+      }
+    }
+  });
+
+  const casMalformes = [
+    ['carte null en position 2', (l) => ({ ...l, cartes: [l.cartes[0], null, ...l.cartes.slice(2)] })],
+    ['question vide', (l) => ({ ...l, cartes: [l.cartes[0], { ...l.cartes[1], question: ' ' }] })],
+    ['profil inconnu', (l) => ({ ...l, cartes: [l.cartes[0], { ...l.cartes[1], profil_correction: 'magie' }] })],
+    ['reponses_acceptees non tableau', (l) => ({ ...l, cartes: [l.cartes[0], { ...l.cartes[1], reponses_acceptees: 'x' }] })],
+    ['cartes vide', (l) => ({ ...l, cartes: [] })],
+  ];
+  for (const [libelle, abimer] of casMalformes) {
+    test(`${libelle} : refusé AVANT la 1re carte, message visible`, async () => {
+      const root = await demarrerBootstrap({
+        search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI',
+        lots: { [CHEMIN]: abimer(VRAI) },
+      });
+      assert.match(texteDe(root), /pas disponible/);
+      assert.doesNotMatch(texteDe(root), /Carte 1/);
+    });
+  }
+});

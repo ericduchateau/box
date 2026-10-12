@@ -398,6 +398,18 @@
     return !!lot && lot.revue_carte_par_carte === true;
   }
 
+  // Validation STRUCTURELLE du lot ENTIER avant la première carte (relecture Codex
+  // PR #2, #9) : une carte malformée en milieu de paquet ne doit jamais casser une
+  // transition "Carte suivante" hors de toute chaîne de promesses. Tout ou rien.
+  const PROFILS_CONNUS = ['sens', 'numerique', 'exact', 'orthographe'];
+  function lotEstBienForme(lot) {
+    return !!lot && Array.isArray(lot.cartes) && lot.cartes.length > 0
+      && lot.cartes.every((c) => !!c && typeof c === 'object'
+        && typeof c.question === 'string' && c.question.trim() !== ''
+        && PROFILS_CONNUS.includes(c.profil_correction)
+        && Array.isArray(c.reponses_acceptees) && c.reponses_acceptees.length > 0);
+  }
+
   // Adapte une carte au format du lot (box-select + champs FONDA) vers la forme
   // attendue par FondaCarteReponseProduite.montrerCarteReponseProduite(). Pure,
   // testable (module.exports en bas de fichier).
@@ -473,8 +485,17 @@
       });
     }
 
-    suivant.addEventListener('click', () => { index += 1; afficherCarteCourante(); });
-    afficherCarteCourante();
+    // Transitions protégées : même après validation du lot, une exception de rendu
+    // (hors chaîne de promesses) se traduit par un message visible, jamais par une
+    // ancienne carte figée avec un compteur avancé.
+    function afficherCarteProtegee() {
+      try { afficherCarteCourante(); } catch {
+        afficherMessage(root, 'Impossible d\'afficher cette carte — réessaie plus tard.');
+      }
+    }
+
+    suivant.addEventListener('click', () => { index += 1; afficherCarteProtegee(); });
+    afficherCarteProtegee();
   }
 
   // Point de branchement T2 (carte-reponse-produite.js). Le contexte est déjà résolu
@@ -491,7 +512,7 @@
     }
     avecDelai(chargerDependancesFonda().then(() => chargerJSON(chemin)), DELAI_CHARGEMENT_MS)
       .then((lot) => {
-        if (!lotEstPubliable(lot)) {
+        if (!lotEstPubliable(lot) || !lotEstBienForme(lot)) {
           afficherMessage(root, 'Ce défi n\'est pas disponible.');
           return;
         }
@@ -543,7 +564,7 @@
   // Fonctions pures exportées pour les tests Node (même motif que js/app.js) — le
   // reste (rendu DOM, fetch) n'est pas exporté, non testable en Node sans navigateur.
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { cheminLot, adapterCarte, lotEstPubliable, LOTS_PUBLIABLES, chargerScript, avecDelai };
+    module.exports = { cheminLot, adapterCarte, lotEstPubliable, LOTS_PUBLIABLES, chargerScript, avecDelai, lotEstBienForme };
   }
 
   demarrer().catch(() => afficherMessage(racineFonda(), 'Entraînement libre — données indisponibles pour le moment.'));
