@@ -45,33 +45,43 @@
 
   // Chargement dynamique IDEMPOTENT d'un <script> — même motif que
   // js/app.js::initFonda() pour bootstrap.js lui-même (zéro <script> statique tant
-  // qu'inutile). Idempotent : un appel répété (ou concurrent) pour la même src ne
-  // réinjecte jamais le script une seconde fois. Résout seulement après exécution
-  // (onload), jamais juste après l'insertion — l'ordre entre appels séquentiels
-  // (await) est donc garanti sans avoir besoin de script.async=false.
-  const scriptsCharges = new Set();
-  function chargerScript(src) {
-    if (scriptsCharges.has(src)) return Promise.resolve();
-    if (document.querySelector(`script[src="${src}"]`)) {
-      scriptsCharges.add(src);
-      return Promise.resolve();
-    }
-    return new Promise((resolve, reject) => {
+  // qu'inutile). Relecture Codex PR #2 (#3) — la preuve de chargement est l'EXPORT
+  // attendu sur window, jamais la simple présence d'une balise :
+  //   - export déjà présent -> résolu immédiatement ;
+  //   - chargement en cours -> la MÊME promesse est partagée (appels concurrents :
+  //     personne ne résout avant onload) ;
+  //   - onerror, ou onload sans l'export attendu -> rejet, et la promesse est
+  //     oubliée pour qu'un appel ultérieur retente réellement (nouvelle balise).
+  const chargementsEnCours = new Map();
+  function chargerScript(src, nomExport) {
+    if (window[nomExport]) return Promise.resolve();
+    if (chargementsEnCours.has(src)) return chargementsEnCours.get(src);
+    const promesse = new Promise((resolve, reject) => {
       const s = document.createElement('script');
       s.src = src;
-      s.onload = () => { scriptsCharges.add(src); resolve(); };
+      s.onload = () => {
+        if (window[nomExport]) resolve();
+        else reject(new Error(`fonda: ${src} chargé sans exposer ${nomExport}`));
+      };
       s.onerror = () => reject(new Error('fonda: chargement impossible de ' + src));
       document.head.appendChild(s);
-    });
+    }).catch((err) => { chargementsEnCours.delete(src); throw err; });
+    chargementsEnCours.set(src, promesse);
+    return promesse;
   }
 
-  // Ordre important : correction.js AVANT carte-reponse-produite.js, qui lit
-  // window.FondaCorrection à l'évaluation du fichier (pas paresseusement, dans une
-  // fonction) — await séquentiel ci-dessous, pas Promise.all, pour le garantir.
+  // Graphe COMPLET des dépendances navigateur (relecture Codex PR #2, #2) :
+  //   evenements.js (parserDefiId/grpEstAutorise, fonctions pures — son chargement
+  //   n'émet rien : l'émission réelle exige un appel explicite, absent ici) -> liens.js
+  //   (capture FondaEvenements À L'ÉVALUATION) ; correction.js -> carte-reponse-
+  //   produite.js (lit FondaCorrection À L'ÉVALUATION). await séquentiel, pas
+  //   Promise.all, pour garantir cet ordre. Appelée en tête de demarrer(), AVANT tout
+  //   usage de FondaLiens (page niveau, lien défi) — plus seulement dans lancerDefi().
   async function chargerDependancesFonda() {
-    await chargerScript('fonda/engine/liens.js?v=1');
-    await chargerScript('fonda/engine/correction.js?v=1');
-    await chargerScript('fonda/engine/carte-reponse-produite.js?v=1');
+    await chargerScript('fonda/engine/evenements.js?v=1', 'FondaEvenements');
+    await chargerScript('fonda/engine/liens.js?v=1', 'FondaLiens');
+    await chargerScript('fonda/engine/correction.js?v=1', 'FondaCorrection');
+    await chargerScript('fonda/engine/carte-reponse-produite.js?v=1', 'FondaCarteReponseProduite');
   }
 
   // En-tête commun (lockup logo+signature + retour BOX) — thème sombre, posé par
@@ -495,6 +505,10 @@
     // chemins liés au calendrier/classes).
     if (param('page') === 'carte') { renderPageCarte(); return; }
 
+    // Dépendances AVANT tout usage de window.FondaLiens (page niveau avec défis,
+    // lien de défi) — échec -> .catch de demarrer(), message visible.
+    await chargerDependancesFonda();
+
     const [classes, referentiel, calendrier] = await Promise.all([
       chargerJSON('fonda/data/classes.json'),
       chargerJSON('fonda/data/referentiel.json'),
@@ -513,7 +527,7 @@
   // Fonctions pures exportées pour les tests Node (même motif que js/app.js) — le
   // reste (rendu DOM, fetch) n'est pas exporté, non testable en Node sans navigateur.
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { cheminLot, adapterCarte, lotEstPubliable, LOTS_PUBLIABLES };
+    module.exports = { cheminLot, adapterCarte, lotEstPubliable, LOTS_PUBLIABLES, chargerScript };
   }
 
   demarrer().catch(() => afficherMessage(racineFonda(), 'Entraînement libre — données indisponibles pour le moment.'));

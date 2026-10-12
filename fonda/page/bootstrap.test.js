@@ -53,18 +53,31 @@ function creerElementFactice(tag) {
   };
 }
 
-function creerDocumentFactice() {
+// Chargeur de <script> RÉALISTE (relecture Codex PR #2, #10) : aucun global FONDA
+// n'est pré-injecté. Chaque <script> ajouté à <head> est réellement ÉVALUÉ au tick
+// suivant, en mode NAVIGATEUR (vm, sans `module` ni `require` : la branche UMD
+// navigateur est celle qui s'exécute, avec ses vraies dépendances globales), puis
+// onload est appelé. `echecs` (Set de chemins) simule une erreur réseau -> onerror.
+// `journalScripts` reçoit chaque src injectée (ordre + absence de doublons).
+const vm = require('vm');
+const fsTest = require('fs');
+const pathTest = require('path');
+
+function creerDocumentFactice({ echecs = new Set(), journalScripts = [] } = {}) {
   const body = creerElementFactice('body');
   const head = creerElementFactice('head');
-  // Tout <script> ajouté à <head> "charge" avec succès au tick suivant (onload) —
-  // simule le chargement dynamique de fonda/engine/*.js (chargerScript ci-contre
-  // dans bootstrap.js). Les modules réels sont de toute façon injectés en globals
-  // ci-dessous (FondaLiens/FondaCorrection/FondaCarteReponseProduite) : ce qui compte
-  // ici est seulement que la promesse chargerScript() SE RÉSOLVE, pas qu'elle exécute
-  // réellement un fichier (ça, c'est le rôle du smoke-test manuel en navigateur).
   head.appendChild = (el) => {
     head.children.push(el);
-    if (el && el.tagName === 'script') setTimeout(() => { if (typeof el.onload === 'function') el.onload(); }, 0);
+    if (el && el.tagName === 'script') {
+      journalScripts.push(el.src);
+      setTimeout(() => {
+        const chemin = el.src.split('?')[0];
+        if (echecs.has(chemin)) { if (typeof el.onerror === 'function') el.onerror(new Error('réseau')); return; }
+        const code = fsTest.readFileSync(pathTest.join(__dirname, '..', '..', chemin), 'utf8');
+        vm.runInNewContext(code, { self: global.window, window: global.window, document: global.document, console });
+        if (typeof el.onload === 'function') el.onload();
+      }, 0);
+    }
     return el;
   };
   let root = null;
@@ -72,7 +85,7 @@ function creerDocumentFactice() {
     body, head,
     createElement: (tag) => creerElementFactice(tag),
     getElementById: (id) => (id === 'fondaRoot' ? root : null),
-    querySelector: () => null, // jamais de script déjà présent : chaque test repart d'un DOM vierge
+    querySelector: () => null,
     addEventListener() {},
     _definirRoot(r) { root = r; },
   };
@@ -98,8 +111,8 @@ function creerFetchFactice({ calendrier = CALENDRIER, lots = {} } = {}) {
   };
 }
 
-async function demarrerBootstrap({ search, calendrier, lots, journalFetch }) {
-  const doc = creerDocumentFactice();
+async function demarrerBootstrap({ search, calendrier, lots, journalFetch, echecs, journalScripts }) {
+  const doc = creerDocumentFactice({ echecs, journalScripts });
   // document.body.appendChild('fondaRoot' div) -> on l'intercepte pour pouvoir le relire
   const originalAppendChild = doc.body.appendChild.bind(doc.body);
   doc.body.appendChild = (el) => { doc._definirRoot(el); return originalAppendChild(el); };
@@ -110,21 +123,13 @@ async function demarrerBootstrap({ search, calendrier, lots, journalFetch }) {
   global.fetch = journalFetch
     ? (chemin) => { journalFetch.push(chemin); return fetchFactice(chemin); }
     : fetchFactice;
-  global.window.FondaLiens = require('../engine/liens.js');
-  global.window.FondaEvenements = require('../engine/evenements.js');
-  // Modules réels (pas des bouchons) — mêmes motifs que carte-reponse-produite.test.js :
-  // correction.js DOIT être posé sur window avant que carte-reponse-produite.js ne soit
-  // require()-é (il lit window.FondaCorrection à l'évaluation du fichier).
-  global.window.FondaCorrection = require('../engine/correction.js');
-  delete require.cache[require.resolve('../engine/carte-reponse-produite.js')];
-  require('../engine/carte-reponse-produite.js');
 
   delete require.cache[require.resolve('./bootstrap.js')];
   require('./bootstrap.js');
 
-  // Laisse le temps à la chaîne de promesses (fetch factice + "chargement" de script
+  // Laisse le temps à la chaîne de promesses (fetch factice + chargement de script
   // simulé via setTimeout ci-dessus) de se dérouler avant d'inspecter le DOM factice.
-  for (let i = 0; i < 8; i += 1) await new Promise((r) => setTimeout(r, 0));
+  for (let i = 0; i < 20; i += 1) await new Promise((r) => setTimeout(r, 0));
 
   return doc.getElementById('fondaRoot');
 }
@@ -276,12 +281,13 @@ describe('?page=niveau AVEC niveau -> comportement inchangé, plus la persistanc
 
 // --- Câblage des fiches FONDA (chantier feat/box-fonda-cablage) --------------------
 
-// Récupère les fonctions pures exportées par bootstrap.js (adapterCarte, cheminLot)
-// — demarrer() tourne en tâche de fond (recherche vide -> branche "else", inoffensive)
-// mais le require() lui-même, synchrone, a déjà posé module.exports avant ça.
+// Récupère les fonctions pures exportées par bootstrap.js (adapterCarte, cheminLot...)
+// — search '?page=carte' sans notion : demarrer() sort de façon SYNCHRONE (message
+// "notion ou palier manquant"), sans aucune continuation asynchrone qui viendrait
+// écrire plus tard dans le DOM factice du test suivant.
 function obtenirExportsBootstrap() {
   global.document = creerDocumentFactice();
-  global.window = { location: { search: '' } };
+  global.window = { location: { search: '?page=carte' } };
   delete require.cache[require.resolve('./bootstrap.js')];
   return require('./bootstrap.js');
 }
@@ -475,5 +481,103 @@ describe('G4 — seuls les lots relus carte par carte sont affichables', () => {
     const journal = [];
     await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI', journalFetch: journal });
     assert.deepEqual(journal, ['fonda/data/lots-fonda-calibration/fr-comprendre-consigne_nI.json']);
+  });
+});
+
+// --- Chargement réel des dépendances navigateur (relecture Codex PR #2, #2/#3) ---------
+
+describe('chargement des dépendances FONDA en conditions navigateur (aucun global pré-injecté)', () => {
+  const ORDRE = [
+    'fonda/engine/evenements.js?v=1',
+    'fonda/engine/liens.js?v=1',
+    'fonda/engine/correction.js?v=1',
+    'fonda/engine/carte-reponse-produite.js?v=1',
+  ];
+
+  test('lien de défi (calendrier) : graphe complet chargé dans l\'ordre, une seule fois, et le défi se lance', async () => {
+    const journalScripts = [];
+    const root = await demarrerBootstrap({ search: '?fonda=1&defi=defi_2026-w41_601_resolution-problemes', calendrier: CALENDRIER, journalScripts });
+    assert.deepEqual(journalScripts, ORDRE);
+    assert.match(texteDe(root), /classe 601/);
+    assert.match(texteDe(root), /Carte 1 \/ 6/);
+  });
+
+  test('page niveau avec défis programmés : FondaLiens disponible (plus de "FondaLiens is undefined")', async () => {
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau&niveau=6e&semaine=41', calendrier: CALENDRIER });
+    assert.ok(trouverParClasse(root, 'fonda-liens-niveau'), 'liste de liens absente');
+  });
+
+  for (const fichier of ORDRE.map((s) => s.split('?')[0])) {
+    test(`échec réseau de ${fichier} : message visible, jamais de page blanche`, async () => {
+      const root = await demarrerBootstrap({
+        search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI',
+        echecs: new Set([fichier]),
+      });
+      assert.match(texteDe(root), /Impossible de charger ce défi/);
+    });
+  }
+
+  test('échec réseau d\'une dépendance sur la page niveau : message visible (catch de demarrer)', async () => {
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau', echecs: new Set(['fonda/engine/liens.js']) });
+    assert.match(texteDe(root), /données indisponibles/);
+  });
+
+  test('BOX sans fonda : bootstrap.js n\'est jamais chargé (initFonda seulement si ?fonda=1)', () => {
+    const app = fsTest.readFileSync(pathTest.join(__dirname, '../../js/app.js'), 'utf8');
+    assert.match(app, /if \(params\.get\('fonda'\) === '1'\) \{ this\.initFonda\(\); return; \}/);
+    const index = fsTest.readFileSync(pathTest.join(__dirname, '../../index.html'), 'utf8');
+    assert.doesNotMatch(index, /<script[^>]+fonda\//);
+  });
+});
+
+describe('chargerScript — idempotence réelle (relecture Codex PR #2, #3)', () => {
+  // Document à chargement PILOTÉ : rien ne se charge tant que le test n'appelle pas
+  // onload/onerror lui-même sur la balise injectée.
+  function exportsAvecHeadPilote() {
+    const { chargerScript } = obtenirExportsBootstrap();
+    const balises = [];
+    global.document.head.appendChild = (el) => { balises.push(el); return el; };
+    return { chargerScript, balises };
+  }
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+
+  test('deux appels concurrents : UNE seule balise, aucun des deux ne résout avant onload', async () => {
+    const { chargerScript, balises } = exportsAvecHeadPilote();
+    let resolus = 0;
+    const p1 = chargerScript('x.js', 'FondaX').then(() => { resolus += 1; });
+    const p2 = chargerScript('x.js', 'FondaX').then(() => { resolus += 1; });
+    await tick();
+    assert.equal(balises.length, 1);
+    assert.equal(resolus, 0, 'résolu avant onload');
+    global.window.FondaX = {};
+    balises[0].onload();
+    await Promise.all([p1, p2]);
+    assert.equal(resolus, 2);
+  });
+
+  test('après onerror, un nouvel appel retente réellement (nouvelle balise)', async () => {
+    const { chargerScript, balises } = exportsAvecHeadPilote();
+    const p1 = chargerScript('y.js', 'FondaY');
+    balises[0].onerror();
+    await assert.rejects(p1);
+    const p2 = chargerScript('y.js', 'FondaY');
+    assert.equal(balises.length, 2, 'aucune nouvelle tentative après échec');
+    global.window.FondaY = {};
+    balises[1].onload();
+    await p2;
+  });
+
+  test('onload sans l\'export attendu : rejet (une balise n\'est pas une preuve d\'exécution)', async () => {
+    const { chargerScript, balises } = exportsAvecHeadPilote();
+    const p = chargerScript('z.js', 'FondaZ');
+    balises[0].onload();
+    await assert.rejects(p, /sans exposer FondaZ/);
+  });
+
+  test('export déjà présent : résolu sans injecter de balise', async () => {
+    const { chargerScript, balises } = exportsAvecHeadPilote();
+    global.window.FondaW = {};
+    await chargerScript('w.js', 'FondaW');
+    assert.equal(balises.length, 0);
   });
 });
