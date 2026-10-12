@@ -669,3 +669,32 @@ describe('lien de démonstration aussi sur les pages niveau sans défi (relectur
     });
   }
 });
+
+describe('chargerScript — expiration (relecture Codex PR #2 v2, #2)', () => {
+  test('délai dépassé -> rejet ; nouvel essai = NOUVELLE balise, qui réussit ; callback tardif de l\'ancienne ignoré', async () => {
+    const { chargerScript } = obtenirExportsBootstrap();
+    const balises = [];
+    global.document.head.appendChild = (el) => { balises.push(el); return el; };
+
+    const p1 = chargerScript('lent.js', 'FondaLent', 20);
+    await assert.rejects(p1, /délai dépassé/);
+    assert.equal(balises[0].onload, null, 'callbacks de la balise expirée non neutralisés');
+
+    const p2 = chargerScript('lent.js', 'FondaLent', 1000);
+    assert.equal(balises.length, 2, 'aucune nouvelle tentative après expiration');
+    global.window.FondaLent = {};
+    balises[1].onload();
+    await p2;
+  });
+
+  test('onload puis délai : le délai ne rejette pas une promesse déjà résolue', async () => {
+    const { chargerScript } = obtenirExportsBootstrap();
+    const balises = [];
+    global.document.head.appendChild = (el) => { balises.push(el); return el; };
+    const p = chargerScript('rapide.js', 'FondaRapide', 20);
+    global.window.FondaRapide = {};
+    balises[0].onload();
+    await p;
+    await new Promise((r) => setTimeout(r, 40));
+  });
+});

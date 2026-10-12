@@ -57,18 +57,35 @@
   //     personne ne résout avant onload) ;
   //   - onerror, ou onload sans l'export attendu -> rejet, et la promesse est
   //     oubliée pour qu'un appel ultérieur retente réellement (nouvelle balise).
+  //   - délai dépassé (relecture Codex PR #2 v2, #2) -> rejet, entrée oubliée,
+  //     balise retirée et callbacks tardifs neutralisés : un nouvel appel retente
+  //     vraiment, au lieu de recevoir pour toujours la même promesse pendante.
+  const DELAI_SCRIPT_MS = 10000;
   const chargementsEnCours = new Map();
-  function chargerScript(src, nomExport) {
+  function chargerScript(src, nomExport, delaiMs = DELAI_SCRIPT_MS) {
     if (window[nomExport]) return Promise.resolve();
     if (chargementsEnCours.has(src)) return chargementsEnCours.get(src);
     const promesse = new Promise((resolve, reject) => {
       const s = document.createElement('script');
+      let regle = false;
+      const minuteur = setTimeout(() => {
+        terminer(() => reject(new Error(`fonda: délai dépassé pour ${src}`)));
+        s.onload = null;
+        s.onerror = null;
+        if (typeof s.remove === 'function') s.remove();
+      }, delaiMs);
+      function terminer(action) {
+        if (regle) return; // callback tardif après expiration (ou l'inverse) : ignoré
+        regle = true;
+        clearTimeout(minuteur);
+        action();
+      }
       s.src = src;
-      s.onload = () => {
+      s.onload = () => terminer(() => {
         if (window[nomExport]) resolve();
         else reject(new Error(`fonda: ${src} chargé sans exposer ${nomExport}`));
-      };
-      s.onerror = () => reject(new Error('fonda: chargement impossible de ' + src));
+      });
+      s.onerror = () => terminer(() => reject(new Error('fonda: chargement impossible de ' + src)));
       document.head.appendChild(s);
     }).catch((err) => { chargementsEnCours.delete(src); throw err; });
     chargementsEnCours.set(src, promesse);
