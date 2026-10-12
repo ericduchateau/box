@@ -474,3 +474,21 @@ PR #1 (`feat/box-fonda-theme-switch` → `design`, commit `5ea01ba`) relue par C
 - **🔖 DETTE Moteur A (Codex #7)** : `lancerDefi()` ignore le `setId` du calendrier (lot choisi par notion+palier). À brancher avec Moteur A — la promesse « aucune retouche nécessaire » était fausse, corrigée dans l'en-tête de `bootstrap.js`.
 - **Point ouvert pédagogique** : un élève qui tape « 2 bus » reste noté faux (pas de tolérance de mot après le nombre sans unité déclarée). Option (b) (correcteur tolérant) non retenue pour l'instant.
 - **Prochaine étape** : nouvelle relecture Codex, puis merge de la PR #2 dans `design`, puis publication des 8 lots.
+
+### Relecture Codex v2 — 4 points corrigés, 1 reporté (2026-10-12, Claude Code)
+
+- Plus de bloquant (G4 non contournable, aucune régression BOX clair). Corrigés, un commit chacun, avec un test de COMPORTEMENT de leur scénario :
+  1. Délai (20 s) + « Retour à BOX » dans `initFonda()`, en amont de bootstrap.js ; signal `window.FondaBootstrapActif`. Tests `js/app.test.js` (horloge pilotée), remplaçant une recherche de chaîne.
+  2. `chargerScript` gère l'expiration (10 s/script) : entrée oubliée, callbacks tardifs neutralisés, nouvel essai possible.
+  3. Garde-fou générateur : cible après arrondi (`formeSaisissable`), `arrondi` transmis aux candidates/box-select (régression de mon garde-fou v1).
+  4. Réponses = texte non vide ou nombre fini ; plantage de correction au clic -> message visible + `onErreur` (additif, rien de scoré).
+- **Smoke-test navigateur réel (Chrome headless, serveur local) : OK** — BOX clair intact (aucun script/police FONDA, navbar visible) ; page niveau + lien démo ; démo complète 6/6 (faux ✗, juste ✓, relecteur affiché, « Carte suivante » après Valider, écran de fin) ; lot non relu refusé ; retour BOX propre ; bootstrap.js bloqué -> message + retour BOX. Zéro exception, zéro erreur console.
+- Lecture Codex ciblée (points 3-4) : 4 précisions corrigées (réponse-or testée littéralement, filet restreint à la correction, relecteur typé, arrondi borné 0..10).
+- `node --test` : **394/394, 0 échec, 1 skip** (dette connue).
+
+### 🔖 À régler AVANT usage élève réel (même rang que la clé API)
+1. Clé API Anthropic à régénérer (scripts locaux + nœud n8n `Claude API` de `BOX - Generation Flashcards`).
+2. Vraie adresse de la relectrice de français dans `fonda/data/destinataires.json` (adresse de test aujourd'hui).
+3. **Fidélité du banc de test (Codex v2 #5)** : un seul contexte navigateur partagé (vm), parcours complet depuis `App.initFonda()`, chargements et horloge pilotables. Aujourd'hui chaque dépendance a son propre contexte vm et bootstrap.js est chargé par `require()` : une collision de globals passerait les tests et casserait en vrai. Cause racine des « vert en test, cassé en navigateur » — **à prioriser avant d'élargir FONDA à d'autres notions**. D'ici là, le smoke-test navigateur réel reste le filet obligatoire avant chaque merge.
+4. **Correcteur tolérant au mot après le nombre (point 8, option b)** : « 2 bus » est aujourd'hui noté faux sans unité déclarée ; et avec une unité déclarée, le nombre seul donne « presque, unité oubliée ».
+5. Entrée orpheline `box_7e7tcooh` du catalogue Drive (à la prochaine modification légitime du catalogue).
