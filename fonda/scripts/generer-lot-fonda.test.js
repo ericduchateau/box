@@ -373,7 +373,7 @@ describe('les 8 lots publiables repassent TOUS les garde-fous du générateur', 
 });
 
 describe('garde-fou : cible APRÈS arrondi, pas la forme littérale (relecture Codex PR #2 v2, #3)', () => {
-  const carte = (extra) => ({ question: 'Q', profil_correction: 'numerique', reponse: '1/3', reponses_acceptees: ['1/3'], arrondi: 2, ...extra });
+  const carte = (extra) => ({ question: 'Q', profil_correction: 'numerique', reponse: '0,33', reponses_acceptees: ['1/3'], arrondi: 2, ...extra });
 
   test('reponses_acceptees ["1/3"] + arrondi 2 : accepté (forme saisissable "0,33")', () => {
     assert.equal(formeSaisissable(carte(), '1/3'), '0,33');
@@ -381,8 +381,15 @@ describe('garde-fou : cible APRÈS arrondi, pas la forme littérale (relecture C
     assert.equal(verifierContreCorrecteur(carte()).ok, true);
   });
 
+  test('réponse-or testée littéralement : "0,334" (mal arrondie) et "1/3" (non arrondie) rejetées', () => {
+    assert.equal(verifierContreCorrecteur(carte({ reponse: '0,334' })).ok, false);
+    assert.equal(verifierContreCorrecteur(carte({ reponse: '1/3' })).ok, false);
+    const { cartesValides } = trierCartesBrutes([carte({ reponse: '0,334' })]);
+    assert.equal(cartesValides.length, 0, 'une réponse-or fausse ne doit jamais atteindre le fichier box-select');
+  });
+
   test('avec unité déclarée : "1/3 cm" -> "0,33 cm", accepté', () => {
-    const c = carte({ reponse: '1/3 cm', reponses_acceptees: ['1/3 cm', '1/3'], unite: 'cm' });
+    const c = carte({ reponse: '0,33 cm', reponses_acceptees: ['1/3 cm', '1/3'], unite: 'cm' });
     assert.equal(formeSaisissable(c, '1/3 cm'), '0,33 cm');
     assert.equal(verifierFormesAcceptees(c).ok, true);
     assert.equal(verifierContreCorrecteur(c).ok, true);
@@ -397,8 +404,13 @@ describe('garde-fou : cible APRÈS arrondi, pas la forme littérale (relecture C
     assert.equal(formeSaisissable({ profil_correction: 'numerique' }, '1/3'), '1/3');
   });
 
-  test('arrondi transmis jusqu\'aux candidates (sinon correction publiée différente)', () => {
-    const [cand] = construireCandidats({ notion: NOTION_MATHS, palier: 'nI', cartesBrutes: [carte()], sequence: 1, ts: '2026-10-12T00:00:00Z' });
-    assert.equal(cand.arrondi, 2);
-  });
+  for (const arrondi of [2, 0]) {
+    test(`arrondi ${arrondi} transmis jusqu'au fichier box-select (sinon correction publiée différente)`, () => {
+      const c = arrondi === 0 ? carte({ arrondi: 0, reponse: '0', reponses_acceptees: ['1/3'] }) : carte();
+      const candidats = construireCandidats({ notion: NOTION_MATHS, palier: 'nI', cartesBrutes: [c], sequence: 1, ts: '2026-10-12T00:00:00Z' });
+      assert.equal(candidats[0].arrondi, arrondi);
+      const fichier = construireFichierBoxSelect({ notion: NOTION_MATHS, palier: 'nI', candidats, destinataires: DESTINATAIRES_TEST });
+      assert.equal(JSON.parse(JSON.stringify(fichier)).cartes[0].arrondi, arrondi);
+    });
+  }
 });

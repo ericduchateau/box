@@ -263,10 +263,14 @@ function formeSaisissable(carteBrute, forme) {
   return parse.unite ? `${cible} ${parse.unite}` : cible;
 }
 
+// La réponse-or, elle, est testée LITTÉRALEMENT (relecture Codex ciblée) : c'est ce
+// que voit le relecteur et ce qu'un élève taperait — "0,334" pour un arrondi à 2
+// décimales doit être rejetée, pas ramenée à "0,33". Seules les formes de
+// reponses_acceptees (références de calcul) passent par formeSaisissable.
 function verifierContreCorrecteur(carteBrute) {
   const { statut } = evaluerReponse({
     profil: carteBrute.profil_correction,
-    reponseDonnee: formeSaisissable(carteBrute, carteBrute.reponse),
+    reponseDonnee: carteBrute.reponse,
     reponsesAcceptees: carteBrute.reponses_acceptees,
     unite: carteBrute.unite || null,
     arrondi: carteBrute.arrondi ?? null,
