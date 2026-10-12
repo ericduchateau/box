@@ -48,10 +48,42 @@ const App = {
     font.rel = 'stylesheet';
     font.href = 'https://fonts.googleapis.com/css2?family=Poppins:wght@700;800&display=swap';
     document.head.appendChild(font);
+    // État de chargement IMMÉDIAT (relecture Codex PR #2, #5 puis v2 #1) : jamais
+    // d'écran vide entre le masquage de BOX et le premier rendu de bootstrap.js (qui
+    // réutilise ce même #fondaRoot), et un retour BOX disponible DÈS l'attente. Le
+    // délai vit ICI, en amont du script qui peut ne jamais arriver : bootstrap.js
+    // signale sa prise en charge (window.FondaBootstrapActif, posé à la fin de son
+    // évaluation) ; sans ce signal -> message d'indisponibilité, que ce soit par
+    // erreur réseau (onerror), par erreur d'évaluation (onload sans signal) ou par
+    // requête pendante (délai).
+    const racine = document.createElement('div');
+    racine.id = 'fondaRoot';
+    const attente = document.createElement('p');
+    attente.className = 'fonda-message';
+    attente.textContent = 'Chargement…';
+    const retour = document.createElement('a');
+    retour.className = 'fonda-header__back';
+    retour.href = window.location.pathname;
+    retour.textContent = '← Retour à BOX';
+    racine.appendChild(attente);
+    racine.appendChild(retour);
+    document.body.appendChild(racine);
+
+    let echec = false;
+    const indisponible = () => {
+      if (echec || window.FondaBootstrapActif) return;
+      echec = true;
+      attente.textContent = 'Le mode FONDA est indisponible pour le moment — réessaie plus tard.';
+    };
     const s = document.createElement('script');
     s.src = 'fonda/page/bootstrap.js?v=1';
+    s.onerror = indisponible;
+    s.onload = indisponible; // sans effet si bootstrap.js a bien pris la main
+    setTimeout(indisponible, App.DELAI_BOOTSTRAP_MS);
     document.head.appendChild(s);
   },
+
+  DELAI_BOOTSTRAP_MS: 20000,
 
   // Switch BOX -> FONDA (navbar, thème clair) : navigation plein-rechargement vers
   // ?fonda=1&page=niveau, jamais un repaint de l'écran courant (BOX reste 100%

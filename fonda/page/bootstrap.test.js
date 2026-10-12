@@ -28,9 +28,10 @@ const CALENDRIER = { version: 1, last_updated: '2026-10-05', semaines: [SEMAINE_
 // textContent agrège récursivement depuis les enfants, comme un vrai DOM (nécessaire
 // pour vérifier le texte de la signature à deux lignes, relecture Codex #10 — voir
 // carte-reponse-produite.test.js pour le même motif).
-function creerElementFactice() {
+function creerElementFactice(tag) {
   return {
-    className: '', href: '',
+    tagName: tag, className: '', href: '', src: '', type: '', style: {},
+    value: '', disabled: false, autocomplete: '', dataset: {}, attributes: {},
     children: [],
     _text: '',
     classList: { add() {}, remove() {} },
@@ -44,53 +45,91 @@ function creerElementFactice() {
     set innerHTML(v) { this._text = v; this.children = []; },
     append(...nodes) { this.children.push(...nodes); },
     appendChild(n) { this.children.push(n); return n; },
-    addEventListener() {},
+    setAttribute(k, v) { this.attributes[k] = v; },
+    focus() {},
+    addEventListener(evt, fn) { (this._listeners = this._listeners || {})[evt] = (this._listeners[evt] || []).concat(fn); },
+    __click() { ((this._listeners || {}).click || []).forEach((fn) => fn({})); },
+    __keydown(key) { ((this._listeners || {}).keydown || []).forEach((fn) => fn({ key })); },
   };
 }
 
-function creerDocumentFactice() {
-  const body = creerElementFactice();
+// Chargeur de <script> RÉALISTE (relecture Codex PR #2, #10) : aucun global FONDA
+// n'est pré-injecté. Chaque <script> ajouté à <head> est réellement ÉVALUÉ au tick
+// suivant, en mode NAVIGATEUR (vm, sans `module` ni `require` : la branche UMD
+// navigateur est celle qui s'exécute, avec ses vraies dépendances globales), puis
+// onload est appelé. `echecs` (Set de chemins) simule une erreur réseau -> onerror.
+// `journalScripts` reçoit chaque src injectée (ordre + absence de doublons).
+const vm = require('vm');
+const fsTest = require('fs');
+const pathTest = require('path');
+
+function creerDocumentFactice({ echecs = new Set(), journalScripts = [] } = {}) {
+  const body = creerElementFactice('body');
+  const head = creerElementFactice('head');
+  head.appendChild = (el) => {
+    head.children.push(el);
+    if (el && el.tagName === 'script') {
+      journalScripts.push(el.src);
+      setTimeout(() => {
+        const chemin = el.src.split('?')[0];
+        if (echecs.has(chemin)) { if (typeof el.onerror === 'function') el.onerror(new Error('réseau')); return; }
+        const code = fsTest.readFileSync(pathTest.join(__dirname, '..', '..', chemin), 'utf8');
+        vm.runInNewContext(code, { self: global.window, window: global.window, document: global.document, console });
+        if (typeof el.onload === 'function') el.onload();
+      }, 0);
+    }
+    return el;
+  };
   let root = null;
   return {
-    body,
-    createElement: () => creerElementFactice(),
+    body, head,
+    createElement: (tag) => creerElementFactice(tag),
     getElementById: (id) => (id === 'fondaRoot' ? root : null),
+    querySelector: () => null,
     addEventListener() {},
     _definirRoot(r) { root = r; },
   };
 }
 
-// fetch factice : répond avec les vraies données (classes/referentiel), le calendrier
-// de test, et échoue sur tout le reste.
-function creerFetchFactice({ calendrier = CALENDRIER } = {}) {
+// fetch factice : classes/referentiel/calendrier de test ; pour un lot FONDA
+// (fonda/data/lots-fonda-calibration/...), sert soit une fixture explicite (`lots`),
+// soit, par défaut, le VRAI fichier committé (cohérent pour les tests d'intégration
+// qui n'ont besoin d'aucune fixture synthétique) ; échoue sur le reste.
+function creerFetchFactice({ calendrier = CALENDRIER, lots = {} } = {}) {
   return async (chemin) => {
-    const corps = chemin.includes('classes.json') ? CLASSES
-      : chemin.includes('referentiel.json') ? REFERENTIEL
-        : chemin.includes('calendar.json') ? calendrier
-          : null;
-    if (corps === null) return { ok: false };
-    return { ok: true, json: async () => corps };
+    if (chemin.includes('classes.json')) return { ok: true, json: async () => CLASSES };
+    if (chemin.includes('referentiel.json')) return { ok: true, json: async () => REFERENTIEL };
+    if (chemin.includes('calendar.json')) return { ok: true, json: async () => calendrier };
+    if (chemin.includes('lots-fonda-calibration/')) {
+      if (lots[chemin]) return { ok: true, json: async () => lots[chemin] };
+      try {
+        const donnees = require('../' + chemin.split('fonda/')[1]);
+        return { ok: true, json: async () => donnees };
+      } catch { return { ok: false }; }
+    }
+    return { ok: false };
   };
 }
 
-async function demarrerBootstrap({ search, calendrier }) {
-  const doc = creerDocumentFactice();
+async function demarrerBootstrap({ search, calendrier, lots, journalFetch, echecs, journalScripts }) {
+  const doc = creerDocumentFactice({ echecs, journalScripts });
   // document.body.appendChild('fondaRoot' div) -> on l'intercepte pour pouvoir le relire
   const originalAppendChild = doc.body.appendChild.bind(doc.body);
   doc.body.appendChild = (el) => { doc._definirRoot(el); return originalAppendChild(el); };
 
   global.document = doc;
   global.window = { location: { search, origin: 'https://ericduchateau.github.io', pathname: '/box/index.html' } };
-  global.fetch = creerFetchFactice({ calendrier });
-  global.window.FondaLiens = require('../engine/liens.js');
-  global.window.FondaEvenements = require('../engine/evenements.js');
+  const fetchFactice = creerFetchFactice({ calendrier, lots });
+  global.fetch = journalFetch
+    ? (chemin) => { journalFetch.push(chemin); return fetchFactice(chemin); }
+    : fetchFactice;
 
   delete require.cache[require.resolve('./bootstrap.js')];
   require('./bootstrap.js');
 
-  // Laisse le temps à la chaîne de promesses (fetch factice, toujours déjà résolu) de
-  // se dérouler complètement avant d'inspecter le DOM factice.
-  for (let i = 0; i < 5; i += 1) await new Promise((r) => setTimeout(r, 0));
+  // Laisse le temps à la chaîne de promesses (fetch factice + chargement de script
+  // simulé via setTimeout ci-dessus) de se dérouler avant d'inspecter le DOM factice.
+  for (let i = 0; i < 20; i += 1) await new Promise((r) => setTimeout(r, 0));
 
   return doc.getElementById('fondaRoot');
 }
@@ -139,6 +178,20 @@ describe('defi résolu avec succès -> page non blanche, contenu annoncé (pas d
     assert.ok(texte.includes('601'), 'le message devrait mentionner la classe résolue');
   });
 });
+
+function trouverBoutonParTexte(el, texteBouton) {
+  if (!el || !el.children) return null;
+  for (const c of el.children) {
+    if (c && c.textContent === texteBouton) return c;
+    const trouve = trouverBoutonParTexte(c, texteBouton);
+    if (trouve) return trouve;
+  }
+  return null;
+}
+
+function texteDe(root) {
+  return (root.textContent || '').trim() || root.children.map((c) => c.textContent).join(' ');
+}
 
 // --- Sélecteur de niveau (chantier visuel feat/box-fonda-theme-switch) -------------
 // Remplace l'ancien message d'erreur "Niveau manquant" : c'est la cible du switch
@@ -237,5 +290,471 @@ describe('?page=niveau AVEC niveau -> comportement inchangé, plus la persistanc
     assert.deepEqual(ecritures, [], 'une valeur invalide ne doit jamais être persistée');
     const bloc = trouverParClasse(root, 'fonda-niveau-picker');
     assert.ok(bloc, 'une valeur invalide doit retomber sur le sélecteur, pas sur un résultat basé sur elle');
+  });
+});
+
+// --- Câblage des fiches FONDA (chantier feat/box-fonda-cablage) --------------------
+
+// Récupère les fonctions pures exportées par bootstrap.js (adapterCarte, cheminLot...)
+// — search '?page=carte' sans notion : demarrer() sort de façon SYNCHRONE (message
+// "notion ou palier manquant"), sans aucune continuation asynchrone qui viendrait
+// écrire plus tard dans le DOM factice du test suivant.
+function obtenirExportsBootstrap() {
+  global.document = creerDocumentFactice();
+  global.window = { location: { search: '?page=carte' } };
+  delete require.cache[require.resolve('./bootstrap.js')];
+  return require('./bootstrap.js');
+}
+
+describe('cheminLot — convention de nommage (même motif que generer-lot-fonda.js)', () => {
+  test('notion_id à points -> tirets, palier inchangé', () => {
+    const { cheminLot } = obtenirExportsBootstrap();
+    assert.equal(cheminLot('fr.comprendre-consigne', 'nI'), 'fonda/data/lots-fonda-calibration/fr-comprendre-consigne_nI.json');
+    assert.equal(cheminLot('maths.resolution-problemes', 'nF'), 'fonda/data/lots-fonda-calibration/maths-resolution-problemes_nF.json');
+  });
+});
+
+describe('adapterCarte — relecteur LU depuis la donnée, jamais déduit (décision Éric, chantier câblage)', () => {
+  test('lit lot.relecteur quand il est présent', () => {
+    const { adapterCarte } = obtenirExportsBootstrap();
+    const carte = adapterCarte(
+      { question: 'Q ?', profil_correction: 'exact', reponses_acceptees: ['R'] },
+      { relecteur: 'Justine Leblanc', matiere: 'Français' },
+    );
+    assert.equal(carte.relecteur, 'Justine Leblanc');
+  });
+
+  test('repli générique SANS nom quand lot.relecteur est absent — ne déduit JAMAIS de matiere', () => {
+    const { adapterCarte } = obtenirExportsBootstrap();
+    const carte = adapterCarte(
+      { question: 'Q ?', profil_correction: 'exact', reponses_acceptees: ['R'] },
+      { matiere: 'Mathématiques' }, // pas de champ relecteur — ne doit PAS produire "Éric Duchateau"
+    );
+    assert.equal(carte.relecteur, 'un professeur');
+  });
+
+  test('repli générique aussi si "lot" lui-même est absent/null', () => {
+    const { adapterCarte } = obtenirExportsBootstrap();
+    const carte = adapterCarte({ question: 'Q ?', profil_correction: 'exact', reponses_acceptees: ['R'] }, null);
+    assert.equal(carte.relecteur, 'un professeur');
+  });
+
+  test('transporte question/profil_correction/reponses_acceptees/unite tels quels', () => {
+    const { adapterCarte } = obtenirExportsBootstrap();
+    const carte = adapterCarte(
+      { question: 'Combien ?', profil_correction: 'numerique', reponses_acceptees: ['8 cm', '8'], unite: 'cm', numero: 1, contexte: 'x' },
+      { relecteur: 'Éric Duchateau' },
+    );
+    assert.equal(carte.question, 'Combien ?');
+    assert.equal(carte.profil_correction, 'numerique');
+    assert.deepEqual(carte.reponses_acceptees, ['8 cm', '8']);
+    assert.equal(carte.unite, 'cm');
+  });
+});
+
+describe('Page niveau -> lien "Voir un défi de démonstration"', () => {
+  test('le lien est présent et pointe vers ?page=carte&notion=fr.comprendre-consigne&palier=nI', async () => {
+    const calendrierVide = { version: 1, last_updated: '', semaines: [] };
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau', calendrier: calendrierVide });
+    const liens = (root.children || []).filter((c) => c && c.className === 'fonda-header__back');
+    const demo = liens.find((a) => a.textContent === 'Voir un défi de démonstration');
+    assert.ok(demo, 'lien de démonstration absent de la page niveau');
+    assert.match(demo.href, /\?fonda=1&page=carte&notion=fr\.comprendre-consigne&palier=nI$/);
+  });
+});
+
+describe('?page=carte — rendu réel d\'un paquet FONDA (plus de stub "contenu à venir")', () => {
+  test('notion ou palier manquant dans le lien : message clair, pas de crash', async () => {
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=carte', calendrier: CALENDRIER });
+    const texte = (root.textContent || root.children.map((c) => c.textContent).join('')).trim();
+    assert.match(texte, /notion ou palier manquant/i);
+  });
+
+  test('lot introuvable (fetch échoue) : message clair, pas de page blanche', async () => {
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=inconnue.xyz&palier=nI', calendrier: CALENDRIER });
+    const texte = (root.textContent || root.children.map((c) => c.textContent).join('')).trim();
+    assert.ok(texte.length > 0);
+    assert.doesNotMatch(texte, /contenu à venir/, 'le stub ne doit plus jamais apparaître');
+  });
+
+  test('paquet réel (fr.comprendre-consigne/nI, fichier committé) : carte 1 rendue avec son VRAI relecteur ("Justine Leblanc")', async () => {
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI', calendrier: CALENDRIER });
+    const texte = (root.textContent || '').trim() || root.children.map((c) => c.textContent).join(' ');
+    assert.match(texte, /Comprendre une consigne/, 'le titre du lot doit apparaître');
+    assert.match(texte, /Carte 1 \/ 6/, 'le compteur doit annoncer 6 cartes (lot réel committé)');
+    assert.doesNotMatch(texte, /contenu à venir/);
+    // Relecture Codex PR #2 (#10) : le nom du relecteur doit réellement s'afficher
+    // (bandeau de correction, après "Valider").
+    trouverBoutonParTexte(root, 'Valider').__click();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.match(texteDe(root), /Justine Leblanc/);
+  });
+
+  test('"Carte suivante" fait avancer le paquet jusqu\'à l\'écran de fin', async () => {
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI', calendrier: CALENDRIER });
+
+    const trouverBouton = trouverBoutonParTexte;
+
+    // "Valider" (carte-reponse-produite.js) doit produire un résultat pour révéler
+    // "Carte suivante" — on la clique 6 fois (6 cartes dans ce lot réel) pour
+    // atteindre l'écran de fin, sans jamais planter.
+    for (let i = 0; i < 6; i += 1) {
+      const valider = trouverBouton(root, 'Valider');
+      assert.ok(valider, `bouton "Valider" absent à l'itération ${i}`);
+      const suivant = trouverBouton(root, 'Carte suivante →');
+      assert.ok(suivant, `bouton "Carte suivante" absent à l'itération ${i}`);
+      // Relecture Codex PR #2 (#10) : "Carte suivante" n'apparaît qu'APRÈS un
+      // résultat (onResultat) — supprimer ce câblage doit faire échouer ce test.
+      assert.equal(suivant.style.display, 'none', `"Carte suivante" visible avant Valider (itération ${i})`);
+      valider.__click();
+      await new Promise((r) => setTimeout(r, 0));
+      assert.equal(suivant.style.display, '', `"Carte suivante" toujours masqué après Valider (itération ${i})`);
+      suivant.__click();
+      await new Promise((r) => setTimeout(r, 0));
+    }
+
+    const texteFin = (root.textContent || '').trim() || root.children.map((c) => c.textContent).join(' ');
+    assert.match(texteFin, /Paquet terminé — 6 carte\(s\) vue\(s\)/);
+  });
+});
+
+// --- G4 : liste fermée + drapeau de relecture vérifié au rendu (relecture Codex PR #2) ---
+
+describe('G4 — seuls les lots relus carte par carte sont affichables', () => {
+  test('LOTS_PUBLIABLES = exactement les 8 lots du lot de validation (4 notions × nI/nF)', () => {
+    const { LOTS_PUBLIABLES } = obtenirExportsBootstrap();
+    assert.deepEqual(LOTS_PUBLIABLES, {
+      'fr.comprendre-consigne': ['nI', 'nF'],
+      'fr.inference-implicite': ['nI', 'nF'],
+      'maths.grandeurs-mesures': ['nI', 'nF'],
+      'maths.resolution-problemes': ['nI', 'nF'],
+    });
+  });
+
+  test('chaque lot de la liste fermée porte revue_carte_par_carte: true ; tous les autres fichiers du dossier restent à false', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const { cheminLot, LOTS_PUBLIABLES } = obtenirExportsBootstrap();
+    const publiables = new Set();
+    for (const [notion, paliers] of Object.entries(LOTS_PUBLIABLES)) {
+      for (const palier of paliers) publiables.add(path.basename(cheminLot(notion, palier)));
+    }
+    const dossier = path.join(__dirname, '../data/lots-fonda-calibration');
+    for (const f of fs.readdirSync(dossier).filter((x) => x.endsWith('.json'))) {
+      const lot = JSON.parse(fs.readFileSync(path.join(dossier, f), 'utf8'));
+      assert.equal(lot.revue_carte_par_carte, publiables.has(f), `drapeau inattendu pour ${f}`);
+    }
+  });
+
+  test('cheminLot refuse tout couple hors liste (lot non relu, palier inconnu, traversée de chemin)', () => {
+    const { cheminLot } = obtenirExportsBootstrap();
+    assert.equal(cheminLot('fr.lexique', 'nI'), null, 'lot de calibration non relu');
+    assert.equal(cheminLot('fr.comprendre-consigne', 'nX'), null);
+    assert.equal(cheminLot('fr.comprendre-consigne', 'nI/../../referentiel.json#'), null);
+    assert.equal(cheminLot('constructor', 'nI'), null, 'clé héritée du prototype');
+    assert.equal(cheminLot('x', 'nI/../../referentiel.json#'), null);
+  });
+
+  test('lotEstPubliable : true strict uniquement', () => {
+    const { lotEstPubliable } = obtenirExportsBootstrap();
+    assert.equal(lotEstPubliable({ revue_carte_par_carte: true }), true);
+    assert.equal(lotEstPubliable({ revue_carte_par_carte: false }), false);
+    assert.equal(lotEstPubliable({ revue_carte_par_carte: 'true' }), false);
+    assert.equal(lotEstPubliable({}), false);
+    assert.equal(lotEstPubliable(null), false);
+  });
+
+  test('?page=carte sur un lot NON relu (fr.lexique) : refusé, AUCUN fetch de lot, message visible', async () => {
+    const journal = [];
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=fr.lexique&palier=nI', journalFetch: journal });
+    assert.equal(journal.filter((c) => c.includes('lots-fonda-calibration')).length, 0);
+    assert.match(texteDe(root), /pas disponible/);
+    assert.doesNotMatch(texteDe(root), /Carte 1/);
+  });
+
+  test('?page=carte avec palier hostile (traversée) : aucun fetch hors liste, message visible', async () => {
+    const journal = [];
+    const search = '?fonda=1&page=carte&notion=x&palier=' + encodeURIComponent('nI/../../referentiel.json#');
+    const root = await demarrerBootstrap({ search, journalFetch: journal });
+    assert.deepEqual(journal, []);
+    assert.match(texteDe(root), /pas disponible/);
+  });
+
+  test('lot de la liste mais drapeau à false dans la donnée : refusé au rendu (défense en profondeur)', async () => {
+    const vrai = require('../data/lots-fonda-calibration/fr-comprendre-consigne_nI.json');
+    const lots = { 'fonda/data/lots-fonda-calibration/fr-comprendre-consigne_nI.json': { ...vrai, revue_carte_par_carte: false } };
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI', lots });
+    assert.match(texteDe(root), /pas disponible/);
+    assert.doesNotMatch(texteDe(root), /Carte 1/);
+  });
+
+  test('page=carte : aucun fetch calendrier/classes/referentiel (court-circuit du Promise.all)', async () => {
+    const journal = [];
+    await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI', journalFetch: journal });
+    assert.deepEqual(journal, ['fonda/data/lots-fonda-calibration/fr-comprendre-consigne_nI.json']);
+  });
+});
+
+// --- Chargement réel des dépendances navigateur (relecture Codex PR #2, #2/#3) ---------
+
+describe('chargement des dépendances FONDA en conditions navigateur (aucun global pré-injecté)', () => {
+  const ORDRE = [
+    'fonda/engine/evenements.js?v=1',
+    'fonda/engine/liens.js?v=1',
+    'fonda/engine/correction.js?v=1',
+    'fonda/engine/carte-reponse-produite.js?v=1',
+  ];
+
+  test('lien de défi (calendrier) : graphe complet chargé dans l\'ordre, une seule fois, et le défi se lance', async () => {
+    const journalScripts = [];
+    const root = await demarrerBootstrap({ search: '?fonda=1&defi=defi_2026-w41_601_resolution-problemes', calendrier: CALENDRIER, journalScripts });
+    assert.deepEqual(journalScripts, ORDRE);
+    assert.match(texteDe(root), /classe 601/);
+    assert.match(texteDe(root), /Carte 1 \/ 6/);
+  });
+
+  test('page niveau avec défis programmés : FondaLiens disponible (plus de "FondaLiens is undefined")', async () => {
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau&niveau=6e&semaine=41', calendrier: CALENDRIER });
+    assert.ok(trouverParClasse(root, 'fonda-liens-niveau'), 'liste de liens absente');
+  });
+
+  for (const fichier of ORDRE.map((s) => s.split('?')[0])) {
+    test(`échec réseau de ${fichier} : message visible, jamais de page blanche`, async () => {
+      const root = await demarrerBootstrap({
+        search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI',
+        echecs: new Set([fichier]),
+      });
+      assert.match(texteDe(root), /Impossible de charger ce défi/);
+    });
+  }
+
+  test('échec réseau d\'une dépendance sur la page niveau : message visible (catch de demarrer)', async () => {
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau', echecs: new Set(['fonda/engine/liens.js']) });
+    assert.match(texteDe(root), /données indisponibles/);
+  });
+
+  test('BOX sans fonda : bootstrap.js n\'est jamais chargé (initFonda seulement si ?fonda=1)', () => {
+    const app = fsTest.readFileSync(pathTest.join(__dirname, '../../js/app.js'), 'utf8');
+    assert.match(app, /if \(params\.get\('fonda'\) === '1'\) \{ this\.initFonda\(\); return; \}/);
+    const index = fsTest.readFileSync(pathTest.join(__dirname, '../../index.html'), 'utf8');
+    assert.doesNotMatch(index, /<script[^>]+fonda\//);
+  });
+});
+
+describe('chargerScript — idempotence réelle (relecture Codex PR #2, #3)', () => {
+  // Document à chargement PILOTÉ : rien ne se charge tant que le test n'appelle pas
+  // onload/onerror lui-même sur la balise injectée.
+  function exportsAvecHeadPilote() {
+    const { chargerScript } = obtenirExportsBootstrap();
+    const balises = [];
+    global.document.head.appendChild = (el) => { balises.push(el); return el; };
+    return { chargerScript, balises };
+  }
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+
+  test('deux appels concurrents : UNE seule balise, aucun des deux ne résout avant onload', async () => {
+    const { chargerScript, balises } = exportsAvecHeadPilote();
+    let resolus = 0;
+    const p1 = chargerScript('x.js', 'FondaX').then(() => { resolus += 1; });
+    const p2 = chargerScript('x.js', 'FondaX').then(() => { resolus += 1; });
+    await tick();
+    assert.equal(balises.length, 1);
+    assert.equal(resolus, 0, 'résolu avant onload');
+    global.window.FondaX = {};
+    balises[0].onload();
+    await Promise.all([p1, p2]);
+    assert.equal(resolus, 2);
+  });
+
+  test('après onerror, un nouvel appel retente réellement (nouvelle balise)', async () => {
+    const { chargerScript, balises } = exportsAvecHeadPilote();
+    const p1 = chargerScript('y.js', 'FondaY');
+    balises[0].onerror();
+    await assert.rejects(p1);
+    const p2 = chargerScript('y.js', 'FondaY');
+    assert.equal(balises.length, 2, 'aucune nouvelle tentative après échec');
+    global.window.FondaY = {};
+    balises[1].onload();
+    await p2;
+  });
+
+  test('onload sans l\'export attendu : rejet (une balise n\'est pas une preuve d\'exécution)', async () => {
+    const { chargerScript, balises } = exportsAvecHeadPilote();
+    const p = chargerScript('z.js', 'FondaZ');
+    balises[0].onload();
+    await assert.rejects(p, /sans exposer FondaZ/);
+  });
+
+  test('export déjà présent : résolu sans injecter de balise', async () => {
+    const { chargerScript, balises } = exportsAvecHeadPilote();
+    global.window.FondaW = {};
+    await chargerScript('w.js', 'FondaW');
+    assert.equal(balises.length, 0);
+  });
+});
+
+describe('attente bornée et échec du bootstrap (relecture Codex PR #2, #5)', () => {
+  test('avecDelai : une promesse qui ne répond jamais est rejetée passé le délai', async () => {
+    const { avecDelai } = obtenirExportsBootstrap();
+    await assert.rejects(avecDelai(new Promise(() => {}), 10), /délai de chargement dépassé/);
+  });
+
+  test('avecDelai : une promesse rapide passe inchangée', async () => {
+    const { avecDelai } = obtenirExportsBootstrap();
+    assert.equal(await avecDelai(Promise.resolve(42), 1000), 42);
+  });
+
+});
+
+describe('adapterCarte — arrondi et seconde_chance transmis (relecture Codex PR #2, #6)', () => {
+  test('arrondi: 2 conservé -> "0,33" juste pour un attendu 1/3 après adaptation', () => {
+    const { adapterCarte } = obtenirExportsBootstrap();
+    const { evaluerReponse } = require('../engine/correction.js');
+    const c = adapterCarte({ question: 'Q', profil_correction: 'numerique', reponses_acceptees: ['1/3'], arrondi: 2 }, { relecteur: 'R' });
+    assert.equal(c.arrondi, 2);
+    const { statut } = evaluerReponse({ profil: c.profil_correction, reponseDonnee: '0,33', reponsesAcceptees: c.reponses_acceptees, unite: c.unite ?? null, arrondi: c.arrondi ?? null });
+    assert.equal(statut, 'juste');
+  });
+
+  test('seconde_chance conservée', () => {
+    const { adapterCarte } = obtenirExportsBootstrap();
+    const c = adapterCarte({ question: 'Q', profil_correction: 'sens', reponses_acceptees: ['a'], seconde_chance: true }, {});
+    assert.equal(c.seconde_chance, true);
+  });
+});
+
+describe('lot validé EN ENTIER avant affichage (relecture Codex PR #2, #9)', () => {
+  const CHEMIN = 'fonda/data/lots-fonda-calibration/fr-comprendre-consigne_nI.json';
+  const VRAI = require('../data/lots-fonda-calibration/fr-comprendre-consigne_nI.json');
+
+  test('les 8 lots publiables sont bien formés', () => {
+    const { cheminLot, LOTS_PUBLIABLES, lotEstBienForme } = obtenirExportsBootstrap();
+    for (const [notion, paliers] of Object.entries(LOTS_PUBLIABLES)) {
+      for (const palier of paliers) {
+        assert.ok(lotEstBienForme(require('../../' + cheminLot(notion, palier))), `${notion}/${palier}`);
+      }
+    }
+  });
+
+  const casMalformes = [
+    ['carte null en position 2', (l) => ({ ...l, cartes: [l.cartes[0], null, ...l.cartes.slice(2)] })],
+    ['question vide', (l) => ({ ...l, cartes: [l.cartes[0], { ...l.cartes[1], question: ' ' }] })],
+    ['profil inconnu', (l) => ({ ...l, cartes: [l.cartes[0], { ...l.cartes[1], profil_correction: 'magie' }] })],
+    ['reponses_acceptees non tableau', (l) => ({ ...l, cartes: [l.cartes[0], { ...l.cartes[1], reponses_acceptees: 'x' }] })],
+    ['cartes vide', (l) => ({ ...l, cartes: [] })],
+  ];
+  for (const [libelle, abimer] of casMalformes) {
+    test(`${libelle} : refusé AVANT la 1re carte, message visible`, async () => {
+      const root = await demarrerBootstrap({
+        search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI',
+        lots: { [CHEMIN]: abimer(VRAI) },
+      });
+      assert.match(texteDe(root), /pas disponible/);
+      assert.doesNotMatch(texteDe(root), /Carte 1/);
+    });
+  }
+});
+
+describe('lien de démonstration aussi sur les pages niveau sans défi (relecture Codex PR #2, #11)', () => {
+  const cas = [
+    ['calendrier vide, niveau mémorisé', '?fonda=1&page=niveau&niveau=6e', { version: 1, last_updated: '', semaines: [] }],
+    ['semaine programmée mais rien pour ce niveau', '?fonda=1&page=niveau&niveau=3e&semaine=41', CALENDRIER],
+  ];
+  for (const [libelle, search, calendrier] of cas) {
+    test(libelle, async () => {
+      const root = await demarrerBootstrap({ search, calendrier });
+      const demo = (root.children || []).find((c) => c && c.textContent === 'Voir un défi de démonstration');
+      assert.ok(demo, 'lien de démonstration absent');
+      assert.match(demo.href, /\?fonda=1&page=carte&notion=fr\.comprendre-consigne&palier=nI$/);
+    });
+  }
+});
+
+describe('chargerScript — expiration (relecture Codex PR #2 v2, #2)', () => {
+  test('délai dépassé -> rejet ; nouvel essai = NOUVELLE balise, qui réussit ; callback tardif de l\'ancienne ignoré', async () => {
+    const { chargerScript } = obtenirExportsBootstrap();
+    const balises = [];
+    global.document.head.appendChild = (el) => { balises.push(el); return el; };
+
+    const p1 = chargerScript('lent.js', 'FondaLent', 20);
+    await assert.rejects(p1, /délai dépassé/);
+    assert.equal(balises[0].onload, null, 'callbacks de la balise expirée non neutralisés');
+
+    const p2 = chargerScript('lent.js', 'FondaLent', 1000);
+    assert.equal(balises.length, 2, 'aucune nouvelle tentative après expiration');
+    global.window.FondaLent = {};
+    balises[1].onload();
+    await p2;
+  });
+
+  test('onload puis délai : le délai ne rejette pas une promesse déjà résolue', async () => {
+    const { chargerScript } = obtenirExportsBootstrap();
+    const balises = [];
+    global.document.head.appendChild = (el) => { balises.push(el); return el; };
+    const p = chargerScript('rapide.js', 'FondaRapide', 20);
+    global.window.FondaRapide = {};
+    balises[0].onload();
+    await p;
+    await new Promise((r) => setTimeout(r, 40));
+  });
+});
+
+describe('réponses non textuelles (relecture Codex PR #2 v2, #4)', () => {
+  const CHEMIN = 'fonda/data/lots-fonda-calibration/fr-comprendre-consigne_nI.json';
+  const VRAI = require('../data/lots-fonda-calibration/fr-comprendre-consigne_nI.json');
+
+  const casRefuses = [
+    ['réponse {toString:null}', { reponses_acceptees: ['a', { toString: null }] }],
+    ['réponse chaîne vide', { reponses_acceptees: ['a', '  '] }],
+    ['réponse NaN', { reponses_acceptees: [Number.NaN] }],
+    ['unite non texte', { unite: 3 }],
+    ['arrondi négatif', { arrondi: -1 }],
+    ['seconde_chance non booléen', { seconde_chance: 'oui' }],
+  ];
+  for (const [libelle, champs] of casRefuses) {
+    test(`${libelle} : lot refusé avant la 1re carte`, () => {
+      const { lotEstBienForme } = obtenirExportsBootstrap();
+      const lot = { ...VRAI, cartes: [VRAI.cartes[0], { ...VRAI.cartes[1], profil_correction: 'exact', ...champs }] };
+      assert.equal(lotEstBienForme(lot), false);
+    });
+  }
+
+  test('réponse nombre fini acceptée par la validation', () => {
+    const { lotEstBienForme } = obtenirExportsBootstrap();
+    assert.equal(lotEstBienForme({ cartes: [{ question: 'Q', profil_correction: 'numerique', reponses_acceptees: [2] }] }), true);
+  });
+
+  test('au clic : si la correction plante malgré tout, message visible + « Carte suivante » révélé', async () => {
+    const root = await demarrerBootstrap({
+      search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI',
+      lots: { [CHEMIN]: VRAI },
+    });
+    // Sabote la correction APRÈS le montage (simule une donnée qui aurait passé la
+    // validation mais fait planter evaluerReponse au clic).
+    const carteHote = root.children.find((c) => c && c.classList && (c.children || []).some((x) => x.className === 'fonda-question'));
+    const valider = trouverBoutonParTexte(root, 'Valider');
+    const suivant = trouverBoutonParTexte(root, 'Carte suivante →');
+    const input = carteHote.children.find((x) => x.className === 'fonda-reponse-input');
+    Object.defineProperty(input, 'value', { get() { throw new Error('boom'); } });
+    assert.doesNotThrow(() => valider.__click());
+    assert.match(texteDe(root), /Impossible de corriger cette réponse/);
+    assert.equal(suivant.style.display, '', '« Carte suivante » doit permettre d\'avancer');
+  });
+});
+
+describe('validation du lot — compléments (relecture Codex ciblée)', () => {
+  const VRAI = require('../data/lots-fonda-calibration/fr-comprendre-consigne_nI.json');
+  test('relecteur {toString:null} : lot refusé', () => {
+    const { lotEstBienForme } = obtenirExportsBootstrap();
+    assert.equal(lotEstBienForme({ ...VRAI, relecteur: { toString: null } }), false);
+    assert.equal(lotEstBienForme({ ...VRAI, relecteur: ' ' }), false);
+    const { relecteur, ...sansRelecteur } = VRAI;
+    assert.equal(lotEstBienForme(sansRelecteur), true, 'absent = repli générique, accepté');
+  });
+  test('arrondi hors bornes du correcteur (11) : lot refusé ; 10 accepté', () => {
+    const { lotEstBienForme } = obtenirExportsBootstrap();
+    const avec = (a) => ({ ...VRAI, cartes: [{ ...VRAI.cartes[0], arrondi: a }] });
+    assert.equal(lotEstBienForme(avec(11)), false);
+    assert.equal(lotEstBienForme(avec(10)), true);
   });
 });

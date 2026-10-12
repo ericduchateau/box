@@ -5,12 +5,13 @@
   "notion": "Résoudre un problème à plusieurs étapes",
   "prof_nom": "Box-FONDA (génération automatique)",
   "prof_email": "duchateauphysiquechimie@gmail.com",
+  "relecteur": "Éric Duchateau",
   "code_suppression": "SUP-8J01LYMX",
   "date_creation": "2026-10-11",
   "nb_cartes": 6,
   "source": "fonda-seed",
   "type": "fonda",
-  "revue_carte_par_carte": false,
+  "revue_carte_par_carte": true,
   "cartes": [
     {
       "numero": 1,
@@ -37,8 +38,7 @@
       "palier": "nF",
       "profil_correction": "numerique",
       "reponses_acceptees": [
-        "40",
-        "40 livres"
+        "40"
       ],
       "contexte": "bibliotheque-livres-empruntes-retournes",
       "set_id": "set_fonda_resolution-problemes_nF_01",
@@ -88,8 +88,7 @@
       "palier": "nF",
       "profil_correction": "numerique",
       "reponses_acceptees": [
-        "8",
-        "8 victoires"
+        "8"
       ],
       "contexte": "club-foot-points-victoires",
       "set_id": "set_fonda_resolution-problemes_nF_01",

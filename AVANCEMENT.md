@@ -445,3 +445,50 @@ PR #1 (`feat/box-fonda-theme-switch` → `design`, commit `5ea01ba`) relue par C
 - **Décision : publication reportée.** Raison donnée par Éric : publier maintenant afficherait les fiches FONDA en flip-cards ordinaires de BOX (mélangées aux autres matières, sans l'auto-correction par profil) — affichage dégradé et prématuré, puisque `lancerDefi()` (câblage FONDA réel) est toujours un stub. **Le prérequis est le câblage FONDA, pas la publication.**
 - **État actuel** : les 8 lots restent prêts, validés, dans `fonda/data/lots-fonda-calibration/` (48 cartes, 6/6 partout). Catalogue Drive non touché, `box_7e7tcooh` laissé tel quel, aucun workflow n8n déclenché.
 - **Prochaine étape réelle** : câblage de `lancerDefi()` (`fonda/page/bootstrap.js`) à un vrai fetch + `FondaCarteReponseProduite.montrerCarteReponseProduite()` — chantier distinct, pas encore commencé. **La publication de ce lot reprendra APRÈS**, pour un affichage FONDA correct dès le départ.
+
+## Câblage des fiches FONDA — lancerDefi() (2026-10-11)
+
+- **Objectif** : prérequis identifié avant publication — qu'une fiche validée s'affiche VRAIMENT en mode FONDA (saisie + correction par profil), pas le stub « contenu à venir ». Branche `feat/box-fonda-cablage`, depuis `design`.
+- **Décision de périmètre validée par Éric avant codage** (plan court, lecture seule d'abord) :
+  - `FondaLiens` : **chargé** (dynamiquement, pas retiré) — `genererLiensNiveau` sert toujours à la vraie liste de liens par classe.
+  - **Relecteur affiché : LU depuis la donnée, jamais déduit.** Correction explicite d'Éric sur un plan initial qui proposait une table `matiere -> nom` — rejetée : "le badge est une affirmation de confiance G4, il doit refléter un fait enregistré, pas une déduction, sinon badge mensonger dès qu'un lot sera relu par quelqu'un d'autre." Champ `relecteur` ajouté (additif) aux 8 lots de validation (`"Justine Leblanc"` / `"Éric Duchateau"`, valeurs réelles connues pour CES lots précis) ; repli générique `"un professeur"` si absent, jamais une déduction.
+- **Découverte en lecture seule avant codage** : `fonda/engine/liens.js`, `correction.js` et `carte-reponse-produite.js` n'étaient en réalité **jamais chargés dans un vrai navigateur** (seulement injectés en faux globals par les tests) — un vrai `?fonda=1&page=niveau` aurait planté (`FondaLiens is undefined`). Corrigé : `bootstrap.js` les charge lui-même dynamiquement (`chargerScript`, idempotent, ordre garanti par `await` séquentiel — pas besoin de `script.async=false`).
+- **Fait** :
+  - `lancerDefi(contexte)` fetche un lot commité (`fonda/data/lots-fonda-calibration/`, pas le catalogue Drive — ces lots sont les fixtures de ce chantier), rend les cartes une à une via le composant T2, "Carte suivante →" entre deux, écran de fin en bout de paquet.
+  - Nouveau lien **« Voir un défi de démonstration »** sur la page niveau -> `?page=carte&notion=fr.comprendre-consigne&palier=nI` -> construit un contexte synthétique (`grp: null`) et appelle la **MÊME** `lancerDefi()` que le futur flux calendrier réel — data-driven, aucune logique à retoucher pour ajouter d'autres notions/paliers plus tard.
+  - `adapterCarte()` (pure, exportée/testée) : traduit une carte du format lot vers la forme attendue par `carte-reponse-produite.js`.
+  - **Hors scope explicite** : émission d'événements réels (T3, `evenements.js`/n8n) — `onResultat` ne pilote que la navigation interne, zéro donnée envoyée (G2/G3 intacts, zéro changement de comportement n8n).
+  - Harnais de test étendu (`fonda/page/bootstrap.test.js`) : `head`/`querySelector`/`setAttribute` factices, injection des VRAIS modules `correction.js`/`carte-reponse-produite.js` (pas des bouchons), `fetch` factice servant par défaut les VRAIS fichiers lot committés. 10 nouveaux tests, dont un parcours complet "Valider" → "Carte suivante" × 6 jusqu'à l'écran de fin, sur le vrai `fr-comprendre-consigne_nI.json`.
+  - Suite complète : **323/323 réels, 1 skip connu (sans lien)**.
+- **Piège évité** : les scripts injectés dynamiquement (`document.createElement('script')`) sont asynchrones par défaut même insérés en séquence — l'ordre d'exécution (correction.js avant carte-reponse-produite.js, qui lit `window.FondaCorrection` à l'évaluation du fichier) est garanti ici par `await` séquentiel sur chaque chargement, pas par une supposition sur l'ordre d'insertion DOM.
+- **Prochaine étape** : captures (BOX clair inchangé + FONDA avec le vrai défi de démo) à faire par Éric en navigateur, puis PR vers `design`.
+
+## Relecture Codex PR #2 (câblage) — 10 points corrigés, 1 reporté (2026-10-12, Claude Code)
+
+- Relecture Codex (lecture seule, medium) : 3 bloquants + 7 à corriger + 1 optionnel, vérifiés par reproduction avant correction. 9 commits, `node --test` vert à chaque étape : **368/368, 0 échec, 1 skip** (dette connue).
+- **G4** : liste fermée `LOTS_PUBLIABLES` (8 lots) + `revue_carte_par_carte === true` vérifié au rendu (défense en profondeur, décision Éric). Les 8 lots relus passent à `true`, les 8 lots de calibration restent `false`. Ferme aussi la traversée de chemin via `palier`.
+- **Chargement** : `evenements.js` ajouté au graphe (liens.js en dépend), dépendances chargées avant tout usage de `FondaLiens` ; `chargerScript` à promesse partagée, preuve = export sur `window`. Harnais de test : plus aucun global pré-injecté, scripts évalués en mode navigateur (vm).
+- **Écran vide** : `initFonda()` pose « Chargement… » + `onerror` de bootstrap.js ; attente bornée 15 s.
+- `adapterCarte` transmet `arrondi`/`seconde_chance` ; lot validé en entier avant la 1re carte ; démo accessible aussi depuis les pages niveau sans défi.
+- **Formes acceptées refusées** (« 2 bus », « 40 livres », « 8 victoires ») : variantes retirées. Option `unite` écartée : avec une unité déclarée, le nombre seul est noté **« presque »** (unité oubliée), pas « juste » — l'unité n'est jamais facultative dans le correcteur actuel (vrai aussi pour les 27 formes nombre-seul des 8 lots : réussite en numérique, mais message « unité oubliée »). Garde-fou générateur `verifierFormesAcceptees()` (chaque forme doit compter comme réussite) + test permanent sur les 8 lots.
+- **🔖 DETTE Moteur A (Codex #7)** : `lancerDefi()` ignore le `setId` du calendrier (lot choisi par notion+palier). À brancher avec Moteur A — la promesse « aucune retouche nécessaire » était fausse, corrigée dans l'en-tête de `bootstrap.js`.
+- **Point ouvert pédagogique** : un élève qui tape « 2 bus » reste noté faux (pas de tolérance de mot après le nombre sans unité déclarée). Option (b) (correcteur tolérant) non retenue pour l'instant.
+- **Prochaine étape** : nouvelle relecture Codex, puis merge de la PR #2 dans `design`, puis publication des 8 lots.
+
+### Relecture Codex v2 — 4 points corrigés, 1 reporté (2026-10-12, Claude Code)
+
+- Plus de bloquant (G4 non contournable, aucune régression BOX clair). Corrigés, un commit chacun, avec un test de COMPORTEMENT de leur scénario :
+  1. Délai (20 s) + « Retour à BOX » dans `initFonda()`, en amont de bootstrap.js ; signal `window.FondaBootstrapActif`. Tests `js/app.test.js` (horloge pilotée), remplaçant une recherche de chaîne.
+  2. `chargerScript` gère l'expiration (10 s/script) : entrée oubliée, callbacks tardifs neutralisés, nouvel essai possible.
+  3. Garde-fou générateur : cible après arrondi (`formeSaisissable`), `arrondi` transmis aux candidates/box-select (régression de mon garde-fou v1).
+  4. Réponses = texte non vide ou nombre fini ; plantage de correction au clic -> message visible + `onErreur` (additif, rien de scoré).
+- **Smoke-test navigateur réel (Chrome headless, serveur local) : OK** — BOX clair intact (aucun script/police FONDA, navbar visible) ; page niveau + lien démo ; démo complète 6/6 (faux ✗, juste ✓, relecteur affiché, « Carte suivante » après Valider, écran de fin) ; lot non relu refusé ; retour BOX propre ; bootstrap.js bloqué -> message + retour BOX. Zéro exception, zéro erreur console.
+- Lecture Codex ciblée (points 3-4) : 4 précisions corrigées (réponse-or testée littéralement, filet restreint à la correction, relecteur typé, arrondi borné 0..10).
+- `node --test` : **394/394, 0 échec, 1 skip** (dette connue).
+
+### 🔖 À régler AVANT usage élève réel (même rang que la clé API)
+1. Clé API Anthropic à régénérer (scripts locaux + nœud n8n `Claude API` de `BOX - Generation Flashcards`).
+2. Vraie adresse de la relectrice de français dans `fonda/data/destinataires.json` (adresse de test aujourd'hui).
+3. **Fidélité du banc de test (Codex v2 #5)** : un seul contexte navigateur partagé (vm), parcours complet depuis `App.initFonda()`, chargements et horloge pilotables. Aujourd'hui chaque dépendance a son propre contexte vm et bootstrap.js est chargé par `require()` : une collision de globals passerait les tests et casserait en vrai. Cause racine des « vert en test, cassé en navigateur » — **à prioriser avant d'élargir FONDA à d'autres notions**. D'ici là, le smoke-test navigateur réel reste le filet obligatoire avant chaque merge.
+4. **Correcteur tolérant au mot après le nombre (point 8, option b)** : « 2 bus » est aujourd'hui noté faux sans unité déclarée ; et avec une unité déclarée, le nombre seul donne « presque, unité oubliée ».
+5. Entrée orpheline `box_7e7tcooh` du catalogue Drive (à la prochaine modification légitime du catalogue).

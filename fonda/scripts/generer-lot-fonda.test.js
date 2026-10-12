@@ -15,6 +15,9 @@ const {
   construirePrompt,
   parserReponseModele,
   verifierContreCorrecteur,
+  verifierFormesAcceptees,
+  formeSaisissable,
+  trierCartesBrutes,
   autoCorrigerCarte,
   construireCandidats,
   construireFichierBoxSelect,
@@ -321,4 +324,93 @@ describe('construirePrompt — points de vigilance (règle 1 réponse courte, r�
     assert.match(prompt, /carnet-billets-concert/);
     assert.match(prompt, /dans ce lot ET dans l'autre palier/);
   });
+});
+
+// --- Garde-fou des formes acceptées (relecture Codex PR #2, #8) --------------------
+
+describe('verifierFormesAcceptees — chaque forme déclarée doit passer son propre correcteur', () => {
+  const carte = (extra) => ({ question: 'Q', reponse: '2', profil_correction: 'numerique', reponses_acceptees: ['2'], ...extra });
+
+  test('cas réel "2 bus" sans unite déclarée -> refusé, la forme fautive est nommée', () => {
+    const v = verifierFormesAcceptees(carte({ reponses_acceptees: ['2', '2 bus'] }));
+    assert.equal(v.ok, false);
+    assert.match(v.raison, /"2 bus"/);
+  });
+
+  test('nombre seul avec unite déclarée ("presque" = réussite en numérique) -> accepté', () => {
+    assert.equal(verifierFormesAcceptees(carte({ reponse: '9 km', reponses_acceptees: ['9 km', '9'], unite: 'km' })).ok, true);
+  });
+
+  test('profil sens/exact : toutes les formes passent -> accepté', () => {
+    assert.equal(verifierFormesAcceptees({ profil_correction: 'sens', reponse: 'a', reponses_acceptees: ['un examen', 'examen'] }).ok, true);
+  });
+
+  test('trierCartesBrutes rejette la carte "2 bus" (chaîne complète, après auto-correction)', () => {
+    const { cartesValides, rejets } = trierCartesBrutes([
+      carte({ reponses_acceptees: ['2', '2 bus'] }),
+      carte({ reponse: '3', reponses_acceptees: ['3'] }),
+    ]);
+    assert.equal(cartesValides.length, 1);
+    assert.equal(rejets.length, 1);
+    assert.equal(rejets[0].index, 0);
+  });
+});
+
+describe('les 8 lots publiables repassent TOUS les garde-fous du générateur', () => {
+  const LOTS = ['fr-comprendre-consigne', 'fr-inference-implicite', 'maths-grandeurs-mesures', 'maths-resolution-problemes']
+    .flatMap((n) => ['nI', 'nF'].map((p) => `${n}_${p}.json`));
+  for (const f of LOTS) {
+    test(f, () => {
+      const lot = require('../data/lots-fonda-calibration/' + f);
+      lot.cartes.forEach((c, i) => {
+        const v = verifierContreCorrecteur(c);
+        assert.ok(v.ok, `${f} carte ${i + 1} : ${v.raison}`);
+        const vf = verifierFormesAcceptees(c);
+        assert.ok(vf.ok, `${f} carte ${i + 1} : ${vf.raison}`);
+      });
+    });
+  }
+});
+
+describe('garde-fou : cible APRÈS arrondi, pas la forme littérale (relecture Codex PR #2 v2, #3)', () => {
+  const carte = (extra) => ({ question: 'Q', profil_correction: 'numerique', reponse: '0,33', reponses_acceptees: ['1/3'], arrondi: 2, ...extra });
+
+  test('reponses_acceptees ["1/3"] + arrondi 2 : accepté (forme saisissable "0,33")', () => {
+    assert.equal(formeSaisissable(carte(), '1/3'), '0,33');
+    assert.equal(verifierFormesAcceptees(carte()).ok, true);
+    assert.equal(verifierContreCorrecteur(carte()).ok, true);
+  });
+
+  test('réponse-or testée littéralement : "0,334" (mal arrondie) et "1/3" (non arrondie) rejetées', () => {
+    assert.equal(verifierContreCorrecteur(carte({ reponse: '0,334' })).ok, false);
+    assert.equal(verifierContreCorrecteur(carte({ reponse: '1/3' })).ok, false);
+    const { cartesValides } = trierCartesBrutes([carte({ reponse: '0,334' })]);
+    assert.equal(cartesValides.length, 0, 'une réponse-or fausse ne doit jamais atteindre le fichier box-select');
+  });
+
+  test('avec unité déclarée : "1/3 cm" -> "0,33 cm", accepté', () => {
+    const c = carte({ reponse: '0,33 cm', reponses_acceptees: ['1/3 cm', '1/3'], unite: 'cm' });
+    assert.equal(formeSaisissable(c, '1/3 cm'), '0,33 cm');
+    assert.equal(verifierFormesAcceptees(c).ok, true);
+    assert.equal(verifierContreCorrecteur(c).ok, true);
+  });
+
+  test('arrondi ne masque pas le cas "2 bus" sans unite déclarée', () => {
+    const c = carte({ reponse: '2', reponses_acceptees: ['2', '2 bus'] });
+    assert.equal(verifierFormesAcceptees(c).ok, false);
+  });
+
+  test('sans arrondi : forme littérale inchangée', () => {
+    assert.equal(formeSaisissable({ profil_correction: 'numerique' }, '1/3'), '1/3');
+  });
+
+  for (const arrondi of [2, 0]) {
+    test(`arrondi ${arrondi} transmis jusqu'au fichier box-select (sinon correction publiée différente)`, () => {
+      const c = arrondi === 0 ? carte({ arrondi: 0, reponse: '0', reponses_acceptees: ['1/3'] }) : carte();
+      const candidats = construireCandidats({ notion: NOTION_MATHS, palier: 'nI', cartesBrutes: [c], sequence: 1, ts: '2026-10-12T00:00:00Z' });
+      assert.equal(candidats[0].arrondi, arrondi);
+      const fichier = construireFichierBoxSelect({ notion: NOTION_MATHS, palier: 'nI', candidats, destinataires: DESTINATAIRES_TEST });
+      assert.equal(JSON.parse(JSON.stringify(fichier)).cartes[0].arrondi, arrondi);
+    });
+  }
 });

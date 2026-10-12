@@ -185,19 +185,42 @@ function montrerCarteReponseProduite(container, carte, options = {}) {
 
   let tentative = 0;
 
+  // Exception pendant la correction (donnée de carte inattendue — relecture Codex
+  // PR #2 v2, #4) : message VISIBLE, saisie figée, et l'appelant est prévenu via
+  // options.onErreur (additif : le contrat onResultat ne change pas, et rien n'est
+  // scoré pour une carte qu'on n'a pas su corriger).
+  function signalerErreur() {
+    feedback.innerHTML = '';
+    feedback.textContent = 'Impossible de corriger cette réponse — passe à la carte suivante.';
+    feedback.dataset.statut = 'erreur';
+    input.disabled = true;
+    bouton.disabled = true;
+    if (typeof options.onErreur === 'function') options.onErreur();
+  }
+
   function soumettre() {
     tentative += 1;
 
-    const { statut } = evaluerReponse({
-      profil: carte.profil_correction,
-      reponseDonnee: input.value,
-      reponsesAcceptees: carte.reponses_acceptees || [],
-      unite: carte.unite ?? null,
-      arrondi: carte.arrondi ?? null,
-    });
-
-    const reussite = compteCommeReussite(statut, carte.profil_correction);
-    rendreFeedback(statut, reussite);
+    // Filet RESTREINT à la correction et au rendu du verdict (relecture Codex ciblée) :
+    // une exception levée plus loin (dans onResultat, chez l'appelant) n'est PAS
+    // déguisée en « correction impossible » — elle remonte normalement, et le
+    // résultat déjà transmis n'est jamais suivi d'un onErreur contradictoire.
+    let statut;
+    let reussite;
+    try {
+      ({ statut } = evaluerReponse({
+        profil: carte.profil_correction,
+        reponseDonnee: input.value,
+        reponsesAcceptees: carte.reponses_acceptees || [],
+        unite: carte.unite ?? null,
+        arrondi: carte.arrondi ?? null,
+      }));
+      reussite = compteCommeReussite(statut, carte.profil_correction);
+      rendreFeedback(statut, reussite);
+    } catch {
+      signalerErreur();
+      return;
+    }
 
     const scored = tentative === 1; // PRD §5.1 : on score la 1ère tentative, jamais la seconde chance
     // Seconde chance : relance immédiate après un "presque", seulement sur la 1ère tentative.
