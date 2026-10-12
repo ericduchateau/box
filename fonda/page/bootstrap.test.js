@@ -98,7 +98,9 @@ function creerDocumentFactice({ echecs = new Set(), journalScripts = [] } = {}) 
 function creerFetchFactice({ calendrier = CALENDRIER, lots = {} } = {}) {
   return async (chemin) => {
     if (chemin.includes('classes.json')) return { ok: true, json: async () => CLASSES };
-    if (chemin.includes('referentiel.json')) return { ok: true, json: async () => REFERENTIEL };
+    if (chemin.includes('referentiel.json')) {
+      return global.__referentielEnPanne ? { ok: false } : { ok: true, json: async () => REFERENTIEL };
+    }
     if (chemin.includes('calendar.json')) return { ok: true, json: async () => calendrier };
     if (chemin.includes('lots-fonda-calibration/')) {
       if (lots[chemin]) return { ok: true, json: async () => lots[chemin] };
@@ -352,14 +354,14 @@ describe('adapterCarte — relecteur LU depuis la donnée, jamais déduit (déci
   });
 });
 
-describe('Page niveau -> lien "Voir un défi de démonstration"', () => {
-  test('le lien est présent et pointe vers ?page=carte&notion=fr.comprendre-consigne&palier=nI', async () => {
+describe('Page niveau -> lien vers l\'index d\'entraînement libre', () => {
+  test('le lien est présent et pointe vers ?fonda=1&page=entrainement', async () => {
     const calendrierVide = { version: 1, last_updated: '', semaines: [] };
     const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau', calendrier: calendrierVide });
     const liens = (root.children || []).filter((c) => c && c.className === 'fonda-header__back');
-    const demo = liens.find((a) => a.textContent === 'Voir un défi de démonstration');
-    assert.ok(demo, 'lien de démonstration absent de la page niveau');
-    assert.match(demo.href, /\?fonda=1&page=carte&notion=fr\.comprendre-consigne&palier=nI$/);
+    const index = liens.find((a) => a.textContent === 'S\'entraîner librement — toutes les notions');
+    assert.ok(index, 'lien vers l\'index absent de la page niveau');
+    assert.match(index.href, /\?fonda=1&page=entrainement$/);
   });
 });
 
@@ -655,7 +657,7 @@ describe('lot validé EN ENTIER avant affichage (relecture Codex PR #2, #9)', ()
   }
 });
 
-describe('lien de démonstration aussi sur les pages niveau sans défi (relecture Codex PR #2, #11)', () => {
+describe('lien vers l\'index aussi sur les pages niveau sans défi (relecture Codex PR #2, #11)', () => {
   const cas = [
     ['calendrier vide, niveau mémorisé', '?fonda=1&page=niveau&niveau=6e', { version: 1, last_updated: '', semaines: [] }],
     ['semaine programmée mais rien pour ce niveau', '?fonda=1&page=niveau&niveau=3e&semaine=41', CALENDRIER],
@@ -663,9 +665,9 @@ describe('lien de démonstration aussi sur les pages niveau sans défi (relectur
   for (const [libelle, search, calendrier] of cas) {
     test(libelle, async () => {
       const root = await demarrerBootstrap({ search, calendrier });
-      const demo = (root.children || []).find((c) => c && c.textContent === 'Voir un défi de démonstration');
-      assert.ok(demo, 'lien de démonstration absent');
-      assert.match(demo.href, /\?fonda=1&page=carte&notion=fr\.comprendre-consigne&palier=nI$/);
+      const lien = (root.children || []).find((c) => c && c.textContent === 'S\'entraîner librement — toutes les notions');
+      assert.ok(lien, 'lien vers l\'index absent');
+      assert.match(lien.href, /\?fonda=1&page=entrainement$/);
     });
   }
 });
@@ -756,5 +758,143 @@ describe('validation du lot — compléments (relecture Codex ciblée)', () => {
     const avec = (a) => ({ ...VRAI, cartes: [{ ...VRAI.cartes[0], arrondi: a }] });
     assert.equal(lotEstBienForme(avec(11)), false);
     assert.equal(lotEstBienForme(avec(10)), true);
+  });
+});
+
+// --- Index d'entraînement libre (chantier feat/box-fonda-index) --------------------
+
+function liensIndex(root) {
+  const out = [];
+  (function parcourir(el) {
+    for (const c of (el && el.children) || []) {
+      if (c && typeof c.className === 'string' && c.className.includes('fonda-index__lot')) out.push(c);
+      parcourir(c);
+    }
+  })(root);
+  return out;
+}
+
+describe('construireEntreesIndex — dérivé de LOTS_PUBLIABLES, libellés du référentiel', () => {
+  test('une entrée par notion de LOTS_PUBLIABLES, triées par `ordre` du référentiel, libellés lus', () => {
+    const { construireEntreesIndex, LOTS_PUBLIABLES } = obtenirExportsBootstrap();
+    const entrees = construireEntreesIndex(LOTS_PUBLIABLES, REFERENTIEL);
+    assert.deepEqual(entrees.map((e) => e.notionId),
+      ['fr.comprendre-consigne', 'maths.grandeurs-mesures', 'maths.resolution-problemes', 'fr.inference-implicite']);
+    const consigne = entrees[0];
+    assert.equal(consigne.libelle, REFERENTIEL.notions.find((n) => n.id === 'fr.comprendre-consigne').libelle);
+    assert.equal(consigne.matiere, 'français');
+    assert.deepEqual(consigne.paliers, [{ palier: 'nI', libelle: 'Initial' }, { palier: 'nF', libelle: 'Final' }]);
+  });
+
+  test('pas de liste en dur : un couple ajouté à la source apparaît, un couple retiré disparaît', () => {
+    const { construireEntreesIndex } = obtenirExportsBootstrap();
+    const entrees = construireEntreesIndex({ 'x.fictive': ['nF'], 'fr.comprendre-consigne': ['nI'] }, REFERENTIEL);
+    assert.deepEqual(entrees.map((e) => [e.notionId, e.paliers.map((p) => p.palier)]),
+      [['fr.comprendre-consigne', ['nI']], ['x.fictive', ['nF']]]);
+  });
+
+  test('référentiel absent ou malformé : repli sur l\'identifiant, aucune entrée perdue', () => {
+    const { construireEntreesIndex, LOTS_PUBLIABLES } = obtenirExportsBootstrap();
+    for (const ref of [null, {}, { notions: 'x' }, { notions: [null] }]) {
+      const entrees = construireEntreesIndex(LOTS_PUBLIABLES, ref);
+      assert.equal(entrees.length, 4);
+      entrees.forEach((e) => assert.equal(e.libelle, e.notionId));
+    }
+  });
+});
+
+describe('?page=entrainement — index des 8 lots publiables', () => {
+  test('8 liens, un par couple de LOTS_PUBLIABLES, chacun accepté par cheminLot', async () => {
+    const { LOTS_PUBLIABLES, cheminLot } = obtenirExportsBootstrap();
+    const attendus = Object.entries(LOTS_PUBLIABLES).flatMap(([n, ps]) => ps.map((p) => `${n}|${p}`)).sort();
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=entrainement' });
+    const liens = liensIndex(root);
+    assert.equal(liens.length, 8);
+    const obtenus = liens.map((a) => {
+      const q = new URLSearchParams(a.href.split('?')[1]);
+      assert.equal(q.get('fonda'), '1');
+      assert.equal(q.get('page'), 'carte');
+      assert.ok(cheminLot(q.get('notion'), q.get('palier')), `lien hors liste fermée : ${a.href}`);
+      return `${q.get('notion')}|${q.get('palier')}`;
+    }).sort();
+    assert.deepEqual(obtenus, attendus);
+    assert.match(texteDe(root), /S'entraîner sur les fondamentaux/);
+    assert.match(texteDe(root), /Comprendre une consigne et sélectionner l'information utile/);
+    assert.match(texteDe(root), /Français/);
+  });
+
+  test('ne lit QUE referentiel.json : ni lot, ni classes, ni calendrier, ni script moteur', async () => {
+    const journal = [];
+    const journalScripts = [];
+    await demarrerBootstrap({ search: '?fonda=1&page=entrainement', journalFetch: journal, journalScripts });
+    assert.deepEqual(journal, ['fonda/data/referentiel.json']);
+    assert.deepEqual(journalScripts, []);
+  });
+
+  test('référentiel indisponible : la liste s\'affiche quand même (identifiants), jamais une impasse', async () => {
+    const journal = [];
+    global.__referentielEnPanne = true;
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=entrainement', journalFetch: journal });
+    delete global.__referentielEnPanne;
+    assert.equal(liensIndex(root).length, 8);
+    assert.match(texteDe(root), /fr\.comprendre-consigne/);
+  });
+});
+
+describe('retour vers l\'index depuis un paquet libre', () => {
+  const versIndex = (root) => (root.children || []).find((c) => c && c.textContent === '← Toutes les notions');
+
+  test('paquet libre (page=carte) : lien « ← Toutes les notions » présent, puis encore sur l\'écran de fin', async () => {
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI' });
+    assert.ok(versIndex(root), 'retour index absent pendant le paquet');
+    assert.match(versIndex(root).href, /\?fonda=1&page=entrainement$/);
+    for (let i = 0; i < 6; i += 1) {
+      trouverBoutonParTexte(root, 'Valider').__click();
+      await new Promise((r) => setTimeout(r, 0));
+      trouverBoutonParTexte(root, 'Carte suivante →').__click();
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    assert.match(texteDe(root), /Paquet terminé/);
+    assert.ok(versIndex(root), 'retour index absent sur l\'écran de fin');
+  });
+
+  test('défi de classe (calendrier, grp) : pas de lien vers l\'index (parcours de classe inchangé)', async () => {
+    const root = await demarrerBootstrap({ search: '?fonda=1&defi=defi_2026-w41_601_resolution-problemes', calendrier: CALENDRIER });
+    assert.match(texteDe(root), /classe 601/);
+    assert.equal(versIndex(root), undefined);
+  });
+});
+
+// --- Invariant G4 « listé = affichable » (décision Éric, chantier feat/box-fonda-index)
+// L'index dérive de LOTS_PUBLIABLES ; la barrière de rendu exige EN PLUS
+// revue_carte_par_carte === true et un lot bien formé. Si les deux divergeaient,
+// l'index proposerait un lien qui meurt sur « Ce défi n'est pas disponible ».
+
+describe('invariant « listé = affichable » : chaque entrée de l\'index passe la barrière de rendu', () => {
+  test('tout lot de LOTS_PUBLIABLES : fichier présent, revue_carte_par_carte === true, bien formé', () => {
+    const { LOTS_PUBLIABLES, cheminLot, lotEstPubliable, lotEstBienForme } = obtenirExportsBootstrap();
+    for (const [notion, paliers] of Object.entries(LOTS_PUBLIABLES)) {
+      for (const palier of paliers) {
+        const chemin = cheminLot(notion, palier);
+        assert.ok(fsTest.existsSync(pathTest.join(__dirname, '../..', chemin)), `fichier absent : ${chemin}`);
+        const lot = JSON.parse(fsTest.readFileSync(pathTest.join(__dirname, '../..', chemin), 'utf8'));
+        assert.equal(lot.revue_carte_par_carte, true, `${notion}/${palier} listé mais non relu -> lien mort`);
+        assert.ok(lotEstPubliable(lot) && lotEstBienForme(lot), `${notion}/${palier} bloqué au rendu`);
+      }
+    }
+  });
+
+  test('parcours réel : chacun des 8 liens de l\'index ouvre bien « Carte 1 / N » (jamais « pas disponible »)', async () => {
+    const index = await demarrerBootstrap({ search: '?fonda=1&page=entrainement' });
+    const liens = liensIndex(index);
+    assert.equal(liens.length, 8);
+    for (const a of liens) {
+      const search = '?' + a.href.split('?')[1];
+      const root = await demarrerBootstrap({ search });
+      const q = new URLSearchParams(search);
+      const lot = require('../../' + obtenirExportsBootstrap().cheminLot(q.get('notion'), q.get('palier')));
+      assert.match(texteDe(root), new RegExp(`Carte 1 / ${lot.cartes.length}`), `lien mort : ${search}`);
+      assert.doesNotMatch(texteDe(root), /pas disponible/);
+    }
   });
 });

@@ -20,8 +20,9 @@
 // evenements.js/n8n) volontairement HORS SCOPE : onResultat ne pilote que la
 // navigation interne (carte suivante), zéro donnée envoyée nulle part (G2/G3).
 // Le flux calendrier réel (renderDefi -> lancerDefi) reste bloqué sur calendar.json
-// vide (Moteur A, absent) — sans lien avec ce chantier. Le lien "défi de
-// démonstration" construit un contexte synthétique et appelle la MÊME lancerDefi().
+// vide (Moteur A, absent) — sans lien avec ce chantier. Les liens de l'index
+// d'entraînement libre (page=entrainement -> page=carte) construisent un contexte
+// synthétique et appellent la MÊME lancerDefi().
 // ⚠ Moteur A demandera une retouche ICI (relecture Codex PR #2, #7) : lancerDefi()
 // choisit aujourd'hui le lot par (notion, palier) dans LOTS_PUBLIABLES et IGNORE le
 // setId résolu depuis le calendrier — deux jeux programmés pour la même notion et le
@@ -171,13 +172,6 @@
 
   const NIVEAUX_DEFAUT = ['6e', '5e', '4e', '3e'];
 
-  // Paquet de démonstration (chantier câblage, 2026-10-11) : UN SEUL set validé,
-  // lu directement depuis le JSON commité (fonda/data/lots-fonda-calibration/),
-  // pas le catalogue Drive. Contourne volontairement le calendrier (vide, Moteur A
-  // absent) pour ce paquet fixe. Le couple doit figurer dans LOTS_PUBLIABLES.
-  const DEMO_NOTION_ID = 'fr.comprendre-consigne';
-  const DEMO_PALIER = 'nI';
-
   // Un niveau n'est valide que s'il figure dans les 4 niveaux par défaut OU dans les
   // défis réellement programmés cette semaine — jamais une valeur URL arbitraire
   // (relecture Codex #6 : une valeur invalide ne doit jamais être persistée ni
@@ -241,24 +235,23 @@
     bloc.appendChild(grille);
 
     root.appendChild(bloc);
-    root.appendChild(construireLienDemo());
+    root.appendChild(construireLienIndex());
   }
 
-  // Lien vers le paquet de démonstration — sur le sélecteur ET sur les pages niveau
-  // sans défi programmé (relecture Codex PR #2, #11 : sinon, une fois un niveau
-  // mémorisé, le switch BOX->FONDA n'y menait plus jamais tant que le calendrier
-  // est vide).
-  function construireLienDemo() {
-    const demo = document.createElement('a');
-    demo.className = 'fonda-header__back';
-    const paramsDemo = new URLSearchParams();
-    paramsDemo.set('fonda', '1');
-    paramsDemo.set('page', 'carte');
-    paramsDemo.set('notion', DEMO_NOTION_ID);
-    paramsDemo.set('palier', DEMO_PALIER);
-    demo.href = `${window.location.pathname}?${paramsDemo.toString()}`;
-    demo.textContent = 'Voir un défi de démonstration';
-    return demo;
+  // Lien vers l'index d'entraînement libre (page=entrainement, chantier
+  // feat/box-fonda-index — remplace l'ancien lien vers UN SEUL paquet de démo) — sur
+  // le sélecteur ET sur les pages niveau sans défi programmé (relecture Codex PR #2,
+  // #11 : sinon, une fois un niveau mémorisé, le switch BOX->FONDA n'y menait plus
+  // jamais tant que le calendrier est vide).
+  function construireLienIndex(texte = 'S\'entraîner librement — toutes les notions') {
+    const lien = document.createElement('a');
+    lien.className = 'fonda-header__back';
+    const params = new URLSearchParams();
+    params.set('fonda', '1');
+    params.set('page', 'entrainement');
+    lien.href = `${window.location.pathname}?${params.toString()}`;
+    lien.textContent = texte;
+    return lien;
   }
 
   // Attente BORNÉE (relecture Codex PR #2, #5) : une dépendance ou un fetch qui ne
@@ -319,7 +312,7 @@
     if (!semaineEntry) {
       afficherMessage(root, 'Aucun défi programmé cette semaine.');
       root.appendChild(construireLienChangerNiveau(semaineParam));
-      root.appendChild(construireLienDemo());
+      root.appendChild(construireLienIndex());
       return;
     }
 
@@ -327,7 +320,7 @@
     if (entreesNiveau.length === 0) {
       afficherMessage(root, `Aucun défi programmé pour ${niveau} cette semaine.`);
       root.appendChild(construireLienChangerNiveau(semaineParam));
-      root.appendChild(construireLienDemo());
+      root.appendChild(construireLienIndex());
       return;
     }
 
@@ -479,15 +472,17 @@
   // Rendu d'un paquet de cartes, une à la fois, via le composant T2 — "Carte
   // suivante" après chaque résultat, écran de fin en bout de paquet. `contexte.grp`
   // optionnel (présent pour un vrai défi de classe résolu par calendrier, absent
-  // pour le paquet de démonstration).
+  // pour un paquet d'entraînement libre).
   function rendrePaquetCartes(root, lot, contexte) {
     root.innerHTML = '';
     root.appendChild(construireHeader());
 
+    // Entraînement libre (pas de grp) : retour vers l'index des notions.
+    const libre = !(contexte && contexte.grp);
+    if (libre) root.appendChild(construireLienIndex('← Toutes les notions'));
+
     const titre = document.createElement('h2');
-    titre.textContent = contexte && contexte.grp
-      ? `Défi ${lot.notion} — classe ${contexte.grp}`
-      : lot.notion;
+    titre.textContent = libre ? lot.notion : `Défi ${lot.notion} — classe ${contexte.grp}`;
     root.appendChild(titre);
 
     const compteur = document.createElement('p');
@@ -513,6 +508,7 @@
       fin.className = 'fonda-message';
       fin.textContent = `Paquet terminé — ${lot.cartes.length} carte(s) vue(s).`;
       root.appendChild(fin);
+      if (libre) root.appendChild(construireLienIndex('← Toutes les notions'));
     }
 
     function afficherCarteCourante() {
@@ -545,7 +541,7 @@
 
   // Point de branchement T2 (carte-reponse-produite.js). Le contexte est déjà résolu
   // et sûr quand il vient du calendrier (grp/notion_id/palier viennent du vrai
-  // calendrier, cf. renderDefi) ; pour le paquet de démonstration, renderPageCarte()
+  // calendrier, cf. renderDefi) ; pour un paquet d'entraînement libre, renderPageCarte()
   // construit un contexte synthétique SANS grp. Échecs de chargement (dépendances ou
   // fetch du lot) gérés visiblement, jamais une page blanche ni une exception muette.
   function lancerDefi(contexte) {
@@ -568,23 +564,122 @@
       });
   }
 
-  // --- Paquet de démonstration (page niveau -> lien "Voir un défi de démo") --------
+  // --- Index d'entraînement libre (chantier feat/box-fonda-index) -----------------
+  // Une entrée par couple notion × palier de LOTS_PUBLIABLES — DÉRIVÉE, jamais une
+  // seconde liste. Indépendant du niveau de classe : les notions fondamentales ne
+  // sont rattachées à aucun niveau dans referentiel.json (le palier nI/nF est la
+  // difficulté DANS la notion, cf. AGENTS.md). Chaque lien mène à la route déjà
+  // câblée page=carte -> lancerDefi() : G4 reste vérifié au rendu, l'index ne fait
+  // qu'afficher des liens.
+
+  // Libellés d'affichage des paliers — volontairement sobres (décision Éric) ;
+  // formulation à affiner ici seulement, aucune logique n'en dépend.
+  const PALIERS_LIBELLES = Object.freeze({ nI: 'Initial', nF: 'Final' });
+
+  // Pure, testable. Libellé/matière/ordre lus dans referentiel.json ; référentiel
+  // absent ou notion inconnue -> repli sur l'identifiant, l'entrée reste listée.
+  function construireEntreesIndex(lotsPubliables, referentiel) {
+    const notions = referentiel && Array.isArray(referentiel.notions) ? referentiel.notions : [];
+    const parId = new Map(notions.filter(Boolean).map((n) => [n.id, n]));
+    return Object.keys(lotsPubliables)
+      .map((notionId, rang) => {
+        const n = parId.get(notionId) || {};
+        return {
+          notionId,
+          libelle: typeof n.libelle === 'string' && n.libelle ? n.libelle : notionId,
+          matiere: typeof n.matiere === 'string' ? n.matiere : '',
+          ordre: Number.isFinite(n.ordre) ? n.ordre : Infinity,
+          rang,
+          paliers: lotsPubliables[notionId].map((palier) => ({
+            palier,
+            libelle: PALIERS_LIBELLES[palier] || palier,
+          })),
+        };
+      })
+      .sort((a, b) => (a.ordre - b.ordre) || (a.rang - b.rang));
+  }
+
+  function hrefLot(notionId, palier) {
+    const params = new URLSearchParams();
+    params.set('fonda', '1');
+    params.set('page', 'carte');
+    params.set('notion', notionId);
+    params.set('palier', palier);
+    return `${window.location.pathname}?${params.toString()}`;
+  }
+
+  function renderPageEntrainement(referentiel) {
+    const root = racineFonda();
+    root.innerHTML = '';
+    root.appendChild(construireHeader());
+
+    const titre = document.createElement('h2');
+    titre.textContent = 'S\'entraîner sur les fondamentaux';
+    root.appendChild(titre);
+
+    // Regroupement par matière, dans l'ordre d'apparition après tri par `ordre`.
+    const groupes = [];
+    construireEntreesIndex(LOTS_PUBLIABLES, referentiel).forEach((entree) => {
+      let g = groupes.find((x) => x.matiere === entree.matiere);
+      if (!g) { g = { matiere: entree.matiere, entrees: [] }; groupes.push(g); }
+      g.entrees.push(entree);
+    });
+
+    groupes.forEach((g) => {
+      if (g.matiere) {
+        const h = document.createElement('h3');
+        h.textContent = g.matiere.charAt(0).toUpperCase() + g.matiere.slice(1);
+        root.appendChild(h);
+      }
+      const liste = document.createElement('ul');
+      liste.className = 'fonda-liens-niveau fonda-index';
+      g.entrees.forEach((entree) => {
+        const li = document.createElement('li');
+        li.className = 'fonda-lien-classe';
+        const label = document.createElement('span');
+        label.className = 'fonda-lien-classe__url';
+        label.textContent = entree.libelle;
+        li.appendChild(label);
+        entree.paliers.forEach(({ palier, libelle }) => {
+          const a = document.createElement('a');
+          a.className = 'fonda-header__back fonda-index__lot';
+          a.href = hrefLot(entree.notionId, palier);
+          a.textContent = libelle;
+          li.appendChild(a);
+        });
+        liste.appendChild(li);
+      });
+      root.appendChild(liste);
+    });
+  }
+
+  // --- Paquet d'entraînement libre (index page=entrainement -> page=carte) ---------
 
   function renderPageCarte() {
     const notionId = param('notion');
     const palier = param('palier');
     if (!notionId || !palier) {
-      afficherMessage(racineFonda(), 'Démonstration : notion ou palier manquant dans le lien.');
+      afficherMessage(racineFonda(), 'Entraînement : notion ou palier manquant dans le lien.');
       return;
     }
     lancerDefi({ grp: null, notionId, palier });
   }
 
   async function demarrer() {
-    // page=carte (paquet de démonstration) : AUCUN besoin de classes/referentiel/
+    // page=carte (paquet d'entraînement libre) : AUCUN besoin de classes/referentiel/
     // calendrier (court-circuite le Promise.all ci-dessous, qui ne sert qu'aux
     // chemins liés au calendrier/classes).
     if (param('page') === 'carte') { renderPageCarte(); return; }
+
+    // page=entrainement (index des lots publiables) : SEUL referentiel.json est lu
+    // (libellés) — ni lot, ni classes, ni calendrier, ni moteur. Échec ou délai ->
+    // liste quand même rendue, sur les identifiants (jamais une impasse).
+    if (param('page') === 'entrainement') {
+      const referentiel = await avecDelai(chargerJSON('fonda/data/referentiel.json'), DELAI_CHARGEMENT_MS)
+        .catch(() => null);
+      renderPageEntrainement(referentiel);
+      return;
+    }
 
     // Dépendances AVANT tout usage de window.FondaLiens (page niveau avec défis,
     // lien de défi) — échec -> .catch de demarrer(), message visible.
@@ -609,7 +704,10 @@
   // Fonctions pures exportées pour les tests Node (même motif que js/app.js) — le
   // reste (rendu DOM, fetch) n'est pas exporté, non testable en Node sans navigateur.
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { cheminLot, adapterCarte, lotEstPubliable, LOTS_PUBLIABLES, chargerScript, avecDelai, lotEstBienForme };
+    module.exports = {
+      cheminLot, adapterCarte, lotEstPubliable, LOTS_PUBLIABLES, chargerScript, avecDelai, lotEstBienForme,
+      construireEntreesIndex, PALIERS_LIBELLES,
+    };
   }
 
   demarrer().catch(() => afficherMessage(racineFonda(), 'Entraînement libre — données indisponibles pour le moment.'));
