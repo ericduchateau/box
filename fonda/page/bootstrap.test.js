@@ -98,7 +98,7 @@ function creerFetchFactice({ calendrier = CALENDRIER, lots = {} } = {}) {
   };
 }
 
-async function demarrerBootstrap({ search, calendrier, lots }) {
+async function demarrerBootstrap({ search, calendrier, lots, journalFetch }) {
   const doc = creerDocumentFactice();
   // document.body.appendChild('fondaRoot' div) -> on l'intercepte pour pouvoir le relire
   const originalAppendChild = doc.body.appendChild.bind(doc.body);
@@ -106,7 +106,10 @@ async function demarrerBootstrap({ search, calendrier, lots }) {
 
   global.document = doc;
   global.window = { location: { search, origin: 'https://ericduchateau.github.io', pathname: '/box/index.html' } };
-  global.fetch = creerFetchFactice({ calendrier, lots });
+  const fetchFactice = creerFetchFactice({ calendrier, lots });
+  global.fetch = journalFetch
+    ? (chemin) => { journalFetch.push(chemin); return fetchFactice(chemin); }
+    : fetchFactice;
   global.window.FondaLiens = require('../engine/liens.js');
   global.window.FondaEvenements = require('../engine/evenements.js');
   // Modules réels (pas des bouchons) — mêmes motifs que carte-reponse-produite.test.js :
@@ -391,5 +394,86 @@ describe('?page=carte — rendu réel d\'un paquet FONDA (plus de stub "contenu 
 
     const texteFin = (root.textContent || '').trim() || root.children.map((c) => c.textContent).join(' ');
     assert.match(texteFin, /Paquet terminé — 6 carte\(s\) vue\(s\)/);
+  });
+});
+
+// --- G4 : liste fermée + drapeau de relecture vérifié au rendu (relecture Codex PR #2) ---
+
+function texteDe(root) {
+  return (root.textContent || '').trim() || root.children.map((c) => c.textContent).join(' ');
+}
+
+describe('G4 — seuls les lots relus carte par carte sont affichables', () => {
+  test('LOTS_PUBLIABLES = exactement les 8 lots du lot de validation (4 notions × nI/nF)', () => {
+    const { LOTS_PUBLIABLES } = obtenirExportsBootstrap();
+    assert.deepEqual(LOTS_PUBLIABLES, {
+      'fr.comprendre-consigne': ['nI', 'nF'],
+      'fr.inference-implicite': ['nI', 'nF'],
+      'maths.grandeurs-mesures': ['nI', 'nF'],
+      'maths.resolution-problemes': ['nI', 'nF'],
+    });
+  });
+
+  test('chaque lot de la liste fermée porte revue_carte_par_carte: true ; tous les autres fichiers du dossier restent à false', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const { cheminLot, LOTS_PUBLIABLES } = obtenirExportsBootstrap();
+    const publiables = new Set();
+    for (const [notion, paliers] of Object.entries(LOTS_PUBLIABLES)) {
+      for (const palier of paliers) publiables.add(path.basename(cheminLot(notion, palier)));
+    }
+    const dossier = path.join(__dirname, '../data/lots-fonda-calibration');
+    for (const f of fs.readdirSync(dossier).filter((x) => x.endsWith('.json'))) {
+      const lot = JSON.parse(fs.readFileSync(path.join(dossier, f), 'utf8'));
+      assert.equal(lot.revue_carte_par_carte, publiables.has(f), `drapeau inattendu pour ${f}`);
+    }
+  });
+
+  test('cheminLot refuse tout couple hors liste (lot non relu, palier inconnu, traversée de chemin)', () => {
+    const { cheminLot } = obtenirExportsBootstrap();
+    assert.equal(cheminLot('fr.lexique', 'nI'), null, 'lot de calibration non relu');
+    assert.equal(cheminLot('fr.comprendre-consigne', 'nX'), null);
+    assert.equal(cheminLot('fr.comprendre-consigne', 'nI/../../referentiel.json#'), null);
+    assert.equal(cheminLot('constructor', 'nI'), null, 'clé héritée du prototype');
+    assert.equal(cheminLot('x', 'nI/../../referentiel.json#'), null);
+  });
+
+  test('lotEstPubliable : true strict uniquement', () => {
+    const { lotEstPubliable } = obtenirExportsBootstrap();
+    assert.equal(lotEstPubliable({ revue_carte_par_carte: true }), true);
+    assert.equal(lotEstPubliable({ revue_carte_par_carte: false }), false);
+    assert.equal(lotEstPubliable({ revue_carte_par_carte: 'true' }), false);
+    assert.equal(lotEstPubliable({}), false);
+    assert.equal(lotEstPubliable(null), false);
+  });
+
+  test('?page=carte sur un lot NON relu (fr.lexique) : refusé, AUCUN fetch de lot, message visible', async () => {
+    const journal = [];
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=fr.lexique&palier=nI', journalFetch: journal });
+    assert.equal(journal.filter((c) => c.includes('lots-fonda-calibration')).length, 0);
+    assert.match(texteDe(root), /pas disponible/);
+    assert.doesNotMatch(texteDe(root), /Carte 1/);
+  });
+
+  test('?page=carte avec palier hostile (traversée) : aucun fetch hors liste, message visible', async () => {
+    const journal = [];
+    const search = '?fonda=1&page=carte&notion=x&palier=' + encodeURIComponent('nI/../../referentiel.json#');
+    const root = await demarrerBootstrap({ search, journalFetch: journal });
+    assert.deepEqual(journal, []);
+    assert.match(texteDe(root), /pas disponible/);
+  });
+
+  test('lot de la liste mais drapeau à false dans la donnée : refusé au rendu (défense en profondeur)', async () => {
+    const vrai = require('../data/lots-fonda-calibration/fr-comprendre-consigne_nI.json');
+    const lots = { 'fonda/data/lots-fonda-calibration/fr-comprendre-consigne_nI.json': { ...vrai, revue_carte_par_carte: false } };
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI', lots });
+    assert.match(texteDe(root), /pas disponible/);
+    assert.doesNotMatch(texteDe(root), /Carte 1/);
+  });
+
+  test('page=carte : aucun fetch calendrier/classes/referentiel (court-circuit du Promise.all)', async () => {
+    const journal = [];
+    await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI', journalFetch: journal });
+    assert.deepEqual(journal, ['fonda/data/lots-fonda-calibration/fr-comprendre-consigne_nI.json']);
   });
 });

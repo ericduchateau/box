@@ -345,10 +345,35 @@
     lancerDefi(resolu);
   }
 
+  // G4 (relecture Codex PR #2, #1/#4) — LISTE FERMÉE des lots publiables : seuls les
+  // 8 lots relus carte par carte (lot de validation T6b, 2026-10-11) sont servis. Le
+  // dossier lots-fonda-calibration/ contient aussi des lots de calibration NON relus :
+  // ils ne doivent jamais être atteignables, ni par lien ni par URL bricolée. Ajouter
+  // un lot = l'ajouter ici APRÈS relecture humaine (et revue_carte_par_carte: true
+  // dans son fichier — vérifié en plus au rendu, cf. lotEstPubliable).
+  const LOTS_PUBLIABLES = Object.freeze({
+    'fr.comprendre-consigne': ['nI', 'nF'],
+    'fr.inference-implicite': ['nI', 'nF'],
+    'maths.grandeurs-mesures': ['nI', 'nF'],
+    'maths.resolution-problemes': ['nI', 'nF'],
+  });
+
   // Chemin du lot FONDA commité pour (notionId, palier) — même convention de nommage
-  // que fonda/scripts/generer-lot-fonda.js (nomFichier). Pure, testable.
+  // que fonda/scripts/generer-lot-fonda.js (nomFichier). Pure, testable. Renvoie
+  // null pour tout couple hors liste fermée : aucune interpolation de paramètre URL
+  // libre dans un chemin (plus de traversée via palier=nI%2F..%2F...).
   function cheminLot(notionId, palier) {
+    if (!Object.prototype.hasOwnProperty.call(LOTS_PUBLIABLES, notionId)) return null;
+    if (!LOTS_PUBLIABLES[notionId].includes(palier)) return null;
     return `fonda/data/lots-fonda-calibration/${notionId.replace(/\./g, '-')}_${palier}.json`;
+  }
+
+  // Défense en profondeur G4 (décision Éric) : la liste fermée ci-dessus ferme l'accès
+  // par URL, mais la VRAIE barrière est le drapeau de relecture lu dans la donnée au
+  // moment du rendu — un lot retombé à false (ou sans drapeau) n'est jamais affiché,
+  // même s'il figure dans la liste. Le nom du relecteur ne tient jamais lieu de statut.
+  function lotEstPubliable(lot) {
+    return !!lot && lot.revue_carte_par_carte === true;
   }
 
   // Adapte une carte au format du lot (box-select + champs FONDA) vers la forme
@@ -433,9 +458,20 @@
   // fetch du lot) gérés visiblement, jamais une page blanche ni une exception muette.
   function lancerDefi(contexte) {
     const root = racineFonda();
+    const chemin = cheminLot(contexte.notionId, contexte.palier);
+    if (!chemin) {
+      afficherMessage(root, 'Ce défi n\'est pas disponible.');
+      return;
+    }
     chargerDependancesFonda()
-      .then(() => chargerJSON(cheminLot(contexte.notionId, contexte.palier)))
-      .then((lot) => { rendrePaquetCartes(root, lot, contexte); })
+      .then(() => chargerJSON(chemin))
+      .then((lot) => {
+        if (!lotEstPubliable(lot)) {
+          afficherMessage(root, 'Ce défi n\'est pas disponible.');
+          return;
+        }
+        rendrePaquetCartes(root, lot, contexte);
+      })
       .catch(() => {
         afficherMessage(root, 'Impossible de charger ce défi pour le moment — réessaie plus tard.');
       });
@@ -477,7 +513,7 @@
   // Fonctions pures exportées pour les tests Node (même motif que js/app.js) — le
   // reste (rendu DOM, fetch) n'est pas exporté, non testable en Node sans navigateur.
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { cheminLot, adapterCarte };
+    module.exports = { cheminLot, adapterCarte, lotEstPubliable, LOTS_PUBLIABLES };
   }
 
   demarrer().catch(() => afficherMessage(racineFonda(), 'Entraînement libre — données indisponibles pour le moment.'));

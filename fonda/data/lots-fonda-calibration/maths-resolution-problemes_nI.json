@@ -11,7 +11,7 @@
   "nb_cartes": 6,
   "source": "fonda-seed",
   "type": "fonda",
-  "revue_carte_par_carte": false,
+  "revue_carte_par_carte": true,
   "cartes": [
     {
       "numero": 1,
