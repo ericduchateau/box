@@ -462,3 +462,15 @@ PR #1 (`feat/box-fonda-theme-switch` → `design`, commit `5ea01ba`) relue par C
   - Suite complète : **323/323 réels, 1 skip connu (sans lien)**.
 - **Piège évité** : les scripts injectés dynamiquement (`document.createElement('script')`) sont asynchrones par défaut même insérés en séquence — l'ordre d'exécution (correction.js avant carte-reponse-produite.js, qui lit `window.FondaCorrection` à l'évaluation du fichier) est garanti ici par `await` séquentiel sur chaque chargement, pas par une supposition sur l'ordre d'insertion DOM.
 - **Prochaine étape** : captures (BOX clair inchangé + FONDA avec le vrai défi de démo) à faire par Éric en navigateur, puis PR vers `design`.
+
+## Relecture Codex PR #2 (câblage) — 10 points corrigés, 1 reporté (2026-10-12, Claude Code)
+
+- Relecture Codex (lecture seule, medium) : 3 bloquants + 7 à corriger + 1 optionnel, vérifiés par reproduction avant correction. 9 commits, `node --test` vert à chaque étape : **368/368, 0 échec, 1 skip** (dette connue).
+- **G4** : liste fermée `LOTS_PUBLIABLES` (8 lots) + `revue_carte_par_carte === true` vérifié au rendu (défense en profondeur, décision Éric). Les 8 lots relus passent à `true`, les 8 lots de calibration restent `false`. Ferme aussi la traversée de chemin via `palier`.
+- **Chargement** : `evenements.js` ajouté au graphe (liens.js en dépend), dépendances chargées avant tout usage de `FondaLiens` ; `chargerScript` à promesse partagée, preuve = export sur `window`. Harnais de test : plus aucun global pré-injecté, scripts évalués en mode navigateur (vm).
+- **Écran vide** : `initFonda()` pose « Chargement… » + `onerror` de bootstrap.js ; attente bornée 15 s.
+- `adapterCarte` transmet `arrondi`/`seconde_chance` ; lot validé en entier avant la 1re carte ; démo accessible aussi depuis les pages niveau sans défi.
+- **Formes acceptées refusées** (« 2 bus », « 40 livres », « 8 victoires ») : variantes retirées. Option `unite` écartée : avec une unité déclarée, le nombre seul est noté **« presque »** (unité oubliée), pas « juste » — l'unité n'est jamais facultative dans le correcteur actuel (vrai aussi pour les 27 formes nombre-seul des 8 lots : réussite en numérique, mais message « unité oubliée »). Garde-fou générateur `verifierFormesAcceptees()` (chaque forme doit compter comme réussite) + test permanent sur les 8 lots.
+- **🔖 DETTE Moteur A (Codex #7)** : `lancerDefi()` ignore le `setId` du calendrier (lot choisi par notion+palier). À brancher avec Moteur A — la promesse « aucune retouche nécessaire » était fausse, corrigée dans l'en-tête de `bootstrap.js`.
+- **Point ouvert pédagogique** : un élève qui tape « 2 bus » reste noté faux (pas de tolérance de mot après le nombre sans unité déclarée). Option (b) (correcteur tolérant) non retenue pour l'instant.
+- **Prochaine étape** : nouvelle relecture Codex, puis merge de la PR #2 dans `design`, puis publication des 8 lots.

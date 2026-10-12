@@ -6,11 +6,9 @@
 //
 // Ce fichier est volontairement MINCE : toute la logique métier (génération de liens,
 // résolution d'un defi_id) vit dans fonda/engine/liens.js, pur et testé (18 tests,
-// node --test fonda/engine/liens.test.js). Ici, uniquement du fetch + du rendu DOM —
-// non testable en Node sans navigateur, donc NON COUVERT par la suite automatisée
-// pour la partie rendu (les fonctions pures — adapterCarte, cheminLot — le sont, via
-// module.exports en bas de fichier, même motif que js/config.js/js/app.js).
-// À smoke-tester manuellement avant tout usage réel (voir fonda/engine/README.md).
+// node --test fonda/engine/liens.test.js). Ici, uniquement du fetch + du rendu DOM,
+// couverts par fonda/page/bootstrap.test.js sur un DOM factice (scripts réellement
+// évalués en mode navigateur) ; rendu visuel réel à smoke-tester en navigateur.
 //
 // Chantier câblage (2026-10-11) : lancerDefi() fetche désormais un VRAI lot FONDA
 // commité (fonda/data/lots-fonda-calibration/, format box-select) et rend les cartes
@@ -22,9 +20,16 @@
 // evenements.js/n8n) volontairement HORS SCOPE : onResultat ne pilote que la
 // navigation interne (carte suivante), zéro donnée envoyée nulle part (G2/G3).
 // Le flux calendrier réel (renderDefi -> lancerDefi) reste bloqué sur calendar.json
-// vide (Moteur A, absent) — sans lien avec ce chantier. Le nouveau lien "défi de
-// démonstration" (page niveau) construit un contexte synthétique et appelle la MÊME
-// lancerDefi() : le jour où Moteur A existera, aucune retouche nécessaire ici.
+// vide (Moteur A, absent) — sans lien avec ce chantier. Le lien "défi de
+// démonstration" construit un contexte synthétique et appelle la MÊME lancerDefi().
+// ⚠ Moteur A demandera une retouche ICI (relecture Codex PR #2, #7) : lancerDefi()
+// choisit aujourd'hui le lot par (notion, palier) dans LOTS_PUBLIABLES et IGNORE le
+// setId résolu depuis le calendrier — deux jeux programmés pour la même notion et le
+// même palier afficheraient le même fichier. Il faudra résoudre le lot validé par
+// setId (et vérifier ses identifiants), en gardant un choix explicite pour la démo.
+//
+// G4 (relecture Codex PR #2) : seuls les lots de LOTS_PUBLIABLES sont atteignables,
+// ET seulement si leur fichier porte revue_carte_par_carte: true au moment du rendu.
 
 (function () {
   'use strict';
@@ -152,9 +157,7 @@
   // Paquet de démonstration (chantier câblage, 2026-10-11) : UN SEUL set validé,
   // lu directement depuis le JSON commité (fonda/data/lots-fonda-calibration/),
   // pas le catalogue Drive. Contourne volontairement le calendrier (vide, Moteur A
-  // absent) pour ce paquet fixe. Data-driven : ajouter d'autres notions/paliers plus
-  // tard = changer ces deux constantes (ou le lien ci-dessous), aucune logique à
-  // retoucher.
+  // absent) pour ce paquet fixe. Le couple doit figurer dans LOTS_PUBLIABLES.
   const DEMO_NOTION_ID = 'fr.comprendre-consigne';
   const DEMO_PALIER = 'nI';
 
