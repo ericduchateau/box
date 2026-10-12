@@ -510,5 +510,16 @@ PR #1 (`feat/box-fonda-theme-switch` → `design`, commit `5ea01ba`) relue par C
 - **Correctif** : `body[data-theme="fonda"] #fondaRoot { order: -1; width: 100%; }` — contenu en haut, footer en bas ; contenu long : défilement normal, footer après le contenu (vérifié en 375×600).
 - **Isolation** : `body[data-theme="fonda"] .footer a { display: none; }` — le lien « Administration » (écran BOX de suppression) n'apparaît plus en FONDA ; ligne « BOX — Collège… » conservée.
 - **Preuve navigateur réel** (Chrome headless, cache désactivé, `Math.random` à graine fixe pour un rendu déterministe — sans ça, deux captures du MÊME état BOX différaient de 133 470 px) : **BOX clair 0 pixel de différence avant/après** ; `niveau`/`entrainement`/`carte` : contenu à top 0, footer en bas, « Administration » masqué, géométrie de tous les autres éléments inchangée. Smoke-test fonctionnel OK (index 8 liens, `maths.resolution-problemes/nF` 6/6, fin, retour index, zéro erreur). `node --test` : 404/404, 1 skip.
-- **🔖 DETTE d'isolation** : seul le LIEN « Administration » est masqué en FONDA ; la route elle-même (`?action=delete` -> écran BOX de suppression) reste atteignable si on tape l'URL. Verrouillage de la route = sujet à part.
+- ~~Dette d'isolation~~ : soldée par `feat/box-fonda-isolation` (voir ci-dessous).
 - **Prochaine étape** : PR `feat/box-fonda-layout` -> `design`, merge par Éric.
+
+## Isolation de l'écran de suppression en mode FONDA (2026-10-12, Claude Code)
+
+- Branche `feat/box-fonda-isolation` (depuis `design` après merge PR #4). Garde-fou dans `App.showScreen` : en thème FONDA, `'delete'` ne fait rien (couvre le lien du footer même sans CSS, et un appel direct). `?fonda=1&action=delete` était déjà court-circuité par `init()` (test `fonda` avant `action`).
+- **Durcissement, pas une sécurité** : aucune suppression ne part sans clic + identifiant + code ; le webhook `/box-delete` est public, la seule protection est le `code_suppression`, vérifié par n8n contre le **fichier Drive du jeu** (export local `box-suppression.json`, nœud « Verifier code »).
+- 4 tests de comportement (`js/app.test.js`), dont un qui échoue sans le garde-fou. **Navigateur réel** : BOX clair (accueil, `?action=delete`) **0 pixel de différence** ; FONDA : URL, clic forcé sur le lien masqué, appel console -> écran jamais affiché ; BOX clair : route et lien admin inchangés. Smoke-test fonctionnel OK. `node --test` : 408/408, 1 skip.
+
+### 🔖 Check-list AVANT PUBLICATION (secrets hors du dépôt — même famille)
+1. **Régénérer la clé API Anthropic** (scripts locaux + nœud `Claude API` de `BOX - Generation Flashcards`).
+2. **Codes de suppression et emails commités** : les 16 lots de `fonda/data/lots-fonda-calibration/` contiennent `code_suppression` (+ `prof_email`) en clair dans un dépôt public ; le workflow `fonda-generation` recopie le code du JSON fourni -> publier ces fichiers tels quels les rendrait supprimables par quiconque lit GitHub. Plan du chantier « secrets hors du dépôt » proposé le 2026-10-12 (non exécuté) : générateur sans code/email, retrait des champs des 16 fichiers, historique Git (inerte si nouveaux codes à la publication), retrait de l'orpheline `box_7e7tcooh`.
+3. Vraie adresse de la relectrice de français (`fonda/data/destinataires.json`).
