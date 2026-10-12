@@ -48,8 +48,26 @@ const App = {
     font.rel = 'stylesheet';
     font.href = 'https://fonts.googleapis.com/css2?family=Poppins:wght@700;800&display=swap';
     document.head.appendChild(font);
+    // État de chargement IMMÉDIAT (relecture Codex PR #2, #5) : jamais d'écran vide
+    // entre le masquage de BOX et le premier rendu de bootstrap.js (qui réutilise ce
+    // même #fondaRoot). Si bootstrap.js lui-même ne charge pas : message + retour BOX.
+    const racine = document.createElement('div');
+    racine.id = 'fondaRoot';
+    const attente = document.createElement('p');
+    attente.className = 'fonda-message';
+    attente.textContent = 'Chargement…';
+    racine.appendChild(attente);
+    document.body.appendChild(racine);
     const s = document.createElement('script');
     s.src = 'fonda/page/bootstrap.js?v=1';
+    s.onerror = () => {
+      attente.textContent = 'Le mode FONDA est indisponible pour le moment — réessaie plus tard.';
+      const retour = document.createElement('a');
+      retour.className = 'fonda-header__back';
+      retour.href = window.location.pathname;
+      retour.textContent = '← Retour à BOX';
+      racine.appendChild(retour);
+    };
     document.head.appendChild(s);
   },
 

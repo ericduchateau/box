@@ -234,6 +234,18 @@
     root.appendChild(demo);
   }
 
+  // Attente BORNÉE (relecture Codex PR #2, #5) : une dépendance ou un fetch qui ne
+  // répond jamais ne doit pas laisser l'élève devant un « Chargement… » éternel —
+  // passé ce délai, la promesse est rejetée et le .catch appelant affiche un message.
+  const DELAI_CHARGEMENT_MS = 15000;
+  function avecDelai(promesse, ms) {
+    let minuteur;
+    const delai = new Promise((_, reject) => {
+      minuteur = setTimeout(() => reject(new Error('fonda: délai de chargement dépassé')), ms);
+    });
+    return Promise.race([promesse, delai]).finally(() => clearTimeout(minuteur));
+  }
+
   async function chargerJSON(chemin) {
     const resp = await fetch(chemin);
     if (!resp.ok) throw new Error('fonda: lecture impossible de ' + chemin);
@@ -473,8 +485,7 @@
       afficherMessage(root, 'Ce défi n\'est pas disponible.');
       return;
     }
-    chargerDependancesFonda()
-      .then(() => chargerJSON(chemin))
+    avecDelai(chargerDependancesFonda().then(() => chargerJSON(chemin)), DELAI_CHARGEMENT_MS)
       .then((lot) => {
         if (!lotEstPubliable(lot)) {
           afficherMessage(root, 'Ce défi n\'est pas disponible.');
@@ -507,13 +518,14 @@
 
     // Dépendances AVANT tout usage de window.FondaLiens (page niveau avec défis,
     // lien de défi) — échec -> .catch de demarrer(), message visible.
-    await chargerDependancesFonda();
-
-    const [classes, referentiel, calendrier] = await Promise.all([
-      chargerJSON('fonda/data/classes.json'),
-      chargerJSON('fonda/data/referentiel.json'),
-      chargerJSON('fonda/data/calendar.json'),
-    ]);
+    const [classes, referentiel, calendrier] = await avecDelai(
+      chargerDependancesFonda().then(() => Promise.all([
+        chargerJSON('fonda/data/classes.json'),
+        chargerJSON('fonda/data/referentiel.json'),
+        chargerJSON('fonda/data/calendar.json'),
+      ])),
+      DELAI_CHARGEMENT_MS,
+    );
 
     if (param('page') === 'niveau') {
       renderPageNiveau({ classes, calendrier, referentiel });
@@ -527,7 +539,7 @@
   // Fonctions pures exportées pour les tests Node (même motif que js/app.js) — le
   // reste (rendu DOM, fetch) n'est pas exporté, non testable en Node sans navigateur.
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { cheminLot, adapterCarte, lotEstPubliable, LOTS_PUBLIABLES, chargerScript };
+    module.exports = { cheminLot, adapterCarte, lotEstPubliable, LOTS_PUBLIABLES, chargerScript, avecDelai };
   }
 
   demarrer().catch(() => afficherMessage(racineFonda(), 'Entraînement libre — données indisponibles pour le moment.'));

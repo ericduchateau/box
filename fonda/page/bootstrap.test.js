@@ -581,3 +581,24 @@ describe('chargerScript — idempotence réelle (relecture Codex PR #2, #3)', ()
     assert.equal(balises.length, 0);
   });
 });
+
+describe('attente bornée et échec du bootstrap (relecture Codex PR #2, #5)', () => {
+  test('avecDelai : une promesse qui ne répond jamais est rejetée passé le délai', async () => {
+    const { avecDelai } = obtenirExportsBootstrap();
+    await assert.rejects(avecDelai(new Promise(() => {}), 10), /délai de chargement dépassé/);
+  });
+
+  test('avecDelai : une promesse rapide passe inchangée', async () => {
+    const { avecDelai } = obtenirExportsBootstrap();
+    assert.equal(await avecDelai(Promise.resolve(42), 1000), 42);
+  });
+
+  test('js/app.js::initFonda pose un état "Chargement…" immédiat et gère onerror de bootstrap.js', () => {
+    const app = fsTest.readFileSync(pathTest.join(__dirname, '../../js/app.js'), 'utf8');
+    const initFonda = app.slice(app.indexOf('initFonda() {'), app.indexOf('goFonda() {'));
+    assert.match(initFonda, /racine\.id = 'fondaRoot'/);
+    assert.match(initFonda, /Chargement…/);
+    assert.match(initFonda, /s\.onerror = /);
+    assert.match(initFonda, /Retour à BOX/);
+  });
+});
