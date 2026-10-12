@@ -106,3 +106,51 @@ describe('BOX clair (sans ?fonda=1) : aucun chargement FONDA', () => {
     assert.equal(body.dataset.theme, undefined);
   });
 });
+
+// --- Isolation de l'écran BOX de suppression en mode FONDA (feat/box-fonda-isolation)
+
+describe('écran de suppression : jamais rendu en mode FONDA, inchangé en BOX clair', () => {
+  function ecrans() {
+    const els = {};
+    for (const nom of ['Menu', 'Review', 'Done', 'Delete', 'Error']) els[nom] = { style: { display: 'none' } };
+    document.getElementById = (id) => (id.startsWith('screen') ? els[id.slice(6)] : null);
+    return els;
+  }
+
+  test('?fonda=1&action=delete : mode FONDA lancé, screenDelete jamais affiché', () => {
+    window.location.search = '?fonda=1&action=delete';
+    const els = ecrans();
+    const App = chargerApp();
+    App.init();
+    assert.equal(body.dataset.theme, 'fonda');
+    assert.equal(els.Delete.style.display, 'none');
+    assert.ok(racine(), 'FONDA doit avoir démarré');
+  });
+
+  test('thème FONDA : showScreen(\'delete\') (lien du footer, appel direct) ne fait rien, aucun écran masqué ni affiché', () => {
+    const els = ecrans();
+    els.Menu.style.display = 'block';
+    const App = chargerApp();
+    body.dataset.theme = 'fonda';
+    App.showScreen('delete');
+    assert.equal(els.Delete.style.display, 'none');
+    assert.equal(els.Menu.style.display, 'block', 'rien d\'autre ne doit bouger');
+  });
+
+  test('BOX clair : ?action=delete affiche screenDelete (route admin normale inchangée)', () => {
+    window.location.search = '?action=delete';
+    const els = ecrans();
+    const App = chargerApp();
+    App.init();
+    assert.equal(els.Delete.style.display, 'block');
+  });
+
+  test('BOX clair : showScreen(\'delete\') (lien « Administration ») affiche screenDelete et masque les autres', () => {
+    const els = ecrans();
+    els.Menu.style.display = 'block';
+    const App = chargerApp();
+    App.showScreen('delete');
+    assert.equal(els.Delete.style.display, 'block');
+    assert.equal(els.Menu.style.display, 'none');
+  });
+});

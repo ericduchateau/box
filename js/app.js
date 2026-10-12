@@ -101,6 +101,12 @@ const App = {
   },
 
   showScreen(name) {
+    // Isolation BOX<->FONDA (durcissement, pas une sécurité : /box-delete est public,
+    // seul le code de suppression protège) : en thème FONDA, l'écran BOX de
+    // suppression n'est jamais affiché — couvre le lien « Administration » du footer
+    // même si le CSS qui le masque ne charge pas, et un appel direct. BOX clair
+    // (data-theme vide) : chemin inchangé.
+    if (name === 'delete' && document.body.dataset.theme === 'fonda') return;
     ['Menu', 'Review', 'Done', 'Delete', 'Error'].forEach(s => {
       const el = document.getElementById('screen' + s);
       if (el) el.style.display = 'none';
