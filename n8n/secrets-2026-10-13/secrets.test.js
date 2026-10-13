@@ -61,6 +61,7 @@ describe('box-fonda-generation (prod) — code généré par n8n, adresse routé
   test('noeud natif Crypto/Generate (hex, 16) branché entre "Coller lot FONDA" et "Preparer fichier"', () => {
     const c = noeud(w, 'Generer code suppression');
     assert.equal(c.type, 'n8n-nodes-base.crypto');
+    assert.equal(c.typeVersion, 1, 'v1 : la v2 n\'est pas reconnue par l\'éditeur de l\'instance');
     assert.deepEqual(c.parameters, { action: 'generate', dataPropertyName: 'code_aleatoire', encodingType: 'hex', stringLength: 16 });
     assert.equal(w.connections['Coller lot FONDA'].main[0][0].node, 'Generer code suppression');
     assert.equal(w.connections['Generer code suppression'].main[0][0].node, 'Preparer fichier et destinataire');

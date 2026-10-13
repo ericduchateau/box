@@ -125,7 +125,10 @@ function construireFondaGeneration(source, { test }) {
     id: 'crypto_code_suppression',
     name: 'Generer code suppression',
     type: 'n8n-nodes-base.crypto',
-    typeVersion: 2,
+    // Version 1 : la version 2 (celle du « Generer Token » de Selection Prof, poussé
+    // par API) s'exécute côté serveur mais l'ÉDITEUR de l'instance ne la reconnaît
+    // pas (« ? » à l'import, paramètres et liens effacés à l'enregistrement).
+    typeVersion: 1,
     position: [preparer.position[0], preparer.position[1]],
     parameters: { action: 'generate', dataPropertyName: 'code_aleatoire', encodingType: 'hex', stringLength: 16 },
     notes: 'Chantier secrets (2026-10-13) : code de suppression genere par n8n a chaque distribution (jamais repris du JSON colle). Noeud natif : le module crypto est interdit dans un noeud Code sur cette instance.',
