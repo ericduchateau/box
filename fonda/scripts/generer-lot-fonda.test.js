@@ -20,7 +20,7 @@ const {
   trierCartesBrutes,
   autoCorrigerCarte,
   construireCandidats,
-  construireFichierBoxSelect,
+  construireLotFonda,
 } = require('./generer-lot-fonda.js');
 
 const NOTION_MATHS = Object.freeze({
@@ -31,13 +31,6 @@ const NOTION_MATHS = Object.freeze({
   micro_competence: 'Calculer une aire ou un périmètre simple.',
   enonce_modele: ['Exemple PRD'],
   paliers: ['nI', 'nF'],
-});
-
-const DESTINATAIRES_TEST = Object.freeze({
-  relecteurs: {
-    eric: { email: 'duchateauphysiquechimie@gmail.com' },
-    justine: { email: 'ericdnews@yahoo.fr', _TEST: 'placeholder' },
-  },
 });
 
 describe('parserReponseModele', () => {
@@ -208,49 +201,35 @@ describe('construireCandidats — dérivation G4 (jamais confiance au contenu mo
   });
 });
 
-describe('construireFichierBoxSelect — format décision (b)', () => {
+describe('construireLotFonda — contrat lot-fonda/v1, aucun secret (chaîne FONDA séparée)', () => {
+  const { validerLot } = require('../engine/catalogue.js');
   const candidatsExemple = [
-    { relecteur: 'eric', palier: 'nI', numero: 1, question: 'Q1 ?', reponse: 'R1', difficulte: 'facile', profil_correction: 'numerique', reponses_acceptees: ['R1'], unite: 'm²', contexte: 'ctx-1', set_id: 'set_fonda_geometrie_nI_01', item_id: 'it01', notion_id: 'maths.geometrie' },
-    { relecteur: 'eric', palier: 'nI', numero: 2, question: 'Q2 ?', reponse: 'R2', difficulte: 'moyen', profil_correction: 'exact', reponses_acceptees: ['R2'], contexte: 'ctx-2', set_id: 'set_fonda_geometrie_nI_01', item_id: 'it02', notion_id: 'maths.geometrie' },
+    { relecteur: 'eric', palier: 'nI', numero: 1, question: 'Q1 ?', reponse: 'R1', difficulte: 'facile', profil_correction: 'numerique', reponses_acceptees: ['R1'], unite: 'm²', contexte: 'ctx-1', set_id: 'set_fonda_geometrie_nI_02', item_id: 'it01', notion_id: 'maths.geometrie' },
+    { relecteur: 'eric', palier: 'nI', numero: 2, question: 'Q2 ?', reponse: 'R2', difficulte: 'moyen', profil_correction: 'exact', reponses_acceptees: ['R2'], contexte: 'ctx-2', set_id: 'set_fonda_geometrie_nI_02', item_id: 'it02', notion_id: 'maths.geometrie' },
   ];
 
-  test('fichier produit a le format box-select (numero/question/reponse/difficulte) + marquage FONDA', () => {
-    const fichier = construireFichierBoxSelect({ notion: NOTION_MATHS, palier: 'nI', candidats: candidatsExemple, destinataires: DESTINATAIRES_TEST });
-
-    assert.equal(fichier.type, 'fonda');
-    assert.equal(fichier.revue_carte_par_carte, false);
-    assert.equal(fichier.nb_cartes, 2);
-    assert.equal(fichier.prof_email, 'duchateauphysiquechimie@gmail.com'); // routé via destinataires.relecteurs.eric
-    assert.match(fichier.code_suppression, /^SUP-/);
-    assert.match(fichier.id, /^box_/);
-
-    fichier.cartes.forEach((c, i) => {
-      // Champs lus par box-select/Construire page selection — jamais renommés.
-      assert.equal(c.numero, i + 1);
-      assert.ok(c.question);
-      assert.ok(c.reponse);
-      assert.ok(['facile', 'moyen', 'difficile'].includes(c.difficulte));
-      // Champs FONDA supplémentaires — transportés, pas lus par box-select, mais présents.
-      assert.equal(c.palier, 'nI');
-      assert.ok(c.profil_correction);
-      assert.ok(Array.isArray(c.reponses_acceptees));
-      assert.ok(c.set_id);
-      assert.ok(c.item_id);
-      assert.equal(c.notion_id, 'maths.geometrie');
-    });
+  test('produit un lot lot-fonda/v1 valide, non relu, set_id à la racine', () => {
+    const lot = construireLotFonda({ notion: NOTION_MATHS, palier: 'nI', candidats: candidatsExemple });
+    assert.equal(lot.schema, 'lot-fonda/v1');
+    assert.equal(lot.set_id, 'set_fonda_geometrie_nI_02');
+    assert.equal(lot.revue_carte_par_carte, false);
+    assert.equal(lot.nb_cartes, 2);
+    assert.deepEqual(validerLot(lot), { valide: true, erreurs: [] });
+    assert.deepEqual(lot.cartes.map((c) => c.item_id), ['it01', 'it02']);
+    assert.equal(lot.cartes[0].unite, 'm²');
+    assert.equal('unite' in lot.cartes[1], false, 'pas de champ unite vide');
   });
 
-  test('routage vers justine pour une notion français', () => {
-    const notionFr = { ...NOTION_MATHS, id: 'fr.lexique', matiere: 'français', relecteur: 'justine' };
-    const candidatsFr = candidatsExemple.map((c) => ({ ...c, relecteur: 'justine', notion_id: 'fr.lexique' }));
-    const fichier = construireFichierBoxSelect({ notion: notionFr, palier: 'nI', candidats: candidatsFr, destinataires: DESTINATAIRES_TEST });
-    assert.equal(fichier.prof_email, 'ericdnews@yahoo.fr'); // adresse de TEST de Justine, comme prévu avant mise en service réelle.
+  test('aucun secret ni coordonnée : ni id box_, ni prof_email, ni code_suppression, ni relecteur', () => {
+    const t = JSON.stringify(construireLotFonda({ notion: NOTION_MATHS, palier: 'nI', candidats: candidatsExemple }));
+    for (const interdit of ['"id"', 'box_', 'prof_email', 'prof_nom', 'code_suppression', 'SUP-', '"relecteur"', '@']) {
+      assert.ok(!t.includes(interdit), `présent : ${interdit}`);
+    }
   });
 
-  test('destinataires.relecteurs incomplet (email manquant) -> exception explicite, jamais un envoi vers undefined', () => {
-    assert.throws(() => {
-      construireFichierBoxSelect({ notion: NOTION_MATHS, palier: 'nI', candidats: candidatsExemple, destinataires: { relecteurs: {} } });
-    }, /email manquant/);
+  test('candidats de set_id différents -> refus explicite', () => {
+    const mixte = [candidatsExemple[0], { ...candidatsExemple[1], set_id: 'set_fonda_geometrie_nI_03' }];
+    assert.throws(() => construireLotFonda({ notion: NOTION_MATHS, palier: 'nI', candidats: mixte }), /set_id différents/);
   });
 });
 
@@ -356,12 +335,12 @@ describe('verifierFormesAcceptees — chaque forme déclarée doit passer son pr
   });
 });
 
-describe('les 8 lots publiables repassent TOUS les garde-fous du générateur', () => {
-  const LOTS = ['fr-comprendre-consigne', 'fr-inference-implicite', 'maths-grandeurs-mesures', 'maths-resolution-problemes']
-    .flatMap((n) => ['nI', 'nF'].map((p) => `${n}_${p}.json`));
+describe('chaque lot PUBLIÉ (catalogue-fonda.json) repasse TOUS les garde-fous du générateur', () => {
+  const LOTS = require('../data/catalogue-fonda.json').lots.map((e) => e.fichier);
+  test('le catalogue publie bien 8 lots', () => assert.equal(LOTS.length, 8));
   for (const f of LOTS) {
     test(f, () => {
-      const lot = require('../data/lots-fonda-calibration/' + f);
+      const lot = require('../data/' + f);
       lot.cartes.forEach((c, i) => {
         const v = verifierContreCorrecteur(c);
         assert.ok(v.ok, `${f} carte ${i + 1} : ${v.raison}`);
@@ -405,12 +384,12 @@ describe('garde-fou : cible APRÈS arrondi, pas la forme littérale (relecture C
   });
 
   for (const arrondi of [2, 0]) {
-    test(`arrondi ${arrondi} transmis jusqu'au fichier box-select (sinon correction publiée différente)`, () => {
+    test(`arrondi ${arrondi} transmis jusqu'au fichier candidat lot-fonda/v1 (sinon correction publiée différente)`, () => {
       const c = arrondi === 0 ? carte({ arrondi: 0, reponse: '0', reponses_acceptees: ['1/3'] }) : carte();
       const candidats = construireCandidats({ notion: NOTION_MATHS, palier: 'nI', cartesBrutes: [c], sequence: 1, ts: '2026-10-12T00:00:00Z' });
       assert.equal(candidats[0].arrondi, arrondi);
-      const fichier = construireFichierBoxSelect({ notion: NOTION_MATHS, palier: 'nI', candidats, destinataires: DESTINATAIRES_TEST });
-      assert.equal(JSON.parse(JSON.stringify(fichier)).cartes[0].arrondi, arrondi);
+      const lot = construireLotFonda({ notion: NOTION_MATHS, palier: 'nI', candidats });
+      assert.equal(JSON.parse(JSON.stringify(lot)).cartes[0].arrondi, arrondi);
     });
   }
 });

@@ -35,10 +35,12 @@
 // script refuse de les traiter même si leur notion_id est passé en argument — pas
 // une consigne de prompt, un refus avant tout appel réseau.
 //
-// Sortie : un fichier JSON par (notion_id, palier) dans
-// fonda/data/lots-fonda-calibration/ (dossier de travail, PAS destiné à être lu par
-// l'app ni par n8n en l'état — juste pour la relecture humaine en boucle locale,
-// étape 1bis). Rien n'est écrit tant qu'un seul rejet (correcteur ou G4) subsiste
+// Sortie : un fichier CANDIDAT par (notion_id, palier), au format lot-fonda/v1
+// (fonda/engine/catalogue.js : liste blanche, aucun secret ni coordonnée), nommé
+// <set_id>.json dans fonda/data/lots-fonda-calibration/ (dossier de travail, jamais
+// lu par l'app). set_id = séquence libre suivante (jamais d'écrasement). Il ne
+// devient publié qu'après relecture humaine puis fonda/scripts/publier-lot.js
+// (chaîne FONDA séparée de BOX, PRD §2 bis). Rien n'est écrit tant qu'un seul rejet (correcteur ou G4) subsiste
 // pour CE (notion_id, palier) — même politique stricte que generer-pilote-t6.js.
 
 'use strict';
@@ -57,10 +59,12 @@ const {
 } = require('../engine/generation.js');
 
 const { evaluerReponse, compteCommeReussite, calculerCibleAffichee, _internal: { parseReponseNumerique } } = require('../engine/correction.js');
+const { SCHEMA_LOT, validerLot: validerLotFonda, prochainSetId, decomposerSetId } = require('../engine/catalogue.js');
 
 const ROOT = path.resolve(__dirname, '..');
 const REFERENTIEL_PATH = path.join(ROOT, 'data', 'referentiel.json');
-const DESTINATAIRES_PATH = path.join(ROOT, 'data', 'destinataires.json');
+const LOTS_PUBLIES_DIR = path.join(ROOT, 'data', 'lots');
+const CATALOGUE_PATH = path.join(ROOT, 'data', 'catalogue-fonda.json');
 const SORTIE_DIR = path.join(ROOT, 'data', 'lots-fonda-calibration');
 
 const SOURCE_FONDA_SEED = 'T6b-seed';
@@ -406,57 +410,70 @@ function construireCandidats({ notion, palier, cartesBrutes, sequence, ts }) {
 }
 
 // ---------------------------------------------------------------------------
-// 6. Reformatage vers le format box-select (décision T6b point b) — pure,
-//    testable. N'ajoute QUE des champs ; ne touche ni box-select, ni
-//    box-select-confirm, ni box-set (ils ignorent les champs qu'ils ne lisent
-//    pas : palier/profil_correction/reponses_acceptees/unite/contexte/set_id/
-//    item_id/notion_id voyagent intacts, lus plus tard par le Moteur A/B, Lot 2).
+// 6. Fichier candidat au format lot-fonda/v1 (chaîne FONDA séparée de BOX, contrat
+//    fonda/engine/catalogue.js) — pure, testable. Liste BLANCHE de champs : AUCUN
+//    secret ni coordonnée (plus de id box_…, prof_email, code_suppression : ceux de
+//    la chaîne BOX n'ont plus cours). Toujours revue_carte_par_carte: false — seule
+//    la relecture humaine (puis publier-lot.js) mène au catalogue.
 // ---------------------------------------------------------------------------
-function construireFichierBoxSelect({ notion, palier, candidats, destinataires }) {
-  const relecteur = candidats[0].relecteur;
-  const email = destinataires.relecteurs[relecteur] && destinataires.relecteurs[relecteur].email;
-  if (!email) throw new Error(`destinataires.relecteurs.${relecteur}.email manquant`);
-
-  const id = 'box_' + Math.random().toString(36).substring(2, 10);
-  const codeSuppression = 'SUP-' + Math.random().toString(36).substring(2, 10).toUpperCase();
-
-  return {
-    id,
+function construireLotFonda({ notion, palier, candidats }) {
+  const setIds = [...new Set(candidats.map((c) => c.set_id))];
+  if (setIds.length !== 1) throw new Error('candidats de set_id différents dans un même lot');
+  const lot = {
+    schema: SCHEMA_LOT,
+    set_id: setIds[0],
+    notion_id: notion.id,
+    palier,
     matiere: LABEL_MATIERE[notion.matiere] || notion.matiere,
-    niveau: `Fondamentaux — ${LABEL_PALIER[palier]}`, // cf. note ouverte : FONDA est indépendant du niveau de classe (AGENTS.md), pas d'équivalent "6e" naturel ici.
     notion: notion.libelle,
-    prof_nom: 'Box-FONDA (génération automatique)',
-    prof_email: email,
-    code_suppression: codeSuppression,
-    date_creation: new Date().toISOString().split('T')[0],
-    nb_cartes: candidats.length,
-    source: 'fonda-seed',
-    type: 'fonda',
+    niveau: `Fondamentaux — ${LABEL_PALIER[palier]}`, // FONDA est indépendant du niveau de classe (AGENTS.md).
     revue_carte_par_carte: false,
-    cartes: candidats.map((c, i) => ({
-      numero: i + 1,
-      question: c.question,
-      reponse: c.reponse,
-      difficulte: c.difficulte,
-      // Champs FONDA supplémentaires — box-select/box-select-confirm/box-set les
-      // ignorent, ils voyagent intacts jusqu'au Moteur A/B (Lot 2).
-      palier: c.palier,
-      profil_correction: c.profil_correction,
-      reponses_acceptees: c.reponses_acceptees,
-      unite: c.unite,
-      arrondi: c.arrondi,
-      contexte: c.contexte,
-      set_id: c.set_id,
-      item_id: c.item_id,
-      notion_id: c.notion_id,
-    })),
+    nb_cartes: candidats.length,
+    date_creation: new Date().toISOString().split('T')[0],
+    cartes: candidats.map((c, i) => {
+      const carte = {
+        item_id: c.item_id,
+        numero: i + 1,
+        question: c.question,
+        reponse: c.reponse,
+        difficulte: c.difficulte,
+        palier: c.palier,
+        profil_correction: c.profil_correction,
+        reponses_acceptees: c.reponses_acceptees,
+        contexte: c.contexte,
+        set_id: c.set_id,
+        notion_id: c.notion_id,
+      };
+      if (c.unite != null) carte.unite = c.unite;
+      if (c.arrondi != null) carte.arrondi = c.arrondi;
+      return carte;
+    }),
   };
+  const v = validerLotFonda(lot);
+  if (!v.valide) throw new Error(`lot non conforme à lot-fonda/v1 : ${v.erreurs.join(' ; ')}`);
+  return lot;
+}
+
+// set_id déjà pris (publiés, en attente de relecture, non relus) : la séquence
+// suivante est calculée dessus — jamais d'écrasement silencieux d'un lot existant.
+function setIdsExistants() {
+  const ids = new Set();
+  for (const dir of [SORTIE_DIR, LOTS_PUBLIES_DIR]) {
+    if (!fs.existsSync(dir)) continue;
+    for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.json'))) {
+      try { const l = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); if (l.set_id) ids.add(l.set_id); } catch { /* fichier illisible : ignoré */ }
+    }
+  }
+  if (fs.existsSync(CATALOGUE_PATH)) {
+    for (const e of JSON.parse(fs.readFileSync(CATALOGUE_PATH, 'utf8')).lots || []) ids.add(e.set_id);
+  }
+  return [...ids];
 }
 
 // ---------------------------------------------------------------------------
 // 7. Orchestration — appelle le réseau (impure), enchaîne les étapes pures.
 // ---------------------------------------------------------------------------
-async function genererLotPourNotionPalier({ notion, palier, nCartes, contextesAutresPaliers = [] }) {
+async function genererLotPourNotionPalier({ notion, palier, nCartes, contextesAutresPaliers = [], sequence = 1 }) {
   const contextesDejaUtilises = [];
   const prompt = construirePrompt({ notion, palier, nCartes, contextesDejaUtilises, contextesAutresPaliers });
   const { texte: texteReponse, stopReason } = await appellerModeleClaude(prompt);
@@ -482,7 +499,7 @@ async function genererLotPourNotionPalier({ notion, palier, nCartes, contextesAu
   }
 
   const ts = new Date().toISOString();
-  const candidats = construireCandidats({ notion, palier, cartesBrutes: cartesValides, sequence: 1, ts });
+  const candidats = construireCandidats({ notion, palier, cartesBrutes: cartesValides, sequence, ts });
 
   const jeuValide = validerJeu(candidats);
   if (!jeuValide.valide) return { ok: false, erreur: jeuValide.erreurs.join(', '), rejets, corrections };
@@ -503,7 +520,6 @@ async function main() {
   }
 
   const referentiel = JSON.parse(fs.readFileSync(REFERENTIEL_PATH, 'utf-8'));
-  const destinataires = JSON.parse(fs.readFileSync(DESTINATAIRES_PATH, 'utf-8'));
   const notionIdsConnus = new Set(referentiel.notions.map((n) => n.id));
 
   const notions = referentiel.notions.filter((n) => notionIdsDemandes.includes(n.id));
@@ -535,7 +551,10 @@ async function main() {
         .flatMap((p) => contextesParPalier[p]);
 
       console.log(`\n=== ${notion.id} / ${palier} (${nCartes} cartes demandées) ===`);
-      const resultat = await genererLotPourNotionPalier({ notion, palier, nCartes, contextesAutresPaliers });
+      const prochain = prochainSetId(notion.id, palier, setIdsExistants());
+      if (!prochain) { console.log('  ✗ plus de séquence libre (99 atteint) ou notion/palier invalide'); continue; }
+      const sequence = decomposerSetId(prochain).sequence;
+      const resultat = await genererLotPourNotionPalier({ notion, palier, nCartes, contextesAutresPaliers, sequence });
 
       if (!resultat.ok) {
         console.log(`  ✗ ${resultat.erreur}`);
@@ -570,14 +589,14 @@ async function main() {
       const relecteur = relecteurDepuisMatiere(notion.matiere);
       const candidatsDeposes = depot.parRelecteur[relecteur];
       contextesParPalier[palier] = candidatsDeposes.map((c) => c.contexte);
-      const fichier = construireFichierBoxSelect({ notion, palier, candidats: candidatsDeposes, destinataires });
+      const fichier = construireLotFonda({ notion, palier, candidats: candidatsDeposes });
 
-      const nomFichier = `${notion.id.replace(/\./g, '-')}_${palier}.json`;
-      const sortiePath = path.join(SORTIE_DIR, nomFichier);
-      fs.writeFileSync(sortiePath, JSON.stringify(fichier, null, 2) + '\n');
+      const sortiePath = path.join(SORTIE_DIR, `${fichier.set_id}.json`);
+      if (fs.existsSync(sortiePath)) { console.log(`  ✗ ${path.relative(ROOT, sortiePath)} existe déjà — refus d'écraser`); continue; }
+      fs.writeFileSync(sortiePath, JSON.stringify(fichier, null, 2) + '\n', { flag: 'wx' });
 
-      console.log(`  ✓ ${candidatsDeposes.length}/${nCartes} cartes retenues → ${path.relative(ROOT, sortiePath)}`);
-      console.log(`    Relecteur : ${relecteur} (${fichier.prof_email})`);
+      console.log(`  ✓ ${candidatsDeposes.length}/${nCartes} cartes retenues → ${path.relative(ROOT, sortiePath)} (candidat, NON relu)`);
+      console.log(`    Relecteur attribué (référentiel) : ${relecteur}`);
     }
   }
 }
@@ -593,7 +612,7 @@ module.exports = {
   trierCartesBrutes,
   autoCorrigerCarte,
   construireCandidats,
-  construireFichierBoxSelect,
+  construireLotFonda,
   genererLotPourNotionPalier,
   appellerModeleClaude,
   MODELE,
