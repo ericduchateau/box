@@ -18,12 +18,13 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 4. Moteur A (calendrier) : brancher le `setId` du calendrier dans `lancerDefi()` (aujourd'hui choisi par notion+palier) ; émission réelle des événements (T3/T5) depuis `onResultat`.
 
 ## 🔖 Check-list AVANT PUBLICATION / usage élève réel
-1. **Régénérer la clé API Anthropic** (a circulé en clair) : scripts locaux + nœud `Claude API` (HTTP, header en clair) de `BOX - Generation Flashcards` ; idéalement passer par un credential n8n.
+1. **Régénérer la clé API Anthropic** (a circulé en clair) : scripts locaux + nœud `Claude API` (HTTP, header en clair) de `BOX - Generation Flashcards` **et de `BOX - Generation Tally`** (même `x-api-key`) ; révoquer l'ancienne ; idéalement passer par un credential n8n.
 2. **Secrets commités** : les 16 lots contiennent `code_suppression` + `prof_email` en clair (dépôt public) ; `box-fonda-generation` recopie le code du JSON -> générer le code côté n8n à la publication, retirer les champs des fichiers, test anti-retour. Historique Git inerte dès que les codes publiés sont neufs (`/box-delete` vérifie contre le fichier Drive).
 3. **Adresse réelle de la relectrice de français** : dans n8n uniquement, **jamais** dans `fonda/data/destinataires.json` (dépôt public).
 4. **Orpheline `box_7e7tcooh`** au catalogue Drive (fichier déjà en corbeille) : la retirer via `/box-delete` (code connu) ou à la main après sauvegarde du catalogue — feu vert Éric requis.
 5. **Fidélité du banc de test** : contexte navigateur unique (vm partagé), parcours depuis `App.initFonda()` — à prioriser avant d'élargir FONDA à d'autres notions.
 6. **Correcteur tolérant au mot après le nombre** (« 2 bus » noté faux sans `unite` ; avec `unite`, le nombre seul donne « presque, unité oubliée »).
+7. **Défense en profondeur — clé de relecture distincte du code de suppression** (chantier séparé `feat/box-review-key`, APRÈS passage de la phase 1 secrets en prod, avec relecture Codex). Une `review_key` aléatoire (nœud `Crypto`) remplace le code de suppression dans le lien `/box-select`, le champ caché de la page de relecture et le POST de confirmation ; invalidée à la publication/au rejet. Touche **4 workflows prod** (Generation Flashcards + Tally : +1 nœud Crypto, lien ; **Selection Prof** : 5 nœuds Code, chemin critique ; Fiche API : retirer `review_key`, 1 ligne) + `box-fonda-generation` ; `/box-delete` inchangé. Compat obligatoire : accepter l'ancien `code` seulement si le fichier n'a pas de `review_key` (liens déjà envoyés). Besoin : exports frais des 4 workflows, copies de test, ~15-20 tests, ~1 h de tests réels Éric (Form + Tally + relecture + publication + ancien lien). Limite : retire le code des URLs/HTML/exécutions de relecture, pas des exécutions de génération ni de celles qui téléchargent la fiche (Fiche API, Question Eleve).
 
 ## Autres dettes (non bloquantes)
 - Route `?action=delete` (BOX clair) reste publique — normal : seul le code protège.
