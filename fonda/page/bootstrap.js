@@ -10,27 +10,20 @@
 // couverts par fonda/page/bootstrap.test.js sur un DOM factice (scripts réellement
 // évalués en mode navigateur) ; rendu visuel réel à smoke-tester en navigateur.
 //
-// Chantier câblage (2026-10-11) : lancerDefi() fetche désormais un VRAI lot FONDA
-// commité (fonda/data/lots-fonda-calibration/, format box-select) et rend les cartes
-// une à une via fonda/engine/carte-reponse-produite.js (T2) — plus un stub "contenu à
-// venir". Dépendances (liens.js/correction.js/carte-reponse-produite.js) chargées
-// dynamiquement ici (elles ne l'étaient réellement nulle part avant : seuls les tests
-// les injectaient en faux globals — un vrai navigateur aurait planté sur
-// "window.FondaLiens is undefined"). Émission d'événement réel (T3,
-// evenements.js/n8n) volontairement HORS SCOPE : onResultat ne pilote que la
-// navigation interne (carte suivante), zéro donnée envoyée nulle part (G2/G3).
-// Le flux calendrier réel (renderDefi -> lancerDefi) reste bloqué sur calendar.json
-// vide (Moteur A, absent) — sans lien avec ce chantier. Les liens de l'index
-// d'entraînement libre (page=entrainement -> page=carte) construisent un contexte
-// synthétique et appellent la MÊME lancerDefi().
-// ⚠ Moteur A demandera une retouche ICI (relecture Codex PR #2, #7) : lancerDefi()
-// choisit aujourd'hui le lot par (notion, palier) dans LOTS_PUBLIABLES et IGNORE le
-// setId résolu depuis le calendrier — deux jeux programmés pour la même notion et le
-// même palier afficheraient le même fichier. Il faudra résoudre le lot validé par
-// setId (et vérifier ses identifiants), en gardant un choix explicite pour la démo.
+// Chaîne FONDA séparée de BOX (2026-10-13, PRD §2 bis) : tout ce que l'élève lit est
+// du JSON COMMITÉ servi par Pages — fonda/data/catalogue-fonda.json (lots publiés,
+// contrat catalogue-fonda/v1) et fonda/data/lots/<set_id>.json (lot-fonda/v1). Aucune
+// lecture de Drive ni de webhook. lancerDefi() résout le lot par set_id (lien d'index,
+// calendrier) ou, pour les anciens liens, par (notion, palier) via le catalogue ; il
+// rend les cartes via fonda/engine/carte-reponse-produite.js (T2). Émission
+// d'événements réels (T3/T5, /box-fonda-events) : chantier identifié, hors de ce
+// fichier — onResultat ne pilote que la navigation interne (G2/G3).
+// Dette identifiée (avec Moteur A) : deux lots nI/nF d'une même notion, même semaine,
+// même classe, ont le même defi_id ; l'année du defi_id n'est pas vérifiée.
 //
-// G4 (relecture Codex PR #2) : seuls les lots de LOTS_PUBLIABLES sont atteignables,
-// ET seulement si leur fichier porte revue_carte_par_carte: true au moment du rendu.
+// G4 : seuls les lots du catalogue sont atteignables, ET seulement si leur fichier
+// porte revue_carte_par_carte: true, respecte la liste blanche et a l'EMPREINTE
+// SHA-256 attestée dans le catalogue (vérifiée ici avant tout affichage).
 
 (function () {
   'use strict';
@@ -100,11 +93,14 @@
   //   produite.js (lit FondaCorrection À L'ÉVALUATION). await séquentiel, pas
   //   Promise.all, pour garantir cet ordre. Appelée en tête de demarrer(), AVANT tout
   //   usage de FondaLiens (page niveau, lien défi) — plus seulement dans lancerDefi().
+  // ?v=2 (chaîne FONDA séparée, 2026-10-13) : invalide les copies en cache de la
+  // version qui lisait lots-fonda-calibration/ (fichiers déplacés vers lots/).
   async function chargerDependancesFonda() {
-    await chargerScript('fonda/engine/evenements.js?v=1', 'FondaEvenements');
-    await chargerScript('fonda/engine/liens.js?v=1', 'FondaLiens');
-    await chargerScript('fonda/engine/correction.js?v=1', 'FondaCorrection');
-    await chargerScript('fonda/engine/carte-reponse-produite.js?v=1', 'FondaCarteReponseProduite');
+    await chargerScript('fonda/engine/catalogue.js?v=2', 'FondaCatalogue');
+    await chargerScript('fonda/engine/evenements.js?v=2', 'FondaEvenements');
+    await chargerScript('fonda/engine/liens.js?v=2', 'FondaLiens');
+    await chargerScript('fonda/engine/correction.js?v=2', 'FondaCorrection');
+    await chargerScript('fonda/engine/carte-reponse-produite.js?v=2', 'FondaCarteReponseProduite');
   }
 
   // En-tête commun (lockup logo+signature + retour BOX) — thème sombre, posé par
@@ -389,27 +385,26 @@
     lancerDefi(resolu);
   }
 
-  // G4 (relecture Codex PR #2, #1/#4) — LISTE FERMÉE des lots publiables : seuls les
-  // 8 lots relus carte par carte (lot de validation T6b, 2026-10-11) sont servis. Le
-  // dossier lots-fonda-calibration/ contient aussi des lots de calibration NON relus :
-  // ils ne doivent jamais être atteignables, ni par lien ni par URL bricolée. Ajouter
-  // un lot = l'ajouter ici APRÈS relecture humaine (et revue_carte_par_carte: true
-  // dans son fichier — vérifié en plus au rendu, cf. lotEstPubliable).
-  const LOTS_PUBLIABLES = Object.freeze({
-    'fr.comprendre-consigne': ['nI', 'nF'],
-    'fr.inference-implicite': ['nI', 'nF'],
-    'maths.grandeurs-mesures': ['nI', 'nF'],
-    'maths.resolution-problemes': ['nI', 'nF'],
-  });
+  // G4 — LISTE FERMÉE = fonda/data/catalogue-fonda.json (contrat catalogue-fonda/v1,
+  // fonda/engine/catalogue.js), commité et relu en PR : seuls les lots qui y figurent
+  // sont atteignables, ni par lien ni par URL bricolée (les lots non relus de
+  // lots-fonda-calibration/ n'y sont jamais). Aucune lecture de Drive ni de webhook.
+  const CHEMIN_CATALOGUE = 'fonda/data/catalogue-fonda.json';
 
-  // Chemin du lot FONDA commité pour (notionId, palier) — même convention de nommage
-  // que fonda/scripts/generer-lot-fonda.js (nomFichier). Pure, testable. Renvoie
-  // null pour tout couple hors liste fermée : aucune interpolation de paramètre URL
-  // libre dans un chemin (plus de traversée via palier=nI%2F..%2F...).
-  function cheminLot(notionId, palier) {
-    if (!Object.prototype.hasOwnProperty.call(LOTS_PUBLIABLES, notionId)) return null;
-    if (!LOTS_PUBLIABLES[notionId].includes(palier)) return null;
-    return `fonda/data/lots-fonda-calibration/${notionId.replace(/\./g, '-')}_${palier}.json`;
+  async function chargerCatalogue() {
+    const catalogue = await chargerJSON(CHEMIN_CATALOGUE);
+    const v = window.FondaCatalogue.validerCatalogue(catalogue);
+    if (!v.valide) throw new Error('fonda: catalogue non conforme');
+    return catalogue;
+  }
+
+  // Chemin du fichier d'un lot PUBLIÉ. Pure, testable. null pour toute entrée absente
+  // ou non conforme ; le chemin vient de l'entrée (fichier = exactement
+  // lots/<set_id>.json, vérifié ici ET par validerCatalogue) — jamais d'interpolation
+  // d'un paramètre d'URL.
+  function cheminLot(entree) {
+    if (!entree || typeof entree.set_id !== 'string' || entree.fichier !== `lots/${entree.set_id}.json`) return null;
+    return `fonda/data/${entree.fichier}`;
   }
 
   // Défense en profondeur G4 (décision Éric) : la liste fermée ci-dessus ferme l'accès
@@ -426,9 +421,6 @@
   const PROFILS_CONNUS = ['sens', 'numerique', 'exact', 'orthographe'];
   function lotEstBienForme(lot) {
     return !!lot && Array.isArray(lot.cartes) && lot.cartes.length > 0
-      // relecteur affiché tel quel dans le bandeau (relecture Codex ciblée) : texte
-      // non vide, ou absent (repli générique d'adapterCarte).
-      && (lot.relecteur == null || (typeof lot.relecteur === 'string' && lot.relecteur.trim() !== ''))
       && lot.cartes.every((c) => !!c && typeof c === 'object'
         && typeof c.question === 'string' && c.question.trim() !== ''
         && PROFILS_CONNUS.includes(c.profil_correction)
@@ -445,17 +437,14 @@
         && (c.seconde_chance == null || typeof c.seconde_chance === 'boolean'));
   }
 
-  // Adapte une carte au format du lot (box-select + champs FONDA) vers la forme
-  // attendue par FondaCarteReponseProduite.montrerCarteReponseProduite(). Pure,
-  // testable (module.exports en bas de fichier).
+  // Adapte une carte (lot-fonda/v1) vers la forme attendue par
+  // FondaCarteReponseProduite.montrerCarteReponseProduite(). Pure, testable.
   //
-  // "relecteur" : lu UNIQUEMENT depuis lot.relecteur (champ de fichier ajouté au
-  // chantier câblage) — JAMAIS dérivé de matiere ni d'aucun autre champ. Décision
-  // Éric : le badge "relue et validée par X" est une affirmation de confiance G4
-  // montrée à l'élève, elle doit refléter un fait enregistré, pas une déduction
-  // (un raccourci matiere->nom produirait un badge mensonger dès qu'un lot serait
-  // relu par quelqu'un d'autre). Repli générique SANS nom si le champ est absent.
-  function adapterCarte(carteBrute, lot) {
+  // "relecteur" : lu UNIQUEMENT dans l'entrée ATTESTÉE du catalogue
+  // (entree.relecteur.nom_affiche) — jamais dans le fichier du lot, jamais déduit de la
+  // matière. Le badge « relue et validée par X » est une affirmation de confiance G4
+  // montrée à l'élève : elle reflète l'attestation. Repli générique SANS nom si absent.
+  function adapterCarte(carteBrute, entree) {
     return {
       question: carteBrute.question,
       profil_correction: carteBrute.profil_correction,
@@ -465,7 +454,8 @@
       // PR #2, #6) — les perdre ici changeait silencieusement la correction.
       arrondi: carteBrute.arrondi,
       seconde_chance: carteBrute.seconde_chance,
-      relecteur: (lot && lot.relecteur) || 'un professeur',
+      relecteur: (entree && entree.relecteur && typeof entree.relecteur.nom_affiche === 'string'
+        && entree.relecteur.nom_affiche.trim()) || 'un professeur',
     };
   }
 
@@ -473,7 +463,7 @@
   // suivante" après chaque résultat, écran de fin en bout de paquet. `contexte.grp`
   // optionnel (présent pour un vrai défi de classe résolu par calendrier, absent
   // pour un paquet d'entraînement libre).
-  function rendrePaquetCartes(root, lot, contexte) {
+  function rendrePaquetCartes(root, lot, contexte, entree) {
     root.innerHTML = '';
     root.appendChild(construireHeader());
 
@@ -515,7 +505,7 @@
       if (index >= lot.cartes.length) { afficherFin(); return; }
       compteur.textContent = `Carte ${index + 1} / ${lot.cartes.length}`;
       suivant.style.display = 'none';
-      const carteAdaptee = adapterCarte(lot.cartes[index], lot);
+      const carteAdaptee = adapterCarte(lot.cartes[index], entree);
       window.FondaCarteReponseProduite.montrerCarteReponseProduite(carteHost, carteAdaptee, {
         // Navigation interne uniquement — AUCUN événement émis (T3/evenements.js,
         // hors scope de ce chantier, cf. en-tête de fichier). G2/G3 intacts.
@@ -544,71 +534,91 @@
   // calendrier, cf. renderDefi) ; pour un paquet d'entraînement libre, renderPageCarte()
   // construit un contexte synthétique SANS grp. Échecs de chargement (dépendances ou
   // fetch du lot) gérés visiblement, jamais une page blanche ni une exception muette.
+  async function preparerLot(contexte) {
+    await chargerDependancesFonda();
+    const catalogue = await chargerCatalogue();
+    // set_id d'abord (lien d'index, calendrier) ; compat des anciens liens
+    // notion/palier : le lot publié de séquence la plus haute pour ce couple.
+    const entree = window.FondaCatalogue.trouverEntree(catalogue, contexte);
+    const chemin = cheminLot(entree);
+    if (!chemin) return { indisponible: true };
+    const lot = await chargerJSON(chemin);
+    if (!lotEstPubliable(lot) || !lotEstBienForme(lot)) return { indisponible: true };
+    // Le fichier servi doit être EXACTEMENT celui attesté : identité + liste blanche +
+    // empreinte SHA-256 recalculée ici (Web Crypto). Sans Web Crypto : refus.
+    const sha = window.FondaCatalogue.sha256WebCrypto();
+    if (!sha) return { indisponible: true };
+    const v = await window.FondaCatalogue.verifierLotContreEntree(lot, entree, sha);
+    if (!v.valide) return { indisponible: true };
+    return { lot, entree };
+  }
+
   function lancerDefi(contexte) {
     const root = racineFonda();
-    const chemin = cheminLot(contexte.notionId, contexte.palier);
-    if (!chemin) {
-      afficherMessage(root, 'Ce défi n\'est pas disponible.');
-      return;
-    }
-    avecDelai(chargerDependancesFonda().then(() => chargerJSON(chemin)), DELAI_CHARGEMENT_MS)
-      .then((lot) => {
-        if (!lotEstPubliable(lot) || !lotEstBienForme(lot)) {
-          afficherMessage(root, 'Ce défi n\'est pas disponible.');
-          return;
-        }
-        rendrePaquetCartes(root, lot, contexte);
+    avecDelai(preparerLot(contexte), DELAI_CHARGEMENT_MS)
+      .then((r) => {
+        if (r.indisponible) { afficherMessage(root, 'Ce défi n\'est pas disponible.'); return; }
+        rendrePaquetCartes(root, r.lot, contexte, r.entree);
       })
       .catch(() => {
         afficherMessage(root, 'Impossible de charger ce défi pour le moment — réessaie plus tard.');
       });
   }
 
-  // --- Index d'entraînement libre (chantier feat/box-fonda-index) -----------------
-  // Une entrée par couple notion × palier de LOTS_PUBLIABLES — DÉRIVÉE, jamais une
-  // seconde liste. Indépendant du niveau de classe : les notions fondamentales ne
-  // sont rattachées à aucun niveau dans referentiel.json (le palier nI/nF est la
-  // difficulté DANS la notion, cf. AGENTS.md). Chaque lien mène à la route déjà
-  // câblée page=carte -> lancerDefi() : G4 reste vérifié au rendu, l'index ne fait
-  // qu'afficher des liens.
+  // --- Index d'entraînement libre --------------------------------------------------
+  // Une entrée par lot PUBLIÉ de catalogue-fonda.json — DÉRIVÉE, jamais une seconde
+  // liste. Indépendant du niveau de classe (le palier nI/nF est la difficulté DANS la
+  // notion, cf. AGENTS.md). Chaque lien mène à page=carte&set=<set_id> -> lancerDefi() :
+  // G4 + empreinte restent vérifiés au rendu, l'index ne fait qu'afficher des liens.
 
   // Libellés d'affichage des paliers — volontairement sobres (décision Éric) ;
   // formulation à affiner ici seulement, aucune logique n'en dépend.
   const PALIERS_LIBELLES = Object.freeze({ nI: 'Initial', nF: 'Final' });
+  const ORDRE_PALIERS = { nI: 0, nF: 1 };
 
-  // Pure, testable. Libellé/matière/ordre lus dans referentiel.json ; référentiel
-  // absent ou notion inconnue -> repli sur l'identifiant, l'entrée reste listée.
-  function construireEntreesIndex(lotsPubliables, referentiel) {
+  // Pure, testable. Une ligne par notion (libellé/matière/ordre du référentiel, repli
+  // sur l'identifiant), un lien par lot publié. Plusieurs lots publiés pour un même
+  // couple notion × palier : tous listés, numérotés (Initial 1, Initial 2…).
+  function construireEntreesIndex(catalogue, referentiel) {
     const notions = referentiel && Array.isArray(referentiel.notions) ? referentiel.notions : [];
     const parId = new Map(notions.filter(Boolean).map((n) => [n.id, n]));
-    return Object.keys(lotsPubliables)
-      .map((notionId, rang) => {
+    const lots = catalogue && Array.isArray(catalogue.lots) ? catalogue.lots : [];
+    const parNotion = new Map();
+    lots.forEach((e, rang) => {
+      if (!parNotion.has(e.notion_id)) parNotion.set(e.notion_id, { rang, lots: [] });
+      parNotion.get(e.notion_id).lots.push(e);
+    });
+    return [...parNotion.entries()]
+      .map(([notionId, { rang, lots: lotsNotion }]) => {
         const n = parId.get(notionId) || {};
+        const tries = lotsNotion.slice().sort((a, b) => (ORDRE_PALIERS[a.palier] - ORDRE_PALIERS[b.palier]) || a.set_id.localeCompare(b.set_id));
+        const nbParPalier = (p) => tries.filter((e) => e.palier === p).length;
+        const compteur = {};
         return {
           notionId,
           libelle: typeof n.libelle === 'string' && n.libelle ? n.libelle : notionId,
           matiere: typeof n.matiere === 'string' ? n.matiere : '',
           ordre: Number.isFinite(n.ordre) ? n.ordre : Infinity,
           rang,
-          paliers: lotsPubliables[notionId].map((palier) => ({
-            palier,
-            libelle: PALIERS_LIBELLES[palier] || palier,
-          })),
+          paliers: tries.map((e) => {
+            compteur[e.palier] = (compteur[e.palier] || 0) + 1;
+            const base = PALIERS_LIBELLES[e.palier] || e.palier;
+            return { palier: e.palier, setId: e.set_id, libelle: nbParPalier(e.palier) > 1 ? `${base} ${compteur[e.palier]}` : base };
+          }),
         };
       })
       .sort((a, b) => (a.ordre - b.ordre) || (a.rang - b.rang));
   }
 
-  function hrefLot(notionId, palier) {
+  function hrefLot(setId) {
     const params = new URLSearchParams();
     params.set('fonda', '1');
     params.set('page', 'carte');
-    params.set('notion', notionId);
-    params.set('palier', palier);
+    params.set('set', setId);
     return `${window.location.pathname}?${params.toString()}`;
   }
 
-  function renderPageEntrainement(referentiel) {
+  function renderPageEntrainement(referentiel, catalogue) {
     const root = racineFonda();
     root.innerHTML = '';
     root.appendChild(construireHeader());
@@ -619,7 +629,7 @@
 
     // Regroupement par matière, dans l'ordre d'apparition après tri par `ordre`.
     const groupes = [];
-    construireEntreesIndex(LOTS_PUBLIABLES, referentiel).forEach((entree) => {
+    construireEntreesIndex(catalogue, referentiel).forEach((entree) => {
       let g = groupes.find((x) => x.matiere === entree.matiere);
       if (!g) { g = { matiere: entree.matiere, entrees: [] }; groupes.push(g); }
       g.entrees.push(entree);
@@ -640,10 +650,10 @@
         label.className = 'fonda-lien-classe__url';
         label.textContent = entree.libelle;
         li.appendChild(label);
-        entree.paliers.forEach(({ palier, libelle }) => {
+        entree.paliers.forEach(({ setId, libelle }) => {
           const a = document.createElement('a');
           a.className = 'fonda-header__back fonda-index__lot';
-          a.href = hrefLot(entree.notionId, palier);
+          a.href = hrefLot(setId);
           a.textContent = libelle;
           li.appendChild(a);
         });
@@ -656,10 +666,13 @@
   // --- Paquet d'entraînement libre (index page=entrainement -> page=carte) ---------
 
   function renderPageCarte() {
+    const setId = param('set');
+    if (setId) { lancerDefi({ grp: null, setId }); return; }
+    // Compat des anciens liens page=carte&notion=…&palier=… : résolus par le catalogue.
     const notionId = param('notion');
     const palier = param('palier');
     if (!notionId || !palier) {
-      afficherMessage(racineFonda(), 'Entraînement : notion ou palier manquant dans le lien.');
+      afficherMessage(racineFonda(), 'Entraînement : lot manquant dans le lien.');
       return;
     }
     lancerDefi({ grp: null, notionId, palier });
@@ -671,13 +684,19 @@
     // chemins liés au calendrier/classes).
     if (param('page') === 'carte') { renderPageCarte(); return; }
 
-    // page=entrainement (index des lots publiables) : SEUL referentiel.json est lu
-    // (libellés) — ni lot, ni classes, ni calendrier, ni moteur. Échec ou délai ->
-    // liste quand même rendue, sur les identifiants (jamais une impasse).
+    // page=entrainement (index des lots publiés) : le catalogue (indispensable, validé
+    // par catalogue.js — seul script moteur chargé ici) + referentiel.json (libellés,
+    // facultatif). Ni lot, ni classes, ni calendrier. Catalogue indisponible ou non
+    // conforme -> message visible ; référentiel indisponible -> liste sur identifiants.
     if (param('page') === 'entrainement') {
+      const catalogue = await avecDelai(
+        chargerScript('fonda/engine/catalogue.js?v=2', 'FondaCatalogue').then(chargerCatalogue),
+        DELAI_CHARGEMENT_MS,
+      ).catch(() => null);
+      if (!catalogue) { afficherMessage(racineFonda(), 'Entraînement indisponible pour le moment — réessaie plus tard.'); return; }
       const referentiel = await avecDelai(chargerJSON('fonda/data/referentiel.json'), DELAI_CHARGEMENT_MS)
         .catch(() => null);
-      renderPageEntrainement(referentiel);
+      renderPageEntrainement(referentiel, catalogue);
       return;
     }
 
@@ -705,8 +724,8 @@
   // reste (rendu DOM, fetch) n'est pas exporté, non testable en Node sans navigateur.
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
-      cheminLot, adapterCarte, lotEstPubliable, LOTS_PUBLIABLES, chargerScript, avecDelai, lotEstBienForme,
-      construireEntreesIndex, PALIERS_LIBELLES,
+      cheminLot, adapterCarte, lotEstPubliable, chargerScript, avecDelai, lotEstBienForme,
+      construireEntreesIndex, PALIERS_LIBELLES, hrefLot,
     };
   }
 
