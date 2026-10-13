@@ -32,7 +32,6 @@ const SET_ID_PATTERN = /^set_fonda_[a-z0-9-]+_n[IF]_\d{2}$/;
 const ITEM_ID_PATTERN = /^it\d{2}$/;
 const EMPREINTE_PATTERN = /^sha256:[0-9a-f]{64}$/;
 const PALIERS = ['nI', 'nF'];
-const PROFILS = ['sens', 'numerique', 'exact', 'orthographe'];
 const TYPES_ATTESTATION = ['manuelle-historique', 'n8n-relecture'];
 
 // Listes BLANCHES (contrat lot-fonda/v1) : tout autre champ est refusé, notamment
@@ -65,8 +64,25 @@ const HISTORIQUES_FIGES = Object.freeze({
 });
 
 const CHAMPS_ENTREE = Object.freeze([
-  'set_id', 'notion_id', 'palier', 'fichier', 'item_ids', 'empreinte', 'relecteur', 'attestation',
+  'set_id', 'notion_id', 'palier', 'fichier', 'item_ids', 'empreinte', 'moteur', 'relecteur', 'attestation',
 ]);
+
+// Moteur de correction élève du lot (CDC relecture §4.3) : { version, sha256 } figé
+// comme l'empreinte. sha256 = SHA-256 hex des octets de fonda/engine/moteur-correction-
+// <version>.js, identique à sa ligne de fonda/engine/moteurs.json (vérifié par la CI ;
+// le front refuse toute discordance avant chargement, puis charge avec SRI).
+const VERSION_MOTEUR_PATTERN = /^v[1-9][0-9]*$/;
+const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/;
+// Migration M1 (CDC §4.3, annexe B règle 0) : les 8 lots historiques sont liés au
+// moteur v1, consolidation à comportement identique du correcteur sous lequel ils
+// ont été relus. Fait partie de leur tuple figé, comme HISTORIQUES_FIGES.
+const MOTEUR_HISTORIQUE = Object.freeze({ version: 'v1', sha256: 'ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753' });
+
+// Badge élève (CDC §12) : même schéma { forme, nom_affiche, id } pour toute entrée ;
+// texte construit par le composant à partir de `forme`. Lots historiques : exception
+// figée « relue_par » (libellé seulement).
+const FORMES_BADGE = Object.freeze(['relue_et_validee', 'relue_par']);
+const BADGE_HISTORIQUE = Object.freeze({ forme: 'relue_par', nom_affiche: 'Éric Duchateau', id: 'eric' });
 
 const estTexte = (v) => typeof v === 'string' && v.trim() !== '';
 const champsEnTrop = (obj, autorises) => Object.keys(obj).filter((k) => !autorises.includes(k));
@@ -157,13 +173,15 @@ function validerLot(lot) {
     if (c.notion_id !== lot.notion_id) erreurs.push(`${p} : notion_id ≠ celui du lot`);
     if (c.palier !== lot.palier) erreurs.push(`${p} : palier ≠ celui du lot`);
     if (!estTexte(c.question)) erreurs.push(`${p} : question vide`);
-    if (!PROFILS.includes(c.profil_correction)) erreurs.push(`${p} : profil inconnu`);
+    // Profils admis et bornes d'arrondi = règles PÉDAGOGIQUES du moteur du lot
+    // (CDC §4.2 : moteur.valider) ; ici seulement la forme des champs.
+    if (!estTexte(c.profil_correction)) erreurs.push(`${p} : profil_correction non texte`);
     if (!Array.isArray(c.reponses_acceptees) || c.reponses_acceptees.length === 0
       || !c.reponses_acceptees.every((r) => estTexte(r) || (typeof r === 'number' && Number.isFinite(r)))) {
       erreurs.push(`${p} : reponses_acceptees invalides`);
     }
     if (c.unite != null && typeof c.unite !== 'string') erreurs.push(`${p} : unite non texte`);
-    if (c.arrondi != null && !(Number.isInteger(c.arrondi) && c.arrondi >= 0 && c.arrondi <= 10)) erreurs.push(`${p} : arrondi hors 0..10`);
+    if (c.arrondi != null && typeof c.arrondi !== 'number') erreurs.push(`${p} : arrondi non nombre`);
     if (c.seconde_chance != null && typeof c.seconde_chance !== 'boolean') erreurs.push(`${p} : seconde_chance non booléen`);
   });
   return { valide: erreurs.length === 0, erreurs };
@@ -231,7 +249,22 @@ function validerCatalogue(catalogue, referentiel) {
     if (!Array.isArray(e.item_ids) || e.item_ids.length === 0 || !e.item_ids.every((x) => ITEM_ID_PATTERN.test(x))
       || new Set(e.item_ids).size !== e.item_ids.length) erreurs.push(`${p} : item_ids invalides`);
     if (!EMPREINTE_PATTERN.test(e.empreinte || '')) erreurs.push(`${p} : empreinte invalide`);
-    if (!e.relecteur || !estTexte(e.relecteur.id) || !estTexte(e.relecteur.nom_affiche)) erreurs.push(`${p} : relecteur incomplet`);
+    const m = e.moteur;
+    if (!m || typeof m !== 'object' || champsEnTrop(m, ['version', 'sha256']).length
+      || !VERSION_MOTEUR_PATTERN.test(m.version || '') || !SHA256_HEX_PATTERN.test(m.sha256 || '')) {
+      erreurs.push(`${p} : moteur invalide (attendu { version: "v<N>", sha256: <64 hex> })`);
+    }
+    const r = e.relecteur;
+    if (!r || typeof r !== 'object' || champsEnTrop(r, ['forme', 'nom_affiche', 'id']).length
+      || !FORMES_BADGE.includes(r.forme) || !estTexte(r.nom_affiche) || !(r.id === null || estTexte(r.id))) {
+      erreurs.push(`${p} : relecteur invalide (attendu { forme, nom_affiche, id })`);
+    }
+    if (e.attestation && e.attestation.type === 'manuelle-historique') {
+      if (!m || m.version !== MOTEUR_HISTORIQUE.version || m.sha256 !== MOTEUR_HISTORIQUE.sha256) {
+        erreurs.push(`${p} : lot historique lié à un autre moteur que v1 figé (M1)`);
+      }
+      if (!r || r.forme !== BADGE_HISTORIQUE.forme || r.nom_affiche !== BADGE_HISTORIQUE.nom_affiche || r.id !== BADGE_HISTORIQUE.id) erreurs.push(`${p} : badge d'un lot historique ≠ badge figé (M1)`);
+    }
     validerAttestation(e.attestation, e).forEach((m) => erreurs.push(`${p} : ${m}`));
     if (notions) {
       const n = notions.get(e.notion_id);
@@ -293,7 +326,7 @@ function prochainSetId(notionId, palier, setIdsExistants) {
 
 return {
   SCHEMA_CATALOGUE, SCHEMA_LOT, SCHEMA_EMPREINTE, SET_ID_PATTERN, CHAMPS_LOT, CHAMPS_CARTE, CHAMPS_ENTREE,
-  TYPES_ATTESTATION, HISTORIQUES_FIGES, texteEmpreinte, calculerEmpreinte, sha256WebCrypto, validerLot, validerAttestation,
+  TYPES_ATTESTATION, HISTORIQUES_FIGES, MOTEUR_HISTORIQUE, BADGE_HISTORIQUE, FORMES_BADGE, texteEmpreinte, calculerEmpreinte, sha256WebCrypto, validerLot, validerAttestation,
   validerCatalogue, verifierLotContreEntree, trouverEntree, prochainSetId, decomposerSetId, slugDeNotion,
 };
 }); // fin UMD

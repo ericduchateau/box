@@ -56,10 +56,12 @@
   //     vraiment, au lieu de recevoir pour toujours la même promesse pendante.
   const DELAI_SCRIPT_MS = 10000;
   const chargementsEnCours = new Map();
-  function chargerScript(src, nomExport, delaiMs = DELAI_SCRIPT_MS) {
-    if (window[nomExport]) return Promise.resolve();
-    if (chargementsEnCours.has(src)) return chargementsEnCours.get(src);
-    const promesse = new Promise((resolve, reject) => {
+
+  // Insère UNE balise <script> (integrity + crossorigin posés AVANT insertion quand
+  // demandé) ; résout à onload, rejette sur onerror ou délai (balise retirée,
+  // callbacks tardifs neutralisés).
+  function insererScript(src, { integrite = null, delaiMs = DELAI_SCRIPT_MS } = {}) {
+    return new Promise((resolve, reject) => {
       const s = document.createElement('script');
       let regle = false;
       const minuteur = setTimeout(() => {
@@ -74,33 +76,129 @@
         clearTimeout(minuteur);
         action();
       }
+      if (integrite) {
+        s.integrity = integrite;
+        s.crossOrigin = 'anonymous';
+      }
       s.src = src;
-      s.onload = () => terminer(() => {
-        if (window[nomExport]) resolve();
-        else reject(new Error(`fonda: ${src} chargé sans exposer ${nomExport}`));
-      });
+      s.onload = () => terminer(resolve);
       s.onerror = () => terminer(() => reject(new Error('fonda: chargement impossible de ' + src)));
       document.head.appendChild(s);
-    }).catch((err) => { chargementsEnCours.delete(src); throw err; });
+    });
+  }
+
+  function chargerScript(src, nomExport, delaiMs = DELAI_SCRIPT_MS) {
+    if (window[nomExport]) return Promise.resolve();
+    if (chargementsEnCours.has(src)) return chargementsEnCours.get(src);
+    const promesse = insererScript(src, { delaiMs })
+      .then(() => {
+        if (!window[nomExport]) throw new Error(`fonda: ${src} chargé sans exposer ${nomExport}`);
+      })
+      .catch((err) => { chargementsEnCours.delete(src); throw err; });
     chargementsEnCours.set(src, promesse);
     return promesse;
+  }
+
+  // --- Moteur de correction élève versionné (CDC relecture §4.1, §4.3) ------------
+  // obtenirMoteur(version, sha256) :
+  //   1. AVANT tout chargement, et pour CHAQUE demande (y compris deux premières
+  //      demandes simultanées) : concordance avec fonda/engine/moteurs.json — une
+  //      version ne correspond qu'à UNE empreinte ; sinon refus, aucune balise ;
+  //   2. une seule promesse partagée par clé version:sha256, oubliée en cas d'échec
+  //      (une nouvelle demande recharge réellement) ;
+  //   3. <script> avec SRI = "sha256-" + base64(cette empreinte) ;
+  //   4. origine connue : une version déjà présente dans FondaMoteurs sans avoir été
+  //      chargée par CE chargeur sous cette SRI -> refus ;
+  //   5. instance = FondaMoteurs[version].creerMoteur() ; instance.version === version.
+  const CHEMIN_REGISTRE_MOTEURS = 'fonda/engine/moteurs.json';
+  const VERSION_MOTEUR_RE = /^v[1-9][0-9]*$/;
+  const SHA256_HEX_RE = /^[0-9a-f]{64}$/;
+  const moteursEnCours = new Map(); // cle -> promesse
+  const moteursChargesSousSri = new Set(); // cles dont la balise SRI a été chargée par ce chargeur
+  let registreMoteurs = null;
+
+  function chargerRegistreMoteurs() {
+    if (!registreMoteurs) {
+      registreMoteurs = chargerJSON(CHEMIN_REGISTRE_MOTEURS).catch((e) => { registreMoteurs = null; throw e; });
+    }
+    return registreMoteurs;
+  }
+
+  const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  function sriDepuisHex(hex) {
+    const o = [];
+    for (let i = 0; i < hex.length; i += 2) o.push(parseInt(hex.slice(i, i + 2), 16));
+    let out = '';
+    for (let i = 0; i < o.length; i += 3) {
+      const n = (o[i] << 16) | ((o[i + 1] || 0) << 8) | (o[i + 2] || 0);
+      out += B64[(n >> 18) & 63] + B64[(n >> 12) & 63]
+        + (i + 1 < o.length ? B64[(n >> 6) & 63] : '=') + (i + 2 < o.length ? B64[n & 63] : '=');
+    }
+    return 'sha256-' + out;
+  }
+
+  function registreGlobal() {
+    const d = Object.getOwnPropertyDescriptor(window, 'FondaMoteurs');
+    if (!d) return null;
+    if (d.writable || d.configurable || !d.value || Object.getPrototypeOf(d.value) !== null) throw new Error('fonda: registre FondaMoteurs incompatible');
+    return d.value;
+  }
+
+  async function obtenirMoteur(version, sha256) {
+    if (!VERSION_MOTEUR_RE.test(version || '') || !SHA256_HEX_RE.test(sha256 || '')) throw new Error('fonda: moteur demandé invalide');
+    const registre = await chargerRegistreMoteurs();
+    const ligne = Array.isArray(registre) ? registre.filter((l) => l && l.version === version) : [];
+    if (ligne.length !== 1 || ligne[0].sha256 !== sha256 || ligne[0].sri !== sriDepuisHex(sha256)
+      || ligne[0].fichier !== `fonda/engine/moteur-correction-${version}.js`) {
+      throw new Error(`fonda: moteur ${version} inconnu ou empreinte discordante`);
+    }
+    const cle = `${version}:${sha256}`;
+    if (!moteursEnCours.has(cle)) {
+      const r = registreGlobal();
+      if (r && Object.prototype.hasOwnProperty.call(r, version) && !moteursChargesSousSri.has(cle)) {
+        throw new Error(`fonda: moteur ${version} déjà présent sans avoir été chargé sous cette SRI`);
+      }
+      // La promesse mise en cache couvre TOUT le chargement : balise SRI, puis export
+      // présent dans le registre. Tout échec purge la clé (une nouvelle demande
+      // recharge réellement, nouvelle balise).
+      const promesse = insererScript(ligne[0].fichier, { integrite: ligne[0].sri })
+        .then(() => {
+          moteursChargesSousSri.add(cle);
+          const reg = registreGlobal();
+          const fabrique = reg && Object.prototype.hasOwnProperty.call(reg, version) ? reg[version] : null;
+          if (!fabrique || typeof fabrique.creerMoteur !== 'function') throw new Error(`fonda: moteur ${version} chargé sans exposer FondaMoteurs.${version}`);
+          return fabrique;
+        })
+        .catch((err) => { if (moteursEnCours.get(cle) === promesse) moteursEnCours.delete(cle); throw err; });
+      moteursEnCours.set(cle, promesse);
+    }
+    const enCours = moteursEnCours.get(cle);
+    const fabrique = await enCours;
+    let instance;
+    try {
+      instance = fabrique.creerMoteur();
+      if (!instance || instance.version !== version) throw new Error(`fonda: instance.version ≠ ${version}`);
+    } catch (err) {
+      if (moteursEnCours.get(cle) === enCours) moteursEnCours.delete(cle);
+      throw err;
+    }
+    return instance;
   }
 
   // Graphe COMPLET des dépendances navigateur (relecture Codex PR #2, #2) :
   //   evenements.js (parserDefiId/grpEstAutorise, fonctions pures — son chargement
   //   n'émet rien : l'émission réelle exige un appel explicite, absent ici) -> liens.js
-  //   (capture FondaEvenements À L'ÉVALUATION) ; correction.js -> carte-reponse-
-  //   produite.js (lit FondaCorrection À L'ÉVALUATION). await séquentiel, pas
-  //   Promise.all, pour garantir cet ordre. Appelée en tête de demarrer(), AVANT tout
+  //   (capture FondaEvenements À L'ÉVALUATION) ; carte-reponse-produite.js (purement
+  //   présentationnel, ne lit aucun global : le moteur est chargé à part, par version
+  //   et SRI, une fois l'entrée du lot résolue). await séquentiel, pas Promise.all. Appelée en tête de demarrer(), AVANT tout
   //   usage de FondaLiens (page niveau, lien défi) — plus seulement dans lancerDefi().
-  // ?v=2 (chaîne FONDA séparée, 2026-10-13) : invalide les copies en cache de la
-  // version qui lisait lots-fonda-calibration/ (fichiers déplacés vers lots/).
+  // ?v=3 (moteur versionné, M1) : invalide les copies en cache — l'ancien catalogue.js
+  // refuserait le champ « moteur » des entrées.
   async function chargerDependancesFonda() {
-    await chargerScript('fonda/engine/catalogue.js?v=2', 'FondaCatalogue');
-    await chargerScript('fonda/engine/evenements.js?v=2', 'FondaEvenements');
-    await chargerScript('fonda/engine/liens.js?v=2', 'FondaLiens');
-    await chargerScript('fonda/engine/correction.js?v=2', 'FondaCorrection');
-    await chargerScript('fonda/engine/carte-reponse-produite.js?v=2', 'FondaCarteReponseProduite');
+    await chargerScript('fonda/engine/catalogue.js?v=3', 'FondaCatalogue');
+    await chargerScript('fonda/engine/evenements.js?v=3', 'FondaEvenements');
+    await chargerScript('fonda/engine/liens.js?v=3', 'FondaLiens');
+    await chargerScript('fonda/engine/carte-reponse-produite.js?v=3', 'FondaCarteReponseProduite');
   }
 
   // En-tête commun (lockup logo+signature + retour BOX) — thème sombre, posé par
@@ -415,55 +513,29 @@
     return !!lot && lot.revue_carte_par_carte === true;
   }
 
-  // Validation STRUCTURELLE du lot ENTIER avant la première carte (relecture Codex
-  // PR #2, #9) : une carte malformée en milieu de paquet ne doit jamais casser une
-  // transition "Carte suivante" hors de toute chaîne de promesses. Tout ou rien.
-  const PROFILS_CONNUS = ['sens', 'numerique', 'exact', 'orthographe'];
-  function lotEstBienForme(lot) {
+  // Validation du lot ENTIER avant la première carte (relecture Codex PR #2, #9) : une
+  // carte malformée en milieu de paquet ne doit jamais casser une transition « Carte
+  // suivante » hors de toute chaîne de promesses. Tout ou rien. Les règles dépendant
+  // du profil et de l'arrondi sont celles du MOTEUR DU LOT (CDC §4.2 : valider).
+  function lotEstBienForme(lot, moteur) {
     return !!lot && Array.isArray(lot.cartes) && lot.cartes.length > 0
-      && lot.cartes.every((c) => !!c && typeof c === 'object'
-        && typeof c.question === 'string' && c.question.trim() !== ''
-        && PROFILS_CONNUS.includes(c.profil_correction)
-        && Array.isArray(c.reponses_acceptees) && c.reponses_acceptees.length > 0
-        // Relecture Codex PR #2 v2, #4 : chaque réponse = texte non vide ou nombre
-        // fini (un objet sans toString plantait au clic sur « Valider ») ; types des
-        // paramètres optionnels vérifiés aussi.
-        && c.reponses_acceptees.every((r) => (typeof r === 'string' && r.trim() !== '')
-          || (typeof r === 'number' && Number.isFinite(r)))
-        && (c.unite == null || typeof c.unite === 'string')
-        // Bornes IDENTIQUES à correction.js::arrondiValide (0..10) : au-delà, le
-        // correcteur ignorerait l'arrondi en silence (règle pédagogique changée).
-        && (c.arrondi == null || (Number.isInteger(c.arrondi) && c.arrondi >= 0 && c.arrondi <= 10))
-        && (c.seconde_chance == null || typeof c.seconde_chance === 'boolean'));
+      && lot.cartes.every((c) => moteur.valider(c).valide === true);
   }
 
-  // Adapte une carte (lot-fonda/v1) vers la forme attendue par
-  // FondaCarteReponseProduite.montrerCarteReponseProduite(). Pure, testable.
-  //
-  // "relecteur" : lu UNIQUEMENT dans l'entrée ATTESTÉE du catalogue
-  // (entree.relecteur.nom_affiche) — jamais dans le fichier du lot, jamais déduit de la
-  // matière. Le badge « relue et validée par X » est une affirmation de confiance G4
-  // montrée à l'élève : elle reflète l'attestation. Repli générique SANS nom si absent.
-  function adapterCarte(carteBrute, entree) {
-    return {
-      question: carteBrute.question,
-      profil_correction: carteBrute.profil_correction,
-      reponses_acceptees: carteBrute.reponses_acceptees,
-      unite: carteBrute.unite,
-      // Paramètres pédagogiques lus par carte-reponse-produite.js (relecture Codex
-      // PR #2, #6) — les perdre ici changeait silencieusement la correction.
-      arrondi: carteBrute.arrondi,
-      seconde_chance: carteBrute.seconde_chance,
-      relecteur: (entree && entree.relecteur && typeof entree.relecteur.nom_affiche === 'string'
-        && entree.relecteur.nom_affiche.trim()) || 'un professeur',
-    };
+  // Badge élève (CDC §12) : LU UNIQUEMENT dans l'entrée ATTESTÉE du catalogue
+  // ({ forme, nom_affiche, id }, validé par validerCatalogue) — jamais dans le fichier
+  // du lot, jamais déduit de la matière. Repli générique SANS nom si absent.
+  const BADGE_SANS_NOM = Object.freeze({ forme: 'relue_par', nom_affiche: 'un professeur', id: null });
+  function badgeDepuisEntree(entree) {
+    const r = entree && entree.relecteur;
+    return (r && typeof r.nom_affiche === 'string' && r.nom_affiche.trim()) ? r : BADGE_SANS_NOM;
   }
 
   // Rendu d'un paquet de cartes, une à la fois, via le composant T2 — "Carte
   // suivante" après chaque résultat, écran de fin en bout de paquet. `contexte.grp`
   // optionnel (présent pour un vrai défi de classe résolu par calendrier, absent
   // pour un paquet d'entraînement libre).
-  function rendrePaquetCartes(root, lot, contexte, entree) {
+  function rendrePaquetCartes(root, lot, contexte, entree, moteur) {
     root.innerHTML = '';
     root.appendChild(construireHeader());
 
@@ -505,14 +577,15 @@
       if (index >= lot.cartes.length) { afficherFin(); return; }
       compteur.textContent = `Carte ${index + 1} / ${lot.cartes.length}`;
       suivant.style.display = 'none';
-      const carteAdaptee = adapterCarte(lot.cartes[index], entree);
-      window.FondaCarteReponseProduite.montrerCarteReponseProduite(carteHost, carteAdaptee, {
+      window.FondaCarteReponseProduite.montrerCarteReponseProduite(carteHost, {
+        moteur,
+        carte: moteur.preparerCarte(lot.cartes[index]),
+        badge: badgeDepuisEntree(entree),
         // Navigation interne uniquement — AUCUN événement émis (T3/evenements.js,
         // hors scope de ce chantier, cf. en-tête de fichier). G2/G3 intacts.
-        onResultat() { suivant.style.display = ''; },
-        // Correction impossible (message déjà affiché par le composant) : on laisse
-        // l'élève avancer plutôt que de le bloquer sur cette carte.
-        onErreur() { suivant.style.display = ''; },
+        // E1 (CDC §4.2) : « Carte suivante » seulement quand le moteur déclare la carte
+        // terminée (pas pendant une seconde chance ouverte) ; issue « erreur » comprise.
+        onResultat(r) { if (r.carte_terminee === true) suivant.style.display = ''; },
       });
     }
 
@@ -541,16 +614,20 @@
     // notion/palier : le lot publié de séquence la plus haute pour ce couple.
     const entree = window.FondaCatalogue.trouverEntree(catalogue, contexte);
     const chemin = cheminLot(entree);
-    if (!chemin) return { indisponible: true };
+    if (!chemin || !entree.moteur) return { indisponible: true };
+    // Moteur DU LOT (CDC §4.3), par version + SRI, l'entrée étant résolue : échec ->
+    // « pas disponible ».
+    let moteur;
+    try { moteur = await obtenirMoteur(entree.moteur.version, entree.moteur.sha256); } catch { return { indisponible: true }; }
     const lot = await chargerJSON(chemin);
-    if (!lotEstPubliable(lot) || !lotEstBienForme(lot)) return { indisponible: true };
+    if (!lotEstPubliable(lot) || !lotEstBienForme(lot, moteur)) return { indisponible: true };
     // Le fichier servi doit être EXACTEMENT celui attesté : identité + liste blanche +
     // empreinte SHA-256 recalculée ici (Web Crypto). Sans Web Crypto : refus.
     const sha = window.FondaCatalogue.sha256WebCrypto();
     if (!sha) return { indisponible: true };
     const v = await window.FondaCatalogue.verifierLotContreEntree(lot, entree, sha);
     if (!v.valide) return { indisponible: true };
-    return { lot, entree };
+    return { lot, entree, moteur };
   }
 
   function lancerDefi(contexte) {
@@ -558,7 +635,7 @@
     avecDelai(preparerLot(contexte), DELAI_CHARGEMENT_MS)
       .then((r) => {
         if (r.indisponible) { afficherMessage(root, 'Ce défi n\'est pas disponible.'); return; }
-        rendrePaquetCartes(root, r.lot, contexte, r.entree);
+        rendrePaquetCartes(root, r.lot, contexte, r.entree, r.moteur);
       })
       .catch(() => {
         afficherMessage(root, 'Impossible de charger ce défi pour le moment — réessaie plus tard.');
@@ -690,7 +767,7 @@
     // conforme -> message visible ; référentiel indisponible -> liste sur identifiants.
     if (param('page') === 'entrainement') {
       const catalogue = await avecDelai(
-        chargerScript('fonda/engine/catalogue.js?v=2', 'FondaCatalogue').then(chargerCatalogue),
+        chargerScript('fonda/engine/catalogue.js?v=3', 'FondaCatalogue').then(chargerCatalogue),
         DELAI_CHARGEMENT_MS,
       ).catch(() => null);
       if (!catalogue) { afficherMessage(racineFonda(), 'Entraînement indisponible pour le moment — réessaie plus tard.'); return; }
@@ -724,7 +801,7 @@
   // reste (rendu DOM, fetch) n'est pas exporté, non testable en Node sans navigateur.
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
-      cheminLot, adapterCarte, lotEstPubliable, chargerScript, avecDelai, lotEstBienForme,
+      cheminLot, badgeDepuisEntree, lotEstPubliable, chargerScript, obtenirMoteur, sriDepuisHex, avecDelai, lotEstBienForme,
       construireEntreesIndex, PALIERS_LIBELLES, hrefLot,
     };
   }

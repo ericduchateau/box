@@ -6,9 +6,11 @@ Révisé le 2026-10-05, **trois passes** suite critiques Codex successives (lect
 
 ## Fichiers
 
-- **`correction.js`** — moteur de correction pur (zéro DOM, zéro dépendance). Format UMD : `require()`-able en Node (tests, futurs scripts de calcul) et chargeable en `<script>` classique dans le navigateur (pose `window.FondaCorrection`), cohérent avec le style du front BOX existant (pas de bundler).
+- **`moteur-correction-v1.js`** — **moteur de correction élève versionné** (CDC relecture §4, migration M1) : toute décision pédagogique observable (évaluation, verdict, icône, cible, formes affichées, badge visible, comptage, seconde chance, verrouillage, fin de carte) + outils de validation (`verifierReponseOr`, `verifierFormesAcceptees`, `formeSaisissable`). **Immuable** : enregistré dans `moteurs.json` (`sha256` + `sri`), vérifié par `fonda/scripts/verifier-moteurs.js` en CI ; tout changement de comportement = `moteur-correction-v2.js` + nouveau `set_id` + nouvelle relecture. Navigateur : s'enregistre dans le registre global non réassignable `FondaMoteurs` ; chargé par `bootstrap.js::obtenirMoteur(version, sha256)` (concordance avec le registre avant tout chargement, SRI). Node : `fonda/scripts/moteurs.js::chargerMoteurNode` (octets vérifiés puis exécutés).
+- **`moteurs.json`** — registre `[{ version, fichier, sha256, sri }]`, en ajout seul.
+- **`correction.js`** — **façade Node** qui réexporte le corps du correcteur embarqué dans `moteur-correction-v1.js` (octets bruts identiques à a418881, non réindentés, comparés sans normalisation par `moteur-correction-v1.test.js`). Plus chargé dans le navigateur.
 - **`correction.test.js`** — suite de tests (**93 cas**, dont 6 ajoutés en T6a pour l'élargissement aux unités monétaires, voir « numerique — unité » ci-dessous), écrite **avant** chaque révision du moteur. `node --test fonda/engine/correction.test.js`.
-- **`carte-reponse-produite.js`** — composant vanilla JS (saisie courte → validation → feedback). Charge `window.FondaCorrection`, donc à inclure **après** `correction.js` dans la page. **Développé isolé, non branché à `index.html`** (impact prod nul) — le câblage dans la page existante est T4.
+- **`carte-reponse-produite.js`** — composant vanilla JS **purement présentationnel** : reçoit `{ moteur, carte, badge, onResultat }` et affiche le `resultat` du moteur sans le réinterpréter.
 - **`carte-reponse-produite.test.js`** — test d'intégration du contrat seconde chance (`tentative`/`scored`) et du feedback affiché, avec un DOM factice minimal maison (zéro dépendance, pas de jsdom).
 
 Tout lancer : `node --test fonda/engine/*.test.js`.
@@ -103,9 +105,9 @@ Inchangé : seuls les espaces sont pardonnés (après la couche de normalisation
 - **Nombres non finis** : un nombre dont la conversion donne `Infinity`/`-Infinity` (ex. un nombre de centaines de chiffres) est traité comme invalide (`NaN`), côté réponse de l'élève **et** côté réponse acceptée. Toujours `faux`, jamais d'exception.
 - **Profil inconnu** : `evaluerReponse` retourne `{ statut: 'faux' }` au lieu de lever une exception (changement : la 1ʳᵉ version de T2 levait une erreur ici).
 
-## Contrat seconde chance (`carte-reponse-produite.js`)
+## Contrat seconde chance (moteur v1, `carte-reponse-produite.js`)
 
-`onResultat` reçoit `{ statut, reussite, tentative, scored }`. `scored` n'est `true` que pour `tentative === 1` (PRD §5.1 : « on score la 1ère tentative »). La seconde chance (relance immédiate, uniquement après un `presque`, si `carte.seconde_chance` est vrai) est pédagogique et n'est **jamais** scorée. À charge de l'appelant (T3) de ne construire un événement de mesure (PRD §3.2) que pour les résultats où `scored === true`.
+`onResultat` reçoit le `resultat` gelé du moteur : `{ issue, reussite, verdict, cible_affichee, formes_affichees, profil_libelle, afficher_badge_relecture, tentative, compte, seconde_chance_ouverte, verrouillee, carte_terminee }` (+ `gabarit`). `compte` n'est `true` que pour `tentative === 1` et jamais pour l'issue `erreur` (PRD §5.1 : « on score la 1ère tentative »). La seconde chance (relance immédiate, uniquement après un `presque`, si `carte.seconde_chance` est vrai) est pédagogique et n'est **jamais** comptée. Écarts volontaires E1–E4 (CDC §4.2) : « Carte suivante » seulement si `carte_terminee` ; `onResultat` appelé après le verrouillage ; exception de l'appelant interceptée ; plus d'`onErreur` (issue `erreur`). L'émetteur (T3) transmet `compte`/`reussite`/`issue` tels quels et n'émet que si `compte === true`.
 
 ---
 

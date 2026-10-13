@@ -1,4 +1,9 @@
-// Test d'intégration — composant « carte réponse produite » (T2, contrat seconde chance).
+// Test d'intégration — composant « carte réponse produite » (T2, contrat seconde chance),
+// piloté par le MOTEUR v1 injecté (CDC relecture §4.2). Les attentes pédagogiques
+// (statut/issue, réussite, tentative, comptage, cible, formes, seconde chance) sont
+// INCHANGÉES : `ancien(r)` projette le resultat du moteur sur l'ancien contrat
+// { statut, reussite, tentative, scored } pour garder les assertions à l'identique.
+// Seuls les tests des écarts volontaires E1–E4 sont révisés (repérés « RÉVISÉ Ex »).
 // Verrouille UNE règle : tentative/scored (PRD §5.1 — on score la 1ère tentative,
 // jamais la seconde chance). Ne teste pas le rendu visuel (pas de vrai navigateur,
 // zéro dépendance — pas de jsdom) : un DOM factice minimal, juste suffisant pour
@@ -54,12 +59,12 @@ function creerElementFactice(tag) {
 
 const documentFactice = { createElement: (tag) => creerElementFactice(tag) };
 
-// Le module carte-reponse-produite.js lit `document` et `window.FondaCorrection`
-// en globals (cohérent avec le chargement <script> classique du front BOX, sans
-// bundler). On les pose avant de charger le module sous test.
+// Le module carte-reponse-produite.js lit `document` en global (chargement <script>
+// classique, sans bundler) ; le moteur, lui, est INJECTÉ (plus aucun global lu).
 global.document = documentFactice;
 global.window = global.window || {};
-global.window.FondaCorrection = require('./correction.js');
+const moteur = require('./moteur-correction-v1.js').creerMoteur();
+const ancien = (r) => ({ statut: r.issue, reussite: r.reussite, tentative: r.tentative, scored: r.compte });
 
 // Le fichier sous test n'exporte rien via module.exports (format <script> classique,
 // pose window.FondaCarteReponseProduite) : on le require() pour son effet de bord,
@@ -68,14 +73,19 @@ delete require.cache[require.resolve('./carte-reponse-produite.js')];
 require('./carte-reponse-produite.js');
 const { montrerCarteReponseProduite } = global.window.FondaCarteReponseProduite;
 
-function monterCarte(carte) {
+// `relecteur` (ancienne forme : nom seul) -> badge du catalogue (CDC §12).
+function monterCarte({ relecteur, forme = 'relue_et_validee', ...carte }, onResultat) {
   const container = creerElementFactice('div');
   const resultats = [];
-  montrerCarteReponseProduite(container, carte, {
-    onResultat: (r) => resultats.push(r),
+  const bruts = [];
+  montrerCarteReponseProduite(container, {
+    moteur,
+    carte: moteur.preparerCarte(carte),
+    badge: relecteur ? { forme, nom_affiche: relecteur } : undefined,
+    onResultat: (r) => { bruts.push(r); resultats.push(ancien(r)); if (onResultat) onResultat(r); },
   });
   const [, input, bouton] = container.children; // question, input, bouton, feedback
-  return { container, input, bouton, resultats };
+  return { container, input, bouton, resultats, bruts };
 }
 
 describe('carte-reponse-produite — contrat seconde chance (tentative/scored)', () => {
@@ -394,34 +404,100 @@ describe('carte-reponse-produite — rendu enrichi par profil (thème FONDA)', (
 });
 
 describe('carte-reponse-produite — correction qui plante (relecture Codex PR #2 v2, #4)', () => {
-  test('reponses_acceptees avec {toString:null} : au clic, message visible, aucune exception, onErreur appelé, rien de scoré', () => {
-    const container = creerElementFactice('div');
-    const resultats = [];
-    let erreurs = 0;
-    montrerCarteReponseProduite(container, {
+  // RÉVISÉ E4 : l'issue « erreur » passe par onResultat (plus d'onErreur). Inchangé :
+  // message visible, aucune exception, rien de compté, saisie verrouillée.
+  test('reponses_acceptees avec {toString:null} : au clic, message visible, aucune exception, issue « erreur » non comptée', () => {
+    const { input, bouton, container, bruts } = monterCarte({
       question: 'Q ?', profil_correction: 'exact', reponses_acceptees: ['a', { toString: null }],
-    }, { onResultat: (r) => resultats.push(r), onErreur: () => { erreurs += 1; } });
-    const [, input, bouton, feedback] = container.children;
+    });
+    const feedback = container.children[3];
     input.value = 'b';
     assert.doesNotThrow(() => bouton.__click());
     assert.match(feedback.textContent, /Impossible de corriger cette réponse/);
-    assert.equal(erreurs, 1);
-    assert.deepEqual(resultats, [], 'aucun résultat scoré pour une carte non corrigeable');
+    assert.equal(feedback.dataset.statut, 'erreur');
+    assert.equal(bruts.length, 1);
+    assert.equal(bruts[0].issue, 'erreur');
+    assert.equal(bruts[0].compte, false, 'rien de compté pour une carte non corrigeable');
+    assert.equal(bruts[0].afficher_badge_relecture, false);
+    assert.equal(bruts[0].carte_terminee, true, 'l\'élève peut avancer');
     assert.equal(bouton.disabled, true);
   });
 });
 
-describe('carte-reponse-produite — exception dans onResultat (relecture Codex ciblée)', () => {
-  test('n\'est PAS déguisée en « correction impossible » : elle remonte, onErreur jamais appelé', () => {
-    const container = creerElementFactice('div');
-    let erreurs = 0;
-    montrerCarteReponseProduite(container, {
+describe('carte-reponse-produite — exception à la frontière DOM (test d\'origine rétabli)', () => {
+  // Attente d'origine (avant moteur) : la lecture de la saisie qui lève -> message
+  // visible, saisie verrouillée, rien de compté, on peut avancer. E4 : le signal
+  // passe par onResultat (issue « erreur » fournie par moteur.echec).
+  test('getter de saisie qui lève : message visible, aucune exception, issue « erreur » non comptée, verrouillée', () => {
+    const { input, bouton, container, bruts } = monterCarte({ question: 'Q ?', profil_correction: 'exact', reponses_acceptees: ['a'] });
+    Object.defineProperty(input, 'value', { get() { throw new Error('boom'); } });
+    assert.doesNotThrow(() => bouton.__click());
+    const feedback = container.children[3];
+    assert.match(feedback.textContent, /Impossible de corriger cette réponse/);
+    assert.equal(feedback.dataset.statut, 'erreur');
+    assert.equal(bouton.disabled, true);
+    assert.equal(bruts.length, 1);
+    assert.deepEqual([bruts[0].issue, bruts[0].compte, bruts[0].carte_terminee], ['erreur', false, true]);
+  });
+});
+
+describe('carte-reponse-produite — exception dans onResultat', () => {
+  // RÉVISÉ E3 : l'exception de l'appelant est interceptée et journalisée, sans rien
+  // changer à l'affichage ni au verrouillage (avant : elle remontait).
+  test('interceptée : pas d\'exception au clic, verdict affiché, saisie verrouillée', () => {
+    const erreurConsole = console.error;
+    const journal = [];
+    console.error = (...a) => journal.push(a);
+    try {
+      const { input, bouton, container } = monterCarte({
+        question: 'Q ?', profil_correction: 'exact', reponses_acceptees: ['a'],
+      }, () => { throw new Error('bug appelant'); });
+      const feedback = container.children[3];
+      input.value = 'a';
+      assert.doesNotThrow(() => bouton.__click());
+      assert.equal(feedback.dataset.statut, 'juste');
+      assert.doesNotMatch(feedback.textContent, /Impossible de corriger/);
+      assert.equal(input.disabled, true);
+      assert.equal(journal.length, 1, 'exception journalisée');
+    } finally { console.error = erreurConsole; }
+  });
+});
+
+describe('carte-reponse-produite — écarts volontaires E1/E2 et badge (CDC §4.2, §12)', () => {
+  test('E2 : onResultat est appelé APRÈS le rendu et le verrouillage, avec le resultat gelé', () => {
+    let vu = null;
+    const { input, bouton, container } = monterCarte({
       question: 'Q ?', profil_correction: 'exact', reponses_acceptees: ['a'],
-    }, { onResultat: () => { throw new Error('bug appelant'); }, onErreur: () => { erreurs += 1; } });
-    const [, input, bouton, feedback] = container.children;
+    }, (r) => { vu = { disabled: input.disabled, statut: container.children[3].dataset.statut, gele: Object.isFrozen(r) }; });
     input.value = 'a';
-    assert.throws(() => bouton.__click(), /bug appelant/);
-    assert.equal(erreurs, 0);
-    assert.doesNotMatch(feedback.textContent, /Impossible de corriger/);
+    bouton.__click();
+    assert.deepEqual(vu, { disabled: true, statut: 'juste', gele: true });
+  });
+
+  test('E1 : seconde chance ouverte -> carte_terminee false ; après la 2e tentative -> true', () => {
+    const { input, bouton, bruts } = monterCarte({
+      question: 'Écris "garçon".', profil_correction: 'orthographe', reponses_acceptees: ['garçon'], seconde_chance: true,
+    });
+    input.value = 'garcon';
+    bouton.__click();
+    assert.equal(bruts[0].seconde_chance_ouverte, true);
+    assert.equal(bruts[0].carte_terminee, false, '« Carte suivante » ne doit pas apparaître ici');
+    input.value = 'garçon';
+    bouton.__click();
+    assert.equal(bruts[1].carte_terminee, true);
+  });
+
+  test('badge « relue_par » (lots historiques, auto-confirmation) : « Fiche relue par Éric Duchateau »', () => {
+    const { input, bouton, container } = monterCarte({
+      question: 'Q ?', profil_correction: 'exact', reponses_acceptees: ['a'], relecteur: 'Éric Duchateau', forme: 'relue_par',
+    });
+    input.value = 'a';
+    bouton.__click();
+    const relecteur = trouverEnfant(container.children[3], 'fonda-feedback__relecteur');
+    assert.equal(relecteur.textContent, '✓Fiche relue par Éric Duchateau');
+  });
+
+  test('sans moteur : refus explicite au montage (aucune correction implicite)', () => {
+    assert.throws(() => montrerCarteReponseProduite(creerElementFactice('div'), { carte: {} }), /moteur et carte requis/);
   });
 });

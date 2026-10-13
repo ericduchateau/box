@@ -92,6 +92,14 @@ describe('catalogue-fonda/v1 — règles transversales', () => {
     ['sélection ≠ item_ids', (c) => { c.lots[0].attestation.selection = ['it01']; }],
     ['champ hors liste dans l\'entrée', (c) => { c.lots[0].code_suppression = 'x'; }],
     ['schema inconnu', (c) => { c.schema = 'catalogue-fonda/v0'; }],
+    ['moteur absent', (c) => { delete c.lots[0].moteur; }],
+    ['moteur : champ en trop', (c) => { c.lots[0].moteur.fichier = 'x.js'; }],
+    ['moteur : sha256 non hex', (c) => { c.lots[0].moteur.sha256 = 'sha256:' + c.lots[0].moteur.sha256; }],
+    ['moteur : version libre', (c) => { c.lots[0].moteur.version = '../v1'; }],
+    ['lot historique lié à un autre moteur (M1 figé)', (c) => { c.lots[0].moteur = { version: 'v2', sha256: 'a'.repeat(64) }; }],
+    ['badge : forme inconnue', (c) => { c.lots[0].relecteur.forme = 'certifiee'; }],
+    ['badge : champ en trop', (c) => { c.lots[0].relecteur.email = 'x'; }],
+    ['badge d\'un lot historique modifié (« relue et validée »)', (c) => { c.lots[0].relecteur.forme = 'relue_et_validee'; }],
   ];
   for (const [libelle, modifier] of casInvalides) {
     test(`refusé : ${libelle}`, () => {
@@ -100,6 +108,21 @@ describe('catalogue-fonda/v1 — règles transversales', () => {
       assert.equal(C.validerCatalogue(c, REFERENTIEL).valide, false);
     });
   }
+});
+
+describe('M1 — moteur v1 et badge figés des lots historiques (CDC §4.3, §12)', () => {
+  test('MOTEUR_HISTORIQUE = ligne v1 de fonda/engine/moteurs.json', () => {
+    const v1 = require('./moteurs.json').find((l) => l.version === 'v1');
+    assert.deepEqual({ ...C.MOTEUR_HISTORIQUE }, { version: 'v1', sha256: v1.sha256 });
+  });
+  test('les 8 entrées historiques : moteur v1 figé, badge « Fiche relue par Éric Duchateau »', () => {
+    const hist = CATALOGUE.lots.filter((e) => e.attestation.type === 'manuelle-historique');
+    assert.equal(hist.length, 8);
+    for (const e of hist) {
+      assert.deepEqual(e.moteur, { ...C.MOTEUR_HISTORIQUE }, e.set_id);
+      assert.deepEqual(e.relecteur, { ...C.BADGE_HISTORIQUE }, e.set_id);
+    }
+  });
 });
 
 describe('verifierLotContreEntree — le fichier servi est exactement celui attesté', () => {
@@ -166,5 +189,56 @@ describe('R4 — lots « manuelle-historique » ancrés sur leur empreinte figé
     e.fichier = `lots/${e.set_id}.json`;
     cat.lots.push(e);
     assert.match(C.validerCatalogue(cat, REFERENTIEL).erreurs.join(), /réservée aux 8 lots figés/);
+  });
+});
+
+// Relecture Codex étape 2, #2 : profils et bornes d'arrondi déplacés de validerLot
+// vers moteur.valider. Preuve que l'admissibilité ne change pas : ancien validerLot
+// (a418881, octets historiques) ≡ nouveau validerLot + moteur.valider de chaque carte,
+// sur les 8 lots historiques et sur des variantes ciblées.
+describe('déplacement des règles pédagogiques vers le moteur : admissibilité identique', () => {
+  const { execFileSync } = require('child_process');
+  const vm = require('vm');
+  const pathM = require('path');
+  let ancien = null;
+  try {
+    const code = execFileSync('git', ['show', 'a418881:fonda/engine/catalogue.js'], { cwd: pathM.join(__dirname, '..', '..'), stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+    const module = { exports: {} };
+    vm.runInNewContext(code, { module, exports: module.exports, globalThis: {}, TextEncoder });
+    ancien = module.exports;
+  } catch { /* historique indisponible */ }
+  const { chargerMoteurNode } = require('../scripts/moteurs.js');
+
+  test('les 8 lots historiques et leurs variantes : même verdict avant/après', { skip: !ancien && 'historique git indisponible' }, () => {
+    const lots = CATALOGUE.lots.map((e) => require(`../data/${e.fichier}`));
+    assert.equal(lots.length, 8);
+    const variantes = [
+      (c) => c,
+      (c) => ({ ...c, profil_correction: 'magie' }),
+      (c) => ({ ...c, profil_correction: 7 }),
+      (c) => ({ ...c, arrondi: 11 }),
+      (c) => ({ ...c, arrondi: -1 }),
+      (c) => ({ ...c, arrondi: 1.5 }),
+      (c) => ({ ...c, arrondi: 10 }),
+      (c) => ({ ...c, arrondi: '2' }),
+      (c) => ({ ...c, arrondi: 0 }),
+    ];
+    let n = 0;
+    for (const lot of lots) {
+      const e = CATALOGUE.lots.find((x) => x.set_id === lot.set_id);
+      const m = chargerMoteurNode(e.moteur.version, e.moteur.sha256);
+      for (const v of variantes) {
+        for (let i = 0; i < lot.cartes.length; i += 1) {
+          const l = copie(lot);
+          l.cartes[i] = v(l.cartes[i]);
+          const avant = ancien.validerLot(l).valide;
+          const apres = C.validerLot(l).valide && l.cartes.every((c) => m.valider(c).valide);
+          assert.equal(apres, avant, `${lot.set_id} carte ${i + 1} ${JSON.stringify(v(lot.cartes[i]).arrondi)} ${JSON.stringify(v(lot.cartes[i]).profil_correction)}`);
+          n += 1;
+        }
+      }
+      assert.equal(C.validerLot(lot).valide && lot.cartes.every((c) => m.valider(c).valide), true, lot.set_id);
+    }
+    assert.ok(n >= 400);
   });
 });
