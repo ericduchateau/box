@@ -1,6 +1,6 @@
 # Cahier des charges — Relecture FONDA `/fonda-select` (Bloc 2, étape 7)
 
-> Statut : **design validé par Éric le 2026-10-13** (décisions §11), en attente de la vérification du nœud Sign sur l'instance (§9.8) et de la relecture Codex ciblée, **avant** d'écrire le moindre workflow. Workflows livrés en JSON, **inactifs** ; activation sur feu vert explicite.
+> Statut : **design validé par Éric le 2026-10-13** (décisions §11), nœud Sign vérifié sur l'instance (§9.8), en attente de la relecture Codex ciblée, **avant** d'écrire le moindre workflow. Workflows livrés en JSON, **inactifs** ; activation sur feu vert explicite.
 > Sources : critique Codex du 2026-10-13 (points 1–4, 6–9), PRD §2 bis, contrats `fonda/engine/catalogue.js`.
 > Principe directeur : **la relecture ne publie rien**. Elle produit une **décision signée**. La publication reste un commit relu (`publier-lot.js` + PR). Toute anomalie non résolue **bloque** la publication au lieu de la laisser passer.
 
@@ -138,7 +138,7 @@ signature = Crypto v1 « Sign » RSA-SHA256 (clé privée PEM, uniquement dans n
 5. Scénarios d'état : rejeu du même nonce (même résultat, zéro écriture) ; deux nonces (conflit détecté, rien de publiable) ; clé expirée, révoquée ou mauvaise ; candidat modifié entre GET et POST (409) ; fichier introuvable ou en double dans le dossier ; panne simulée entre les étapes 6 et 7.
 6. Signature : signer dans n8n (nœud Sign) puis vérifier en Node avec la clé publique de test. Une attestation altérée d'un seul octet est refusée. `publier-lot.js` est étendu et testé sur les cas acceptés et refusés.
 7. Test statique : aucun id ni route BOX, Crypto v1 uniquement, webhooks `/fonda-select*` seulement, aucune adresse e-mail ni clé privée dans le dépôt.
-8. Copie de test sur l'instance (dossiers et destinataire de test) : parcours réel GET puis POST, `curl -I` des en-têtes, et vérification que le Crypto v1 **Sign** existe bien sur l'instance (2.6.3). Le constat de disponibilité a été fait sur un n8n 1.91 local.
+8. Copie de test sur l'instance (dossiers et destinataire de test) : parcours réel GET puis POST, `curl -I` des en-têtes, Le Crypto v1 **Sign** est **vérifié sur l'instance 2.6.3** (2026-10-13 : signature RSA-SHA256 produite par un workflow de test jetable, vérifiée en Node avec la clé publique, message altéré d'un octet refusé ; workflow et clé jetable supprimés).
 
 ## 10. Hors périmètre de ce cahier des charges
 
