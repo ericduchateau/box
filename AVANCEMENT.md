@@ -11,12 +11,13 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - **CDC relecture v8.1** : `docs/CDC-fonda-relecture.md` (branche `feat/box-fonda-relecture`, non mergée). Preuve C8 faite (SRI/CORS/export OK ; CSP en `<meta>`).
 
 ## En cours — étape 2 : moteur de correction élève (M1), branche `feat/box-fonda-moteur`
-- `fonda/engine/moteur-correction-v1.js` : corps du correcteur recopié **octet pour octet** depuis a418881 (prouvé par test) + couche moteur (`creerMoteur()` : valider, preparerCarte, demarrer, soumettre → résultat pédagogique complet, outils). Registre global `FondaMoteurs` non réassignable. `correction.js` = façade Node.
+- `fonda/engine/moteur-correction-v1.js` : corps du correcteur = **octets bruts** de a418881 (test sans normalisation) + couche moteur (`creerMoteur()` : valider, preparerCarte, demarrer, soumettre, echec → résultat pédagogique complet, outils). Registre global `FondaMoteurs` non réassignable. `correction.js` = façade Node.
 - `moteurs.json` (sha256 + SRI) ; `bootstrap.js::obtenirMoteur` (concordance registre avant tout chargement, cache par clé, SRI, origine connue, `instance.version`) ; entrée résolue avant chargement ; échec → « pas disponible ».
 - `carte-reponse-produite.js` purement présentationnel `{ moteur, carte, badge, onResultat }` ; E1–E4 appliqués, tests révisés marqués « RÉVISÉ Ex ».
 - **M1** : `moteur: { version: "v1", sha256 }` + badge `{ forme: "relue_par", nom_affiche: "Éric Duchateau", id: "eric" }` sur les 8 entrées historiques, empreintes inchangées ; figés dans `catalogue.js` (`MOTEUR_HISTORIQUE`, `BADGE_HISTORIQUE`).
-- Générateur / publication / CI valident avec **le moteur du lot** (`fonda/scripts/moteurs.js`, octets vérifiés puis exécutés). CI : `verifier-moteurs.js` (registre en ajout seul, moteurs jamais modifiés ; référence nulle → échec).
-- Preuves : `node --test` 578/578 (1 skip) ; différentiel ancien/nouveau (79 cartes × variantes × saisies, mutations détectées) ; navigateur réel (Chrome 155) : 8 lots parcourus, SRI altérée bloquée ; BOX clair 0 pixel de différence vs design.
+- Générateur / publication / CI valident avec **le moteur du lot** ; profils et bornes d'arrondi sortis de `validerLot` (seulement `moteur.valider`). CI `verifier-moteurs.js` : moteurs immuables + **règle 0 de M1** (consommable une fois ; branche « M1 consommée » à transférer à `verifier-immuabilite.js` en étape 3).
+- Critique Codex (6 points) corrigée : règle 0, règles pédagogiques hors catalogue, frontière DOM → `moteur.echec`, purge du cache sur tout échec, octets bruts, différentiel sur le vrai composant a418881. Re-review Codex ciblée à faire avant merge.
+- Preuves : `node --test` 592/592 (1 skip) ; différentiels ancien/nouveau (correcteur et composant a418881 réellement exécutés, frontières d'exception comprises ; mutations détectées) ; navigateur réel (Chrome 155) : 8 lots parcourus, SRI altérée bloquée ; BOX clair 0 pixel de différence vs design.
 - Changement visible voulu (CDC §12) : badge « Fiche relue par Éric Duchateau » (avant : « Fiche relue et validée par … avant publication. »).
 
 ## Prochaines étapes

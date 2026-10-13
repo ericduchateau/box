@@ -424,6 +424,23 @@ describe('carte-reponse-produite — correction qui plante (relecture Codex PR #
   });
 });
 
+describe('carte-reponse-produite — exception à la frontière DOM (test d\'origine rétabli)', () => {
+  // Attente d'origine (avant moteur) : la lecture de la saisie qui lève -> message
+  // visible, saisie verrouillée, rien de compté, on peut avancer. E4 : le signal
+  // passe par onResultat (issue « erreur » fournie par moteur.echec).
+  test('getter de saisie qui lève : message visible, aucune exception, issue « erreur » non comptée, verrouillée', () => {
+    const { input, bouton, container, bruts } = monterCarte({ question: 'Q ?', profil_correction: 'exact', reponses_acceptees: ['a'] });
+    Object.defineProperty(input, 'value', { get() { throw new Error('boom'); } });
+    assert.doesNotThrow(() => bouton.__click());
+    const feedback = container.children[3];
+    assert.match(feedback.textContent, /Impossible de corriger cette réponse/);
+    assert.equal(feedback.dataset.statut, 'erreur');
+    assert.equal(bouton.disabled, true);
+    assert.equal(bruts.length, 1);
+    assert.deepEqual([bruts[0].issue, bruts[0].compte, bruts[0].carte_terminee], ['erreur', false, true]);
+  });
+});
+
 describe('carte-reponse-produite — exception dans onResultat', () => {
   // RÉVISÉ E3 : l'exception de l'appelant est interceptée et journalisée, sans rien
   // changer à l'affichage ni au verrouillage (avant : elle remontait).

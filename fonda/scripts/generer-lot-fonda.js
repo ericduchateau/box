@@ -63,7 +63,8 @@ const {
 // lots seront relus et corrigés — le code exact que l'élève exécutera.
 const { dernierMoteur, chargerMoteurNode } = require('./moteurs.js');
 const MOTEUR_GENERATION = dernierMoteur();
-const { outils: OUTILS_MOTEUR } = chargerMoteurNode(MOTEUR_GENERATION.version, MOTEUR_GENERATION.sha256);
+const MOTEUR = chargerMoteurNode(MOTEUR_GENERATION.version, MOTEUR_GENERATION.sha256);
+const OUTILS_MOTEUR = MOTEUR.outils;
 const { SCHEMA_LOT, validerLot: validerLotFonda, prochainSetId, decomposerSetId } = require('../engine/catalogue.js');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -421,6 +422,9 @@ function construireLotFonda({ notion, palier, candidats }) {
   };
   const v = validerLotFonda(lot);
   if (!v.valide) throw new Error(`lot non conforme à lot-fonda/v1 : ${v.erreurs.join(' ; ')}`);
+  // Règles pédagogiques (profils, bornes d'arrondi) : celles du moteur des nouveaux lots.
+  const refus = lot.cartes.map((c) => [c.item_id, MOTEUR.valider(c)]).filter(([, r]) => !r.valide);
+  if (refus.length) throw new Error(`cartes refusées par le moteur ${MOTEUR.version} : ${refus.map(([id, r]) => `${id} (${r.raisons.join(', ')})`).join(' ; ')}`);
   return lot;
 }
 

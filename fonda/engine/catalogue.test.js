@@ -191,3 +191,54 @@ describe('R4 — lots « manuelle-historique » ancrés sur leur empreinte figé
     assert.match(C.validerCatalogue(cat, REFERENTIEL).erreurs.join(), /réservée aux 8 lots figés/);
   });
 });
+
+// Relecture Codex étape 2, #2 : profils et bornes d'arrondi déplacés de validerLot
+// vers moteur.valider. Preuve que l'admissibilité ne change pas : ancien validerLot
+// (a418881, octets historiques) ≡ nouveau validerLot + moteur.valider de chaque carte,
+// sur les 8 lots historiques et sur des variantes ciblées.
+describe('déplacement des règles pédagogiques vers le moteur : admissibilité identique', () => {
+  const { execFileSync } = require('child_process');
+  const vm = require('vm');
+  const pathM = require('path');
+  let ancien = null;
+  try {
+    const code = execFileSync('git', ['show', 'a418881:fonda/engine/catalogue.js'], { cwd: pathM.join(__dirname, '..', '..'), stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+    const module = { exports: {} };
+    vm.runInNewContext(code, { module, exports: module.exports, globalThis: {}, TextEncoder });
+    ancien = module.exports;
+  } catch { /* historique indisponible */ }
+  const { chargerMoteurNode } = require('../scripts/moteurs.js');
+
+  test('les 8 lots historiques et leurs variantes : même verdict avant/après', { skip: !ancien && 'historique git indisponible' }, () => {
+    const lots = CATALOGUE.lots.map((e) => require(`../data/${e.fichier}`));
+    assert.equal(lots.length, 8);
+    const variantes = [
+      (c) => c,
+      (c) => ({ ...c, profil_correction: 'magie' }),
+      (c) => ({ ...c, profil_correction: 7 }),
+      (c) => ({ ...c, arrondi: 11 }),
+      (c) => ({ ...c, arrondi: -1 }),
+      (c) => ({ ...c, arrondi: 1.5 }),
+      (c) => ({ ...c, arrondi: 10 }),
+      (c) => ({ ...c, arrondi: '2' }),
+      (c) => ({ ...c, arrondi: 0 }),
+    ];
+    let n = 0;
+    for (const lot of lots) {
+      const e = CATALOGUE.lots.find((x) => x.set_id === lot.set_id);
+      const m = chargerMoteurNode(e.moteur.version, e.moteur.sha256);
+      for (const v of variantes) {
+        for (let i = 0; i < lot.cartes.length; i += 1) {
+          const l = copie(lot);
+          l.cartes[i] = v(l.cartes[i]);
+          const avant = ancien.validerLot(l).valide;
+          const apres = C.validerLot(l).valide && l.cartes.every((c) => m.valider(c).valide);
+          assert.equal(apres, avant, `${lot.set_id} carte ${i + 1} ${JSON.stringify(v(lot.cartes[i]).arrondi)} ${JSON.stringify(v(lot.cartes[i]).profil_correction)}`);
+          n += 1;
+        }
+      }
+      assert.equal(C.validerLot(lot).valide && lot.cartes.every((c) => m.valider(c).valide), true, lot.set_id);
+    }
+    assert.ok(n >= 400);
+  });
+});

@@ -24,7 +24,8 @@
 // `onResultat(resultat)` : appelé une fois par soumission, APRÈS l'affichage et le
 // verrouillage (E2), avec l'objet gelé du moteur ; une exception y est interceptée
 // et journalisée sans rien changer à l'affichage (E3). Plus d'onErreur : l'issue
-// « erreur » passe par resultat (E4). Émetteur futur : n'émettre que si resultat.compte.
+// « erreur » passe par resultat (E4) — y compris pour une exception à la frontière
+// DOM (lecture, rendu), obtenue du moteur via moteur.echec(etat). Émetteur futur : n'émettre que si resultat.compte.
 
 (function (root) {
 'use strict';
@@ -71,10 +72,10 @@ function montrerCarteReponseProduite(container, { moteur, carte, badge, onResult
   feedback.className = 'fonda-feedback';
   feedback.setAttribute('role', 'status');
 
-  // Gabarit « erreur » : message seul (structure inchangée depuis l'ancien onErreur).
+  // Gabarit « erreur » : message seul, structure et attributs identiques à l'ancien
+  // signalerErreur (data-reussite d'une tentative précédente laissé tel quel).
   function rendreErreur(r) {
     feedback.innerHTML = '';
-    delete feedback.dataset.reussite;
     feedback.textContent = r.verdict.texte;
     feedback.dataset.statut = r.issue;
   }
@@ -142,11 +143,22 @@ function montrerCarteReponseProduite(container, { moteur, carte, badge, onResult
 
   function soumettre() {
     if (etat.terminee) return;
-    const sortie = moteur.soumettre(etat, input.value);
-    etat = sortie.etat;
-    const r = sortie.resultat;
-
-    if (r.gabarit === 'erreur') rendreErreur(r); else rendreCorrection(r);
+    const avant = etat;
+    let r;
+    // Frontière DOM (lecture de la saisie ET rendu) : une exception technique ici
+    // n'est jamais tranchée par l'interface — le moteur fournit l'issue « erreur »
+    // (moteur.echec), comme pour une exception pendant l'évaluation.
+    try {
+      const sortie = moteur.soumettre(avant, input.value);
+      r = sortie.resultat;
+      if (r.gabarit === 'erreur') rendreErreur(r); else rendreCorrection(r);
+      etat = sortie.etat;
+    } catch (e) {
+      const sortie = moteur.echec(avant);
+      r = sortie.resultat;
+      rendreErreur(r);
+      etat = sortie.etat;
+    }
 
     if (r.verrouillee) {
       input.disabled = true;

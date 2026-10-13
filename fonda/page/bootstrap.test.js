@@ -755,10 +755,27 @@ describe('réponses non textuelles (relecture Codex PR #2 v2, #4)', () => {
     assert.equal(lotEstBienForme({ cartes: [{ question: 'Q', profil_correction: 'numerique', reponses_acceptees: [2] }] }, MOTEUR_V1), true);
   });
 
-  // RÉVISÉ E4 : l'issue « erreur » arrive par onResultat (carte_terminee) au lieu
-  // d'onErreur. Sabotage : une donnée qui a passé la validation et l'empreinte puis
-  // fait planter l'évaluation au clic (carte 2 altérée en mémoire après le contrôle).
-  test('au clic : si la correction plante malgré tout, message visible + « Carte suivante » révélé', async () => {
+  // Test d'ORIGINE rétabli (relecture Codex étape 2, #3) : la lecture de la saisie
+  // lève au clic. RÉVISÉ E4 seulement sur le canal (onResultat/carte_terminee au lieu
+  // d'onErreur).
+  test('au clic : si la lecture de la saisie plante, message visible + « Carte suivante » révélé', async () => {
+    const root = await demarrerBootstrap({
+      search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI',
+      lots: { [CHEMIN]: VRAI },
+    });
+    const carteHote = root.children.find((c) => c && c.classList && (c.children || []).some((x) => x.className === 'fonda-question'));
+    const valider = trouverBoutonParTexte(root, 'Valider');
+    const suivant = trouverBoutonParTexte(root, 'Carte suivante →');
+    const input = carteHote.children.find((x) => x.className === 'fonda-reponse-input');
+    Object.defineProperty(input, 'value', { get() { throw new Error('boom'); } });
+    assert.doesNotThrow(() => valider.__click());
+    assert.match(texteDe(root), /Impossible de corriger cette réponse/);
+    assert.equal(suivant.style.display, '', '« Carte suivante » doit permettre d\'avancer');
+  });
+
+  // Variante : donnée qui a passé la validation et l'empreinte puis fait planter
+  // l'évaluation dans le moteur (carte 2 altérée en mémoire après le contrôle).
+  test('au clic : si l\'évaluation plante dans le moteur, message visible + « Carte suivante » révélé', async () => {
     const lot = JSON.parse(JSON.stringify(VRAI));
     const root = await demarrerBootstrap({
       search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI',
@@ -1034,13 +1051,27 @@ describe('obtenirMoteur — version + empreinte + SRI, registre non réassignabl
     assert.deepEqual(journalScripts, [V1.fichier, V1.fichier]);
   });
 
-  test('instance.version ≠ version demandée : refus', async () => {
+  test('chargé SANS export : refus, clé purgée, nouvel essai = nouvelle balise (relecture Codex étape 2, #4)', async () => {
+    const vide = '/* script servi sans enregistrement */';
+    const sha = digest(vide);
+    const V2v = { ...V2, sha256: sha.toString('hex'), sri: 'sha256-' + sha.toString('base64') };
+    const { obtenirMoteur, journalScripts } = preparer({ moteurs: [V1, V2v] });
+    global.document = creerDocumentFactice({ journalScripts, remplacements: { [V2.fichier]: vide } });
+    await assert.rejects(obtenirMoteur('v2', V2v.sha256), /sans exposer/);
+    await assert.rejects(obtenirMoteur('v2', V2v.sha256), /sans exposer/);
+    assert.deepEqual(journalScripts, [V2.fichier, V2.fichier], 'chaque essai doit recharger réellement');
+  });
+
+  test('instance.version ≠ version demandée : refus, et nouvel essai = nouvelle balise', async () => {
     const code = CODE_V2.replace("version: VERSION,\n    valider", "version: 'v1',\n    valider");
     assert.notEqual(code, CODE_V2);
     const sha = digest(code);
     const V2b = { ...V2, sha256: sha.toString('hex'), sri: 'sha256-' + sha.toString('base64') };
     const { obtenirMoteur } = preparer({ moteurs: [V1, V2b] });
-    global.document = creerDocumentFactice({ remplacements: { [V2.fichier]: code } });
+    const journal = [];
+    global.document = creerDocumentFactice({ journalScripts: journal, remplacements: { [V2.fichier]: code } });
     await assert.rejects(obtenirMoteur('v2', V2b.sha256), /instance\.version/);
+    await assert.rejects(obtenirMoteur('v2', V2b.sha256), /instance\.version/);
+    assert.equal(journal.length, 2);
   });
 });

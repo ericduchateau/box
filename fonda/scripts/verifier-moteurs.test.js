@@ -82,3 +82,61 @@ describe('historique de confiance — ajout seul, fichiers identiques', () => {
     assert.match(V.verifierHistorique(['deadbeef'], [], lire, dir).join(), /introuvable/);
   });
 });
+
+describe('règle 0 de M1 — consommable une seule fois (CDC annexe B)', () => {
+  const SHA_V1 = 'a'.repeat(64);
+  const REG = [{ version: 'v1', fichier: 'fonda/engine/moteur-correction-v1.js', sha256: SHA_V1, sri: 'x' }];
+  const HIST = { set_a: 'sha256:aa', set_b: 'sha256:bb' };
+  const entree = (set_id, empreinte, moteur) => ({ set_id, empreinte, ...(moteur ? { moteur } : {}) });
+  const M1 = { version: 'v1', sha256: SHA_V1 };
+
+  // Dépôt temporaire dont l'historique contient les catalogues successifs donnés.
+  function historique(catalogues) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'regle0-'));
+    const g = (...a) => execFileSync('git', a, { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] });
+    g('init', '-q'); g('config', 'user.email', 't@t'); g('config', 'user.name', 't');
+    fs.mkdirSync(path.join(dir, 'fonda', 'data'), { recursive: true });
+    catalogues.forEach((cat, i) => {
+      fs.writeFileSync(path.join(dir, 'fonda/data/catalogue-fonda.json'), JSON.stringify(cat));
+      g('add', '.'); g('commit', '-q', '-m', `c${i}`);
+    });
+    return { dir, ref: g('rev-parse', 'HEAD').toString().trim() };
+  }
+  const sansMoteur = { lots: [entree('set_a', 'sha256:aa'), entree('set_b', 'sha256:bb')] };
+  const avecM1 = { lots: [entree('set_a', 'sha256:aa', M1), entree('set_b', 'sha256:bb', M1)] };
+
+  test('aucun moteur dans l\'historique : M1 sur les lots historiques, empreintes figées, v1 -> accepté', () => {
+    const { dir, ref } = historique([sansMoteur]);
+    assert.deepEqual(V.verifierRegle0([ref], avecM1, REG, HIST, dir), []);
+  });
+  test('aucun moteur dans l\'historique : lot hors historiques, empreinte modifiée ou autre moteur -> refusé', () => {
+    const { dir, ref } = historique([sansMoteur]);
+    assert.match(V.verifierRegle0([ref], { lots: [...avecM1.lots, entree('set_c', 'sha256:cc', M1)] }, REG, HIST, dir).join(), /seuls les 8 lots historiques/);
+    assert.match(V.verifierRegle0([ref], { lots: [entree('set_a', 'sha256:zz', M1)] }, REG, HIST, dir).join(), /empreinte figée/);
+    assert.match(V.verifierRegle0([ref], { lots: [entree('set_a', 'sha256:aa', { version: 'v2', sha256: SHA_V1 })] }, REG, HIST, dir).join(), /moteur v1/);
+    assert.match(V.verifierRegle0([ref], { lots: [entree('set_a', 'sha256:aa', { version: 'v1', sha256: 'b'.repeat(64) })] }, REG, HIST, dir).join(), /moteur v1/);
+  });
+  test('M1 déjà publiée : tuple identique accepté (transit design -> main)', () => {
+    const { dir, ref } = historique([sansMoteur, avecM1]);
+    assert.deepEqual(V.verifierRegle0([ref], avecM1, REG, HIST, dir), []);
+  });
+  test('M1 déjà publiée : moteur ou empreinte changés -> refusé (M1 non rejouable)', () => {
+    const { dir, ref } = historique([sansMoteur, avecM1]);
+    const autre = { lots: [entree('set_a', 'sha256:aa', { version: 'v1', sha256: 'b'.repeat(64) }), avecM1.lots[1]] };
+    assert.match(V.verifierRegle0([ref], autre, REG, HIST, dir).join(), /tuple/);
+  });
+  test('catalogue vidé APRÈS M1 : la règle 0 ne se réarme pas (rejeu avec un autre moteur refusé)', () => {
+    const { dir, ref } = historique([sansMoteur, avecM1, { lots: [] }]);
+    const rejeu = { lots: [entree('set_a', 'sha256:aa', { version: 'v1', sha256: 'c'.repeat(64) })] };
+    assert.match(V.verifierRegle0([ref], rejeu, [{ ...REG[0], sha256: 'c'.repeat(64) }], HIST, dir).join(), /tuple/);
+  });
+  test('M1 consommée : set_id jamais publié avec moteur -> refusé (fail-closed jusqu\'à l\'étape 3)', () => {
+    const { dir, ref } = historique([sansMoteur, avecM1]);
+    assert.match(V.verifierRegle0([ref], { lots: [...avecM1.lots, entree('set_c', 'sha256:cc', M1)] }, REG, HIST, dir).join(), /jamais publié/);
+  });
+  test('référence nulle ou introuvable -> échec explicite', () => {
+    const { dir } = historique([sansMoteur]);
+    assert.match(V.verifierRegle0(['0'.repeat(40)], avecM1, REG, HIST, dir).join(), /nulle/);
+    assert.match(V.verifierRegle0(['deadbeef'], avecM1, REG, HIST, dir).join(), /introuvable/);
+  });
+});

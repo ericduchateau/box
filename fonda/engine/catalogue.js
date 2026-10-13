@@ -32,7 +32,6 @@ const SET_ID_PATTERN = /^set_fonda_[a-z0-9-]+_n[IF]_\d{2}$/;
 const ITEM_ID_PATTERN = /^it\d{2}$/;
 const EMPREINTE_PATTERN = /^sha256:[0-9a-f]{64}$/;
 const PALIERS = ['nI', 'nF'];
-const PROFILS = ['sens', 'numerique', 'exact', 'orthographe'];
 const TYPES_ATTESTATION = ['manuelle-historique', 'n8n-relecture'];
 
 // Listes BLANCHES (contrat lot-fonda/v1) : tout autre champ est refusé, notamment
@@ -77,7 +76,7 @@ const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/;
 // Migration M1 (CDC §4.3, annexe B règle 0) : les 8 lots historiques sont liés au
 // moteur v1, consolidation à comportement identique du correcteur sous lequel ils
 // ont été relus. Fait partie de leur tuple figé, comme HISTORIQUES_FIGES.
-const MOTEUR_HISTORIQUE = Object.freeze({ version: 'v1', sha256: '7a73aec9095829515ac2895107623876f59aed843b21fdae07183576d43a1add' });
+const MOTEUR_HISTORIQUE = Object.freeze({ version: 'v1', sha256: 'ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753' });
 
 // Badge élève (CDC §12) : même schéma { forme, nom_affiche, id } pour toute entrée ;
 // texte construit par le composant à partir de `forme`. Lots historiques : exception
@@ -174,13 +173,15 @@ function validerLot(lot) {
     if (c.notion_id !== lot.notion_id) erreurs.push(`${p} : notion_id ≠ celui du lot`);
     if (c.palier !== lot.palier) erreurs.push(`${p} : palier ≠ celui du lot`);
     if (!estTexte(c.question)) erreurs.push(`${p} : question vide`);
-    if (!PROFILS.includes(c.profil_correction)) erreurs.push(`${p} : profil inconnu`);
+    // Profils admis et bornes d'arrondi = règles PÉDAGOGIQUES du moteur du lot
+    // (CDC §4.2 : moteur.valider) ; ici seulement la forme des champs.
+    if (!estTexte(c.profil_correction)) erreurs.push(`${p} : profil_correction non texte`);
     if (!Array.isArray(c.reponses_acceptees) || c.reponses_acceptees.length === 0
       || !c.reponses_acceptees.every((r) => estTexte(r) || (typeof r === 'number' && Number.isFinite(r)))) {
       erreurs.push(`${p} : reponses_acceptees invalides`);
     }
     if (c.unite != null && typeof c.unite !== 'string') erreurs.push(`${p} : unite non texte`);
-    if (c.arrondi != null && !(Number.isInteger(c.arrondi) && c.arrondi >= 0 && c.arrondi <= 10)) erreurs.push(`${p} : arrondi hors 0..10`);
+    if (c.arrondi != null && typeof c.arrondi !== 'number') erreurs.push(`${p} : arrondi non nombre`);
     if (c.seconde_chance != null && typeof c.seconde_chance !== 'boolean') erreurs.push(`${p} : seconde_chance non booléen`);
   });
   return { valide: erreurs.length === 0, erreurs };

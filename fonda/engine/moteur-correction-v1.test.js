@@ -36,15 +36,44 @@ function chargerAncien() {
   return module.exports;
 }
 
+function saisiesDeCarte(carte) {
+  const base = [carte.reponse, ...(Array.isArray(carte.reponses_acceptees) ? carte.reponses_acceptees : [])].filter((x) => x != null).map(String);
+  const out = new Set(['', ' ', 'n\'importe quoi', '0', '1/3', '0,33', '8 cm']);
+  for (const b of base) {
+    out.add(b);
+    out.add(b.toUpperCase());
+    out.add(b.toLowerCase());
+    out.add(` ${b}. `);
+    out.add(b.normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
+    out.add(b.replace(/s\b/g, ''));
+    out.add(b.replace(/,/g, '.'));
+    out.add(b.replace(/\s*[a-zA-Zé€%²³]+$/u, ''));
+    out.add(`${b} cm`);
+  }
+  return [...out];
+}
+function toutesLesCartesDuDepot() {
+  const cartes = [];
+  for (const d of ['fonda/data/lots', 'fonda/data/lots-fonda-calibration']) {
+    for (const f of fs.readdirSync(path.join(RACINE, d)).filter((x) => x.endsWith('.json'))) {
+      cartes.push(...JSON.parse(fs.readFileSync(path.join(RACINE, d, f), 'utf8')).cartes);
+    }
+  }
+  return cartes;
+}
+
 describe('M1 — consolidation à comportement identique', { skip: ANCIEN_CORRECTION === null && 'historique git indisponible' }, () => {
-  test('corps du correcteur embarqué = correction.js @ a418881, octet pour octet', () => {
+  test('corps du correcteur embarqué = correction.js @ a418881, octet pour octet (comparaison brute, sans normalisation)', () => {
     const debut = ANCIEN_CORRECTION.indexOf("'use strict';\n\nconst PROFILS = new Set([");
     const fin = ANCIEN_CORRECTION.indexOf('}); // fin UMD');
     assert.ok(debut > 0 && fin > debut);
-    const corps = ANCIEN_CORRECTION.slice(debut, fin).replace(/\n+$/, '\n');
-    const embarque = CODE_MOTEUR.slice(CODE_MOTEUR.indexOf('function fabriqueCorrection() {\n') + 'function fabriqueCorrection() {\n'.length, CODE_MOTEUR.indexOf('\n}\n\n// --- Couche moteur'))
-      .split('\n').map((l) => (l.startsWith('  ') ? l.slice(2) : l)).join('\n') + '\n';
-    assert.equal(embarque.replace(/\n+$/, '\n'), corps);
+    const attendu = Buffer.from(ANCIEN_CORRECTION.slice(debut, fin), 'utf8');
+    const octets = fs.readFileSync(path.join(__dirname, 'moteur-correction-v1.js'));
+    const ouverture = Buffer.from('function fabriqueCorrection() {\n', 'utf8');
+    const i = octets.indexOf(ouverture) + ouverture.length;
+    assert.ok(i > ouverture.length);
+    assert.equal(Buffer.compare(octets.subarray(i, i + attendu.length), attendu), 0, 'octets différents');
+    assert.equal(octets.subarray(i + attendu.length, i + attendu.length + 21).toString('utf8'), '}\n\n// --- Couche mote', 'le corps doit être suivi immédiatement de la fermeture de la fabrique');
   });
 
   // Ancien parcours élève (carte-reponse-produite.js @ a418881) reconstitué sur
@@ -76,32 +105,8 @@ describe('M1 — consolidation à comportement identique', { skip: ANCIEN_CORREC
     }
     return sorties;
   }
-  function saisiesDerivees(carte) {
-    const base = [carte.reponse, ...(Array.isArray(carte.reponses_acceptees) ? carte.reponses_acceptees : [])].filter((x) => x != null).map(String);
-    const out = new Set(['', ' ', 'n\'importe quoi', '0', '1/3', '0,33', '8 cm']);
-    for (const b of base) {
-      out.add(b);
-      out.add(b.toUpperCase());
-      out.add(b.toLowerCase());
-      out.add(` ${b}. `);
-      out.add(b.normalize('NFD').replace(/[̀-ͯ]/g, ''));
-      out.add(b.replace(/s\b/g, ''));
-      out.add(b.replace(/,/g, '.'));
-      out.add(b.replace(/\s*[a-zA-Zé€%²³]+$/u, ''));
-      out.add(`${b} cm`);
-    }
-    return [...out];
-  }
-  function toutesLesCartes() {
-    const dirs = ['fonda/data/lots', 'fonda/data/lots-fonda-calibration'];
-    const cartes = [];
-    for (const d of dirs) {
-      for (const f of fs.readdirSync(path.join(RACINE, d)).filter((x) => x.endsWith('.json'))) {
-        cartes.push(...JSON.parse(fs.readFileSync(path.join(RACINE, d, f), 'utf8')).cartes);
-      }
-    }
-    return cartes;
-  }
+  const saisiesDerivees = saisiesDeCarte;
+  const toutesLesCartes = toutesLesCartesDuDepot;
 
   test('différentiel ancien/nouveau : toutes les cartes du dépôt × saisies dérivées × seconde chance on/off × arrondi invalide', () => {
     const A = chargerAncien();
@@ -140,6 +145,99 @@ describe('M1 — consolidation à comportement identique', { skip: ANCIEN_CORREC
   });
 });
 
+// --- Différentiel sur les COMPOSANTS réellement exécutés --------------------------
+// Ancien : carte-reponse-produite.js @ a418881 + correction.js @ a418881 (octets
+// historiques). Nouveau : composant courant + moteur v1. Même DOM factice, mêmes
+// saisies, frontières d'exception comprises (getter de saisie qui lève, donnée qui
+// fait planter l'évaluation). Écarts E1–E4 neutralisés par projection : on compare
+// ce que l'élève VOIT (feedback, verrouillage) et ce qui est COMPTÉ, pas le canal.
+const ANCIEN_COMPOSANT = gitShow('fonda/engine/carte-reponse-produite.js');
+
+function elementFactice(tag) {
+  return {
+    tagName: tag, _listeners: {}, children: [], _text: '', classList: { add() {}, remove() {} }, dataset: {}, attributes: {},
+    value: '', disabled: false, autocomplete: '', type: '', className: '',
+    get textContent() { return this.children.length ? this.children.map((c) => (c && typeof c.textContent === 'string' ? c.textContent : '')).join('') : this._text; },
+    set textContent(v) { this._text = v; this.children = []; },
+    get innerHTML() { return this._text; },
+    set innerHTML(v) { this._text = v; this.children = []; },
+    setAttribute(k, v) { this.attributes[k] = v; },
+    addEventListener(e, fn) { (this._listeners[e] = this._listeners[e] || []).push(fn); },
+    append(...n) { this.children.push(...n); },
+    focus() {},
+    __click() { (this._listeners.click || []).forEach((fn) => fn({})); },
+  };
+}
+const documentFactice = { createElement: elementFactice };
+
+function chargerComposant(code, globaux) {
+  const window = { ...globaux };
+  vm.runInNewContext(code, { window, document: documentFactice, console });
+  return window.FondaCarteReponseProduite.montrerCarteReponseProduite;
+}
+
+// Rejoue une carte : saisies successives (une saisie = chaîne, ou { leve: true } pour
+// un getter de saisie qui lève). Renvoie, après chaque clic, l'état observable.
+function rejouer(monter, saisies) {
+  const container = elementFactice('div');
+  const comptes = [];
+  monter(container, comptes);
+  const [, input, bouton, feedback] = container.children;
+  const vus = [];
+  for (const s of saisies) {
+    if (bouton.disabled) break;
+    if (s && s.leve) Object.defineProperty(input, 'value', { configurable: true, get() { throw new Error('boom'); }, set() {} });
+    else { Object.defineProperty(input, 'value', { configurable: true, writable: true, value: s }); }
+    let leve = false;
+    try { bouton.__click(); } catch { leve = true; }
+    vus.push({ leve, feedback: feedback.textContent, statut: feedback.dataset.statut, reussite: feedback.dataset.reussite, verrouille: input.disabled && bouton.disabled });
+  }
+  return { vus, comptes };
+}
+
+describe('différentiel sur les composants réels (ancien a418881 vs nouveau + moteur)', { skip: (ANCIEN_CORRECTION === null || ANCIEN_COMPOSANT === null) && 'historique git indisponible' }, () => {
+  const NOUVEAU_COMPOSANT = fs.readFileSync(path.join(__dirname, 'carte-reponse-produite.js'), 'utf8');
+  const ancienMontrer = () => chargerComposant(ANCIEN_COMPOSANT, { FondaCorrection: chargerAncien() });
+  const nouveauMontrer = () => chargerComposant(NOUVEAU_COMPOSANT, {});
+  // Le badge : texte volontairement changé (CDC §12) — remplacé par un marqueur
+  // commun pour comparer sa PRÉSENCE, pas sa formulation.
+  const badgeNeutre = (t) => t.replace(/Fiche relue et validée par R avant publication\.|Fiche relue et validée par R/g, '[BADGE]');
+
+  function comparer(carte, saisies) {
+    const m = ancienMontrer();
+    const ancien = rejouer((c, comptes) => m(c, { ...carte, relecteur: 'R' }, {
+      onResultat: (r) => comptes.push(['resultat', r.statut, r.reussite, r.scored]),
+      onErreur: () => comptes.push(['erreur']),
+    }), saisies);
+    const n = nouveauMontrer();
+    const nouveau = rejouer((c, comptes) => n(c, {
+      moteur, carte: moteur.preparerCarte(carte), badge: { forme: 'relue_et_validee', nom_affiche: 'R' },
+      onResultat: (r) => comptes.push(r.issue === 'erreur' ? ['erreur'] : ['resultat', r.issue, r.reussite, r.compte]),
+    }), saisies);
+    const proj = (x) => ({ vus: x.vus.map((v) => ({ ...v, feedback: badgeNeutre(v.feedback) })), comptes: x.comptes });
+    assert.deepEqual(proj(nouveau), proj(ancien), `${JSON.stringify(carte)} ${JSON.stringify(saisies)}`);
+  }
+
+  test('cartes réelles du dépôt × saisies dérivées × seconde chance on/off', () => {
+    let n = 0;
+    for (const brute of toutesLesCartesDuDepot()) {
+      for (const carte of [brute, { ...brute, seconde_chance: !brute.seconde_chance }]) {
+        for (const s of saisiesDeCarte(carte)) { comparer(carte, [s, carte.reponse]); n += 1; }
+      }
+    }
+    assert.ok(n > 2000, `${n} parcours comparés`);
+  });
+
+  test('frontières d\'exception : getter de saisie qui lève (1re et 2e tentative), évaluation qui plante, carte malformée', () => {
+    const base = { question: 'Q', profil_correction: 'orthographe', reponses_acceptees: ['garçon'], seconde_chance: true };
+    comparer(base, [{ leve: true }]);
+    comparer(base, ['garcon', { leve: true }]);
+    comparer({ question: 'Q', profil_correction: 'exact', reponses_acceptees: ['a', { toString: null }] }, ['b']);
+    comparer({ question: 'Q', profil_correction: 'exact', reponses_acceptees: 'Paris' }, ['Paris']);
+    comparer({ question: 'Q', profil_correction: 'numerique', reponses_acceptees: ['8 kg'], unite: 'cm' }, ['8 cm']);
+  });
+});
+
 describe('API du moteur v1 (CDC §4.2)', () => {
   const soumettre = (carte, ...saisies) => {
     let etat = moteur.demarrer(moteur.preparerCarte(carte));
@@ -174,6 +272,16 @@ describe('API du moteur v1 (CDC §4.2)', () => {
     const [r1, r2] = soumettre({ question: 'Q', profil_correction: 'orthographe', reponses_acceptees: ['garçon'], seconde_chance: true }, 'garcon', 'garcon');
     assert.deepEqual([r1.seconde_chance_ouverte, r1.verrouillee, r1.carte_terminee, r1.compte], [true, false, false, true]);
     assert.deepEqual([r2.tentative, r2.compte, r2.seconde_chance_ouverte, r2.carte_terminee], [2, false, false, true]);
+  });
+
+  test('echec(etat) : issue « erreur » décidée par le moteur (non comptée, verrouillée, terminée, badge masqué), tentative suivante', () => {
+    const c = moteur.preparerCarte({ question: 'Q', profil_correction: 'orthographe', reponses_acceptees: ['garçon'], seconde_chance: true });
+    const r1 = moteur.echec(moteur.demarrer(c)).resultat;
+    assert.deepEqual([r1.issue, r1.reussite, r1.compte, r1.verrouillee, r1.carte_terminee, r1.afficher_badge_relecture, r1.tentative, r1.gabarit, r1.verdict.icone],
+      ['erreur', false, false, true, true, false, 1, 'erreur', 'alerte']);
+    const apresPresque = moteur.soumettre(moteur.demarrer(c), 'garcon').etat;
+    assert.equal(moteur.echec(apresPresque).resultat.tentative, 2);
+    assert.throws(() => moteur.echec(moteur.echec(moteur.demarrer(c)).etat), /terminée/);
   });
 
   test('soumettre sur une carte terminée : refus explicite', () => {

@@ -114,7 +114,7 @@
   const VERSION_MOTEUR_RE = /^v[1-9][0-9]*$/;
   const SHA256_HEX_RE = /^[0-9a-f]{64}$/;
   const moteursEnCours = new Map(); // cle -> promesse
-  const moteursChargesSousSri = new Set(); // cles chargées par ce chargeur
+  const moteursChargesSousSri = new Set(); // cles dont la balise SRI a été chargée par ce chargeur
   let registreMoteurs = null;
 
   function chargerRegistreMoteurs() {
@@ -155,21 +155,33 @@
     const cle = `${version}:${sha256}`;
     if (!moteursEnCours.has(cle)) {
       const r = registreGlobal();
-      if (r && Object.prototype.hasOwnProperty.call(r, version)) {
+      if (r && Object.prototype.hasOwnProperty.call(r, version) && !moteursChargesSousSri.has(cle)) {
         throw new Error(`fonda: moteur ${version} déjà présent sans avoir été chargé sous cette SRI`);
       }
+      // La promesse mise en cache couvre TOUT le chargement : balise SRI, puis export
+      // présent dans le registre. Tout échec purge la clé (une nouvelle demande
+      // recharge réellement, nouvelle balise).
       const promesse = insererScript(ligne[0].fichier, { integrite: ligne[0].sri })
-        .then(() => { moteursChargesSousSri.add(cle); })
-        .catch((err) => { moteursEnCours.delete(cle); throw err; });
+        .then(() => {
+          moteursChargesSousSri.add(cle);
+          const reg = registreGlobal();
+          const fabrique = reg && Object.prototype.hasOwnProperty.call(reg, version) ? reg[version] : null;
+          if (!fabrique || typeof fabrique.creerMoteur !== 'function') throw new Error(`fonda: moteur ${version} chargé sans exposer FondaMoteurs.${version}`);
+          return fabrique;
+        })
+        .catch((err) => { if (moteursEnCours.get(cle) === promesse) moteursEnCours.delete(cle); throw err; });
       moteursEnCours.set(cle, promesse);
     }
-    await moteursEnCours.get(cle);
-    if (!moteursChargesSousSri.has(cle)) throw new Error('fonda: moteur non chargé par ce chargeur');
-    const r = registreGlobal();
-    const fabrique = r && Object.prototype.hasOwnProperty.call(r, version) ? r[version] : null;
-    if (!fabrique || typeof fabrique.creerMoteur !== 'function') throw new Error(`fonda: moteur ${version} absent du registre`);
-    const instance = fabrique.creerMoteur();
-    if (!instance || instance.version !== version) throw new Error(`fonda: instance.version ≠ ${version}`);
+    const enCours = moteursEnCours.get(cle);
+    const fabrique = await enCours;
+    let instance;
+    try {
+      instance = fabrique.creerMoteur();
+      if (!instance || instance.version !== version) throw new Error(`fonda: instance.version ≠ ${version}`);
+    } catch (err) {
+      if (moteursEnCours.get(cle) === enCours) moteursEnCours.delete(cle);
+      throw err;
+    }
     return instance;
   }
 
