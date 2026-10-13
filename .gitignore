@@ -1,2 +1,5 @@
 notice-box.md
 .DS_Store
+
+# Copies n8n remplies avec des valeurs réelles (ids, adresses) : jamais versionnées
+n8n/**/*.local.json
