@@ -3,7 +3,7 @@
 // ni n8n. Il copie un lot RELU dans fonda/data/lots/<set_id>.json et ajoute son entrée
 // à fonda/data/catalogue-fonda.json, SEULEMENT si :
 //   - le lot respecte lot-fonda/v1 (liste blanche : aucun secret ni coordonnée),
-//     porte revue_carte_par_carte: true et repasse les garde-fous du correcteur ;
+//     porte revue_carte_par_carte: true et repasse les garde-fous du MOTEUR du lot ;
 //   - une ATTESTATION accompagne le lot, d'un type ACCEPTÉ, dont l'empreinte relue est
 //     celle du fichier publié et dont la sélection correspond aux cartes du fichier ;
 //   - le set_id n'est pas déjà publié et son fichier n'existe pas (anti-écrasement) ;
@@ -24,7 +24,7 @@
 const fs = require('fs');
 const path = require('path');
 const C = require('../engine/catalogue.js');
-const { verifierContreCorrecteur, verifierFormesAcceptees } = require('./generer-lot-fonda.js');
+const { dernierMoteur, chargerMoteurNode } = require('./moteurs.js');
 
 const DATA = path.join(__dirname, '..', 'data');
 const TYPES_ACCEPTES_PAR_DEFAUT = Object.freeze([]);
@@ -33,15 +33,21 @@ const TYPES_ACCEPTES_PAR_DEFAUT = Object.freeze([]);
  * Pure (hors SHA-256 injecté). Ne lit ni n'écrit aucun fichier.
  * @returns {Promise<{ok:true, entree, catalogue, fichier}|{ok:false, erreurs:string[]}>}
  */
-async function preparerPublication({ lot, attestation, catalogue, referentiel, fichierExiste = () => false, typesAcceptes = TYPES_ACCEPTES_PAR_DEFAUT, sha256Hex }) {
+// `moteur` ({ version, sha256 }) : moteur sous lequel le lot a été relu ; par défaut
+// la dernière version enregistrée. (Étape 3 : il viendra de l'instantané signé.)
+async function preparerPublication({ lot, attestation, catalogue, referentiel, fichierExiste = () => false, typesAcceptes = TYPES_ACCEPTES_PAR_DEFAUT, sha256Hex, moteur = dernierMoteur() }) {
   const erreurs = [];
   const v = C.validerLot(lot);
   if (!v.valide) return { ok: false, erreurs: v.erreurs.map((e) => `lot : ${e}`) };
   if (lot.revue_carte_par_carte !== true) erreurs.push('lot non relu (revue_carte_par_carte ≠ true)');
+  let m;
+  try { m = chargerMoteurNode(moteur.version, moteur.sha256); } catch (e) { return { ok: false, erreurs: [`moteur : ${e.message}`] }; }
   lot.cartes.forEach((c) => {
-    const r1 = verifierContreCorrecteur(c);
+    const v0 = m.valider(c);
+    if (!v0.valide) erreurs.push(`${c.item_id} : carte refusée par le moteur ${moteur.version} (${v0.raisons.join(', ')})`);
+    const r1 = m.outils.verifierReponseOr(c);
     if (!r1.ok) erreurs.push(`${c.item_id} : ${r1.raison}`);
-    const r2 = verifierFormesAcceptees(c);
+    const r2 = m.outils.verifierFormesAcceptees(c);
     if (!r2.ok) erreurs.push(`${c.item_id} : ${r2.raison}`);
   });
 
@@ -62,7 +68,10 @@ async function preparerPublication({ lot, attestation, catalogue, referentiel, f
   if (!notion) erreurs.push('notion_id absent du référentiel');
   if (erreurs.length) return { ok: false, erreurs };
 
-  const relecteurs = (attestation.relecteur && attestation.relecteur.id) ? attestation.relecteur : null;
+  // Badge (CDC §12) : tiers ayant confirmé -> « relue_et_validee ». Les formes
+  // « relue_par » (auto-confirmation, sans nom) viendront de la charge signée (étape 3).
+  const r = attestation.relecteur;
+  const relecteur = (r && r.id && r.nom_affiche) ? { forme: 'relue_et_validee', nom_affiche: r.nom_affiche, id: r.id } : null;
   const entree = {
     set_id: lot.set_id,
     notion_id: lot.notion_id,
@@ -70,7 +79,8 @@ async function preparerPublication({ lot, attestation, catalogue, referentiel, f
     fichier,
     item_ids: itemIds,
     empreinte,
-    relecteur: relecteurs,
+    moteur: { version: moteur.version, sha256: moteur.sha256 },
+    relecteur,
     attestation: { ...attestation, empreinte_attestee: empreinte },
   };
   const nouveau = { ...catalogue, lots: [...catalogue.lots, entree] };

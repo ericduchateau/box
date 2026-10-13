@@ -15,9 +15,14 @@
         "it06"
       ],
       "empreinte": "sha256:936b66da0abaa10b823c05bb13e6649754a9f4ba654986cc296c5cc8f087f6f1",
+      "moteur": {
+        "version": "v1",
+        "sha256": "7a73aec9095829515ac2895107623876f59aed843b21fdae07183576d43a1add"
+      },
       "relecteur": {
-        "id": "eric",
-        "nom_affiche": "Éric Duchateau"
+        "forme": "relue_par",
+        "nom_affiche": "Éric Duchateau",
+        "id": "eric"
       },
       "attestation": {
         "type": "manuelle-historique",
@@ -54,9 +59,14 @@
         "it06"
       ],
       "empreinte": "sha256:3e715f0e44d520de9ee7f01c218cf667551b8a7fff650c357b1f2bb88561e25d",
+      "moteur": {
+        "version": "v1",
+        "sha256": "7a73aec9095829515ac2895107623876f59aed843b21fdae07183576d43a1add"
+      },
       "relecteur": {
-        "id": "eric",
-        "nom_affiche": "Éric Duchateau"
+        "forme": "relue_par",
+        "nom_affiche": "Éric Duchateau",
+        "id": "eric"
       },
       "attestation": {
         "type": "manuelle-historique",
@@ -93,9 +103,14 @@
         "it06"
       ],
       "empreinte": "sha256:efacb0c7953389c1cfdad3044c2767240a54b31f014f0371fc94d3a6db494d98",
+      "moteur": {
+        "version": "v1",
+        "sha256": "7a73aec9095829515ac2895107623876f59aed843b21fdae07183576d43a1add"
+      },
       "relecteur": {
-        "id": "eric",
-        "nom_affiche": "Éric Duchateau"
+        "forme": "relue_par",
+        "nom_affiche": "Éric Duchateau",
+        "id": "eric"
       },
       "attestation": {
         "type": "manuelle-historique",
@@ -132,9 +147,14 @@
         "it06"
       ],
       "empreinte": "sha256:ac405cf81afba028839eee3aa28bbf3151c6244479c0ddd6d690511c7629f588",
+      "moteur": {
+        "version": "v1",
+        "sha256": "7a73aec9095829515ac2895107623876f59aed843b21fdae07183576d43a1add"
+      },
       "relecteur": {
-        "id": "eric",
-        "nom_affiche": "Éric Duchateau"
+        "forme": "relue_par",
+        "nom_affiche": "Éric Duchateau",
+        "id": "eric"
       },
       "attestation": {
         "type": "manuelle-historique",
@@ -171,9 +191,14 @@
         "it06"
       ],
       "empreinte": "sha256:53071653f943c8ce20a5a2f0a1da65eb73782a9c71b9db4517b7bf922f42d248",
+      "moteur": {
+        "version": "v1",
+        "sha256": "7a73aec9095829515ac2895107623876f59aed843b21fdae07183576d43a1add"
+      },
       "relecteur": {
-        "id": "eric",
-        "nom_affiche": "Éric Duchateau"
+        "forme": "relue_par",
+        "nom_affiche": "Éric Duchateau",
+        "id": "eric"
       },
       "attestation": {
         "type": "manuelle-historique",
@@ -210,9 +235,14 @@
         "it06"
       ],
       "empreinte": "sha256:184b53a0b80d7931ec19a8ee278f4a7092347ff5f1c7fbc262eef0e986383c10",
+      "moteur": {
+        "version": "v1",
+        "sha256": "7a73aec9095829515ac2895107623876f59aed843b21fdae07183576d43a1add"
+      },
       "relecteur": {
-        "id": "eric",
-        "nom_affiche": "Éric Duchateau"
+        "forme": "relue_par",
+        "nom_affiche": "Éric Duchateau",
+        "id": "eric"
       },
       "attestation": {
         "type": "manuelle-historique",
@@ -249,9 +279,14 @@
         "it06"
       ],
       "empreinte": "sha256:75872849d37d3610cd556f0dfa2e952bf2e425bbb2ab5832b3aedd71d1d4b29b",
+      "moteur": {
+        "version": "v1",
+        "sha256": "7a73aec9095829515ac2895107623876f59aed843b21fdae07183576d43a1add"
+      },
       "relecteur": {
-        "id": "eric",
-        "nom_affiche": "Éric Duchateau"
+        "forme": "relue_par",
+        "nom_affiche": "Éric Duchateau",
+        "id": "eric"
       },
       "attestation": {
         "type": "manuelle-historique",
@@ -288,9 +323,14 @@
         "it06"
       ],
       "empreinte": "sha256:f5d0faddffd8cb28c88b0ddb0b04cde8d9747f0fc72a44b9608beb1fdb4e2e0d",
+      "moteur": {
+        "version": "v1",
+        "sha256": "7a73aec9095829515ac2895107623876f59aed843b21fdae07183576d43a1add"
+      },
       "relecteur": {
-        "id": "eric",
-        "nom_affiche": "Éric Duchateau"
+        "forme": "relue_par",
+        "nom_affiche": "Éric Duchateau",
+        "id": "eric"
       },
       "attestation": {
         "type": "manuelle-historique",

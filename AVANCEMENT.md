@@ -5,19 +5,24 @@
 ## Objectif
 Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correction par profil, mesure par groupe, fiches générées puis relues par un humain), sans casser BOX. Dépôt AAP CARDIE-SEPIA, échéance **21/10/2026**. Source de vérité : `docs/PRD-Box-FONDA.md` ; règles : `AGENTS.md`.
 
-## État actuel (design = `bc50157`, main intact `7ea4f28`)
-- **BOX prod** : 9 workflows n8n actifs, Google Form + Tally opérationnels, relecture carte par carte (`/box-select`), front `https://ericduchateau.github.io/box/` (branche `main`).
-- **FONDA sur `design`** (PR #1 à #5 mergées) : thème sombre + switch ; correction par profil ; rendu réel (`lancerDefi` -> `carte-reponse-produite.js`) ; index `?fonda=1&page=entrainement` des **8 lots relus** (4 notions × nI/nF, 48 cartes) ; G4 = liste fermée `LOTS_PUBLIABLES` + `revue_carte_par_carte === true` vérifié au rendu ; pages top-alignées ; écran de suppression BOX inaccessible en FONDA.
-- Lots servis **depuis le dépôt** (`fonda/data/lots-fonda-calibration/`), pas depuis Drive. Rien de FONDA publié au catalogue.
-- Tests : `node --test` 408/408, 1 skip (test `non-regression` index.html-vs-design en quarantaine). Smoke-test navigateur réel obligatoire avant chaque merge.
+## État actuel (design = `a418881`, main intact `7ea4f28`)
+- **BOX prod** : 9 workflows n8n actifs, Google Form + Tally, relecture carte par carte (`/box-select`), front `https://ericduchateau.github.io/box/` (`main`).
+- **FONDA sur `design`** : thème sombre, correction par profil, index `?fonda=1&page=entrainement` ; **chaîne séparée (bloc 1, PR #6/#7 mergées)** : `catalogue-fonda.json` + `fonda/data/lots/` (8 lots relus, empreintes figées `HISTORIQUES_FIGES`), CI `tests (node --test)` obligatoire sur `design`/`main`.
+- **CDC relecture v8.1** : `docs/CDC-fonda-relecture.md` (branche `feat/box-fonda-relecture`, non mergée). Preuve C8 faite (SRI/CORS/export OK ; CSP en `<meta>`).
+
+## En cours — étape 2 : moteur de correction élève (M1), branche `feat/box-fonda-moteur`
+- `fonda/engine/moteur-correction-v1.js` : corps du correcteur recopié **octet pour octet** depuis a418881 (prouvé par test) + couche moteur (`creerMoteur()` : valider, preparerCarte, demarrer, soumettre → résultat pédagogique complet, outils). Registre global `FondaMoteurs` non réassignable. `correction.js` = façade Node.
+- `moteurs.json` (sha256 + SRI) ; `bootstrap.js::obtenirMoteur` (concordance registre avant tout chargement, cache par clé, SRI, origine connue, `instance.version`) ; entrée résolue avant chargement ; échec → « pas disponible ».
+- `carte-reponse-produite.js` purement présentationnel `{ moteur, carte, badge, onResultat }` ; E1–E4 appliqués, tests révisés marqués « RÉVISÉ Ex ».
+- **M1** : `moteur: { version: "v1", sha256 }` + badge `{ forme: "relue_par", nom_affiche: "Éric Duchateau", id: "eric" }` sur les 8 entrées historiques, empreintes inchangées ; figés dans `catalogue.js` (`MOTEUR_HISTORIQUE`, `BADGE_HISTORIQUE`).
+- Générateur / publication / CI valident avec **le moteur du lot** (`fonda/scripts/moteurs.js`, octets vérifiés puis exécutés). CI : `verifier-moteurs.js` (registre en ajout seul, moteurs jamais modifiés ; référence nulle → échec).
+- Preuves : `node --test` 578/578 (1 skip) ; différentiel ancien/nouveau (79 cartes × variantes × saisies, mutations détectées) ; navigateur réel (Chrome 155) : 8 lots parcourus, SRI altérée bloquée ; BOX clair 0 pixel de différence vs design.
+- Changement visible voulu (CDC §12) : badge « Fiche relue par Éric Duchateau » (avant : « Fiche relue et validée par … avant publication. »).
 
 ## Prochaines étapes
-1. **Chaîne FONDA séparée de BOX** (décision 2026-10-13, PRD §2 bis) — branche `feat/box-fonda-lane`.
-   - **Bloc 1 (dépôt seul) : fait, PR à relire** — contrats `catalogue-fonda/v1` / `lot-fonda/v1` / `empreinte-fonda/v1` (`fonda/engine/catalogue.js`) ; 8 lots relus migrés vers `fonda/data/lots/<set_id>.json` + `catalogue-fonda.json` (attestation `manuelle-historique` : relu par Éric le 11/10, modif. du 12/10 déclarée pour resolution-problemes) ; secrets retirés des 16 lots ; générateur sans secret, séquence libre ; front re-sourcé (empreinte vérifiée, compat anciens liens, `?v=2`) ; `publier-lot.js` (aucun type d'attestation accepté tant que le bloc 2 n'existe pas) ; test CI de la chaîne. Navigateur réel OK, BOX clair 0 pixel de différence, falsification en vol refusée.
-   - **Bloc 2 (n8n FONDA dédié)** : cahier des charges = points 1-4 et 6-9 de la critique Codex du 2026-10-13 (afficher profils/réponses acceptées en relecture ; clé liée à l'empreinte du contenu ; machine à états + idempotence ; attestation à source de confiance indépendante ; séparation fonctionnelle et dossiers autorisés côté serveur ; expiration/révocation de la clé ; tests XSS + en-têtes ; sélection strictement validée). À valider + relecture Codex AVANT tout workflow ; activation de `/fonda-select` sur feu vert.
-   - **Bloc 3 (prod, feu vert)** : retrait de l'orpheline `box_7e7tcooh` du catalogue BOX.
-2. `feat/box-delete-hardening` (PR BOX séparée, basse priorité) : durcissement `/box-delete`. Le catalogue de test d'octobre contient 47 vrais jeux : utiliser un catalogue de test dédié avant de tester.
-3. Moteur A + **dette `defi_id`** (PRD §16.7) ; collecte `/box-fonda-events` = chantier identifié, non câblé.
+1. PR `feat/box-fonda-moteur` → `design` (tests verts requis), merge par Éric. Puis **point d'étape avec Éric** avant étape 3 (canonique, clés, journal set_ids, signature/clôture, CODEOWNERS, workflows inactifs — activation sur go explicite).
+2. Bloc 3 (prod, feu vert) : retrait de l'orpheline `box_7e7tcooh` du catalogue BOX.
+3. `feat/box-delete-hardening` (basse priorité) ; Moteur A + dette `defi_id` ; collecte `/box-fonda-events`.
 
 ## 🔖 Check-list AVANT PUBLICATION / usage élève réel
 1. **Régénérer la clé API Anthropic** (a circulé en clair) : scripts locaux + nœud `Claude API` (HTTP, header en clair) de `BOX - Generation Flashcards` ; idéalement passer par un credential n8n.
@@ -37,13 +42,15 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - `main` = prod, jamais touché ; `design` = intégration ; une branche + une PR par chantier, merge par Éric.
 - n8n prod : aucun changement sans validation explicite ; workflows livrés en JSON à importer, testés inactifs.
 - Relecteur affiché **lu dans la donnée**, jamais déduit de la matière (badge = affirmation G4).
-- Publication FONDA mise en pause tant que l'affichage FONDA d'un lot publié n'est pas réglé.
+- Publication FONDA : aucun type d'attestation accepté tant que la relecture signée (étape 3) n'existe pas.
+- « Carte invalide = échec compté » conservé (filet défensif, n'y revenir que si observé).
 
 ## Pièges
 - Chrome met `css/style.css` en cache : désactiver le cache pour toute preuve visuelle ; figer `Math.random` (sinon deux captures du même état BOX diffèrent).
 - Scripts injectés dynamiquement : ordre garanti par `await` séquentiel, preuve de chargement = export sur `window`.
 - `fonda/data/calendar.json` a `semaines: []` : « Aucun défi programmé » est l'état réel, pas un bug.
 - Profil `orthographe` : ne jamais normaliser accents/pluriels (c'est ce qu'on mesure).
+- Moteur publié **immuable** : toute retouche de `moteur-correction-v1.js` change son SHA-256 → interdit après merge ; nouveau comportement = `v2` + nouveaux `set_id`.
 - Le classificateur auto-mode bloque les commandes contenant la clé API : Éric lance lui-même les générations.
 
-_Dernière mise à jour : 2026-10-12 — Claude Code (Opus 5.5)._
+_Dernière mise à jour : 2026-10-13 — Claude Code (Opus 5.5)._

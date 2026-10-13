@@ -76,7 +76,7 @@ const App = {
       attente.textContent = 'Le mode FONDA est indisponible pour le moment — réessaie plus tard.';
     };
     const s = document.createElement('script');
-    s.src = 'fonda/page/bootstrap.js?v=2';
+    s.src = 'fonda/page/bootstrap.js?v=3';
     s.onerror = indisponible;
     s.onload = indisponible; // sans effet si bootstrap.js a bien pris la main
     setTimeout(indisponible, App.DELAI_BOOTSTRAP_MS);

@@ -63,11 +63,15 @@ function creerElementFactice(tag) {
 // navigateur est celle qui s'exécute, avec ses vraies dépendances globales), puis
 // onload est appelé. `echecs` (Set de chemins) simule une erreur réseau -> onerror.
 // `journalScripts` reçoit chaque src injectée (ordre + absence de doublons).
+// SRI : si la balise porte `integrity`, l'empreinte des octets servis est réellement
+// comparée (comme un navigateur) — discordance -> onerror, script jamais exécuté.
+// `remplacements` (chemin -> code) sert un autre contenu que le fichier committé.
 const vm = require('vm');
 const fsTest = require('fs');
 const pathTest = require('path');
 
-function creerDocumentFactice({ echecs = new Set(), journalScripts = [] } = {}) {
+const cryptoTest = require('crypto');
+function creerDocumentFactice({ echecs = new Set(), journalScripts = [], remplacements = {} } = {}) {
   const body = creerElementFactice('body');
   const head = creerElementFactice('head');
   head.appendChild = (el) => {
@@ -77,7 +81,11 @@ function creerDocumentFactice({ echecs = new Set(), journalScripts = [] } = {}) 
       setTimeout(() => {
         const chemin = el.src.split('?')[0];
         if (echecs.has(chemin)) { if (typeof el.onerror === 'function') el.onerror(new Error('réseau')); return; }
-        const code = fsTest.readFileSync(pathTest.join(__dirname, '..', '..', chemin), 'utf8');
+        const code = remplacements[chemin] !== undefined ? remplacements[chemin] : fsTest.readFileSync(pathTest.join(__dirname, '..', '..', chemin), 'utf8');
+        if (el.integrity) {
+          const sri = 'sha256-' + cryptoTest.createHash('sha256').update(code).digest('base64');
+          if (el.integrity !== sri || el.crossOrigin !== 'anonymous') { if (typeof el.onerror === 'function') el.onerror(new Error('SRI')); return; }
+        }
         vm.runInNewContext(code, { self: global.window, window: global.window, document: global.document, console, crypto: globalThis.crypto, TextEncoder });
         if (typeof el.onload === 'function') el.onload();
       }, 0);
@@ -99,8 +107,10 @@ function creerDocumentFactice({ echecs = new Set(), journalScripts = [] } = {}) 
 // (fonda/data/lots-fonda-calibration/...), sert soit une fixture explicite (`lots`),
 // soit, par défaut, le VRAI fichier committé (cohérent pour les tests d'intégration
 // qui n'ont besoin d'aucune fixture synthétique) ; échoue sur le reste.
-function creerFetchFactice({ calendrier = CALENDRIER, lots = {}, catalogue = CATALOGUE } = {}) {
+const MOTEURS = require('../engine/moteurs.json');
+function creerFetchFactice({ calendrier = CALENDRIER, lots = {}, catalogue = CATALOGUE, moteurs = MOTEURS } = {}) {
   return async (chemin) => {
+    if (chemin === 'fonda/engine/moteurs.json') return { ok: true, json: async () => JSON.parse(JSON.stringify(moteurs)) };
     if (chemin.includes('classes.json')) return { ok: true, json: async () => CLASSES };
     if (chemin.includes('referentiel.json')) {
       return global.__referentielEnPanne ? { ok: false } : { ok: true, json: async () => REFERENTIEL };
@@ -120,8 +130,8 @@ function creerFetchFactice({ calendrier = CALENDRIER, lots = {}, catalogue = CAT
   };
 }
 
-async function demarrerBootstrap({ search, calendrier, lots, catalogue, journalFetch, echecs, journalScripts }) {
-  const doc = creerDocumentFactice({ echecs, journalScripts });
+async function demarrerBootstrap({ search, calendrier, lots, catalogue, journalFetch, echecs, journalScripts, remplacements }) {
+  const doc = creerDocumentFactice({ echecs, journalScripts, remplacements });
   // document.body.appendChild('fondaRoot' div) -> on l'intercepte pour pouvoir le relire
   const originalAppendChild = doc.body.appendChild.bind(doc.body);
   doc.body.appendChild = (el) => { doc._definirRoot(el); return originalAppendChild(el); };
@@ -334,23 +344,24 @@ describe('cheminLot — chemin issu de l\'entrée du catalogue, jamais d\'un par
   });
 });
 
-describe('adapterCarte — relecteur LU dans l\'entrée attestée du catalogue, jamais déduit', () => {
-  const carte = { question: 'Q ?', profil_correction: 'exact', reponses_acceptees: ['R'] };
-  test('lit entree.relecteur.nom_affiche', () => {
-    const { adapterCarte } = obtenirExportsBootstrap();
-    assert.equal(adapterCarte(carte, { relecteur: { id: 'eric', nom_affiche: 'Éric Duchateau' } }).relecteur, 'Éric Duchateau');
+const MOTEUR_V1 = require('../engine/moteur-correction-v1.js').creerMoteur();
+
+describe('badge élève — LU dans l\'entrée attestée du catalogue, jamais déduit (CDC §12)', () => {
+  test('renvoie entree.relecteur tel quel ({ forme, nom_affiche, id })', () => {
+    const { badgeDepuisEntree } = obtenirExportsBootstrap();
+    const r = { forme: 'relue_par', nom_affiche: 'Éric Duchateau', id: 'eric' };
+    assert.equal(badgeDepuisEntree({ relecteur: r }), r);
   });
   test('repli générique SANS nom si l\'entrée n\'a pas de relecteur exploitable — jamais déduit de la matière', () => {
-    const { adapterCarte } = obtenirExportsBootstrap();
+    const { badgeDepuisEntree } = obtenirExportsBootstrap();
     for (const e of [null, {}, { relecteur: {} }, { relecteur: { nom_affiche: ' ' } }, { relecteur: { nom_affiche: { toString: null } } }, { matiere: 'Mathématiques' }]) {
-      assert.equal(adapterCarte(carte, e).relecteur, 'un professeur');
+      assert.deepEqual({ ...badgeDepuisEntree(e) }, { forme: 'relue_par', nom_affiche: 'un professeur', id: null });
     }
   });
-  test('transporte question/profil_correction/reponses_acceptees/unite tels quels', () => {
-    const { adapterCarte } = obtenirExportsBootstrap();
-    const c = adapterCarte({ question: 'Combien ?', profil_correction: 'numerique', reponses_acceptees: ['8 cm', '8'], unite: 'cm', numero: 1, contexte: 'x' }, CATALOGUE.lots[0]);
+  test('preparerCarte (moteur) transporte question/profil/reponses_acceptees/unite, jamais contexte', () => {
+    const c = MOTEUR_V1.preparerCarte({ question: 'Combien ?', profil_correction: 'numerique', reponses_acceptees: ['8 cm', '8'], unite: 'cm', numero: 1, contexte: 'x' });
     assert.equal(c.question, 'Combien ?');
-    assert.deepEqual(c.reponses_acceptees, ['8 cm', '8']);
+    assert.deepEqual([...c.reponses_acceptees], ['8 cm', '8']);
     assert.equal(c.unite, 'cm');
     assert.equal('contexte' in c, false, 'contexte jamais transmis (ni affiché ni noté)');
   });
@@ -490,10 +501,10 @@ describe('G4 — seuls les lots du catalogue publié, intacts et attestés, sont
     assert.match(texteDe(root), /Impossible de charger ce défi/);
   });
 
-  test('page=carte : seuls catalogue + lot sont lus (ni calendrier, ni classes, ni référentiel)', async () => {
+  test('page=carte : seuls catalogue + registre des moteurs + lot sont lus (ni calendrier, ni classes, ni référentiel)', async () => {
     const journal = [];
     await demarrerBootstrap({ search: `?fonda=1&page=carte&set=${SET_CONSIGNE_NI}`, journalFetch: journal });
-    assert.deepEqual(journal, ['fonda/data/catalogue-fonda.json', CHEMIN_CONSIGNE_NI]);
+    assert.deepEqual(journal, ['fonda/data/catalogue-fonda.json', 'fonda/engine/moteurs.json', CHEMIN_CONSIGNE_NI]);
   });
 });
 
@@ -501,17 +512,17 @@ describe('G4 — seuls les lots du catalogue publié, intacts et attestés, sont
 
 describe('chargement des dépendances FONDA en conditions navigateur (aucun global pré-injecté)', () => {
   const ORDRE = [
-    'fonda/engine/catalogue.js?v=2',
-    'fonda/engine/evenements.js?v=2',
-    'fonda/engine/liens.js?v=2',
-    'fonda/engine/correction.js?v=2',
-    'fonda/engine/carte-reponse-produite.js?v=2',
+    'fonda/engine/catalogue.js?v=3',
+    'fonda/engine/evenements.js?v=3',
+    'fonda/engine/liens.js?v=3',
+    'fonda/engine/carte-reponse-produite.js?v=3',
   ];
+  const MOTEUR = 'fonda/engine/moteur-correction-v1.js';
 
   test('lien de défi (calendrier) : graphe complet chargé dans l\'ordre, une seule fois, et le défi se lance', async () => {
     const journalScripts = [];
     const root = await demarrerBootstrap({ search: '?fonda=1&defi=defi_2026-w41_601_resolution-problemes', calendrier: CALENDRIER, journalScripts });
-    assert.deepEqual(journalScripts, ORDRE);
+    assert.deepEqual(journalScripts, [...ORDRE, MOTEUR], 'moteur chargé en dernier, après résolution de l\'entrée');
     assert.match(texteDe(root), /classe 601/);
     assert.match(texteDe(root), /Carte 1 \/ 6/);
   });
@@ -530,6 +541,31 @@ describe('chargement des dépendances FONDA en conditions navigateur (aucun glob
       assert.match(texteDe(root), /Impossible de charger ce défi/);
     });
   }
+
+  test('échec réseau du moteur : « pas disponible » (CDC §4.3), aucune carte', async () => {
+    const root = await demarrerBootstrap({ search: `?fonda=1&page=carte&set=${SET_CONSIGNE_NI}`, echecs: new Set([MOTEUR]) });
+    assert.match(texteDe(root), /pas disponible/);
+    assert.doesNotMatch(texteDe(root), /Carte 1/);
+  });
+
+  test('moteur servi altéré (SRI discordante) : jamais exécuté, « pas disponible »', async () => {
+    const code = fsTest.readFileSync(pathTest.join(__dirname, '../..', MOTEUR), 'utf8').replace("issue === 'presque' && carte.seconde_chance", "issue !== 'juste' && carte.seconde_chance");
+    const root = await demarrerBootstrap({ search: `?fonda=1&page=carte&set=${SET_CONSIGNE_NI}`, remplacements: { [MOTEUR]: code } });
+    assert.match(texteDe(root), /pas disponible/);
+    assert.equal(global.window.FondaMoteurs, undefined, 'le code altéré ne doit jamais s\'exécuter');
+  });
+
+  test('entrée sans moteur ou moteur discordant du registre : « pas disponible », moteur jamais chargé', async () => {
+    const autre = '0'.repeat(64);
+    for (const modifier of [(e) => { e.moteur = { version: 'v1', sha256: autre }; }, (e) => { e.moteur = { version: 'v9', sha256: e.moteur.sha256 }; }]) {
+      const cat = JSON.parse(JSON.stringify(CATALOGUE));
+      modifier(cat.lots.find((e) => e.set_id === SET_CONSIGNE_NI));
+      const journalScripts = [];
+      const root = await demarrerBootstrap({ search: `?fonda=1&page=carte&set=${SET_CONSIGNE_NI}`, catalogue: cat, journalScripts });
+      assert.doesNotMatch(texteDe(root), /Carte 1/);
+      assert.equal(journalScripts.includes(MOTEUR), false);
+    }
+  });
 
   test('échec réseau d\'une dépendance sur la page niveau : message visible (catch de demarrer)', async () => {
     const root = await demarrerBootstrap({ search: '?fonda=1&page=niveau', echecs: new Set(['fonda/engine/liens.js']) });
@@ -609,19 +645,15 @@ describe('attente bornée et échec du bootstrap (relecture Codex PR #2, #5)', (
 
 });
 
-describe('adapterCarte — arrondi et seconde_chance transmis (relecture Codex PR #2, #6)', () => {
-  test('arrondi: 2 conservé -> "0,33" juste pour un attendu 1/3 après adaptation', () => {
-    const { adapterCarte } = obtenirExportsBootstrap();
-    const { evaluerReponse } = require('../engine/correction.js');
-    const c = adapterCarte({ question: 'Q', profil_correction: 'numerique', reponses_acceptees: ['1/3'], arrondi: 2 }, { relecteur: 'R' });
+describe('preparerCarte — arrondi et seconde_chance transmis (relecture Codex PR #2, #6)', () => {
+  test('arrondi: 2 conservé -> "0,33" juste pour un attendu 1/3 après préparation', () => {
+    const c = MOTEUR_V1.preparerCarte({ question: 'Q', profil_correction: 'numerique', reponses_acceptees: ['1/3'], arrondi: 2 });
     assert.equal(c.arrondi, 2);
-    const { statut } = evaluerReponse({ profil: c.profil_correction, reponseDonnee: '0,33', reponsesAcceptees: c.reponses_acceptees, unite: c.unite ?? null, arrondi: c.arrondi ?? null });
-    assert.equal(statut, 'juste');
+    assert.equal(MOTEUR_V1.soumettre(MOTEUR_V1.demarrer(c), '0,33').resultat.issue, 'juste');
   });
 
   test('seconde_chance conservée', () => {
-    const { adapterCarte } = obtenirExportsBootstrap();
-    const c = adapterCarte({ question: 'Q', profil_correction: 'sens', reponses_acceptees: ['a'], seconde_chance: true }, {});
+    const c = MOTEUR_V1.preparerCarte({ question: 'Q', profil_correction: 'sens', reponses_acceptees: ['a'], seconde_chance: true });
     assert.equal(c.seconde_chance, true);
   });
 });
@@ -632,7 +664,7 @@ describe('lot validé EN ENTIER avant affichage (relecture Codex PR #2, #9)', ()
 
   test('les lots publiés sont bien formés', () => {
     const { cheminLot, lotEstBienForme } = obtenirExportsBootstrap();
-    for (const e of CATALOGUE.lots) assert.ok(lotEstBienForme(require('../../' + cheminLot(e))), e.set_id);
+    for (const e of CATALOGUE.lots) assert.ok(lotEstBienForme(require('../../' + cheminLot(e)), MOTEUR_V1), e.set_id);
   });
 
   const casMalformes = [
@@ -714,28 +746,30 @@ describe('réponses non textuelles (relecture Codex PR #2 v2, #4)', () => {
     test(`${libelle} : lot refusé avant la 1re carte`, () => {
       const { lotEstBienForme } = obtenirExportsBootstrap();
       const lot = { ...VRAI, cartes: [VRAI.cartes[0], { ...VRAI.cartes[1], profil_correction: 'exact', ...champs }] };
-      assert.equal(lotEstBienForme(lot), false);
+      assert.equal(lotEstBienForme(lot, MOTEUR_V1), false);
     });
   }
 
   test('réponse nombre fini acceptée par la validation', () => {
     const { lotEstBienForme } = obtenirExportsBootstrap();
-    assert.equal(lotEstBienForme({ cartes: [{ question: 'Q', profil_correction: 'numerique', reponses_acceptees: [2] }] }), true);
+    assert.equal(lotEstBienForme({ cartes: [{ question: 'Q', profil_correction: 'numerique', reponses_acceptees: [2] }] }, MOTEUR_V1), true);
   });
 
+  // RÉVISÉ E4 : l'issue « erreur » arrive par onResultat (carte_terminee) au lieu
+  // d'onErreur. Sabotage : une donnée qui a passé la validation et l'empreinte puis
+  // fait planter l'évaluation au clic (carte 2 altérée en mémoire après le contrôle).
   test('au clic : si la correction plante malgré tout, message visible + « Carte suivante » révélé', async () => {
+    const lot = JSON.parse(JSON.stringify(VRAI));
     const root = await demarrerBootstrap({
       search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI',
-      lots: { [CHEMIN]: VRAI },
+      lots: { [CHEMIN]: lot },
     });
-    // Sabote la correction APRÈS le montage (simule une donnée qui aurait passé la
-    // validation mais fait planter evaluerReponse au clic).
-    const carteHote = root.children.find((c) => c && c.classList && (c.children || []).some((x) => x.className === 'fonda-question'));
-    const valider = trouverBoutonParTexte(root, 'Valider');
+    lot.cartes[1].reponses_acceptees.push({ toString: null });
+    trouverBoutonParTexte(root, 'Valider').__click();
+    trouverBoutonParTexte(root, 'Carte suivante →').__click();
     const suivant = trouverBoutonParTexte(root, 'Carte suivante →');
-    const input = carteHote.children.find((x) => x.className === 'fonda-reponse-input');
-    Object.defineProperty(input, 'value', { get() { throw new Error('boom'); } });
-    assert.doesNotThrow(() => valider.__click());
+    assert.equal(suivant.style.display, 'none');
+    assert.doesNotThrow(() => trouverBoutonParTexte(root, 'Valider').__click());
     assert.match(texteDe(root), /Impossible de corriger cette réponse/);
     assert.equal(suivant.style.display, '', '« Carte suivante » doit permettre d\'avancer');
   });
@@ -745,8 +779,8 @@ describe('validation du lot — compléments (relecture Codex ciblée)', () => {
   test('arrondi hors bornes du correcteur (11) : lot refusé ; 10 accepté', () => {
     const { lotEstBienForme } = obtenirExportsBootstrap();
     const avec = (a) => ({ ...LOT_CONSIGNE_NI, cartes: [{ ...LOT_CONSIGNE_NI.cartes[0], arrondi: a }] });
-    assert.equal(lotEstBienForme(avec(11)), false);
-    assert.equal(lotEstBienForme(avec(10)), true);
+    assert.equal(lotEstBienForme(avec(11), MOTEUR_V1), false);
+    assert.equal(lotEstBienForme(avec(10), MOTEUR_V1), true);
   });
 });
 
@@ -822,7 +856,7 @@ describe('?page=entrainement — index des lots publiés', () => {
     const journalScripts = [];
     await demarrerBootstrap({ search: '?fonda=1&page=entrainement', journalFetch: journal, journalScripts });
     assert.deepEqual(journal, ['fonda/data/catalogue-fonda.json', 'fonda/data/referentiel.json']);
-    assert.deepEqual(journalScripts, ['fonda/engine/catalogue.js?v=2']);
+    assert.deepEqual(journalScripts, ['fonda/engine/catalogue.js?v=3']);
   });
 
   test('référentiel indisponible : la liste s\'affiche quand même (identifiants)', async () => {
@@ -884,5 +918,129 @@ describe('invariant « listé = affichable » : chaque entrée de l\'index passe
       assert.match(texteDe(root), new RegExp(`Carte 1 / ${entree.item_ids.length}`), `lien mort : ${search}`);
       assert.doesNotMatch(texteDe(root), /pas disponible/);
     }
+  });
+});
+
+// --- Chargeur de moteurs versionnés (CDC relecture §4.1) --------------------------
+// v2 = FIXTURE DE TEST (jamais commitée comme moteur) : le code v1 réenregistré sous
+// « v2 » avec un verdict différent, servi via `remplacements` + un registre de test.
+
+describe('obtenirMoteur — version + empreinte + SRI, registre non réassignable (CDC §4.1)', () => {
+  const V1 = MOTEURS[0];
+  const CODE_V1 = fsTest.readFileSync(pathTest.join(__dirname, '../..', V1.fichier), 'utf8');
+  const CODE_V2 = CODE_V1.replace("var VERSION = 'v1';", "var VERSION = 'v2';").replace("juste: function () { return 'Bonne réponse'; }", "juste: function () { return 'Bravo (v2)'; }");
+  const digest = (code) => cryptoTest.createHash('sha256').update(code).digest();
+  const V2 = { version: 'v2', fichier: 'fonda/engine/moteur-correction-v2.js', sha256: digest(CODE_V2).toString('hex'), sri: 'sha256-' + digest(CODE_V2).toString('base64') };
+  const CARTE = { question: 'Q', profil_correction: 'exact', reponses_acceptees: ['a'] };
+  const verdict = (m) => m.soumettre(m.demarrer(m.preparerCarte(CARTE)), 'a').resultat.verdict.texte;
+
+  function preparer({ echecs, moteurs = [V1, V2] } = {}) {
+    const journalScripts = [];
+    global.document = creerDocumentFactice({ journalScripts, echecs, remplacements: { [V2.fichier]: CODE_V2 } });
+    global.window = { location: { search: '?page=carte' } };
+    global.fetch = creerFetchFactice({ moteurs });
+    delete require.cache[require.resolve('./bootstrap.js')];
+    const { obtenirMoteur, sriDepuisHex } = require('./bootstrap.js');
+    return { obtenirMoteur, sriDepuisHex, journalScripts };
+  }
+
+  test('SRI calculée = colonne sri du registre (même empreinte, base64)', () => {
+    const { sriDepuisHex } = preparer();
+    assert.equal(sriDepuisHex(V1.sha256), V1.sri);
+    assert.equal(sriDepuisHex(V2.sha256), V2.sri);
+  });
+
+  test('séquence v1 -> v2 -> v1 : comportements différents, une balise par version', async () => {
+    const { obtenirMoteur, journalScripts } = preparer();
+    const a = await obtenirMoteur('v1', V1.sha256);
+    const b = await obtenirMoteur('v2', V2.sha256);
+    const c = await obtenirMoteur('v1', V1.sha256);
+    assert.deepEqual([a.version, b.version, c.version], ['v1', 'v2', 'v1']);
+    assert.deepEqual([verdict(a), verdict(b), verdict(c)], ['Bonne réponse', 'Bravo (v2)', 'Bonne réponse']);
+    assert.deepEqual(journalScripts, [V1.fichier, V2.fichier]);
+    assert.notEqual(a, c, 'deux instances distinctes issues d\'une fabrique chargée une fois');
+  });
+
+  test('deux chargements concurrents de même clé : une seule balise', async () => {
+    const { obtenirMoteur, journalScripts } = preparer();
+    const [a, b] = await Promise.all([obtenirMoteur('v1', V1.sha256), obtenirMoteur('v1', V1.sha256)]);
+    assert.equal(a.version, 'v1');
+    assert.equal(b.version, 'v1');
+    assert.deepEqual(journalScripts, [V1.fichier]);
+  });
+
+  test('deux premières demandes simultanées d\'empreintes différentes : l\'une refusée, aucune balise pour elle', async () => {
+    const { obtenirMoteur, journalScripts } = preparer();
+    const [ok, ko] = await Promise.allSettled([obtenirMoteur('v1', V1.sha256), obtenirMoteur('v1', V2.sha256)]);
+    assert.equal(ok.status, 'fulfilled');
+    assert.equal(ko.status, 'rejected');
+    assert.match(ko.reason.message, /empreinte discordante/);
+    assert.deepEqual(journalScripts, [V1.fichier]);
+  });
+
+  test('version inconnue du registre ou paramètres invalides : refus, aucune balise', async () => {
+    const { obtenirMoteur, journalScripts } = preparer({ moteurs: [V1] });
+    await assert.rejects(obtenirMoteur('v2', V2.sha256), /inconnu/);
+    await assert.rejects(obtenirMoteur('../x', V1.sha256), /invalide/);
+    await assert.rejects(obtenirMoteur('v1', 'sha256:' + V1.sha256), /invalide/);
+    assert.deepEqual(journalScripts, []);
+  });
+
+  test('réassignation du registre entier sans effet (affectation et defineProperty)', async () => {
+    const { obtenirMoteur } = preparer();
+    await obtenirMoteur('v1', V1.sha256);
+    const avant = global.window.FondaMoteurs;
+    const factice = { v1: { version: 'v1', creerMoteur: () => ({ version: 'v1', pirate: true }) } };
+    try { global.window.FondaMoteurs = factice; } catch { /* mode strict : TypeError, attendu */ }
+    assert.throws(() => Object.defineProperty(global.window, 'FondaMoteurs', { value: factice }), TypeError);
+    assert.equal(global.window.FondaMoteurs, avant);
+    const m = await obtenirMoteur('v1', V1.sha256);
+    assert.equal(m.pirate, undefined);
+    assert.equal(verdict(m), 'Bonne réponse');
+  });
+
+  test('écrasement d\'une version déjà enregistrée sans effet', async () => {
+    const { obtenirMoteur } = preparer();
+    await obtenirMoteur('v1', V1.sha256);
+    const R = global.window.FondaMoteurs;
+    const pirate = { version: 'v1', creerMoteur: () => ({ version: 'v1', pirate: true }) };
+    try { R.v1 = pirate; } catch { /* attendu */ }
+    assert.throws(() => Object.defineProperty(R, 'v1', { value: pirate }), TypeError);
+    assert.equal((await obtenirMoteur('v1', V1.sha256)).pirate, undefined);
+    // Le fichier v1 réexécuté (autre balise) ne remplace pas non plus l'entrée existante.
+    vm.runInNewContext(CODE_V2.replace("var VERSION = 'v2';", "var VERSION = 'v1';"), { self: global.window });
+    assert.equal(verdict(await obtenirMoteur('v1', V1.sha256)), 'Bonne réponse');
+  });
+
+  test('registre préexistant incompatible (réassignable) : refus', async () => {
+    const { obtenirMoteur } = preparer();
+    global.window.FondaMoteurs = { v1: { version: 'v1', creerMoteur: () => ({ version: 'v1' }) } };
+    await assert.rejects(obtenirMoteur('v1', V1.sha256));
+  });
+
+  test('version présente dans le registre sans avoir été chargée par ce chargeur : refus, aucune balise', async () => {
+    const { obtenirMoteur, journalScripts } = preparer();
+    vm.runInNewContext(CODE_V1, { self: global.window }); // enregistrée hors chargeur
+    await assert.rejects(obtenirMoteur('v1', V1.sha256), /sans avoir été chargé/);
+    assert.deepEqual(journalScripts, []);
+  });
+
+  test('échec de chargement puis nouvelle tentative : nouvelle balise, succès', async () => {
+    const echecs = new Set([V1.fichier]);
+    const { obtenirMoteur, journalScripts } = preparer({ echecs });
+    await assert.rejects(obtenirMoteur('v1', V1.sha256), /chargement impossible/);
+    echecs.clear();
+    assert.equal((await obtenirMoteur('v1', V1.sha256)).version, 'v1');
+    assert.deepEqual(journalScripts, [V1.fichier, V1.fichier]);
+  });
+
+  test('instance.version ≠ version demandée : refus', async () => {
+    const code = CODE_V2.replace("version: VERSION,\n    valider", "version: 'v1',\n    valider");
+    assert.notEqual(code, CODE_V2);
+    const sha = digest(code);
+    const V2b = { ...V2, sha256: sha.toString('hex'), sri: 'sha256-' + sha.toString('base64') };
+    const { obtenirMoteur } = preparer({ moteurs: [V1, V2b] });
+    global.document = creerDocumentFactice({ remplacements: { [V2.fichier]: code } });
+    await assert.rejects(obtenirMoteur('v2', V2b.sha256), /instance\.version/);
   });
 });

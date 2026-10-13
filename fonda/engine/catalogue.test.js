@@ -92,6 +92,14 @@ describe('catalogue-fonda/v1 — règles transversales', () => {
     ['sélection ≠ item_ids', (c) => { c.lots[0].attestation.selection = ['it01']; }],
     ['champ hors liste dans l\'entrée', (c) => { c.lots[0].code_suppression = 'x'; }],
     ['schema inconnu', (c) => { c.schema = 'catalogue-fonda/v0'; }],
+    ['moteur absent', (c) => { delete c.lots[0].moteur; }],
+    ['moteur : champ en trop', (c) => { c.lots[0].moteur.fichier = 'x.js'; }],
+    ['moteur : sha256 non hex', (c) => { c.lots[0].moteur.sha256 = 'sha256:' + c.lots[0].moteur.sha256; }],
+    ['moteur : version libre', (c) => { c.lots[0].moteur.version = '../v1'; }],
+    ['lot historique lié à un autre moteur (M1 figé)', (c) => { c.lots[0].moteur = { version: 'v2', sha256: 'a'.repeat(64) }; }],
+    ['badge : forme inconnue', (c) => { c.lots[0].relecteur.forme = 'certifiee'; }],
+    ['badge : champ en trop', (c) => { c.lots[0].relecteur.email = 'x'; }],
+    ['badge d\'un lot historique modifié (« relue et validée »)', (c) => { c.lots[0].relecteur.forme = 'relue_et_validee'; }],
   ];
   for (const [libelle, modifier] of casInvalides) {
     test(`refusé : ${libelle}`, () => {
@@ -100,6 +108,21 @@ describe('catalogue-fonda/v1 — règles transversales', () => {
       assert.equal(C.validerCatalogue(c, REFERENTIEL).valide, false);
     });
   }
+});
+
+describe('M1 — moteur v1 et badge figés des lots historiques (CDC §4.3, §12)', () => {
+  test('MOTEUR_HISTORIQUE = ligne v1 de fonda/engine/moteurs.json', () => {
+    const v1 = require('./moteurs.json').find((l) => l.version === 'v1');
+    assert.deepEqual({ ...C.MOTEUR_HISTORIQUE }, { version: 'v1', sha256: v1.sha256 });
+  });
+  test('les 8 entrées historiques : moteur v1 figé, badge « Fiche relue par Éric Duchateau »', () => {
+    const hist = CATALOGUE.lots.filter((e) => e.attestation.type === 'manuelle-historique');
+    assert.equal(hist.length, 8);
+    for (const e of hist) {
+      assert.deepEqual(e.moteur, { ...C.MOTEUR_HISTORIQUE }, e.set_id);
+      assert.deepEqual(e.relecteur, { ...C.BADGE_HISTORIQUE }, e.set_id);
+    }
+  });
 });
 
 describe('verifierLotContreEntree — le fichier servi est exactement celui attesté', () => {

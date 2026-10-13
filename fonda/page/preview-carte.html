@@ -45,25 +45,32 @@
     <div class="preview-carte-host" id="carte3"></div>
   </div>
 
-  <script src="../engine/correction.js"></script>
+  <!-- Page de prévisualisation locale : moteur chargé directement (le front élève,
+       lui, passe par obtenirMoteur : registre moteurs.json + SRI). -->
+  <script src="../engine/moteur-correction-v1.js"></script>
   <script src="../engine/carte-reponse-produite.js"></script>
   <script>
     // Fixtures synthétiques anonymes — mêmes notions que les lots de calibration
     // T6b (fonda/data/lots-fonda-calibration/), reprises ici pour la démo visuelle.
-    FondaCarteReponseProduite.montrerCarteReponseProduite(document.getElementById('carte1'), {
+    const moteur = FondaMoteurs.v1.creerMoteur();
+    const montrer = (id, { relecteur, ...carte }) => FondaCarteReponseProduite.montrerCarteReponseProduite(
+      document.getElementById(id),
+      { moteur, carte: moteur.preparerCarte(carte), badge: { forme: 'relue_et_validee', nom_affiche: relecteur } },
+    );
+    montrer('carte1', {
       question: 'On connaît « hypotension » (tension trop basse) et « thermomètre » (qui mesure la chaleur). Que signifie le plus probablement « hypothermie » ?',
       profil_correction: 'sens',
       reponses_acceptees: ['température trop basse', 'corps trop froid', 'chaleur du corps trop basse'],
       relecteur: 'Justine Leblanc',
     });
-    FondaCarteReponseProduite.montrerCarteReponseProduite(document.getElementById('carte2'), {
+    montrer('carte2', {
       question: 'Un cycliste roule à 18 km/h pendant 30 minutes. Quelle distance parcourt-il ?',
       profil_correction: 'numerique',
       reponses_acceptees: ['9 km', '9'],
       unite: 'km',
       relecteur: 'Éric Duchateau',
     });
-    FondaCarteReponseProduite.montrerCarteReponseProduite(document.getElementById('carte3'), {
+    montrer('carte3', {
       question: 'Parmi ces trois fractions, laquelle est égale à 0,75 ? A) 3/4 B) 2/3 C) 4/5',
       profil_correction: 'exact',
       reponses_acceptees: ['A'],

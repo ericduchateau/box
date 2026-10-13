@@ -17,6 +17,7 @@ const CATALOGUE = lire('catalogue-fonda.json');
 const REFERENTIEL = lire('referentiel.json');
 const CALENDRIER = lire('calendar.json');
 const sha = C.sha256WebCrypto();
+const { chargerMoteurNode } = require('../scripts/moteurs.js');
 
 // Les SEULS lots autorisés à porter une attestation « manuelle-historique » : le lot
 // de validation relu par Éric le 2026-10-11 (migration du 2026-10-13). Liste close :
@@ -37,6 +38,19 @@ describe('chaîne publiée FONDA — cohérence complète', () => {
     test(`${e.set_id} : fichier présent, liste blanche, relu, empreinte = attestation`, async () => {
       const lot = lire(e.fichier);
       assert.deepEqual(await C.verifierLotContreEntree(lot, e, sha), { valide: true, erreurs: [] });
+    });
+  }
+
+  // CDC §4.3 (C3) : chaque lot est validé par SON moteur (registre + octets vérifiés),
+  // jamais par le correcteur courant.
+  for (const e of CATALOGUE.lots) {
+    test(`${e.set_id} : moteur ${e.moteur && e.moteur.version} enregistré, cartes valides et cohérentes pour CE moteur`, () => {
+      const m = chargerMoteurNode(e.moteur.version, e.moteur.sha256);
+      for (const c of lire(e.fichier).cartes) {
+        assert.equal(m.valider(c).valide, true, `${c.item_id} : ${m.valider(c).raisons}`);
+        assert.deepEqual(m.outils.verifierReponseOr(c), { ok: true }, c.item_id);
+        assert.deepEqual(m.outils.verifierFormesAcceptees(c), { ok: true }, c.item_id);
+      }
     });
   }
 

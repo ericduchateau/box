@@ -58,7 +58,12 @@ const {
   deposerEnRelecture,
 } = require('../engine/generation.js');
 
-const { evaluerReponse, compteCommeReussite, calculerCibleAffichee, _internal: { parseReponseNumerique } } = require('../engine/correction.js');
+// Garde-fous du correcteur = outils du MOTEUR élève (CDC relecture §4.2, §4.3) : la
+// dernière version enregistrée dans moteurs.json, celle sous laquelle les nouveaux
+// lots seront relus et corrigés — le code exact que l'élève exécutera.
+const { dernierMoteur, chargerMoteurNode } = require('./moteurs.js');
+const MOTEUR_GENERATION = dernierMoteur();
+const { outils: OUTILS_MOTEUR } = chargerMoteurNode(MOTEUR_GENERATION.version, MOTEUR_GENERATION.sha256);
 const { SCHEMA_LOT, validerLot: validerLotFonda, prochainSetId, decomposerSetId } = require('../engine/catalogue.js');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -258,32 +263,13 @@ function parserReponseModele(texte) {
 // pas ce qu'un élève tape : on teste sa cible arrondie ("0,33"), en conservant son
 // propre reliquat d'unité tel quel — "2 bus" sans unite déclarée reste donc
 // détecté ("2,00 bus" -> faux). Sans arrondi : forme littérale, inchangée.
-function formeSaisissable(carteBrute, forme) {
-  const brut = String(forme);
-  if (carteBrute.profil_correction !== 'numerique' || carteBrute.arrondi == null) return brut;
-  const parse = parseReponseNumerique(brut);
-  if (Number.isNaN(parse.valeur)) return brut;
-  const cible = calculerCibleAffichee({ profil: 'numerique', reponsesAcceptees: [brut], unite: null, arrondi: carteBrute.arrondi });
-  return parse.unite ? `${cible} ${parse.unite}` : cible;
-}
+const { formeSaisissable } = OUTILS_MOTEUR;
 
 // La réponse-or, elle, est testée LITTÉRALEMENT (relecture Codex ciblée) : c'est ce
 // que voit le relecteur et ce qu'un élève taperait — "0,334" pour un arrondi à 2
 // décimales doit être rejetée, pas ramenée à "0,33". Seules les formes de
 // reponses_acceptees (références de calcul) passent par formeSaisissable.
-function verifierContreCorrecteur(carteBrute) {
-  const { statut } = evaluerReponse({
-    profil: carteBrute.profil_correction,
-    reponseDonnee: carteBrute.reponse,
-    reponsesAcceptees: carteBrute.reponses_acceptees,
-    unite: carteBrute.unite || null,
-    arrondi: carteBrute.arrondi ?? null,
-  });
-  if (statut !== 'juste') {
-    return { ok: false, raison: `le correcteur (profil "${carteBrute.profil_correction}") ne valide pas la réponse "${carteBrute.reponse}" contre reponses_acceptees=${JSON.stringify(carteBrute.reponses_acceptees)}${carteBrute.unite ? ` unite="${carteBrute.unite}"` : ''} (statut obtenu : "${statut}")` };
-  }
-  return { ok: true };
-}
+const verifierContreCorrecteur = OUTILS_MOTEUR.verifierReponseOr;
 
 // ---------------------------------------------------------------------------
 // 4ter. Garde-fou des FORMES ACCEPTÉES (relecture Codex PR #2, #8) — extension de
@@ -296,23 +282,7 @@ function verifierContreCorrecteur(carteBrute) {
 //    forme nombre-seul quand la carte déclare une unite (unité oubliée = presque,
 //    réussite en numérique) — mais jamais "faux" ni "carte_invalide".
 // ---------------------------------------------------------------------------
-function verifierFormesAcceptees(carteBrute) {
-  const formes = Array.isArray(carteBrute.reponses_acceptees) ? carteBrute.reponses_acceptees : [];
-  const refusees = formes.filter((forme) => {
-    const { statut } = evaluerReponse({
-      profil: carteBrute.profil_correction,
-      reponseDonnee: formeSaisissable(carteBrute, forme),
-      reponsesAcceptees: formes,
-      unite: carteBrute.unite || null,
-      arrondi: carteBrute.arrondi ?? null,
-    });
-    return !compteCommeReussite(statut, carteBrute.profil_correction);
-  });
-  if (refusees.length > 0) {
-    return { ok: false, raison: `forme(s) déclarée(s) acceptée(s) mais refusée(s) par le correcteur (profil "${carteBrute.profil_correction}"${carteBrute.unite ? `, unite="${carteBrute.unite}"` : ''}) : ${JSON.stringify(refusees)}` };
-  }
-  return { ok: true };
-}
+const { verifierFormesAcceptees } = OUTILS_MOTEUR;
 
 // ---------------------------------------------------------------------------
 // 4bis. Auto-correction d'une carte dont le champ "reponse" ne passe pas son
