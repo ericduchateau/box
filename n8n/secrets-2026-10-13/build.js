@@ -126,10 +126,16 @@ function construireFondaGeneration(source, { test }) {
     name: 'Generer code suppression',
     type: 'n8n-nodes-base.crypto',
     typeVersion: 2,
-    position: [preparer.position[0], preparer.position[1] - 200],
+    position: [preparer.position[0], preparer.position[1]],
     parameters: { action: 'generate', dataPropertyName: 'code_aleatoire', encodingType: 'hex', stringLength: 16 },
     notes: 'Chantier secrets (2026-10-13) : code de suppression genere par n8n a chaque distribution (jamais repris du JSON colle). Noeud natif : le module crypto est interdit dans un noeud Code sur cette instance.',
   });
+  // Mise en page lisible : le noeud Crypto prend la place de "Preparer fichier",
+  // tous les noeuds situés à sa droite (lui compris) sont décalés d'un cran.
+  const xCrypto = preparer.position[0];
+  for (const n of w.nodes) {
+    if (n.name !== 'Generer code suppression' && n.position[0] >= xCrypto) n.position = [n.position[0] + 240, n.position[1]];
+  }
   w.connections['Coller lot FONDA'] = { main: [[{ node: 'Generer code suppression', type: 'main', index: 0 }]] };
   w.connections['Generer code suppression'] = { main: [[{ node: 'Preparer fichier et destinataire', type: 'main', index: 0 }]] };
 

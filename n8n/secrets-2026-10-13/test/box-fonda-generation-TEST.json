@@ -46,7 +46,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        480,
+        720,
         0
       ],
       "parameters": {
@@ -59,7 +59,7 @@
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
       "position": [
-        720,
+        960,
         0
       ],
       "parameters": {
@@ -90,7 +90,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        960,
+        1200,
         0
       ],
       "parameters": {
@@ -103,7 +103,7 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
       "position": [
-        1200,
+        1440,
         0
       ],
       "parameters": {
@@ -127,7 +127,7 @@
       "typeVersion": 2,
       "position": [
         480,
-        -200
+        0
       ],
       "parameters": {
         "action": "generate",
