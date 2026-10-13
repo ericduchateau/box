@@ -20,14 +20,14 @@ Contexte : dépôt à l'AAP **CARDIE-SEPIA 2026-2027** (échéance **21/10/2026*
 - **Collecte** (seul composant dynamique) : **webhook n8n → Google Sheet / Drive**.
 - **Calcul** : **GitHub Action en cron hebdomadaire** (script du dépôt) ; exécutable aussi à la main. *(Cible Box-FONDA — n'existe pas encore dans ce repo, voir constats ci-dessous.)*
 - **Dépôt prof** : **Tally** + **Google Form** (deux voies parallèles — couvrir avec/sans compte Google).
-- **Stockage fiches** : Google Drive. Catalogue public via `?set=...`.
+- **Stockage fiches** : **BOX** : Google Drive + `catalogue.json` (catalogue public via `?set=...`). **FONDA** : **JSON commités** (`fonda/data/catalogue-fonda.json` + `fonda/data/lots/`), Drive `FONDA-Lots` pour la génération et la relecture uniquement. **Aucune route BOX n'est utilisée par FONDA** (PRD §2 bis).
 - **9 workflows n8n** existants (génération ×2, catalogue, fiche, suppression, question, sélection + anciens liens validation/rejet **conservés pour compat**) → **ne pas les casser**.
 
 ### Constats de la cartographie (2026-10-03, lecture seule du repo)
 
 - `box/` est la **racine du dépôt Git** (`github.com/ericduchateau/box`, branches `main`/`design`), pas un sous-dossier d'un monorepo. C'est ici que `AGENTS.md`/`CLAUDE.md` doivent rester pour être lus par les deux outils.
 - **Front 100 % statique, zéro framework, zéro build** : `index.html` (291 lignes) + `js/app.js` (catalogue, révision, suppression, question élève→prof) + `js/chimney.js` (animation de fin d'écran) + `js/config.js` (URLs webhooks, couleurs par matière, `DEMO_MODE: false`) + `css/style.css`. Pas de `package.json`.
-- **`catalogue.json` à la racine du repo est un fichier mort** (`{"total_sets":0,"sets":[]}`, jamais lu par le front — vérifié par grep sur `js/`). Le vrai catalogue vit sur Google Drive, servi en direct par le webhook `/box-catalogue`. Ne pas le confondre avec un futur fichier `catalogue.json` fonctionnel au sens du PRD §3.4 (Box-FONDA) : ce serait un fichier différent, à committer.
+- **`catalogue.json` à la racine du repo est un fichier mort** (`{"total_sets":0,"sets":[]}`, jamais lu par le front — vérifié par grep sur `js/`). Le vrai catalogue vit sur Google Drive, servi en direct par le webhook `/box-catalogue`. Ne pas le confondre avec `fonda/data/catalogue-fonda.json` (lots FONDA publiés, PRD §2 bis) — fichier différent, commité. (Correction : le PRD §3.4 décrit `coverage.json`, pas un catalogue.)
 - **Correction du décompte** : 9 workflows n8n actifs, pas 8 (`BOX - Selection Prof` ajouté le 2026-10-01, cf. `AVANCEMENT.md`). `Validation Prof` et `Rejet Prof` restent actifs uniquement pour que les emails envoyés avant cette date restent cliquables — toute nouvelle génération pointe vers `/box-select`.
 - **Aucun code serveur dans ce repo** : toute la logique dynamique (génération Claude, validation, calcul) vit dans n8n, hébergé hors dépôt (`n8n.srv868991.hstgr.cloud`). Le **Calcul en GitHub Action cron** du PRD (§2) est donc entièrement **à construire** — rien d'équivalent n'existe aujourd'hui dans `.github/` (le dossier n'existe pas).
 - `design_handoff_chimney_tetris/` : bundle de handoff (Claude Design) à l'origine de `js/chimney.js` — conservé en référence, ne pas le supprimer sans vérifier qu'il n'est plus référencé ailleurs.
@@ -55,7 +55,8 @@ Contexte : dépôt à l'AAP **CARDIE-SEPIA 2026-2027** (échéance **21/10/2026*
 - **Tags d'événement** : `grp` (groupe choisi par le **prof** au lancement, **jamais** un élève) ; `ctx` ∈ {`df`, `maison`, `classe`}.
 - **Couleurs de notion** : `gris` (non évaluée) · `vert` (≥ 75 %) · `ambre` (50–75 %) · `rouge` (< 50 %) · `trou`/⬛ (notion due sans fiche exploitable).
 - **Fichiers de données** : `referentiel.json`, `calendar.json`, `coverage.json`, `dashboard.json` ; événements = lignes du Sheet (schéma PRD §3.2) ; file de relecture (PRD §3.6). Respecter les schémas du PRD.
-- **Routage relecture** : `matière = français` → **Justine** ; `matière = mathématiques` → **Éric**.
+- **Routage relecture** : relecteur **attribué à la notion** dans `referentiel.json` (dérivé de `notion_id`, jamais du libellé de matière) — français → **Justine** ; mathématiques → **Éric**.
+- **Lots FONDA publiés** (contrats `fonda/engine/catalogue.js`, PRD §2 bis) : `set_id` canonique `set_fonda_{slug}_{nI|nF}_{NN}`, unique ; une entrée publiée est **immuable** (toute modification pédagogique = nouveau `set_id` + nouvelle relecture, jamais d'écrasement) ; liste **blanche** de champs (aucun `code_suppression`, `prof_email`, `review_key`, `review_token`, `id` BOX) ; **empreinte** SHA-256 du contenu pédagogique vérifiée par le front ; **attestation** obligatoire (`manuelle-historique` réservée aux 8 lots du 2026-10-11 ; `n8n-relecture` refusée tant que sa source de confiance n'est pas spécifiée).
 - **Correction auto** (carte « réponse produite ») : **profil par carte** ∈ {`sens`, `orthographe`, `numerique`, `exact`} + `reponses_acceptees[]` déclarées par le générateur. **Levenshtein off** par défaut. Maths : fraction équivalente **acceptée**, unité **exigée seulement si la carte le précise**, décimaux **exacts** sauf arrondi mentionné. État « presque » et seconde chance : voir PRD §5.1.
 
 ---
@@ -81,6 +82,9 @@ Contexte : dépôt à l'AAP **CARDIE-SEPIA 2026-2027** (échéance **21/10/2026*
 
 ## Pièges connus (à ne pas commettre)
 
+- Remettre FONDA sur `/box-select`, `/box-delete`, `/box-set`, `catalogue.json` ou le dossier `BOX-Flashcards` (**interdit**, PRD §2 bis).
+- Nœud n8n `Crypto` **v2** : non reconnu par l'éditeur de l'instance (« ? », paramètres et liens effacés à l'enregistrement) — utiliser la **v1**. Ne jamais ouvrir **et enregistrer** `BOX - Selection Prof` depuis l'interface : son nœud « Generer Token » est en v2 (poussé par API).
+- Committer une adresse e-mail, un code de suppression ou un jeton (dépôt public) : les coordonnées vivent dans n8n ; le test `fonda/data/catalogue.test.js` le vérifie.
 - Transformer Box-FONDA en annexe d'IA-zimut (**interdit**, cf. G1).
 - Publier une fiche sans validation humaine (cf. G4).
 - Normaliser accents / pluriels en profil `orthographe` — **c'est la cible de la mesure**, pas du bruit.

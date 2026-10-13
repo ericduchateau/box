@@ -44,6 +44,22 @@ Box-FONDA est une **extension de BOX, pas d'IA-zimut**. Sa mesure naît de ses *
 - Déclencheur du calcul = GitHub Action cron hebdo (défaut). Alternative : lancement manuel par Claude Code.
 - Collecteur = n8n → Sheet (cohérent avec les 8 workflows existants).
 
+## 2 bis. Séparation FONDA / BOX (décision Éric, 2026-10-13)
+
+FONDA est une **chaîne fonctionnellement séparée de BOX**, inspirée de BOX. Elle partage l'**infrastructure** (site, instance n8n, compte Google et credentials) mais **aucune donnée ni aucune route** : ni le dossier `BOX-Flashcards`, ni `catalogue.json`, ni `/box-select`, `/box-delete`, `/box-set`, `/box-question`.
+
+**Sources de vérité**
+- `fonda/data/referentiel.json` : notions, matière, **relecteur attribué** (par `notion_id`).
+- **Archive de relecture** (Drive `FONDA-Lots`, alimentée par n8n) : décisions de relecture et attestations.
+- **`fonda/data/catalogue-fonda.json`** (commité) : lots **publiés**, avec empreinte et attestation (contrats `catalogue-fonda/v1`, `lot-fonda/v1`, `empreinte-fonda/v1` : `fonda/engine/catalogue.js`).
+- `fonda/data/calendar.json` : occurrences programmées. Moteur A ne programme que des `set_id` présents au catalogue.
+
+**Ce que lit l'élève : uniquement du JSON commité servi par GitHub Pages** (`catalogue-fonda.json` + `fonda/data/lots/<set_id>.json`). Drive + n8n servent seulement à la **génération** et à la **relecture**. **Publier = commit validé par PR** (`fonda/scripts/publier-lot.js`, qui exige une attestation). **Retirer un lot = retirer son entrée et son fichier dans un commit** (le fichier reste dans l'historique Git).
+
+**Émission** : la collecte d'événements (`/box-fonda-events`, Sheet FONDA dédié) reste prévue (§3.2) — seule route dynamique sollicitée par l'élève, et ce n'est pas un service de lecture. Chantier identifié, non câblé.
+
+Moteur B (§9) **propose seulement** : le workflow « FONDA - Generation » distribue des candidates en relecture, il ne publie jamais.
+
 ---
 
 ## 3. Modèle de données
@@ -95,6 +111,9 @@ par (grp, notion): occurrences[ {date, rang, taux_reussite, n_reponses} ],
 ```
 
 ### 3.6 File de relecture
+
+> Depuis le 2026-10-13 (§2 bis) : la file de relecture FONDA est **dédiée** (`/fonda-select`, Drive `FONDA-Lots`), jamais la relecture BOX. Les identifiants système sont `(set_id, item_id)` (le `card_id` historique ci-dessous est remplacé).
+
 ```
 candidate = { card_id, notion_id, matiere, palier, difficulte,
               question, reponse,
@@ -240,10 +259,10 @@ Chaîne : A lève ⬛ → B génère des candidates → **dépôt dans la file d
 
 ## 12. Validation & routage (humain dans la boucle)
 
-- Même mécanisme que la relecture BOX actuelle : **page de relecture envoyée par email, validation question par question**, publication des seules cartes retenues.
-- **Routage par le champ `matière`** :
-  - `matière = français` → **Justine**
-  - `matière = mathématiques` → **Éric**
+- Page de relecture **FONDA dédiée** (§2 bis) envoyée par email, validation question par question, publication des seules cartes retenues — inspirée de la relecture BOX, sans la partager.
+- **Routage par le relecteur attribué à la notion dans `referentiel.json`** (dérivé de `notion_id`, jamais du libellé de matière) :
+  - notions de français → **Justine**
+  - notions de mathématiques → **Éric**
 - Chaque relecteur ne voit que ses candidates. Rien n'entre au catalogue sans feu vert carte par carte (G4).
 
 ---
@@ -304,3 +323,5 @@ Constats retenus (DEPP, début de 6e 2025 ; convergents du CP à la 6e) :
 **Restant :**
 5. Position **DPD / DANE** académique (hors code, pour le dossier).
 6. Seuil exact de tentatives déclenchant un ⬛ « épuisement » (§9) — à caler une fois les premiers volumes connus.
+7. **Dette `defi_id` (à traiter avec Moteur A)** : deux lots nI et nF d'une même notion, même semaine, même classe, produisent aujourd'hui le **même** `defi_id`, et l'année du `defi_id` n'est pas vérifiée à la résolution (un lien d'une autre année peut résoudre une semaine de l'année courante). Décider d'une unicité stricte des occurrences ou d'un identifiant d'occurrence discriminant, et valider l'année.
+8. **Collecte d'événements** (`/box-fonda-events`) : workflow livré inactif, non câblé au front — chantier identifié (§2 bis).
