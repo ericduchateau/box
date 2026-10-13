@@ -12,7 +12,8 @@ Ce dossier fait partie de la **check-list avant publication** (même famille que
 | Un fichier mis à la corbeille garde son code (encore lisible par id) | **Vidage du fichier** (plus de code, de cartes ni d'adresse) **avant** la mise à la corbeille, même motif que T-SEC pour le rejet | `box-suppression` |
 | Le code venait du JSON commité (dépôt public) | Code **généré par n8n** (nœud natif `Crypto` / `Generate`, hex, 16 → `SUP-` + 16 hex), le code éventuel du JSON collé est **ignoré** | `box-fonda-generation` |
 | Retirer `prof_email` des lots casserait la confirmation de relecture et les questions élèves | **Deux contrats** : lot commité **sans** code ni adresse ; fichier Drive **complété par n8n** (code généré + adresse routée par matière) avant l'upload | `box-fonda-generation` |
-| Le code reste dans l'historique des exécutions n8n | Conservation **par workflow** : ni succès, ni lancements manuels ; erreurs gardées + **purge manuelle** de l'historique existant | tous (voir étape 1) |
+
+**Historique des exécutions n8n : conservé intégralement** (décision Éric, 2026-10-13 — réussites et erreurs, précieux pour diagnostiquer). Aucun réglage de conservation n'est modifié, aucune purge. Les codes présents dans l'historique deviennent inertes avec la régénération des codes (phase 2) et la révocation de `box_7e7tcooh`. Mitigation envisagée pour ne plus faire circuler le code de suppression dans les URLs/HTML de relecture : point 10 (jeton de relecture distinct), chiffré à part.
 
 Les JSON sont **générés** par `build.js` (reproductible) et vérifiés par `secrets.test.js`, qui exécute le **vrai JavaScript** des nœuds Code générés (`node --test n8n/secrets-2026-10-13/secrets.test.js`).
 
@@ -35,23 +36,10 @@ prod/box-suppression.json            prêt (import seulement avec feu vert)
 
 ## Mode d'emploi (dans cet ordre)
 
-### Étape 0 — Export frais de `/box-delete` (Éric)
-Dans n8n : ouvrir **BOX - Suppression** → menu ⋯ → **Download** → enregistrer sous `n8n/secrets-2026-10-13/sources/box-suppression.live.json`. Puis `node n8n/secrets-2026-10-13/build.js` et `node --test n8n/secrets-2026-10-13/secrets.test.js` (Claude Code peut le faire). Le build **échoue volontairement** si la structure du live diffère de celle attendue (nœuds ou branche introuvables).
+### Étape 0 — Export frais de `/box-delete` (fait)
+Dans n8n : ouvrir **BOX - Suppression** → menu ⋯ → **Download** → enregistrer sous `n8n/secrets-2026-10-13/sources/box-suppression.live.json`. Puis `node n8n/secrets-2026-10-13/build.js` et `node --test n8n/secrets-2026-10-13/secrets.test.js` (fait le 2026-10-13). Le build **échoue volontairement** si la structure du live diffère de celle attendue (nœuds ou branche introuvables).
 
-### Étape 1 — Conservation des exécutions + purge (pendant la phase 1, pas après)
-1. **Réglage par workflow** — pour chacun des workflows qui manipulent un code de suppression, ouvrir le workflow → ⋯ → **Settings** :
-   - *Save successful production executions* : **Do not save**
-   - *Save manual executions* : **Do not save**
-   - *Save failed production executions* : **Save** (garder le diagnostic)
-
-   Workflows concernés : `BOX - Suppression`, `BOX - Selection Prof`, `BOX - Fiche API`, `BOX - Generation Flashcards`, `BOX - Generation Tally`, `BOX - Validation Prof`, `BOX - Rejet Prof`, `BOX - Question Eleve` (télécharge la fiche complète), `BOX-FONDA - Generation`.
-   (Les deux JSON de ce dossier embarquent déjà ces réglages.)
-2. **Purge manuelle de l'historique existant** — il contient déjà des codes en clair (URL `/box-select`, HTML de la page de relecture, fichiers téléchargés) : n8n → **Executions** → filtrer par workflow (liste ci-dessus) → tout sélectionner → **Delete**. Vérifier qu'il ne reste aucune exécution réussie pour ces workflows.
-3. Pas de purge au niveau serveur (décision Éric).
-
-> Les exécutions en **erreur** restent conservées : elles peuvent encore contenir un code. À purger ponctuellement après diagnostic.
-
-### Étape 2 — Copies de test
+### Étape 1 — Copies de test
 Prérequis : le catalogue de test et `/box-select-test` de T-SEC (`n8n/t-sec-2026-10-06/test/`) sont toujours importés ; sinon, les réimporter d'abord.
 
 **`test/box-suppression-TEST.json`** (webhook `/box-delete-test`)
@@ -71,7 +59,7 @@ Prérequis : le catalogue de test et `/box-select-test` de T-SEC (`n8n/t-sec-202
 3. Vérifier : le fichier Drive de test contient `code_suppression` = `SUP-` + 16 caractères hex **différent** de celui du JSON collé, et `prof_email` = l'adresse de test ; le mail `[TEST]` contient **ce même code** et un lien `/box-select-test`.
 4. Optionnel : ouvrir le lien `/box-select-test` → la relecture fonctionne (catalogue de test).
 
-### Étape 3 — Prod (UNIQUEMENT avec feu vert explicite d'Éric)
+### Étape 2 — Prod (UNIQUEMENT avec feu vert explicite d'Éric)
 - `prod/box-suppression.json` : import **par-dessus** `BOX - Suppression` (même id, même webhook `/box-delete`). Retester un mauvais code et un code absent en prod → 403. La suppression d'un jeu BOX existant (ancien code `SUP-` + 8) doit continuer de fonctionner.
 - `prod/box-fonda-generation.json` : import (reste **inactif**), remplacer `__EMAIL_RELECTEUR_FRANCAIS__` et `__EMAIL_RELECTEUR_MATHS__` dans n8n. Aucune distribution réelle avant la fin de la check-list avant publication.
 - Supprimer ensuite les copies `(TEST secrets 2026-10-13)` de n8n.

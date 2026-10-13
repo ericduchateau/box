@@ -19,13 +19,9 @@ const RACINE = path.join(ICI, '..', '..');
 const SOURCE_FONDA = path.join(RACINE, 'n8n', 'fonda-generation', 'box-fonda-generation.json');
 const SOURCE_SUPPRESSION = path.join(ICI, 'sources', 'box-suppression.live.json');
 
-// Conservation des exécutions (décision Éric) : ne plus garder les succès ni les
-// lancements manuels ; garder les erreurs (diagnostic). Pas de purge serveur.
-const SETTINGS_RETENTION = Object.freeze({
-  saveDataSuccessExecution: 'none',
-  saveManualExecutions: false,
-  saveDataErrorExecution: 'all',
-});
+// Conservation des exécutions : AUCUN changement (décision Éric, 2026-10-13 —
+// l'historique complet, réussites + erreurs, est gardé pour le diagnostic). Les
+// réglages `settings` des sources sont recopiés tels quels.
 
 // Coordonnées privées : JAMAIS dans le dépôt. Remplacées dans n8n après import.
 const PLACEHOLDERS = Object.freeze({
@@ -123,8 +119,6 @@ function construireFondaGeneration(source, { test }) {
     : 'BOX-FONDA - Generation (distribution lot calibre)';
   delete w.id;
   w.active = false;
-  w.settings = { ...(w.settings || {}), ...SETTINGS_RETENTION };
-
   // Nouveau noeud natif Crypto/Generate entre "Coller lot FONDA" et "Preparer fichier".
   const preparer = noeud(w, 'Preparer fichier et destinataire');
   w.nodes.push({
@@ -211,7 +205,6 @@ function construireSuppression(source, { test }) {
     throw new Error('branche "Code OK ?" -> "Supprimer fichier" introuvable : export source différent de celui attendu');
   }
 
-  w.settings = { ...(w.settings || {}), ...SETTINGS_RETENTION };
   verifier.parameters.jsCode = JS_VERIFIER_CODE;
 
   const cred = supprimer.credentials;
@@ -274,7 +267,7 @@ function main() {
 }
 
 module.exports = {
-  construireFondaGeneration, construireSuppression, SETTINGS_RETENTION, PLACEHOLDERS,
+  construireFondaGeneration, construireSuppression, PLACEHOLDERS,
   CATALOGUE_PROD_ID, SOURCE_FONDA, SOURCE_SUPPRESSION,
 };
 

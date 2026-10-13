@@ -11,7 +11,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const {
-  construireFondaGeneration, construireSuppression, SETTINGS_RETENTION, PLACEHOLDERS,
+  construireFondaGeneration, construireSuppression, PLACEHOLDERS,
   CATALOGUE_PROD_ID, SOURCE_FONDA, SOURCE_SUPPRESSION,
 } = require('./build.js');
 
@@ -120,10 +120,9 @@ describe('box-fonda-generation (prod) — code généré par n8n, adresse routé
     assert.deepEqual(emails, []);
   });
 
-  test('conservation : ni succès ni lancements manuels, erreurs gardées ; inactif', () => {
-    assert.equal(w.settings.saveDataSuccessExecution, 'none');
-    assert.equal(w.settings.saveManualExecutions, false);
-    assert.equal(w.settings.saveDataErrorExecution, 'all');
+  test('conservation des exécutions inchangée (décision Éric : historique complet gardé) ; inactif', () => {
+    const source = JSON.parse(fs.readFileSync(SOURCE_FONDA, 'utf8'));
+    assert.deepEqual(w.settings, source.settings);
     assert.equal(w.active, false);
   });
 });
@@ -222,11 +221,12 @@ describe(`box-suppression — transformation (source : ${path.relative(path.join
     assert.match(noeud(prod, 'Supprimer fichier').parameters.fileId.value, /\$\('Verifier code'\)\.item\.json\.drive_file_id/);
   });
 
-  test('prod : même webhook /box-delete, même id, catalogue de prod ; conservation réglée', () => {
+  test('prod : même webhook /box-delete, même id, catalogue de prod ; réglages de conservation inchangés', () => {
     assert.equal(prod.id, source.id);
     assert.equal(prod.nodes.find((n) => n.type === 'n8n-nodes-base.webhook').parameters.path, 'box-delete');
     assert.match(JSON.stringify(prod), new RegExp(CATALOGUE_PROD_ID));
-    assert.deepEqual({ ...prod.settings, ...SETTINGS_RETENTION }, prod.settings);
+    assert.deepEqual(prod.settings, source.settings);
+    assert.deepEqual(essai.settings, source.settings);
   });
 
   test('TEST : webhook /box-delete-test, catalogue de test, aucun id de catalogue prod, inactif, sans id de workflow', () => {

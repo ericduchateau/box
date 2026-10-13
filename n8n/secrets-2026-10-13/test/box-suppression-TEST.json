@@ -445,10 +445,7 @@
   "settings": {
     "executionOrder": "v1",
     "callerPolicy": "workflowsFromSameOwner",
-    "availableInMCP": false,
-    "saveDataSuccessExecution": "none",
-    "saveManualExecutions": false,
-    "saveDataErrorExecution": "all"
+    "availableInMCP": false
   },
   "versionId": "2b2721a0-4065-4a97-8efe-61fff5728e55",
   "meta": {

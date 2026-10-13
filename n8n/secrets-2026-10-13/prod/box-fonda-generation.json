@@ -2,10 +2,7 @@
   "name": "BOX-FONDA - Generation (distribution lot calibre)",
   "active": false,
   "settings": {
-    "executionOrder": "v1",
-    "saveDataSuccessExecution": "none",
-    "saveManualExecutions": false,
-    "saveDataErrorExecution": "all"
+    "executionOrder": "v1"
   },
   "nodes": [
     {
