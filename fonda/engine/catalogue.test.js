@@ -137,3 +137,34 @@ describe('résolution des liens et séquences', () => {
     assert.equal(C.prochainSetId('fr.lexique', 'nX', []), null);
   });
 });
+
+describe('R4 — lots « manuelle-historique » ancrés sur leur empreinte figée', () => {
+  test('les 8 entrées historiques du catalogue ont exactement leur empreinte figée', () => {
+    const hist = CATALOGUE.lots.filter((e) => e.attestation.type === 'manuelle-historique');
+    assert.equal(hist.length, 8);
+    for (const e of hist) assert.equal(e.empreinte, C.HISTORIQUES_FIGES[e.set_id], e.set_id);
+    assert.equal(Object.keys(C.HISTORIQUES_FIGES).length, 8);
+  });
+
+  test('scénario Codex : question modifiée + empreintes recalculées dans l\'entrée et l\'attestation -> REFUSÉ', async () => {
+    const lot = copie(LOT);
+    lot.cartes[0].question += ' (modifiée)';
+    const nouvelle = await C.calculerEmpreinte(lot, sha);
+    const cat = copie(CATALOGUE);
+    const e = cat.lots.find((x) => x.set_id === lot.set_id);
+    e.empreinte = nouvelle;
+    e.attestation.empreinte_attestee = nouvelle;
+    const v = C.validerCatalogue(cat, REFERENTIEL);
+    assert.equal(v.valide, false);
+    assert.match(v.erreurs.join(), /empreinte figée/);
+  });
+
+  test('manuelle-historique sur un set_id hors des 8 -> REFUSÉ', () => {
+    const cat = copie(CATALOGUE);
+    const e = copie(cat.lots[0]);
+    e.set_id = e.set_id.replace(/_01$/, '_02');
+    e.fichier = `lots/${e.set_id}.json`;
+    cat.lots.push(e);
+    assert.match(C.validerCatalogue(cat, REFERENTIEL).erreurs.join(), /réservée aux 8 lots figés/);
+  });
+});

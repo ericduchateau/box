@@ -1,0 +1,44 @@
+# Vérification mécanique à chaque PR et à chaque push sur design/main
+# (CDC relecture FONDA §11, critique Codex R7) : G4 ne doit pas dépendre de
+# « quelqu'un a pensé à lancer les tests ». Cette CI ne fait QUE de la vérification
+# avec des données publiques (empreintes figées, liste blanche, signatures à clé
+# publique) : elle ne détient JAMAIS la clé privée RSA ni le jeton d'API n8n, qui
+# restent sur le Mac d'Éric. Aucun secret, aucun appel réseau sortant dans les tests.
+#
+# Pour que ce contrôle BLOQUE le merge : GitHub > Settings > Branches > règle de
+# protection sur `design` et `main` > « Require status checks to pass » > cocher
+# « tests (node --test) ». (Réglage du dépôt, à faire par Éric.)
+
+name: tests
+
+on:
+  pull_request:
+    branches: [design, main]
+  push:
+    branches: [design, main]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: tests (node --test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # Certains tests de non-régression lisent `git show main:…` / `design:…` :
+      # références locales créées depuis origin (sans toucher à la branche courante).
+      - name: Références main/design pour les tests de non-régression
+        run: |
+          for b in main design; do
+            if [ "$(git rev-parse --abbrev-ref HEAD)" != "$b" ]; then
+              git branch -f "$b" "origin/$b"
+            fi
+          done
+      - name: node --test
+        run: node --test
