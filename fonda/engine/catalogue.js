@@ -46,6 +46,24 @@ const CHAMPS_CARTE = Object.freeze([
   'profil_correction', 'reponses_acceptees', 'unite', 'arrondi', 'seconde_chance',
   'contexte', 'set_id', 'notion_id',
 ]);
+// Ancrage G4 des 8 lots « manuelle-historique » (critique Codex R4, 2026-10-13) : ces
+// lots n'ont pas d'attestation signée, rien d'autre n'ancre leur contenu d'origine.
+// Couples set_id -> empreinte FIGÉS à la migration du 2026-10-13 (contenu relu par Éric
+// le 2026-10-11 + modification déclarée du 2026-10-12). Toute autre empreinte, ou tout
+// autre set_id, est refusé pour ce type : modifier un lot historique impose un nouveau
+// set_id et une clôture signée. NE JAMAIS modifier cette table pour « faire passer » un
+// lot : c'est précisément ce qu'elle interdit.
+const HISTORIQUES_FIGES = Object.freeze({
+  'set_fonda_comprendre-consigne_nI_01': 'sha256:3e715f0e44d520de9ee7f01c218cf667551b8a7fff650c357b1f2bb88561e25d',
+  'set_fonda_comprendre-consigne_nF_01': 'sha256:936b66da0abaa10b823c05bb13e6649754a9f4ba654986cc296c5cc8f087f6f1',
+  'set_fonda_inference-implicite_nI_01': 'sha256:f5d0faddffd8cb28c88b0ddb0b04cde8d9747f0fc72a44b9608beb1fdb4e2e0d',
+  'set_fonda_inference-implicite_nF_01': 'sha256:75872849d37d3610cd556f0dfa2e952bf2e425bbb2ab5832b3aedd71d1d4b29b',
+  'set_fonda_grandeurs-mesures_nI_01': 'sha256:ac405cf81afba028839eee3aa28bbf3151c6244479c0ddd6d690511c7629f588',
+  'set_fonda_grandeurs-mesures_nF_01': 'sha256:efacb0c7953389c1cfdad3044c2767240a54b31f014f0371fc94d3a6db494d98',
+  'set_fonda_resolution-problemes_nI_01': 'sha256:184b53a0b80d7931ec19a8ee278f4a7092347ff5f1c7fbc262eef0e986383c10',
+  'set_fonda_resolution-problemes_nF_01': 'sha256:53071653f943c8ce20a5a2f0a1da65eb73782a9c71b9db4517b7bf922f42d248',
+});
+
 const CHAMPS_ENTREE = Object.freeze([
   'set_id', 'notion_id', 'palier', 'fichier', 'item_ids', 'empreinte', 'relecteur', 'attestation',
 ]);
@@ -164,6 +182,11 @@ function validerAttestation(att, entree) {
   if (!TYPES_ATTESTATION.includes(att.type)) return [`type d'attestation inconnu : ${att.type}`];
   if (att.empreinte_attestee !== entree.empreinte) erreurs.push('empreinte_attestee ≠ empreinte de l\'entrée');
   if (att.type === 'manuelle-historique') {
+    if (!Object.prototype.hasOwnProperty.call(HISTORIQUES_FIGES, entree.set_id)) {
+      erreurs.push('manuelle-historique réservée aux 8 lots figés de la migration du 2026-10-13');
+    } else if (entree.empreinte !== HISTORIQUES_FIGES[entree.set_id]) {
+      erreurs.push('contenu d\'un lot historique modifié : empreinte ≠ empreinte figée (nouveau set_id + clôture signée requis)');
+    }
     const r = att.relecture_declaree;
     if (!r || !/^\d{4}-\d{2}-\d{2}$/.test(r.date || '') || !estTexte(r.relu_par) || !estTexte(r.relecteur_attribue)) {
       erreurs.push('relecture_declaree incomplète (date, relu_par, relecteur_attribue)');
@@ -270,7 +293,7 @@ function prochainSetId(notionId, palier, setIdsExistants) {
 
 return {
   SCHEMA_CATALOGUE, SCHEMA_LOT, SCHEMA_EMPREINTE, SET_ID_PATTERN, CHAMPS_LOT, CHAMPS_CARTE, CHAMPS_ENTREE,
-  TYPES_ATTESTATION, texteEmpreinte, calculerEmpreinte, sha256WebCrypto, validerLot, validerAttestation,
+  TYPES_ATTESTATION, HISTORIQUES_FIGES, texteEmpreinte, calculerEmpreinte, sha256WebCrypto, validerLot, validerAttestation,
   validerCatalogue, verifierLotContreEntree, trouverEntree, prochainSetId, decomposerSetId, slugDeNotion,
 };
 }); // fin UMD
