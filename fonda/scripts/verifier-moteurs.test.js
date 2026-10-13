@@ -74,6 +74,28 @@ describe('historique de confiance — ajout seul, fichiers identiques', () => {
     assert.match(V.verifierHistorique([ref], [{ ...ligneV1, sha256: 'c' }], lire, dir).join(), /ajout seul/);
     assert.match(V.verifierHistorique([ref], [], lire, dir).join(), /ajout seul/);
   });
+  test('fusion -s ours qui masque une ligne du registre modifiée : détectée', () => {
+    const { dir, ref: v1ref } = depot();
+    const g = (...a) => execFileSync('git', a, { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] });
+    g('checkout', '-q', '-b', 'autre', v1ref);
+    fs.writeFileSync(path.join(dir, 'fonda/engine/moteurs.json'), JSON.stringify([{ ...ligneV1, sri: 'autre' }]));
+    g('commit', '-q', '-am', 'registre modifié');
+    g('checkout', '-q', '-b', 'fusion', v1ref);
+    fs.writeFileSync(path.join(dir, 'x.txt'), 'x'); g('add', '.'); g('commit', '-q', '-m', 'x');
+    g('merge', '-q', '-s', 'ours', '-m', 'fusion', 'autre');
+    const ref = g('rev-parse', 'HEAD').toString().trim();
+    assert.match(V.verifierHistorique([ref], [ligneV1], octets({ 'fonda/engine/moteur-correction-v1.js': 'v1' }), dir).join(), /ajout seul/);
+  });
+  test('registre historique JSON invalide ou de structure invalide : échec', () => {
+    for (const contenu of ['[ pas du json', JSON.stringify({ v1: 1 })]) {
+      const { dir } = depot();
+      const g = (...a) => execFileSync('git', a, { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] });
+      fs.writeFileSync(path.join(dir, 'fonda/engine/moteurs.json'), contenu);
+      g('commit', '-q', '-am', 'abime');
+      const ref = g('rev-parse', 'HEAD').toString().trim();
+      assert.match(V.verifierHistorique([ref], [ligneV1], octets({ 'fonda/engine/moteur-correction-v1.js': 'v1' }), dir).join(), /illisible|structure invalide/, contenu);
+    }
+  });
   test('fusion -s ours qui masque une ancienne version du moteur : la modification reste détectée', () => {
     const { dir, ref: v1ref } = depot();
     const g = (...a) => execFileSync('git', a, { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] });
