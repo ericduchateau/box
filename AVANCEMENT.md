@@ -9,10 +9,10 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - **BOX prod** : 9 workflows n8n actifs, Google Form + Tally opérationnels, relecture carte par carte (`/box-select`), front `https://ericduchateau.github.io/box/` (branche `main`).
 - **FONDA sur `design`** (PR #1 à #5 mergées) : thème sombre + switch ; correction par profil ; rendu réel (`lancerDefi` -> `carte-reponse-produite.js`) ; index `?fonda=1&page=entrainement` des **8 lots relus** (4 notions × nI/nF, 48 cartes) ; G4 = liste fermée `LOTS_PUBLIABLES` + `revue_carte_par_carte === true` vérifié au rendu ; pages top-alignées ; écran de suppression BOX inaccessible en FONDA.
 - Lots servis **depuis le dépôt** (`fonda/data/lots-fonda-calibration/`), pas depuis Drive. Rien de FONDA publié au catalogue.
-- Tests : `node --test` 408/408, 1 skip (test `non-regression` index.html-vs-design en quarantaine). Smoke-test navigateur réel obligatoire avant chaque merge.
+- Tests : `node --test` 442/442, 1 skip (test `non-regression` index.html-vs-design en quarantaine). Smoke-test navigateur réel obligatoire avant chaque merge.
 
 ## Prochaines étapes
-1. **Chantier « secrets hors du dépôt »** (`feat/box-fonda-secrets`, plan proposé le 2026-10-12, non exécuté, critique Codex du plan recommandée) — voir check-list ci-dessous.
+1. **Chantier « secrets hors du dépôt »** (`feat/box-fonda-secrets`). Plan critiqué par Codex le 2026-10-13 (4 bloquants : `/box-delete` accepte un code absent, `prof_email` lu depuis Drive par Selection/Question élève, corbeille ≠ révocation, test « inactif » non isolé). **Phase 1 (durcir n8n, copies de test) produite** dans `n8n/secrets-2026-10-13/` : FONDA-generation prête ; `/box-delete` **en attente de l'export frais du live** (Éric). Mode d'emploi : README du dossier. Phase 2 = nettoyage du dépôt.
 2. **Décider l'affichage des lots FONDA publiés** : un `?set=` FONDA s'affiche aujourd'hui en flip-cards BOX (`loadAndReview` ignore les champs FONDA). Options : exclure les lots FONDA du catalogue ordinaire, ou rediriger leur `?set=` vers le rendu FONDA.
 3. Puis publication des 8 lots (upload `box-fonda-generation` + relecture `/box-select`).
 4. Moteur A (calendrier) : brancher le `setId` du calendrier dans `lancerDefi()` (aujourd'hui choisi par notion+palier) ; émission réelle des événements (T3/T5) depuis `onResultat`.
