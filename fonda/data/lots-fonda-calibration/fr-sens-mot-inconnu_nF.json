@@ -1,18 +1,17 @@
 {
-  "id": "box_fpks9lkt",
+  "schema": "lot-fonda/v1",
+  "set_id": "set_fonda_sens-mot-inconnu_nF_01",
+  "notion_id": "fr.sens-mot-inconnu",
+  "palier": "nF",
   "matiere": "Français",
-  "niveau": "Fondamentaux — Final (abouti)",
   "notion": "Construire le sens d'un mot inconnu",
-  "prof_nom": "Box-FONDA (génération automatique)",
-  "prof_email": "ericdnews@yahoo.fr",
-  "code_suppression": "SUP-K562STDB",
-  "date_creation": "2026-10-10",
-  "nb_cartes": 4,
-  "source": "fonda-seed",
-  "type": "fonda",
+  "niveau": "Fondamentaux — Final (abouti)",
   "revue_carte_par_carte": false,
+  "nb_cartes": 4,
+  "date_creation": "2026-10-10",
   "cartes": [
     {
+      "item_id": "it01",
       "numero": 1,
       "question": "Un tachymètre mesure la vitesse. Un cardiogramme enregistre l'activité du cœur. En combinant ces deux indices, que signifie le mot « tachycardie » ?",
       "reponse": "un cœur qui bat trop vite",
@@ -28,10 +27,10 @@
       ],
       "contexte": "tachycardie-combiner-racines",
       "set_id": "set_fonda_sens-mot-inconnu_nF_01",
-      "item_id": "it01",
       "notion_id": "fr.sens-mot-inconnu"
     },
     {
+      "item_id": "it02",
       "numero": 2,
       "question": "Dans trois de ces mots, « in- » signifie « non, pas ». Dans un seul, il signifie « dans, à l'intérieur ». Lequel ? A) inactif B) inclure C) inutile",
       "reponse": "B",
@@ -44,10 +43,10 @@
       ],
       "contexte": "prefixe-in-double-sens",
       "set_id": "set_fonda_sens-mot-inconnu_nF_01",
-      "item_id": "it02",
       "notion_id": "fr.sens-mot-inconnu"
     },
     {
+      "item_id": "it03",
       "numero": 3,
       "question": "« Le conférencier parlait d'une voix monocorde, sans jamais varier son ton. » Sachant que « mono- » signifie « un seul », que veut dire « monocorde » ?",
       "reponse": "qui garde toujours le même ton",
@@ -63,10 +62,10 @@
       ],
       "contexte": "monocorde-voix-professeur",
       "set_id": "set_fonda_sens-mot-inconnu_nF_01",
-      "item_id": "it03",
       "notion_id": "fr.sens-mot-inconnu"
     },
     {
+      "item_id": "it04",
       "numero": 4,
       "question": "Un séisme est un tremblement de terre. Un « photographe » enregistre une image grâce à « -graphe ». À quoi sert donc un sismographe ?",
       "reponse": "enregistrer les tremblements de terre",
@@ -81,7 +80,6 @@
       ],
       "contexte": "sismographe-combiner-definitions",
       "set_id": "set_fonda_sens-mot-inconnu_nF_01",
-      "item_id": "it04",
       "notion_id": "fr.sens-mot-inconnu"
     }
   ]

@@ -1,19 +1,17 @@
 {
-  "id": "box_a341aias",
+  "schema": "lot-fonda/v1",
+  "set_id": "set_fonda_resolution-problemes_nF_01",
+  "notion_id": "maths.resolution-problemes",
+  "palier": "nF",
   "matiere": "Mathématiques",
-  "niveau": "Fondamentaux — Final (abouti)",
   "notion": "Résoudre un problème à plusieurs étapes",
-  "prof_nom": "Box-FONDA (génération automatique)",
-  "prof_email": "duchateauphysiquechimie@gmail.com",
-  "relecteur": "Éric Duchateau",
-  "code_suppression": "SUP-8J01LYMX",
-  "date_creation": "2026-10-11",
-  "nb_cartes": 6,
-  "source": "fonda-seed",
-  "type": "fonda",
+  "niveau": "Fondamentaux — Final (abouti)",
   "revue_carte_par_carte": true,
+  "nb_cartes": 6,
+  "date_creation": "2026-10-11",
   "cartes": [
     {
+      "item_id": "it01",
       "numero": 1,
       "question": "Une piscine de 1000 L est remplie par deux robinets : A (40 L/min) et B (60 L/min). Les deux robinets coulent ensemble pendant 6 minutes, puis B est fermé et seul A continue. Combien de minutes faut-il encore à A pour terminer le remplissage ?",
       "reponse": "10 min",
@@ -27,10 +25,10 @@
       "unite": "min",
       "contexte": "piscine-deux-robinets-relais",
       "set_id": "set_fonda_resolution-problemes_nF_01",
-      "item_id": "it01",
       "notion_id": "maths.resolution-problemes"
     },
     {
+      "item_id": "it02",
       "numero": 2,
       "question": "Une bibliothèque possède 240 livres. 25 % d'entre eux sont actuellement empruntés. Parmi les livres empruntés, un tiers a été rendu aujourd'hui. Combien de livres sont encore empruntés en ce moment ?",
       "reponse": "40",
@@ -42,10 +40,10 @@
       ],
       "contexte": "bibliotheque-livres-empruntes-retournes",
       "set_id": "set_fonda_resolution-problemes_nF_01",
-      "item_id": "it02",
       "notion_id": "maths.resolution-problemes"
     },
     {
+      "item_id": "it03",
       "numero": 3,
       "question": "Un train part à 8h00 et roule à 80 km/h pendant 1 h 30 min, s'arrête 20 minutes en gare, puis repart à 100 km/h pendant 45 minutes. Quelle distance totale a-t-il parcourue (arrêt non compté) ?",
       "reponse": "195 km",
@@ -59,10 +57,10 @@
       "unite": "km",
       "contexte": "train-deux-vitesses-arret",
       "set_id": "set_fonda_resolution-problemes_nF_01",
-      "item_id": "it03",
       "notion_id": "maths.resolution-problemes"
     },
     {
+      "item_id": "it04",
       "numero": 4,
       "question": "Un croissant coûte 1,20 €. Pour toute série de 3 croissants achetés, le 4ᵉ est offert. Un client veut 10 croissants. Combien doit-il payer en tout ?",
       "reponse": "9,60 €",
@@ -77,10 +75,10 @@
       "unite": "€",
       "contexte": "boulangerie-promotion-croissants",
       "set_id": "set_fonda_resolution-problemes_nF_01",
-      "item_id": "it04",
       "notion_id": "maths.resolution-problemes"
     },
     {
+      "item_id": "it05",
       "numero": 5,
       "question": "Dans un championnat, une victoire rapporte 3 points, un match nul 1 point et une défaite 0 point. Après 14 matchs joués, une équipe a 29 points, dont 5 matchs nuls. Combien de victoires a-t-elle obtenues ?",
       "reponse": "8",
@@ -92,10 +90,10 @@
       ],
       "contexte": "club-foot-points-victoires",
       "set_id": "set_fonda_resolution-problemes_nF_01",
-      "item_id": "it05",
       "notion_id": "maths.resolution-problemes"
     },
     {
+      "item_id": "it06",
       "numero": 6,
       "question": "Un réservoir contient 500 L d'eau et perd 15 L par heure à cause d'une fuite. Après 3 heures de fuite, on y ajoute 100 L. La fuite continue ensuite au même rythme. Combien de litres reste-t-il dans le réservoir après 5 heures au total ?",
       "reponse": "525 L",
@@ -109,7 +107,6 @@
       "unite": "L",
       "contexte": "reservoir-fuite-ajout-eau",
       "set_id": "set_fonda_resolution-problemes_nF_01",
-      "item_id": "it06",
       "notion_id": "maths.resolution-problemes"
     }
   ]

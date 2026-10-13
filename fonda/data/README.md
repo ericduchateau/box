@@ -112,11 +112,21 @@ Validé par `node --test fonda/scripts/generer-pilote-t6.test.js` (8 tests : sch
 
 Liste fermée des 20 classes de l'année, format canonique **3 chiffres sans lettre** (ex. `"601"`, pas `"6e1"`). C'est la seule source de vérité pour la validité d'un `grp` — voir [`fonda/engine/evenements.js`](../engine/evenements.js). À remettre à jour chaque rentrée.
 
-## `destinataires.json` (T3, étendu en préparation T6b)
+## `destinataires.json`
 
-Structure par niveau (`6e`/`5e`/`4e`/`3e`), vide à T3 — **adresses de collègues adultes** (relecture par matière), jamais de donnée élève. Non consommé par le moteur d'événements ; posé en prévision d'un usage ultérieur (notifications de relecture).
+Structure par niveau (`6e`/`5e`/`4e`/`3e`, vide) et **identifiants** de relecteurs (`eric`, `justine`) avec leur nom affichable. **Aucune adresse e-mail dans le dépôt** (public) : les adresses vivent dans n8n (chaîne FONDA, PRD §2 bis). Le relecteur **attribué** à une notion vient de `referentiel.json` (champ `relecteur`), jamais du libellé de matière.
 
-**`relecteurs`** (ajouté en préparation de la SPEC T6b, §5) : adresses de **TEST** pour le routage de relecture par matière (indépendant du niveau) — `eric` (adresse réelle d'Éric) et `justine` (adresse de TEST, marquée `_TEST` : **à remplacer par la vraie adresse de Justine avant toute mise en service**, jamais utilisée comme adresse réelle d'envoi).
+## `catalogue-fonda.json` + `lots/` — lots PUBLIÉS (contrats v1, 2026-10-13)
+
+Ce que l'élève lit (servi par GitHub Pages, aucun webhook) : `catalogue-fonda.json` (`catalogue-fonda/v1`) liste les lots publiés ; chaque lot est dans `lots/<set_id>.json` (`lot-fonda/v1`). Contrats et validation : [`fonda/engine/catalogue.js`](../engine/catalogue.js) (partagé par le front, `fonda/scripts/publier-lot.js` et le test CI `fonda/data/catalogue.test.js`).
+
+- **`set_id` canonique** `set_fonda_{slug}_{nI|nF}_{NN}`, unique ; `fichier` = exactement `lots/<set_id>.json`.
+- **Liste blanche** de champs (racine et cartes) : aucun `id` BOX, `prof_email`, `prof_nom`, `code_suppression`, `review_key`, `review_token`.
+- **Empreinte** `sha256:` du contenu pédagogique (questions, réponses, profils, réponses acceptées, unité, arrondi, seconde chance, dans l'ordre d'affichage) — exclus car ni affichés ni notés : `difficulte`, `numero`, `contexte`. Vérifiée par le front avant tout affichage.
+- **Attestation** obligatoire par entrée. `manuelle-historique` = les 8 lots du lot de validation, relus par Éric le 2026-10-11, attestation déclarative (pas une preuve technique). `n8n-relecture` = réservée à la future relecture FONDA (bloc 2), refusée par `publier-lot.js` tant que sa source de confiance n'est pas spécifiée.
+- **Anti-écrasement** : une entrée publiée est immuable ; toute modification pédagogique = nouveau `set_id` (séquence suivante) + nouvelle relecture. **Retrait** = retirer l'entrée **et** le fichier dans un même commit (le fichier reste dans l'historique Git).
+
+`lots-fonda-calibration/` : lots **candidats non relus** (même format, `revue_carte_par_carte: false`), jamais lus par l'app. `scripts/migrer-lots-v1.js` : migration ponctuelle du 2026-10-13 (conservée pour traçabilité).
 
 ---
 
