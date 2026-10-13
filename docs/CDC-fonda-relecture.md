@@ -1,6 +1,6 @@
 # Cahier des charges — Relecture FONDA `/fonda-select` (Bloc 2, étape 7)
 
-> Statut : **projet, à valider par Éric**, puis relecture Codex ciblée, **avant** d'écrire le moindre workflow. Workflows livrés en JSON, **inactifs** ; activation sur feu vert explicite.
+> Statut : **design validé par Éric le 2026-10-13** (décisions §11), en attente de la vérification du nœud Sign sur l'instance (§9.8) et de la relecture Codex ciblée, **avant** d'écrire le moindre workflow. Workflows livrés en JSON, **inactifs** ; activation sur feu vert explicite.
 > Sources : critique Codex du 2026-10-13 (points 1–4, 6–9), PRD §2 bis, contrats `fonda/engine/catalogue.js`.
 > Principe directeur : **la relecture ne publie rien**. Elle produit une **décision signée**. La publication reste un commit relu (`publier-lot.js` + PR). Toute anomalie non résolue **bloque** la publication au lieu de la laisser passer.
 
@@ -24,7 +24,19 @@
 - À la génération, le relecteur **attribué** est lu dans `referentiel.json` tel que publié par GitHub Pages (`…/box/fonda/data/referentiel.json`), d'après le `notion_id` du lot. Jamais d'après le libellé de matière.
 - `notion_id` absent du référentiel : **refus**, aucun envoi.
 - La correspondance identifiant → adresse e-mail (`eric`, `justine`) vit **dans n8n uniquement** (placeholders dans le dépôt, refus d'envoyer tant qu'un placeholder subsiste).
-- **Honnêteté** : le lien est envoyé au relecteur attribué, mais **posséder le lien n'authentifie pas la personne**. L'attestation écrit donc `decide_via: "lien envoyé à <id>"`, et non « validé par <personne> ». Le nom affiché aux élèves reste celui de l'**entrée du catalogue**, choisi par Éric lors de la PR de publication.
+- **Honnêteté** : le lien est envoyé au relecteur attribué, mais **posséder le lien n'authentifie pas la personne**.
+
+### 2.1 Badge élève ≠ attestation d'intégrité (deux affirmations distinctes)
+
+| | **Badge élève** | **Attestation d'intégrité** |
+|---|---|---|
+| Texte | « Fiche relue et validée par *<nom>* avant publication. » | « Décision reçue via le lien de relecture envoyé à *<id>* le *<date>* ; contenu relu = empreinte *<…>* ; cartes retenues = *<…>* » |
+| Ce qu'il affirme | Une **responsabilité éditoriale** : la personne nommée répond du contenu publié | Un **fait technique** : une décision a été soumise par le lien envoyé à *<id>*, sur **exactement** ce contenu |
+| Ce qu'il n'affirme pas | — | **L'identité** de la personne qui a cliqué (posséder le lien n'authentifie pas) |
+| Où | Entrée du catalogue : `relecteur.nom_affiche` (lu par le front) | Fichier d'attestation signé (`decide_via`, `empreinte_relue`, `selection`…) + champ `attestation` de l'entrée |
+| Qui le fixe | **Éric, dans la PR de publication** : il ne nomme la personne qu'après s'être assuré qu'elle a bien relu (sinon nom générique ou son propre nom) | **n8n**, automatiquement, signé ; vérifié par `publier-lot.js` et la CI |
+
+`publier-lot.js` **ne déduit jamais** le badge de l'attestation : `relecteur.nom_affiche` est un paramètre explicite de la publication, saisi par Éric. Pour les 8 lots historiques, badge = « Éric Duchateau » (relus par Éric), attestation `manuelle-historique`.
 
 ## 3. Clé de relecture : génération, expiration, révocation (Codex #7)
 
@@ -46,7 +58,7 @@ Pour **chaque carte**, la page affiche, tous champs échappés :
 
 **Choix explicite par carte** : deux boutons radio, « Garder » et « Écarter », **sans valeur par défaut**. La soumission est refusée tant qu'une carte n'a pas de choix (contrôle côté serveur, pas seulement dans le navigateur). Un bouton séparé **« Tout rejeter »** demande une confirmation.
 
-Souhaitable, **décision Éric** : un champ « Essayer une réponse » par carte, qui exécute le vrai `correction.js` chargé depuis GitHub Pages avec intégrité SRI. Il permet à la relectrice de vérifier ce que le correcteur accepte. Ce champ ajoute une source de script à la politique CSP.
+**« Essayer une réponse » (v1, décision Éric)** : un champ par carte exécute le **vrai** `correction.js`, chargé depuis **l'origine GitHub Pages uniquement** (`https://ericduchateau.github.io`), avec intégrité **SRI** (hash du fichier publié). Il affiche « juste / presque / faux » pour la saisie, **sans rien envoyer** (aucune requête, aucun état). Le script de page qui l'appelle est servi avec un **nonce CSP** ; aucun `unsafe-inline` pour les scripts. Si le script ne charge pas (SRI différent après une mise à jour de `correction.js`), le champ est masqué et la relecture reste possible — la SRI est régénérée au déploiement (test qui compare le hash de la page de relecture à celui du fichier commité).
 
 ## 5. Lien au contenu, machine à états, idempotence (Codex #2, #3)
 
@@ -113,7 +125,7 @@ signature = Crypto v1 « Sign » RSA-SHA256 (clé privée PEM, uniquement dans n
 
 - **Tout** texte inséré dans le HTML passe par `escapeHtml` (repris de l'existant). Attributs toujours entre guillemets. Les paramètres d'URL sont encodés avec `encodeURIComponent`. **Aucun** HTML brut construit à partir des données.
 - En-têtes de **toutes** les réponses GET et POST, y compris les erreurs :
-  - `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; form-action https://n8n.srv868991.hstgr.cloud/webhook/fonda-select-confirm; frame-ancestors 'none'; base-uri 'none'` (avec en plus `script-src` limité à `correction.js` sur Pages, avec SRI, si l'essai du correcteur est retenu) ;
+  - `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-<aléa par réponse>' https://ericduchateau.github.io; form-action https://n8n.srv868991.hstgr.cloud/webhook/fonda-select-confirm; frame-ancestors 'none'; base-uri 'none'; connect-src 'none'` — `correction.js` chargé depuis l'origine Pages **avec SRI** ; le petit script d'essai porte le nonce ; aucune requête réseau possible depuis la page (`connect-src 'none'`) ;
   - `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`.
 - **Vérification réelle** : `curl -I` sur la copie de test, car le proxy Hostinger peut retirer des en-têtes. Le résultat est consigné dans le README.
 
@@ -134,9 +146,10 @@ signature = Crypto v1 « Sign » RSA-SHA256 (clé privée PEM, uniquement dans n
 - `FONDA - Retirer lot` (étape 8) et le retrait de l'orpheline BOX (étape 11).
 - La collecte d'événements (`/box-fonda-events`).
 
-## 11. Décisions attendues d'Éric
+## 11. Décisions d'Éric (2026-10-13)
 
-1. Durée de validité de la clé de relecture : **14 jours** proposés.
-2. Essai du correcteur dans la page de relecture (§4) : oui ou non, en v1.
-3. Génération de la paire de clés RSA (§6) : Claude Code fournit la commande `openssl`, Éric l'exécute localement, commite la clé publique et colle la clé privée dans n8n.
-4. Destinataire des alertes « conflit » (§5) : Éric uniquement ?
+1. Clé de relecture valable **14 jours**.
+2. **« Essayer une réponse » en v1**, CSP n'autorisant que l'**origine GitHub Pages** pour `correction.js` (SRI + nonce, §4, §8).
+3. **RSA via openssl** : paire générée localement par Éric (commande fournie), **clé privée uniquement dans n8n**, **clé publique commitée** (`fonda/data/cles/attestation-v1.pub.pem`).
+4. Alertes « conflit » : **à Éric seul**.
+5. Badge élève et attestation d'intégrité sont **deux affirmations distinctes** (§2.1).
