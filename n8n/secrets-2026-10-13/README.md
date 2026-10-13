@@ -21,11 +21,11 @@ Les JSON sont **générés** par `build.js` (reproductible) et vérifiés par `s
 ```
 build.js                         génère test/ et prod/ depuis les sources
 secrets.test.js                  tests (node --test)
-sources/box-suppression.live.json   À FOURNIR : export frais du live de « BOX - Suppression »
+sources/box-suppression.live.json   export frais du live (2026-10-13 08:48), identique à celui du 05/10
 test/box-fonda-generation-TEST.json  prêt
 prod/box-fonda-generation.json       prêt
-test/box-suppression-TEST.json       généré dès que l'export live est fourni
-prod/box-suppression.json            généré dès que l'export live est fourni
+test/box-suppression-TEST.json       prêt
+prod/box-suppression.json            prêt (import seulement avec feu vert)
 ```
 
 **Aucune coordonnée réelle dans ces JSON.** Les placeholders sont remplacés **dans n8n après import**, jamais dans le dépôt :
