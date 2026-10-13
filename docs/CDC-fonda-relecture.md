@@ -1,125 +1,148 @@
-# Cahier des charges — Relecture FONDA `/fonda-select` (Bloc 2, étape 7) — **v2**
+# Cahier des charges — Relecture FONDA `/fonda-select` (Bloc 2, étape 7) — **v3**
 
-> Statut : **v2 rédigée le 2026-10-13** après la critique Codex de la v1 (7 bloquants B1–B7 fondés, 11 points C1–C11, 3 optionnels O1–O3). À valider par Éric, puis relecture Codex ciblée, **avant** tout workflow. Workflows livrés en JSON, **inactifs** ; activation sur feu vert explicite.
-> Décisions d'Éric : §13.
+> Statut : **v3 rédigée le 2026-10-13** après la re-review Codex de la v2 (bloquants R1–R4, à corriger R5–R9, optionnels). À valider par Éric, puis relecture Codex ciblée, **avant** tout workflow. Workflows livrés en JSON, **inactifs** ; activation sur feu vert explicite. Décisions d'Éric : §15.
 >
-> **Principe (fail-closed)** : rien n'est publiable sans une **attestation de clôture signée par Éric sur son Mac**. La clôture ne produit une attestation que s'il existe **exactement une décision distincte** sur l'**ensemble** des décisions du lot (corbeille comprise). Absence de clôture = non publiable ; conflit = rien à signer = non publiable. Les confirmations de relecture **n'écrivent jamais au-delà d'un fichier de décision** et ne modifient jamais le candidat.
+> **Principe (fail-closed)** : rien n'est publiable sans une **attestation de clôture signée par Éric sur son Mac**. Le script de signature **ne fait confiance à aucun fichier transmis** : il lit l'état réel de n8n par son API (HTTPS authentifié) et ne signe que si (a) aucune exécution de relecture n'est en vol ou indéterminée, (b) les décisions présentes sur Drive et les confirmations réussies de l'historique n8n se **rapprochent exactement**, (c) il existe **exactement une** décision distincte. Sinon : rien à signer, donc rien de publiable.
 
-## 0. Modèle de menace et ce que prouve la chaîne
+## 0. Modèle de menace, preuve, frontière CI
 
-- **Couvert** : modification d'un lot ou d'une décision entre Drive et le dépôt ; relecture d'un contenu différent de celui publié ; lien de relecture divulgué (expiration, révocation, usage borné par la clôture) ; courses et pannes partielles (aucune ne peut produire une publication) ; injection HTML dans la page de relecture.
-- **Non couvert, assumé** : une personne ayant un accès administrateur à n8n ou au Drive peut modifier les workflows ou les décisions **avant** la clôture ; c'est Éric qui, à la clôture, constate l'état et signe. **L'attestation affirme « Éric a clôturé ce lot, sur exactement ce contenu »**, pas « n8n a prouvé l'identité du relecteur ».
-- **Infrastructure partagée** avec BOX (instance n8n, compte Google, credentials) : séparation **fonctionnelle**, pas isolation. Une panne d'instance touche les deux.
+- **Couvert** : modification d'un lot ou d'une décision entre Drive et le dépôt ; relecture d'un contenu différent de celui publié ; lien divulgué (expiration, révocation, clôture) ; courses, confirmations en vol, pannes partielles, écritures à issue incertaine ; décision supprimée définitivement, déplacée, purgée ou invisible (détectée par rapprochement avec l'historique) ; lot historique modifié (empreintes figées, R4) ; injection HTML dans la page de relecture.
+- **Non couvert, assumé** : un administrateur n8n malveillant peut fabriquer un historique ou modifier les workflows. **L'attestation affirme : « Éric a clôturé ce lot contre l'état rapporté par n8n à cet instant, sur exactement ce contenu. »** Elle n'affirme pas l'identité de la personne qui a cliqué.
+- **Infrastructure partagée** avec BOX (instance, compte Google, credentials) : séparation **fonctionnelle**, pas isolation.
+- **Frontière CI** : la GitHub Action (`.github/workflows/tests.yml`) ne fait **que de la vérification avec des données publiques** (empreintes figées, liste blanche, signatures à clé publique). Elle ne détient **jamais** la clé privée RSA ni le jeton d'API n8n. Signature et rapprochement n8n sont **locaux**, sur le Mac d'Éric ; GitHub ne vérifie que ce qui est déjà signé.
 
-## 1. Fichiers et contrats (B7, B5)
+## 1. Fichiers, contrats et octets canoniques (B7, R6)
 
-Trois contrats privés (Drive `FONDA-Lots`, jamais commités) ; le contrat public `lot-fonda/v1` reste **inchangé** (liste blanche intacte) :
+Contrats **privés** (Drive `FONDA-Lots`, jamais commités) ; le contrat public `lot-fonda/v1` est **inchangé**.
 
-- **`candidat-fonda/v1`** — `en-attente/<set_id>.json` : `{ schema, lot, relecture }` où `lot` est un `lot-fonda/v1` **strict** (non relu) et `relecture = { generation_cle, cle_sha256, cree_le, expire_le, statut ∈ {en_attente, clos}, relecteur_attribue, referentiel_version, envoye_a, envoye_le }`.
-- **`decision-fonda/v1`** — `decisions/<set_id>__g<generation>__<nonce>.json` : une enveloppe **unique et complète** (B4) `{ schema, set_id, generation_cle, nonce, recu_le, coeur, lot_relu|null, hash_formulaire }` avec `coeur = { action ∈ {accepter, rejeter}, selection[], ecartees[], empreinte_relue, empreinte_publiee|null, version_correcteur }`.
-- **`cloture-fonda/v1`** — `clotures/<set_id>__g<generation>.json` : `{ schema, set_id, revoque_le, delai_s, decisions_listees, decisions_distinctes, resultat ∈ {unique, conflit, aucune}, decision: <octets canoniques de la décision unique, base64> | null }`.
+- **`candidat-fonda/v1`** — `en-attente/<set_id>.json` : `{ schema, lot, relecture }`, `lot` = `lot-fonda/v1` strict non relu ; `relecture = { statut ∈ {"en_attente","clos"}, generation_cle, cle_sha256, cree_le, expire_le, relecteur_attribue, referentiel_version, envois }` où `envois = [{ generation, cle_sha256, envoye_a, envoye_le, expire_le }]` conserve **la provenance de chaque génération** (R9).
+- **`decision-fonda/v1`** — `decisions/<set_id>__g<generation>__<nonce>.json` : `{ schema, set_id, generation, nonce, recu_le, coeur, lot_relu, hash_formulaire }` ; `coeur = { action, selection, ecartees, empreinte_relue, empreinte_publiee, version_correcteur }` ; pour `action = "rejeter"` : `selection = []`, `empreinte_publiee = null`, `lot_relu = null`.
+- **`cloture-fonda/v1`** : **n'est plus un fichier faisant foi**. C'est la sortie de l'exécution n8n de clôture, lue par le script **via l'API n8n** (§8).
 
-**Octets canoniques** (mêmes règles pour l'empreinte, l'égalité de décisions et la signature) : JSON **UTF-8 sans BOM**, **sans espaces ni fin de ligne**, clés **dans l'ordre fixé par le contrat** (jamais un ordre alphabétique implicite), **aucun champ absent** (`null` explicite pour les facultatifs), tableaux dans l'ordre du lot, entiers seulement, chaînes **non normalisées** (aucune transformation Unicode). Une implémentation unique `fonda/engine/canonique.js`, utilisable en Node et recopiée dans les nœuds Code n8n, **testée octet par octet** sur des vecteurs fixes ; l'empreinte reste le texte de `catalogue.js::texteEmpreinte`.
+**Octets canoniques** (empreintes de cœur, `hash_formulaire`, attestation, signature) — implémentation unique `fonda/engine/canonique.js` (Node ; recopiée à l'identique dans les nœuds Code n8n), vecteurs de test fixes :
+- Sérialisation **JSON.stringify d'ECMAScript** appliquée à une valeur **construite avec l'ordre de clés du contrat** ; UTF-8 sans BOM ; aucun espace ni saut de ligne.
+- **Nombres** : finis seulement (sinon refus) ; représentation **Number::toString d'ECMAScript** (plus courte forme exacte : `0.5` → `0.5`, `1e21` → `1e+21`) ; `-0` → `0`. Décimaux autorisés (réponses numériques de `lot-fonda/v1`).
+- **Chaînes** : échappement de `JSON.stringify` bien formé (ECMA-262 : `\"`, `\\`, contrôles en `\uXXXX`, surrogates isolés échappés) ; **aucune normalisation Unicode**.
+- **Champs** : **tous présents**, valeur par défaut explicite (`null`, `[]`, `false`) ; aucun champ inconnu.
+- `hash_formulaire` = SHA-256 hex du canonique de `[[nom, valeur], …]` des champs reçus, **triés par nom** (ordre des unités de code UTF-16).
+- L'**empreinte d'un lot** reste exactement `catalogue.js::texteEmpreinte` (même règles ; test d'égalité).
 
-## 2. Routage figé à l'émission (C8)
+## 2. Routage figé à l'émission (C8, R9)
 
-- À la génération, le relecteur attribué est lu dans `referentiel.json` publié (Pages), d'après `notion_id`. `notion_id` inconnu → refus.
-- Sont **figés dans le candidat** : `relecteur_attribue`, `referentiel_version` (SHA-256 du référentiel lu), `envoye_a` (identifiant, jamais l'adresse), `envoye_le` (horloge n8n après acceptation par Gmail). Un changement ultérieur du référentiel ne réécrit rien ; clôture et publication comparent au **référentiel figé** et signalent un écart.
-- Adresses : uniquement dans n8n. Un envoi accepté par Gmail ne prouve ni la livraison ni la lecture.
+- Relecteur attribué lu dans `referentiel.json` publié (Pages), d'après `notion_id` ; inconnu → refus.
+- `referentiel_version` = SHA-256 du contenu lu. Le référentiel est **archivé par Git** : le script local retrouve dans l'historique du dépôt le commit dont `fonda/data/referentiel.json` a ce hash, et relit l'attribution ; introuvable → refus.
+- `envois[]` enregistre chaque génération (identifiant destinataire, date d'acceptation Gmail). Un envoi accepté ne prouve ni livraison ni lecture.
 
-## 3. Clé de relecture et révocation (C1, B3, pivot 2)
+## 3. Clé de relecture et révocation (C1, B3, R5)
 
-- Génération : Crypto v1 « Generate », hex, 64 caractères. Le candidat ne garde que `cle_sha256`. **Validité 14 jours.**
-- **Écrivains du candidat** : uniquement les workflows **manuels** (génération, réémission, clôture), lancés par Éric, jamais en parallèle. **Les confirmations ne l'écrivent jamais** → ni mise à jour concurrente, ni retour d'un ancien bloc `relecture` (B3).
-- **Contrôle exact invalidé par la révocation** — dans la confirmation (§5, étape C3), la clé n'est acceptée que si, sur le candidat **relu à cet instant** : `relecture.statut === "en_attente"` **ET** `sha256(k) === relecture.cle_sha256` **ET** `relecture.generation_cle === form.generation` **ET** `maintenant < relecture.expire_le`. La **révocation** (étape 1 de la clôture) écrit `statut = "clos"` ; la **réémission** change `generation_cle` et `cle_sha256` : dans les deux cas, ce contrôle échoue immédiatement pour l'ancien lien.
-- **Réémission** (`FONDA - Reemettre cle`, manuel) : seulement si `statut === "en_attente"` ; incrémente `generation_cle`, nouvelle clé, nouveau mail. Les décisions des générations précédentes **restent comptées** à la clôture (O3 : l'unicité porte sur le **lot**, toutes générations confondues).
-- Historique n8n (conservé, décision Éric) : la clé y figure (URL). Après la clôture, elle ne peut plus rien produire ; avant, au pire une décision supplémentaire → conflit → rien de signé.
+- Crypto v1 « Generate », hex 64 ; seul `cle_sha256` est stocké. **Validité 14 jours.**
+- **Seuls les workflows manuels écrivent le candidat** (génération, réémission, clôture), lancés par Éric, jamais en parallèle. Les confirmations ne l'écrivent jamais.
+- **Ce que la révocation invalide** (étape C3, §5) : la clé n'est acceptée que si, dans le candidat **téléchargé par cette exécution** (lecture Drive dont le **résultat** est obtenu après le début de l'exécution), `statut === "en_attente"` ET `sha256(k) === cle_sha256` ET `generation_cle === form.generation` ET `maintenant < expire_le`.
+- **Sémantique exacte (R5)** : la révocation (`statut = "clos"`) interdit **immédiatement les nouvelles autorisations** (toute exécution dont la lecture du candidat a lieu après l'écriture de révocation). Une confirmation **déjà autorisée** (lecture antérieure) peut encore écrire : elle est **en vol**, et c'est le **drainage prouvé par l'API n8n** (§8.2) — pas un délai — qui garantit qu'aucune n'est plus en vol au moment de signer. Une seconde lecture du candidat juste avant l'écriture C6 réduit la fenêtre (défense en profondeur), sans prétendre la supprimer.
+- **Réémission** (manuelle) : seulement si `statut === "en_attente"` ; nouvelle génération ajoutée à `envois`. Les décisions des générations antérieures **restent comptées** : l'unicité porte sur le **lot**, toutes générations confondues.
 
 ## 4. Page de relecture (C4–C6, O2)
 
-- Par carte : question, réponse attendue, **profil** avec une explication **et un exemple concret** de ce qu'il accepte et refuse (O2 : `exact` normalise certains espaces et caractères ; `sens` ne comprend pas une paraphrase libre), **toutes** les réponses acceptées, `unite`, `arrondi`, `seconde_chance` (ou « non précisé »).
-- **Choix explicite** « Garder / Écarter » par carte, sans défaut. Bouton séparé « Tout rejeter » avec confirmation.
-- **« Essayer une réponse »** (décision Éric) : exécute le vrai correcteur à une **URL versionnée et conservée** `https://ericduchateau.github.io/box/fonda/engine/correction-v<N>.js` (jamais le fichier courant), **SRI épinglée**, `crossorigin="anonymous"` (CORS de Pages vérifié en réel). `version_correcteur` est portée par la décision et l'attestation (C4). Si la SRI échoue : champ masqué, relecture toujours possible. Aucune requête réseau depuis le script.
-- **Transport des données vers le script** (C6) : un unique `<script type="application/json" id="donnees">` dont le JSON a `<`, `>`, `&`, U+2028, U+2029 échappés en `\uXXXX`, lu par `JSON.parse` ; **aucune** interpolation de données dans du code ; **aucun** `onclick` : écouteurs posés par le script à nonce. Reste du HTML : `escapeHtml`, attributs entre guillemets, URL par `encodeURIComponent`.
-- **CSP** (C5) : `default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-<aléa>' https://ericduchateau.github.io/box/fonda/engine/correction-v<N>.js; form-action <URL exacte de confirmation>; base-uri 'none'` (+ `frame-ancestors` selon le résultat de §8.3). On autorise **l'URL du fichier**, pas toute l'origine. La CSP ne remplace jamais l'échappement.
+- Par carte : question, réponse attendue, **profil** avec explication **et exemple concret** de ce qu'il accepte ou refuse (`exact` normalise certains espaces et caractères ; `sens` ne comprend pas une paraphrase), **toutes** les réponses acceptées, `unite`, `arrondi`, `seconde_chance` (ou « non précisé »).
+- Choix explicite « Garder / Écarter » par carte, sans défaut ; « Tout rejeter » séparé avec confirmation.
+- **« Essayer une réponse »** : vrai correcteur à l'**URL versionnée et conservée** `https://ericduchateau.github.io/box/fonda/engine/correction-v<N>.js`, **SRI épinglée**, `crossorigin="anonymous"` (CORS vérifié en réel) ; `version_correcteur` dans la décision et l'attestation. SRI en échec → champ masqué.
+- Données vers le script : un unique `<script type="application/json">` (JSON avec `<`, `>`, `&`, U+2028, U+2029 en `\uXXXX`), lu par `JSON.parse` ; aucune interpolation dans du code ; aucun `onclick` (écouteurs posés par le script à nonce). Reste du HTML : `escapeHtml`, attributs entre guillemets, `encodeURIComponent`.
+- CSP : `default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-<aléa>' <URL exacte de correction-v<N>.js>; form-action <URL exacte de confirmation>; base-uri 'none'` (+ cadre selon §9.3). L'URL du fichier, pas toute l'origine. La CSP ne remplace jamais l'échappement.
 
-## 5. Confirmation : une seule écriture, idempotente par construction (B1, B4, C9)
+## 5. Confirmation : une seule écriture, idempotente (B1, B4, C9)
 
-**GET `/fonda-select?lot=<set_id>&k=<clé>`** — **aucune écriture**. Validation syntaxique stricte de `lot` (`^set_fonda_[a-z0-9-]+_n[IF]_\d{2}$`) et `k` (`^[0-9a-f]{64}$`) **avant** toute recherche ; recherche du candidat (§6) ; contrôle de clé (§3) ; empreinte affichée ; jeton de formulaire :
-`jeton = HMAC-SHA256(secret_formulaire, canonique(["fonda-select/v2", set_id, generation_cle, cle_sha256, empreinte_affichee, expire_page, nonce]))` (C1 : tuple sans ambiguïté, domaine d'usage, génération et clé liés) ; `expire_page = min(maintenant + 2 h, expire_le)` ; `nonce` aléatoire (Crypto Generate, 32 hex). Le jeton empêche une soumission aveugle ; il **ne prouve pas** que les cartes ont été lues.
+**GET `/fonda-select?lot=<set_id>&k=<clé>`** — aucune écriture. Validation regex de `lot` et `k` avant toute recherche ; recherche (§6) ; contrôle (§3) ; empreinte affichée ; `jeton = HMAC-SHA256(secret_formulaire, canonique(["fonda-select/v3", set_id, generation_cle, cle_sha256, empreinte_affichee, expire_page, nonce]))`, `expire_page = min(maintenant + 2 h, expire_le)`, `nonce` = 32 hex aléatoires.
 
-**POST `/fonda-select-confirm`**, dans cet ordre :
-- **C1 — syntaxe**, avant tout accès Drive : corps ≤ 64 Ko **en octets reçus** (vérifié sur le **vrai** webhook) ; champs autorisés exactement : `lot, k, generation, empreinte, expire_page, nonce, jeton, action`, plus `choix_<item_id>` (si `action=accepter`) **ou** `confirmer_rejet=oui` (si `action=rejeter`) ; toute valeur **dupliquée** (ex. `choix_it01` deux fois) = 400 (vérifié sur le vrai webhook) ; formats stricts (`^it\d{2}$`, `garder|ecarter`).
-- **C2 — jeton** : HMAC recalculé égal, `expire_page` non dépassé ; sinon 403.
-- **C3 — candidat et clé** : recherche (§6) puis contrôle §3 sur le candidat **relu maintenant** ; sinon 403/409.
-- **C4 — contenu** : empreinte du candidat actuel `===` `empreinte` du formulaire ; sinon 409 « le lot a changé, rouvrir le lien ».
-- **C5 — sémantique de la sélection** : chaque `item_id` du candidat a **exactement un** choix, aucun inconnu, au moins une carte gardée pour `accepter`. Lot relu = cartes gardées **dans l'ordre**, `item_id` d'origine, `revue_carte_par_carte: true`, conforme `lot-fonda/v1`.
-- **C6 — écriture unique** : `decisions/<set_id>__g<generation>__<nonce>.json` (enveloppe complète §1). **Aucune autre écriture.** Si un fichier de ce nom existe déjà (rejeu, double clic, réessai) : relecture ; **même `coeur` canonique** → même résultat, aucune écriture ; **`coeur` différent** → 409 « décision déjà enregistrée, différente » (ni écrasement, ni faux succès). Deux homonymes créés en concurrence sont sans effet sur la sûreté : la clôture compare des **contenus** (§7).
-- **C7 — mail de confirmation** au relecteur attribué ; son échec n'annule rien.
-- **Timeout** : `executionTimeout = 120 s` (T_max) sur les workflows de relecture — **condition d'activation** (§8.1).
+**POST `/fonda-select-confirm`** :
+- **C1 syntaxe** (avant Drive) : ≤ 64 Ko en octets reçus (vrai webhook) ; champs exactement `lot, k, generation, empreinte, expire_page, nonce, jeton, action` + `choix_<item_id>` (si `accepter`) **ou** `confirmer_rejet=oui` (si `rejeter`) ; valeur dupliquée → 400 (vrai webhook) ; formats stricts.
+- **C2 jeton** : HMAC égal, non expiré ; sinon 403.
+- **C3 candidat et clé** : recherche (§6) et contrôle (§3) sur le candidat téléchargé par cette exécution ; sinon 403/409.
+- **C4 contenu** : empreinte actuelle du candidat = empreinte du formulaire ; sinon 409.
+- **C5 sélection** : chaque `item_id` exactement un choix, aucun inconnu, ≥ 1 gardé pour `accepter`. Lot relu = cartes gardées dans l'ordre, `item_id` d'origine, `revue_carte_par_carte: true`, `lot-fonda/v1`.
+- **C5bis** : seconde lecture du candidat ; statut toujours `en_attente` et même génération, sinon 409 (défense en profondeur, §3).
+- **C6 écriture unique** : `decisions/<set_id>__g<generation>__<nonce>.json`. Nom existant (rejeu) : relecture ; même `coeur` → même résultat sans écriture ; `coeur` différent → 409. **La sortie de l'exécution consigne** `{ set_id, generation, nonce, coeur_sha256, drive_file_id, resultat_ecriture }` : c'est ce que le rapprochement (§8.3) lit dans l'historique.
+- **C7 mail** au relecteur attribué ; son échec n'annule rien.
+- Défense de fond : `executionTimeout = 120 s` sur les workflows de relecture (n'est **plus** la barrière de sûreté : §8.2).
 
-## 6. Recherche Drive stricte (C2)
+## 6. Recherche Drive stricte (C2, R3)
 
-- `set_id` validé par regex **avant** toute interpolation. Requête **Advanced Search** (jamais la recherche par nom partielle du nœud) : `'<id en-attente>' in parents and name = '<set_id>.json' and mimeType = 'application/json' and trashed = false`.
-- **Tous** les résultats traités (pas de `limit: 1`, pas de `.first()`), pagination suivie jusqu'à absence de `nextPageToken` ; recherche incomplète ou en erreur → refus. 0 ou > 1 résultat → « lot introuvable ou ambigu ». Le `set_id` **interne** du fichier doit être égal au nom demandé.
-- Aucun `file_id` client n'est jamais utilisé. Écritures uniquement dans les dossiers FONDA (ids constants). Test statique : aucun id ni route BOX dans les JSON FONDA ; Crypto v1 uniquement.
+- `set_id` validé par regex avant interpolation ; requête **Advanced Search** `'<id en-attente>' in parents and name = '<set_id>.json' and mimeType = 'application/json' and trashed = false`.
+- Projection incluant `nextPageToken` **et `incompleteSearch`** ; **`incompleteSearch = true` → refus** ; pagination complète ; tous les résultats traités ; 0 ou > 1 → refus ; `set_id` interne = nom demandé.
+- Aucun `file_id` client. Écritures uniquement dans les dossiers FONDA (ids constants, `driveId` explicite si Drive partagé). Test statique : aucun id ni route BOX, Crypto v1 uniquement.
 
-## 7. Clôture (B2 — pivots 1 et 3)
+## 7. Workflow de clôture n8n (manuel)
 
-Workflow **manuel** `FONDA - Cloturer relecture`, lancé par Éric pour un `set_id` :
+`FONDA - Cloturer relecture`, lancé par Éric pour un `set_id` :
+1. **Révocation** : `relecture.statut = "clos"` (écriture du candidat) ; horodatage `revoque_le` dans la sortie.
+2. **Listing** du dossier `decisions/` : **corbeille comprise**, pagination complète, `incompleteSearch` vérifié (si vrai → sortie `listing_incomplet`, rien d'autre), corpus = ce dossier (et son `driveId`) ; **chaque** fichier lu ; sortie = manifeste `[{ drive_file_id, nom, trashed, set_id_interne, generation, nonce, coeur_sha256, lisible }]` pour **tous** les fichiers (pas seulement ceux du lot), plus les octets canoniques du `coeur` et le `lot_relu` de chaque décision du lot.
+3. **Rien n'est conclu ici** : la sortie de cette exécution est **une pièce**, lue et vérifiée par le script local (§8). Aucun fichier de clôture ne fait foi.
 
-1. **Révocation** : écrit `relecture.statut = "clos"` dans le candidat. Toute confirmation dont le contrôle C3 a lieu **après** cette écriture échoue (§3).
-2. **Délai** : nœud Wait, `D = 10 min`, supérieur à `T_max` (120 s) avec marge. Toute confirmation ayant passé C3 **avant** la révocation a terminé (ou a été coupée) avant la fin de `D` — **à condition que `T_max` soit effectivement appliqué** (§8.1).
-3. **Listing exhaustif** du dossier `decisions/` : **corbeille comprise** (aucun filtre `trashed`), pagination complète, `supportsAllDrives`/`includeItemsFromAllDrives` si le dossier est un jour placé dans un Drive partagé ; **chaque** fichier est lu et retenu si son `set_id` **interne** est celui du lot, quel que soit son nom. Un fichier illisible ou non conforme dans `decisions/` → `resultat = conflit` (fail-closed).
-4. **Décisions distinctes** : deux décisions sont **identiques** si leurs `coeur` canoniques (§1) sont **égaux octet par octet** — nonces, horodatages, générations et noms de fichiers ignorés. Toutes générations comptées. On ne compte **jamais** des fichiers.
-5. **Résultat** : exactement un `coeur` distinct → `unique` : écrit `clotures/<set_id>__g<generation>.json` avec les **octets canoniques** de cette décision ; ≥ 2 → `conflit` ; 0 → `aucune` : la clôture est écrite **sans** décision et une **alerte part à Éric seul**. Rien de signable dans ces deux cas.
+## 8. Script local de clôture et de signature (R1, R2, R3)
 
-## 8. Conditions d'activation — à prouver sur la copie de test (pivot 1)
+`fonda/scripts/signer-cloture.js` (Node, sur le Mac d'Éric ; aucun secret dans le dépôt). Entrées : `set_id`, id de l'exécution de clôture, `badge` (§11). Le script lit **lui-même** tout ce qu'il vérifie :
 
-1. **Timeout réellement appliqué** : `executionTimeout = 120` (a) accepté et conservé par l'instance (plafond `EXECUTIONS_TIMEOUT_MAX`) ; (b) une exécution rendue lente exprès (Wait 200 s **avant** l'écriture de décision) est **coupée** et **n'écrit pas**. Si l'instance applique un arrêt « en fin de nœud », mesurer la durée maximale réelle d'une exécution de confirmation et fixer `D` ≥ 5 × cette durée. **Sans cette preuve, la clôture n'est pas sûre : pas d'activation.**
-2. **Révocation effective** : ouvrir une page (GET), lancer la clôture, soumettre pendant le délai → **refus**, aucune décision créée.
-3. **Iframe et en-têtes** (C3) : `Respond to Webhook` peut envelopper le HTML dans une iframe sandboxée ; vérifier en **navigateur réel** (pas `curl -I`, qui ne fait qu'un HEAD) le parcours GET → POST → confirmation, le rejet et les pages d'erreur, avec les en-têtes **réellement servis** (proxy compris, CSP éventuellement cumulées). Ajuster `frame-ancestors` / `X-Frame-Options` à ce qui fonctionne ; consigner le résultat.
-4. **Limites** (C11) : refus immédiat, sans accès Drive, de toute requête syntaxiquement invalide ; aucune relance automatique ; erreurs Drive/Gmail → page d'erreur générique servie par un nœud de réponse explicite (y compris sur la branche d'erreur), avec les mêmes en-têtes.
+1. **Provenance (R2)** : `GET /api/v1/executions/<id>?includeData=true` sur l'instance (HTTPS, jeton n8n local) ; l'exécution doit appartenir au **workflow de clôture épinglé** (id constant), `status = success`, même `set_id`, `revoque_le` présent. Il télécharge aussi le **candidat** directement depuis n8n/Drive via cette même exécution (le candidat est dans la sortie de l'étape 1).
+2. **Drainage (R1)** : pour chaque workflow de relecture épinglé (GET et POST), `GET /api/v1/executions?workflowId=…&status=running` puis `status=waiting` (et tout autre statut non terminal exposé par l'API) → **doivent être vides**. Toute exécution du POST **en erreur** depuis `cree_le` dont la dernière étape atteinte est **C5bis ou C6** (écriture à issue incertaine) → **blocage** jusqu'à résolution par Éric (il inspecte Drive et l'exécution ; la résolution `{execution_id, constat}` est inscrite **dans l'attestation signée**). Le contrôle de drainage est fait **avant et après** le rapprochement ; résultats différents → refus.
+3. **Rapprochement exhaustif (R3)** :
+   - Historique : toutes les exécutions **réussies** du POST depuis `cree_le` pour ce `set_id` → ensemble H des `(nonce, coeur_sha256, drive_file_id)` consignés en C6.
+   - Drive : ensemble D du manifeste de clôture pour ce `set_id`.
+   - Exiger **H = D** (même `drive_file_id`, même `coeur_sha256`) : une décision disparue (supprimée définitivement, déplacée, purgée, invisible) est dans H mais pas D ; un fichier d'origine inconnue est dans D mais pas H → **refus** dans les deux cas. Tout fichier illisible du dossier → refus.
+   - **Rétention** : l'API ne doit pas avoir purgé d'exécutions depuis `cree_le` (vérifier que la plus ancienne exécution conservée du POST est antérieure à `cree_le` ; n8n purge par défaut au-delà d'un âge maximal — réglage `EXECUTIONS_DATA_MAX_AGE` à vérifier sur l'instance, condition §9.5). Sinon → refus.
+4. **Unicité** : décisions distinctes = `coeur` canoniques distincts (octet par octet ; nonces, dates, générations, noms ignorés). Exactement **un** cœur, d'action `accepter`. Toutes les enveloppes portant ce cœur doivent avoir le **même `lot_relu` canonique** et être cohérentes (`empreinte(lot_relu) = empreinte_publiee`) ; sinon refus.
+5. **Revérifications** : `empreinte_relue` = empreinte du lot candidat ; `lot_relu` = candidat **filtré** par `selection` (ordre, `item_id`) ; `lot-fonda/v1` ; garde-fous du correcteur ; attribution relue dans le référentiel archivé (§2) ; provenance de la **génération de la décision** prise dans `envois[generation]` (R9).
+6. **Récapitulatif lisible** affiché à Éric (lot, cartes gardées/écartées, décision, provenance, badge, résolutions) ; signature seulement après confirmation tapée (`oui`).
+7. **Attestation** `attestation-cloture/v1` (§10) signée RSA-SHA256 PKCS#1 v1.5, base64, sur ses octets canoniques ; **la signature est immédiatement revérifiée** avec la clé publique de `cles.json`.
 
-## 9. Signature locale de clôture (B6 — signature sur le Mac d'Éric)
+**Secrets locaux** (jamais dans le dépôt, Dropbox, chat, workflow) : la clé privée RSA **et** le jeton d'API n8n (Trousseau macOS ou fichiers `chmod 600` hors Dropbox). Le script n'utilise que des **requêtes GET** de l'API n8n ; si l'instance ne permet pas de jeton à droits restreints, le jeton est équivalent administrateur : à protéger comme tel.
 
-- **Clé** : paire RSA 3072 bits générée **localement** par Éric (commande `openssl` fournie), **clé privée hors dépôt et hors n8n** (Trousseau macOS, ou fichier `chmod 600` **hors** du dossier Dropbox), jamais collée dans un chat, un commit ou un workflow. Clé publique commitée `fonda/data/cles/<id>.pub.pem`, déclarée dans `fonda/data/cles/cles.json` = `[{ id, algorithme: "RSA-SHA256/PKCS1v1.5", valide_du, valide_au|null, revoquee_le|null }]`.
-- **Script local** `fonda/scripts/signer-cloture.js` (Node `crypto`, aucun réseau), à partir de l'enveloppe `candidat-fonda/v1`, du fichier `cloture-fonda/v1` et de la décision unique téléchargés depuis Drive. Il **revérifie tout** : `resultat = unique` ; décision = octets de la clôture ; `empreinte_relue` = empreinte du lot candidat ; lot relu = candidat **filtré** par la sélection (ordre, `item_id`) ; `lot-fonda/v1` ; garde-fous du correcteur ; référentiel figé. Puis il signe l'**attestation de clôture** :
-  `attestation-cloture/v1 = { schema, set_id, notion_id, palier, action, selection, ecartees, empreinte_relue, empreinte_publiee, version_correcteur, relecteur_attribue, envoye_a, envoye_le, referentiel_version, generation_cle, decisions_distinctes, cloture_le, badge, cle_id }` → `signature` = RSA-SHA256 PKCS#1 v1.5, base64, sur ses **octets canoniques** (§1).
-- **Vérification** (`publier-lot.js` et CI) : `cle_id` déclaré dans `cles.json`, **non révoqué**, `cloture_le` dans sa période de validité ; **jamais** de chemin de clé fourni par l'attestation ; signature valide ; `schema` reconnu ; `set_id`/`notion_id`/`palier` signés = lot publié ; `action = accepter` ; `decisions_distinctes = 1` ; `selection` et `ecartees` disjointes, sans doublon ; `selection` = `item_ids` du fichier publié ; `empreinte_publiee` = empreinte du fichier ; `badge` = badge de l'entrée (§10).
-- **Limite assumée** : la CI ne revoit pas le candidat complet (il contient des cartes écartées, non publiées). La vérification du **filtrage** est faite par le script d'Éric au moment de signer : Éric est la racine de confiance, c'est exactement ce que l'attestation affirme.
-- **Rotation / compromission** : rotation = nouvelle clé, `valide_au` fixée sur l'ancienne ; compromission = `revoquee_le` fixée → **toutes** les attestations de cette clé deviennent irrecevables (la CI échoue) et les lots concernés sont reclôturés. `cloture_le` est déclaratif (horloge du Mac), pas un horodatage indépendant.
+## 9. Conditions d'activation — à prouver sur la copie de test
 
-## 10. Badge élève ≠ attestation (C7)
+1. **Drainage observable** : l'API de l'instance expose bien `running` / `waiting` pour les workflows de relecture (exécution de test volontairement lente, observée en `running`).
+2. **Révocation** : GET ouvert, clôture lancée, soumission ensuite → refus C3/C5bis ; une soumission autorisée avant révocation et écrivant après apparaît dans H et D.
+3. **Iframe et en-têtes** : parcours GET → POST → confirmation, rejet, erreurs, en **navigateur réel** (pas `curl -I`), en-têtes réellement servis (proxy, CSP cumulées) ; consigner le résultat.
+4. **Limites** : refus immédiat (sans Drive) des requêtes invalides ; aucune relance automatique ; réponses d'erreur explicites avec les mêmes en-têtes.
+5. **Rétention** : `EXECUTIONS_DATA_PRUNE` / `EXECUTIONS_DATA_MAX_AGE` de l'instance connus ; la clôture doit avoir lieu **avant** l'horizon de purge (sinon le script refuse, §8.3). Durée de validité de la clé (14 j) ≤ horizon de purge, ou horizon étendu.
+6. **Protection de branche GitHub** : règle « Require status checks to pass » (`tests (node --test)`) sur `design` et `main` — réglage du dépôt par Éric. Sans elle, la CI informe mais ne bloque pas.
 
-| | Badge élève (`relecteur.nom_affiche` de l'entrée) | Attestation de clôture signée |
-|---|---|---|
-| Affirme | une **responsabilité éditoriale nommée** | « Éric a clôturé ce lot : décision unique reçue via le lien envoyé à `<id>` le `<date>`, sur exactement ce contenu » |
-| N'affirme pas | — | l'**identité** de la personne qui a cliqué |
-| Fixé par | le champ `badge`, **signé par Éric** | le script local |
+## 10. Attestation de clôture et vérification (R6, R7)
 
-- Badge **nominatif** (« … validée par Justine Leblanc ») **uniquement** si Éric a obtenu une **confirmation humaine directe** de cette personne : `badge = { nom_affiche, confirme: true, moyen, confirme_le }`. Sinon `badge = { nom_affiche: "un professeur", confirme: false }`. La saisie d'un nom n'est pas une preuve : c'est l'engagement signé d'Éric.
-- La CI vérifie `entree.relecteur.nom_affiche === attestation.badge.nom_affiche`. **Corrige le code actuel**, qui dérive le badge de `attestation.relecteur` (C7).
-- Lots historiques (`manuelle-historique`) : inchangés.
+`attestation-cloture/v1` = `{ schema, set_id, notion_id, palier, action, selection, ecartees, empreinte_relue, empreinte_publiee, version_correcteur, generation_decision, envoi_decision: { envoye_a, envoye_le }, relecteur_attribue, referentiel_version, generation_cloture, execution_cloture, revoque_le, decisions_distinctes, resolutions, cloture_le, badge, cle_id, signature }` (tous champs présents ; `resolutions = []` par défaut).
 
-## 11. Migration des contrats avant toute ouverture (C10)
+Vérification par `publier-lot.js` **et** la CI (asynchrone, étape dédiée **avant** utilisation du catalogue ; `validerCatalogue` reste synchrone pour la forme) : `cle_id` déclaré dans `fonda/data/cles/cles.json` = `[{ id, algorithme: "RSA-SHA256/PKCS1v1.5", valide_du, valide_au, revoquee_le }]`, non révoqué, `cloture_le` dans la période ; **jamais** de chemin de clé fourni par l'attestation ; signature valide ; `set_id`/`notion_id`/`palier` = lot publié ; `action = "accepter"` ; `decisions_distinctes = 1` ; `selection` et `ecartees` disjointes, sans doublon ; `selection` = `item_ids` du fichier ; **`empreinte_publiee` = empreinte du fichier publié** (et **non plus** `empreinte_relue`, qui porte sur le candidat : corrige la comparaison actuelle de `publier-lot.js`, R7) ; badge cohérent (§11). Le **front** ne vérifie pas RSA : il fait confiance au catalogue **mergé**, protégé par la CI bloquante (§9.6) ; il continue de vérifier l'empreinte de chaque fichier servi.
 
-Ordre imposé, refus par défaut conservé jusqu'au bout : (1) `canonique.js` + vecteurs de test ; (2) `cles.json` + clé publique ; (3) `catalogue.js` : type `cloture-signee` (remplace la forme réservée `n8n-relecture`), vérification RSA ; (4) `publier-lot.js` : exige l'attestation de clôture, prend le badge dans l'attestation, supprime l'injection de types sans signature ; (5) CI : vérifie toute entrée `cloture-signee`, refuse tout autre type que `manuelle-historique` (liste close) et `cloture-signee` vérifiée ; (6) seulement alors, les workflows (inactifs).
+## 11. Badge élève ≠ attestation (C7, R9)
 
-## 12. Tests exigés
+- `badge` est **signé** par Éric. Deux formes seulement :
+  - `{ nom_affiche: <nom réel>, confirme: true, moyen: <texte non vide>, confirme_le: <date ISO> }` — uniquement si Éric a obtenu une **confirmation humaine directe** de cette personne ;
+  - `{ nom_affiche: "un professeur", confirme: false, moyen: null, confirme_le: null }` — exactement.
+- Toute autre combinaison → refus (CI et `publier-lot.js`). La CI vérifie aussi `entree.relecteur.nom_affiche === attestation.badge.nom_affiche`. Le badge n'est **jamais** dérivé d'un autre champ.
+- Lots historiques : `manuelle-historique`, inchangés et **figés par empreinte** (`HISTORIQUES_FIGES`, R4 — corrigé dans le bloc 1).
 
-1. JS réel de chaque nœud Code ; `canonique.js` identique octet par octet entre Node et les nœuds n8n ; vecteurs fixes (empreinte, cœur, attestation).
-2. XSS : charges dans **chaque** champ, y compris `</script>`, U+2028/U+2029, guillemets dans le JSON embarqué ; aucune exécution.
-3. Sélection : `1abc`, `it1`, espaces, doublons (vrai webhook), champs inconnus, `confirmer_rejet` mal placé, corps > 64 Ko (vrai webhook).
-4. **Entrelacements** (O1), barrières simulées entre chaque étape : même nonce même choix (idempotent) ; même nonce choix différents (409) ; deux nonces choix identiques (1 distinct) ; deux nonces choix différents (conflit, rien de signé) ; confirmation après révocation (refusée en C3) ; confirmation ayant passé C3 juste avant la révocation et écrivant pendant le délai (comptée) ; réémission pendant une confirmation ; panne juste après C6 (décision complète, vue par la clôture) ; fichier corrompu dans `decisions/` (conflit) ; décision mise en corbeille (comptée).
-5. Signature : vecteurs ; attestation altérée d'un octet, clé révoquée, `cle_id` inconnu, `cloture_le` hors période, `selection`/`ecartees` non disjointes, `action = rejeter` → refus ; `publier-lot.js` et CI.
-6. Conditions §8 prouvées sur la copie de test, résultats consignés.
+## 12. Révocation de la clé de signature (R8)
 
-## 13. Décisions d'Éric (2026-10-13)
+- **Rotation normale** : nouvelle clé, `valide_au` fixée sur l'ancienne ; les attestations signées pendant sa validité restent recevables.
+- **Compromission** : **une seule PR** qui (a) fixe `revoquee_le` sur la clé, **et** (b) pour chaque lot concerné, soit le **retire** (entrée et fichier supprimés : quarantaine), soit remplace son attestation par une **re-signature** avec la nouvelle clé, **à contenu identique** (`empreinte_publiee` inchangée — l'immuabilité porte sur le contenu, pas sur l'attestation ; un remplacement d'attestation qui changerait l'empreinte est refusé). La CI valide l'état final de la PR ; aucun contrôle n'est désactivé. Le site continue de servir l'ancien état jusqu'au merge : la PR de révocation est prioritaire.
+
+## 13. Migration avant toute ouverture (C10, R7) — refus par défaut jusqu'au bout
+
+(1) `canonique.js` + vecteurs (nombres décimaux, chaînes, surrogates) ; (2) `cles.json` + clé publique ; (3) `catalogue.js` : type `cloture-signee`, vérification RSA asynchrone ; (4) `publier-lot.js` : exige l'attestation de clôture, compare `empreinte_publiee` au fichier, badge de l'attestation, supprime l'injection de types sans signature ; (5) CI : vérifie toute entrée `cloture-signee`, refuse tout autre type que `manuelle-historique` figé et `cloture-signee` vérifiée ; **CI GitHub déjà en place** (bloc 1), protection de branche à activer (§9.6) ; (6) `signer-cloture.js` + tests hors ligne (API n8n simulée) ; (7) seulement alors, les workflows (inactifs).
+
+## 14. Tests exigés
+
+1. JS réel des nœuds Code ; `canonique.js` octet par octet (Node ↔ n8n) ; vecteurs fixes.
+2. XSS dans chaque champ (`</script>`, U+2028/9, guillemets) ; aucune exécution.
+3. Sélection malformée et doublons sur le **vrai** webhook ; corps > 64 Ko.
+4. Entrelacements : même nonce même/différent choix ; deux nonces même/différents choix ; soumission après révocation ; soumission autorisée avant révocation écrivant après ; réémission pendant une confirmation ; panne après C6 ; **écriture Drive à issue incertaine** (exécution en erreur après C5bis → blocage) ; **reprise après C3** ; **exécution encore `running`/`waiting`** au moment de signer ; **`incompleteSearch`** ; **décision disparue** (dans H, pas dans D) ; **fichier d'origine inconnue** (dans D, pas dans H) ; **exécutions purgées** ; **ancienne exécution de clôture réutilisée** (révocation antérieure à une décision listée → refus) ; **lot historique modifié** (refusé, R4).
+5. Signature : vecteurs ; attestation altérée, clé révoquée ou inconnue, période dépassée, sélection non disjointe, `action = rejeter`, badge incohérent → refus ; re-signature à contenu identique acceptée, à contenu différent refusée.
+6. Conditions §9 prouvées sur la copie de test, résultats consignés.
+
+## 15. Décisions d'Éric (2026-10-13)
 
 1. Clé de relecture : **14 jours**.
-2. **« Essayer une réponse » en v1**, `correction.js` depuis Pages uniquement (URL versionnée, SRI).
-3. **Clôture manuelle obligatoire** à la place de la détection après coup.
-4. **Signature locale sur le Mac d'Éric** (clé privée jamais dans n8n) — recommandation retenue ; **à confirmer explicitement par Éric**, car elle fixe le sens de l'attestation : « Éric a clôturé ce lot ».
-5. Alertes « conflit » / « aucune décision » : **Éric seul**.
-6. Historique des exécutions n8n conservé intégralement : aucune exception nécessaire (plus aucune clé privée dans n8n).
+2. **« Essayer une réponse » en v1** (URL versionnée sur Pages, SRI).
+3. **Clôture manuelle obligatoire** ; plus de détection après coup.
+4. **Signature locale sur le Mac d'Éric** ; l'attestation affirme « Éric a clôturé ce lot contre l'état rapporté par n8n à cet instant ».
+5. **Rapprochement par l'API n8n** depuis le script local (provenance, drainage, rapprochement historique ↔ Drive).
+6. Historique des exécutions n8n **conservé partout, sans exception** (aucune clé privée dans n8n ; le rapprochement en a besoin).
+7. **GitHub Action bloquante** (vérification publique uniquement) ; protection de branche à activer.
+8. Alertes « conflit » : Éric seul.
