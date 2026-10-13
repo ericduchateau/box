@@ -3,12 +3,9 @@
   "5e": [],
   "4e": [],
   "3e": [],
-  "_comment_relecteurs": "Adresses de TEST pour le routage de relecture (matiere -> relecteur, independant du niveau) — preparation SPEC T6b. Jamais de donnee eleve.",
+  "_comment_relecteurs": "Identifiants de relecteurs UNIQUEMENT (routage : referentiel.json, champ relecteur, par notion_id). AUCUNE adresse e-mail dans le dépôt public : les adresses vivent dans n8n (chaîne FONDA, PRD §2 bis). Jamais de donnée élève.",
   "relecteurs": {
-    "eric": { "email": "duchateauphysiquechimie@gmail.com" },
-    "justine": {
-      "email": "ericdnews@yahoo.fr",
-      "_TEST": "remplacer par le vrai mail de Justine avant mise en service"
-    }
+    "eric": { "nom_affiche": "Éric Duchateau" },
+    "justine": { "nom_affiche": "Justine Leblanc" }
   }
 }

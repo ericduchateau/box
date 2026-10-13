@@ -12,13 +12,17 @@ const assert = require('node:assert/strict');
 
 const CLASSES = require('../data/classes.json');
 const REFERENTIEL = require('../data/referentiel.json');
+const CATALOGUE = require('../data/catalogue-fonda.json');
+const SET_CONSIGNE_NI = 'set_fonda_comprendre-consigne_nI_01';
+const CHEMIN_CONSIGNE_NI = 'fonda/data/lots/set_fonda_comprendre-consigne_nI_01.json';
+const LOT_CONSIGNE_NI = require('../data/lots/set_fonda_comprendre-consigne_nI_01.json');
 
 const SEMAINE_41 = {
   iso_week: 41,
   du: '2026-10-05',
   au: '2026-10-11',
   entrees: [
-    { notion_id: 'maths.resolution-problemes', matiere: 'maths', palier: 'nI', niveau_cible: '6e', set_id: 'box_fonda_test01' },
+    { notion_id: 'maths.resolution-problemes', matiere: 'maths', palier: 'nI', niveau_cible: '6e', set_id: 'set_fonda_resolution-problemes_nI_01' },
   ],
 };
 const CALENDRIER = { version: 1, last_updated: '2026-10-05', semaines: [SEMAINE_41] };
@@ -74,7 +78,7 @@ function creerDocumentFactice({ echecs = new Set(), journalScripts = [] } = {}) 
         const chemin = el.src.split('?')[0];
         if (echecs.has(chemin)) { if (typeof el.onerror === 'function') el.onerror(new Error('réseau')); return; }
         const code = fsTest.readFileSync(pathTest.join(__dirname, '..', '..', chemin), 'utf8');
-        vm.runInNewContext(code, { self: global.window, window: global.window, document: global.document, console });
+        vm.runInNewContext(code, { self: global.window, window: global.window, document: global.document, console, crypto: globalThis.crypto, TextEncoder });
         if (typeof el.onload === 'function') el.onload();
       }, 0);
     }
@@ -95,17 +99,20 @@ function creerDocumentFactice({ echecs = new Set(), journalScripts = [] } = {}) 
 // (fonda/data/lots-fonda-calibration/...), sert soit une fixture explicite (`lots`),
 // soit, par défaut, le VRAI fichier committé (cohérent pour les tests d'intégration
 // qui n'ont besoin d'aucune fixture synthétique) ; échoue sur le reste.
-function creerFetchFactice({ calendrier = CALENDRIER, lots = {} } = {}) {
+function creerFetchFactice({ calendrier = CALENDRIER, lots = {}, catalogue = CATALOGUE } = {}) {
   return async (chemin) => {
     if (chemin.includes('classes.json')) return { ok: true, json: async () => CLASSES };
     if (chemin.includes('referentiel.json')) {
       return global.__referentielEnPanne ? { ok: false } : { ok: true, json: async () => REFERENTIEL };
     }
     if (chemin.includes('calendar.json')) return { ok: true, json: async () => calendrier };
-    if (chemin.includes('lots-fonda-calibration/')) {
+    if (chemin === 'fonda/data/catalogue-fonda.json') {
+      return catalogue ? { ok: true, json: async () => JSON.parse(JSON.stringify(catalogue)) } : { ok: false };
+    }
+    if (chemin.startsWith('fonda/data/lots/')) {
       if (lots[chemin]) return { ok: true, json: async () => lots[chemin] };
       try {
-        const donnees = require('../' + chemin.split('fonda/')[1]);
+        const donnees = JSON.parse(fsTest.readFileSync(pathTest.join(__dirname, '../..', chemin), 'utf8'));
         return { ok: true, json: async () => donnees };
       } catch { return { ok: false }; }
     }
@@ -113,7 +120,7 @@ function creerFetchFactice({ calendrier = CALENDRIER, lots = {} } = {}) {
   };
 }
 
-async function demarrerBootstrap({ search, calendrier, lots, journalFetch, echecs, journalScripts }) {
+async function demarrerBootstrap({ search, calendrier, lots, catalogue, journalFetch, echecs, journalScripts }) {
   const doc = creerDocumentFactice({ echecs, journalScripts });
   // document.body.appendChild('fondaRoot' div) -> on l'intercepte pour pouvoir le relire
   const originalAppendChild = doc.body.appendChild.bind(doc.body);
@@ -121,7 +128,7 @@ async function demarrerBootstrap({ search, calendrier, lots, journalFetch, echec
 
   global.document = doc;
   global.window = { location: { search, origin: 'https://ericduchateau.github.io', pathname: '/box/index.html' } };
-  const fetchFactice = creerFetchFactice({ calendrier, lots });
+  const fetchFactice = creerFetchFactice({ calendrier, lots, ...(catalogue !== undefined ? { catalogue } : {}) });
   global.fetch = journalFetch
     ? (chemin) => { journalFetch.push(chemin); return fetchFactice(chemin); }
     : fetchFactice;
@@ -131,7 +138,7 @@ async function demarrerBootstrap({ search, calendrier, lots, journalFetch, echec
 
   // Laisse le temps à la chaîne de promesses (fetch factice + chargement de script
   // simulé via setTimeout ci-dessus) de se dérouler avant d'inspecter le DOM factice.
-  for (let i = 0; i < 20; i += 1) await new Promise((r) => setTimeout(r, 0));
+  for (let i = 0; i < 40; i += 1) await new Promise((r) => setTimeout(r, 0));
 
   return doc.getElementById('fondaRoot');
 }
@@ -172,12 +179,18 @@ describe('defi introuvable (expiré / faute de frappe / semaine non programmée)
   });
 });
 
-describe('defi résolu avec succès -> page non blanche, contenu annoncé (pas de fetch de jeu réel en T4)', () => {
-  test('un lien valide affiche un message exploitant le contexte résolu (grp, notion), jamais vide', async () => {
+describe('defi résolu avec succès -> le lot programmé (set_id du calendrier) est rendu', () => {
+  test('un lien valide rend le lot dont le set_id vient du calendrier, avec la classe résolue', async () => {
     const root = await demarrerBootstrap({ search: '?fonda=1&defi=defi_2026-w41_601_resolution-problemes', calendrier: CALENDRIER });
-    const texte = (root.textContent || root.children.map((c) => c.textContent).join('')).trim();
-    assert.ok(texte.length > 0);
-    assert.ok(texte.includes('601'), 'le message devrait mentionner la classe résolue');
+    assert.match(texteDe(root), /classe 601/);
+    assert.match(texteDe(root), /Carte 1 \/ 6/);
+  });
+
+  test('set_id programmé mais absent du catalogue publié -> « pas disponible », rien rendu', async () => {
+    const cal = { ...CALENDRIER, semaines: [{ ...SEMAINE_41, entrees: [{ ...SEMAINE_41.entrees[0], set_id: 'set_fonda_resolution-problemes_nI_02' }] }] };
+    const root = await demarrerBootstrap({ search: '?fonda=1&defi=defi_2026-w41_601_resolution-problemes', calendrier: cal });
+    assert.match(texteDe(root), /pas disponible/);
+    assert.doesNotMatch(texteDe(root), /Carte 1/);
   });
 });
 
@@ -308,49 +321,38 @@ function obtenirExportsBootstrap() {
   return require('./bootstrap.js');
 }
 
-describe('cheminLot — convention de nommage (même motif que generer-lot-fonda.js)', () => {
-  test('notion_id à points -> tirets, palier inchangé', () => {
+describe('cheminLot — chemin issu de l\'entrée du catalogue, jamais d\'un paramètre d\'URL', () => {
+  test('entrée conforme -> fonda/data/lots/<set_id>.json', () => {
     const { cheminLot } = obtenirExportsBootstrap();
-    assert.equal(cheminLot('fr.comprendre-consigne', 'nI'), 'fonda/data/lots-fonda-calibration/fr-comprendre-consigne_nI.json');
-    assert.equal(cheminLot('maths.resolution-problemes', 'nF'), 'fonda/data/lots-fonda-calibration/maths-resolution-problemes_nF.json');
+    assert.equal(cheminLot(CATALOGUE.lots[0]), `fonda/data/lots/${CATALOGUE.lots[0].set_id}.json`);
+  });
+  test('entrée absente ou fichier ≠ lots/<set_id>.json -> null', () => {
+    const { cheminLot } = obtenirExportsBootstrap();
+    assert.equal(cheminLot(null), null);
+    assert.equal(cheminLot({ set_id: SET_CONSIGNE_NI, fichier: '../referentiel.json' }), null);
+    assert.equal(cheminLot({ set_id: SET_CONSIGNE_NI, fichier: 'lots/autre.json' }), null);
   });
 });
 
-describe('adapterCarte — relecteur LU depuis la donnée, jamais déduit (décision Éric, chantier câblage)', () => {
-  test('lit lot.relecteur quand il est présent', () => {
+describe('adapterCarte — relecteur LU dans l\'entrée attestée du catalogue, jamais déduit', () => {
+  const carte = { question: 'Q ?', profil_correction: 'exact', reponses_acceptees: ['R'] };
+  test('lit entree.relecteur.nom_affiche', () => {
     const { adapterCarte } = obtenirExportsBootstrap();
-    const carte = adapterCarte(
-      { question: 'Q ?', profil_correction: 'exact', reponses_acceptees: ['R'] },
-      { relecteur: 'Justine Leblanc', matiere: 'Français' },
-    );
-    assert.equal(carte.relecteur, 'Justine Leblanc');
+    assert.equal(adapterCarte(carte, { relecteur: { id: 'eric', nom_affiche: 'Éric Duchateau' } }).relecteur, 'Éric Duchateau');
   });
-
-  test('repli générique SANS nom quand lot.relecteur est absent — ne déduit JAMAIS de matiere', () => {
+  test('repli générique SANS nom si l\'entrée n\'a pas de relecteur exploitable — jamais déduit de la matière', () => {
     const { adapterCarte } = obtenirExportsBootstrap();
-    const carte = adapterCarte(
-      { question: 'Q ?', profil_correction: 'exact', reponses_acceptees: ['R'] },
-      { matiere: 'Mathématiques' }, // pas de champ relecteur — ne doit PAS produire "Éric Duchateau"
-    );
-    assert.equal(carte.relecteur, 'un professeur');
+    for (const e of [null, {}, { relecteur: {} }, { relecteur: { nom_affiche: ' ' } }, { relecteur: { nom_affiche: { toString: null } } }, { matiere: 'Mathématiques' }]) {
+      assert.equal(adapterCarte(carte, e).relecteur, 'un professeur');
+    }
   });
-
-  test('repli générique aussi si "lot" lui-même est absent/null', () => {
-    const { adapterCarte } = obtenirExportsBootstrap();
-    const carte = adapterCarte({ question: 'Q ?', profil_correction: 'exact', reponses_acceptees: ['R'] }, null);
-    assert.equal(carte.relecteur, 'un professeur');
-  });
-
   test('transporte question/profil_correction/reponses_acceptees/unite tels quels', () => {
     const { adapterCarte } = obtenirExportsBootstrap();
-    const carte = adapterCarte(
-      { question: 'Combien ?', profil_correction: 'numerique', reponses_acceptees: ['8 cm', '8'], unite: 'cm', numero: 1, contexte: 'x' },
-      { relecteur: 'Éric Duchateau' },
-    );
-    assert.equal(carte.question, 'Combien ?');
-    assert.equal(carte.profil_correction, 'numerique');
-    assert.deepEqual(carte.reponses_acceptees, ['8 cm', '8']);
-    assert.equal(carte.unite, 'cm');
+    const c = adapterCarte({ question: 'Combien ?', profil_correction: 'numerique', reponses_acceptees: ['8 cm', '8'], unite: 'cm', numero: 1, contexte: 'x' }, CATALOGUE.lots[0]);
+    assert.equal(c.question, 'Combien ?');
+    assert.deepEqual(c.reponses_acceptees, ['8 cm', '8']);
+    assert.equal(c.unite, 'cm');
+    assert.equal('contexte' in c, false, 'contexte jamais transmis (ni affiché ni noté)');
   });
 });
 
@@ -366,10 +368,21 @@ describe('Page niveau -> lien vers l\'index d\'entraînement libre', () => {
 });
 
 describe('?page=carte — rendu réel d\'un paquet FONDA (plus de stub "contenu à venir")', () => {
-  test('notion ou palier manquant dans le lien : message clair, pas de crash', async () => {
+  test('lot manquant dans le lien : message clair, pas de crash', async () => {
     const root = await demarrerBootstrap({ search: '?fonda=1&page=carte', calendrier: CALENDRIER });
-    const texte = (root.textContent || root.children.map((c) => c.textContent).join('')).trim();
-    assert.match(texte, /notion ou palier manquant/i);
+    assert.match(texteDe(root), /lot manquant/i);
+  });
+
+  test('lien canonique ?set=<set_id> : le lot publié est rendu', async () => {
+    const root = await demarrerBootstrap({ search: `?fonda=1&page=carte&set=${SET_CONSIGNE_NI}` });
+    assert.match(texteDe(root), /Carte 1 \/ 6/);
+  });
+
+  test('compat ancien lien notion/palier : résolu par le catalogue (même lot)', async () => {
+    const journal = [];
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI', journalFetch: journal });
+    assert.match(texteDe(root), /Carte 1 \/ 6/);
+    assert.ok(journal.includes(CHEMIN_CONSIGNE_NI));
   });
 
   test('lot introuvable (fetch échoue) : message clair, pas de page blanche', async () => {
@@ -379,7 +392,7 @@ describe('?page=carte — rendu réel d\'un paquet FONDA (plus de stub "contenu 
     assert.doesNotMatch(texte, /contenu à venir/, 'le stub ne doit plus jamais apparaître');
   });
 
-  test('paquet réel (fr.comprendre-consigne/nI, fichier committé) : carte 1 rendue avec son VRAI relecteur ("Justine Leblanc")', async () => {
+  test('paquet réel (fr.comprendre-consigne/nI, fichier committé) : carte 1 rendue avec le relecteur ATTESTÉ ("Éric Duchateau")', async () => {
     const root = await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI', calendrier: CALENDRIER });
     const texte = (root.textContent || '').trim() || root.children.map((c) => c.textContent).join(' ');
     assert.match(texte, /Comprendre une consigne/, 'le titre du lot doit apparaître');
@@ -389,7 +402,8 @@ describe('?page=carte — rendu réel d\'un paquet FONDA (plus de stub "contenu 
     // (bandeau de correction, après "Valider").
     trouverBoutonParTexte(root, 'Valider').__click();
     await new Promise((r) => setTimeout(r, 0));
-    assert.match(texteDe(root), /Justine Leblanc/);
+    assert.match(texteDe(root), /Éric Duchateau/);
+    assert.doesNotMatch(texteDe(root), /Justine/);
   });
 
   test('"Carte suivante" fait avancer le paquet jusqu\'à l\'écran de fin', async () => {
@@ -422,78 +436,64 @@ describe('?page=carte — rendu réel d\'un paquet FONDA (plus de stub "contenu 
 
 // --- G4 : liste fermée + drapeau de relecture vérifié au rendu (relecture Codex PR #2) ---
 
-describe('G4 — seuls les lots relus carte par carte sont affichables', () => {
-  test('LOTS_PUBLIABLES = exactement les 8 lots du lot de validation (4 notions × nI/nF)', () => {
-    const { LOTS_PUBLIABLES } = obtenirExportsBootstrap();
-    assert.deepEqual(LOTS_PUBLIABLES, {
-      'fr.comprendre-consigne': ['nI', 'nF'],
-      'fr.inference-implicite': ['nI', 'nF'],
-      'maths.grandeurs-mesures': ['nI', 'nF'],
-      'maths.resolution-problemes': ['nI', 'nF'],
-    });
-  });
-
-  test('chaque lot de la liste fermée porte revue_carte_par_carte: true ; tous les autres fichiers du dossier restent à false', () => {
-    const fs = require('fs');
-    const path = require('path');
-    const { cheminLot, LOTS_PUBLIABLES } = obtenirExportsBootstrap();
-    const publiables = new Set();
-    for (const [notion, paliers] of Object.entries(LOTS_PUBLIABLES)) {
-      for (const palier of paliers) publiables.add(path.basename(cheminLot(notion, palier)));
-    }
-    const dossier = path.join(__dirname, '../data/lots-fonda-calibration');
-    for (const f of fs.readdirSync(dossier).filter((x) => x.endsWith('.json'))) {
-      const lot = JSON.parse(fs.readFileSync(path.join(dossier, f), 'utf8'));
-      assert.equal(lot.revue_carte_par_carte, publiables.has(f), `drapeau inattendu pour ${f}`);
-    }
-  });
-
-  test('cheminLot refuse tout couple hors liste (lot non relu, palier inconnu, traversée de chemin)', () => {
-    const { cheminLot } = obtenirExportsBootstrap();
-    assert.equal(cheminLot('fr.lexique', 'nI'), null, 'lot de calibration non relu');
-    assert.equal(cheminLot('fr.comprendre-consigne', 'nX'), null);
-    assert.equal(cheminLot('fr.comprendre-consigne', 'nI/../../referentiel.json#'), null);
-    assert.equal(cheminLot('constructor', 'nI'), null, 'clé héritée du prototype');
-    assert.equal(cheminLot('x', 'nI/../../referentiel.json#'), null);
-  });
-
+describe('G4 — seuls les lots du catalogue publié, intacts et attestés, sont affichables', () => {
   test('lotEstPubliable : true strict uniquement', () => {
     const { lotEstPubliable } = obtenirExportsBootstrap();
     assert.equal(lotEstPubliable({ revue_carte_par_carte: true }), true);
-    assert.equal(lotEstPubliable({ revue_carte_par_carte: false }), false);
-    assert.equal(lotEstPubliable({ revue_carte_par_carte: 'true' }), false);
-    assert.equal(lotEstPubliable({}), false);
+    for (const v of [false, 'true', undefined]) assert.equal(lotEstPubliable({ revue_carte_par_carte: v }), false);
     assert.equal(lotEstPubliable(null), false);
   });
 
-  test('?page=carte sur un lot NON relu (fr.lexique) : refusé, AUCUN fetch de lot, message visible', async () => {
+  const refus = [
+    ['lot NON relu (fr.lexique), ancien lien', '?fonda=1&page=carte&notion=fr.lexique&palier=nI'],
+    ['set_id de calibration non publié', '?fonda=1&page=carte&set=set_fonda_lexique_nI_01'],
+    ['palier hostile (traversée)', '?fonda=1&page=carte&notion=x&palier=' + encodeURIComponent('nI/../../referentiel.json#')],
+    ['set hostile (traversée)', '?fonda=1&page=carte&set=' + encodeURIComponent('../referentiel')],
+  ];
+  for (const [libelle, search] of refus) {
+    test(`${libelle} : refusé, AUCUN fetch de lot, message visible`, async () => {
+      const journal = [];
+      const root = await demarrerBootstrap({ search, journalFetch: journal });
+      assert.deepEqual(journal.filter((c) => c !== 'fonda/data/catalogue-fonda.json'), []);
+      assert.match(texteDe(root), /pas disponible/);
+      assert.doesNotMatch(texteDe(root), /Carte 1/);
+    });
+  }
+
+  const alterations = [
+    ['drapeau revue à false', (l) => ({ ...l, revue_carte_par_carte: false })],
+    ['UNE réponse acceptée modifiée après attestation (empreinte ≠)', (l) => ({ ...l, cartes: l.cartes.map((c, i) => (i === 2 ? { ...c, reponses_acceptees: [...c.reponses_acceptees, 'triche'] } : c)) })],
+    ['question modifiée après attestation (empreinte ≠)', (l) => ({ ...l, cartes: [{ ...l.cartes[0], question: l.cartes[0].question + ' ' }, ...l.cartes.slice(1)] })],
+    ['champ hors liste blanche (code_suppression)', (l) => ({ ...l, code_suppression: 'SUP-AAAA1111' })],
+    ['champ hors liste blanche dans une carte (prof_email)', (l) => ({ ...l, cartes: [{ ...l.cartes[0], prof_email: 'x@y.z' }, ...l.cartes.slice(1)] })],
+    ['set_id du fichier ≠ entrée', (l) => ({ ...l, set_id: 'set_fonda_comprendre-consigne_nI_02' })],
+    ['cartes réordonnées (item_ids ≠ entrée)', (l) => ({ ...l, cartes: [l.cartes[1], l.cartes[0], ...l.cartes.slice(2)] })],
+  ];
+  for (const [libelle, alterer] of alterations) {
+    test(`fichier publié altéré — ${libelle} : refusé au rendu`, async () => {
+      const root = await demarrerBootstrap({ search: `?fonda=1&page=carte&set=${SET_CONSIGNE_NI}`, lots: { [CHEMIN_CONSIGNE_NI]: alterer(LOT_CONSIGNE_NI) } });
+      assert.match(texteDe(root), /pas disponible/);
+      assert.doesNotMatch(texteDe(root), /Carte 1/);
+    });
+  }
+
+  test('catalogue non conforme (entrée sans attestation) -> message visible, aucun lot chargé', async () => {
     const journal = [];
-    const root = await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=fr.lexique&palier=nI', journalFetch: journal });
-    assert.equal(journal.filter((c) => c.includes('lots-fonda-calibration')).length, 0);
-    assert.match(texteDe(root), /pas disponible/);
-    assert.doesNotMatch(texteDe(root), /Carte 1/);
+    const cat = { ...CATALOGUE, lots: CATALOGUE.lots.map(({ attestation, ...e }) => e) };
+    const root = await demarrerBootstrap({ search: `?fonda=1&page=carte&set=${SET_CONSIGNE_NI}`, catalogue: cat, journalFetch: journal });
+    assert.match(texteDe(root), /Impossible de charger ce défi/);
+    assert.deepEqual(journal, ['fonda/data/catalogue-fonda.json']);
   });
 
-  test('?page=carte avec palier hostile (traversée) : aucun fetch hors liste, message visible', async () => {
-    const journal = [];
-    const search = '?fonda=1&page=carte&notion=x&palier=' + encodeURIComponent('nI/../../referentiel.json#');
-    const root = await demarrerBootstrap({ search, journalFetch: journal });
-    assert.deepEqual(journal, []);
-    assert.match(texteDe(root), /pas disponible/);
+  test('catalogue indisponible -> message visible', async () => {
+    const root = await demarrerBootstrap({ search: `?fonda=1&page=carte&set=${SET_CONSIGNE_NI}`, catalogue: null });
+    assert.match(texteDe(root), /Impossible de charger ce défi/);
   });
 
-  test('lot de la liste mais drapeau à false dans la donnée : refusé au rendu (défense en profondeur)', async () => {
-    const vrai = require('../data/lots-fonda-calibration/fr-comprendre-consigne_nI.json');
-    const lots = { 'fonda/data/lots-fonda-calibration/fr-comprendre-consigne_nI.json': { ...vrai, revue_carte_par_carte: false } };
-    const root = await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI', lots });
-    assert.match(texteDe(root), /pas disponible/);
-    assert.doesNotMatch(texteDe(root), /Carte 1/);
-  });
-
-  test('page=carte : aucun fetch calendrier/classes/referentiel (court-circuit du Promise.all)', async () => {
+  test('page=carte : seuls catalogue + lot sont lus (ni calendrier, ni classes, ni référentiel)', async () => {
     const journal = [];
-    await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI', journalFetch: journal });
-    assert.deepEqual(journal, ['fonda/data/lots-fonda-calibration/fr-comprendre-consigne_nI.json']);
+    await demarrerBootstrap({ search: `?fonda=1&page=carte&set=${SET_CONSIGNE_NI}`, journalFetch: journal });
+    assert.deepEqual(journal, ['fonda/data/catalogue-fonda.json', CHEMIN_CONSIGNE_NI]);
   });
 });
 
@@ -501,10 +501,11 @@ describe('G4 — seuls les lots relus carte par carte sont affichables', () => {
 
 describe('chargement des dépendances FONDA en conditions navigateur (aucun global pré-injecté)', () => {
   const ORDRE = [
-    'fonda/engine/evenements.js?v=1',
-    'fonda/engine/liens.js?v=1',
-    'fonda/engine/correction.js?v=1',
-    'fonda/engine/carte-reponse-produite.js?v=1',
+    'fonda/engine/catalogue.js?v=2',
+    'fonda/engine/evenements.js?v=2',
+    'fonda/engine/liens.js?v=2',
+    'fonda/engine/correction.js?v=2',
+    'fonda/engine/carte-reponse-produite.js?v=2',
   ];
 
   test('lien de défi (calendrier) : graphe complet chargé dans l\'ordre, une seule fois, et le défi se lance', async () => {
@@ -626,16 +627,12 @@ describe('adapterCarte — arrondi et seconde_chance transmis (relecture Codex P
 });
 
 describe('lot validé EN ENTIER avant affichage (relecture Codex PR #2, #9)', () => {
-  const CHEMIN = 'fonda/data/lots-fonda-calibration/fr-comprendre-consigne_nI.json';
-  const VRAI = require('../data/lots-fonda-calibration/fr-comprendre-consigne_nI.json');
+  const CHEMIN = CHEMIN_CONSIGNE_NI;
+  const VRAI = LOT_CONSIGNE_NI;
 
-  test('les 8 lots publiables sont bien formés', () => {
-    const { cheminLot, LOTS_PUBLIABLES, lotEstBienForme } = obtenirExportsBootstrap();
-    for (const [notion, paliers] of Object.entries(LOTS_PUBLIABLES)) {
-      for (const palier of paliers) {
-        assert.ok(lotEstBienForme(require('../../' + cheminLot(notion, palier))), `${notion}/${palier}`);
-      }
-    }
+  test('les lots publiés sont bien formés', () => {
+    const { cheminLot, lotEstBienForme } = obtenirExportsBootstrap();
+    for (const e of CATALOGUE.lots) assert.ok(lotEstBienForme(require('../../' + cheminLot(e))), e.set_id);
   });
 
   const casMalformes = [
@@ -702,8 +699,8 @@ describe('chargerScript — expiration (relecture Codex PR #2 v2, #2)', () => {
 });
 
 describe('réponses non textuelles (relecture Codex PR #2 v2, #4)', () => {
-  const CHEMIN = 'fonda/data/lots-fonda-calibration/fr-comprendre-consigne_nI.json';
-  const VRAI = require('../data/lots-fonda-calibration/fr-comprendre-consigne_nI.json');
+  const CHEMIN = CHEMIN_CONSIGNE_NI;
+  const VRAI = LOT_CONSIGNE_NI;
 
   const casRefuses = [
     ['réponse {toString:null}', { reponses_acceptees: ['a', { toString: null }] }],
@@ -745,17 +742,9 @@ describe('réponses non textuelles (relecture Codex PR #2 v2, #4)', () => {
 });
 
 describe('validation du lot — compléments (relecture Codex ciblée)', () => {
-  const VRAI = require('../data/lots-fonda-calibration/fr-comprendre-consigne_nI.json');
-  test('relecteur {toString:null} : lot refusé', () => {
-    const { lotEstBienForme } = obtenirExportsBootstrap();
-    assert.equal(lotEstBienForme({ ...VRAI, relecteur: { toString: null } }), false);
-    assert.equal(lotEstBienForme({ ...VRAI, relecteur: ' ' }), false);
-    const { relecteur, ...sansRelecteur } = VRAI;
-    assert.equal(lotEstBienForme(sansRelecteur), true, 'absent = repli générique, accepté');
-  });
   test('arrondi hors bornes du correcteur (11) : lot refusé ; 10 accepté', () => {
     const { lotEstBienForme } = obtenirExportsBootstrap();
-    const avec = (a) => ({ ...VRAI, cartes: [{ ...VRAI.cartes[0], arrondi: a }] });
+    const avec = (a) => ({ ...LOT_CONSIGNE_NI, cartes: [{ ...LOT_CONSIGNE_NI.cartes[0], arrondi: a }] });
     assert.equal(lotEstBienForme(avec(11)), false);
     assert.equal(lotEstBienForme(avec(10)), true);
   });
@@ -774,70 +763,82 @@ function liensIndex(root) {
   return out;
 }
 
-describe('construireEntreesIndex — dérivé de LOTS_PUBLIABLES, libellés du référentiel', () => {
-  test('une entrée par notion de LOTS_PUBLIABLES, triées par `ordre` du référentiel, libellés lus', () => {
-    const { construireEntreesIndex, LOTS_PUBLIABLES } = obtenirExportsBootstrap();
-    const entrees = construireEntreesIndex(LOTS_PUBLIABLES, REFERENTIEL);
+describe('construireEntreesIndex — dérivé du catalogue publié, libellés du référentiel', () => {
+  test('une ligne par notion du catalogue, triées par `ordre` du référentiel, un lien par set_id', () => {
+    const { construireEntreesIndex } = obtenirExportsBootstrap();
+    const entrees = construireEntreesIndex(CATALOGUE, REFERENTIEL);
     assert.deepEqual(entrees.map((e) => e.notionId),
       ['fr.comprendre-consigne', 'maths.grandeurs-mesures', 'maths.resolution-problemes', 'fr.inference-implicite']);
     const consigne = entrees[0];
     assert.equal(consigne.libelle, REFERENTIEL.notions.find((n) => n.id === 'fr.comprendre-consigne').libelle);
     assert.equal(consigne.matiere, 'français');
-    assert.deepEqual(consigne.paliers, [{ palier: 'nI', libelle: 'Initial' }, { palier: 'nF', libelle: 'Final' }]);
+    assert.deepEqual(consigne.paliers, [
+      { palier: 'nI', setId: 'set_fonda_comprendre-consigne_nI_01', libelle: 'Initial' },
+      { palier: 'nF', setId: 'set_fonda_comprendre-consigne_nF_01', libelle: 'Final' },
+    ]);
   });
 
-  test('pas de liste en dur : un couple ajouté à la source apparaît, un couple retiré disparaît', () => {
+  test('pas de liste en dur : un lot ajouté au catalogue apparaît ; deux lots du même couple sont numérotés', () => {
     const { construireEntreesIndex } = obtenirExportsBootstrap();
-    const entrees = construireEntreesIndex({ 'x.fictive': ['nF'], 'fr.comprendre-consigne': ['nI'] }, REFERENTIEL);
-    assert.deepEqual(entrees.map((e) => [e.notionId, e.paliers.map((p) => p.palier)]),
-      [['fr.comprendre-consigne', ['nI']], ['x.fictive', ['nF']]]);
+    const cat = { lots: [
+      { set_id: 'set_fonda_comprendre-consigne_nI_01', notion_id: 'fr.comprendre-consigne', palier: 'nI' },
+      { set_id: 'set_fonda_comprendre-consigne_nI_02', notion_id: 'fr.comprendre-consigne', palier: 'nI' },
+      { set_id: 'set_fonda_fictive_nF_01', notion_id: 'x.fictive', palier: 'nF' },
+    ] };
+    const entrees = construireEntreesIndex(cat, REFERENTIEL);
+    assert.deepEqual(entrees.map((e) => [e.notionId, e.paliers.map((p) => p.libelle)]),
+      [['fr.comprendre-consigne', ['Initial 1', 'Initial 2']], ['x.fictive', ['Final']]]);
   });
 
   test('référentiel absent ou malformé : repli sur l\'identifiant, aucune entrée perdue', () => {
-    const { construireEntreesIndex, LOTS_PUBLIABLES } = obtenirExportsBootstrap();
+    const { construireEntreesIndex } = obtenirExportsBootstrap();
     for (const ref of [null, {}, { notions: 'x' }, { notions: [null] }]) {
-      const entrees = construireEntreesIndex(LOTS_PUBLIABLES, ref);
+      const entrees = construireEntreesIndex(CATALOGUE, ref);
       assert.equal(entrees.length, 4);
       entrees.forEach((e) => assert.equal(e.libelle, e.notionId));
     }
   });
 });
 
-describe('?page=entrainement — index des 8 lots publiables', () => {
-  test('8 liens, un par couple de LOTS_PUBLIABLES, chacun accepté par cheminLot', async () => {
-    const { LOTS_PUBLIABLES, cheminLot } = obtenirExportsBootstrap();
-    const attendus = Object.entries(LOTS_PUBLIABLES).flatMap(([n, ps]) => ps.map((p) => `${n}|${p}`)).sort();
+describe('?page=entrainement — index des lots publiés', () => {
+  test('un lien ?set=<set_id> par lot du catalogue (8)', async () => {
     const root = await demarrerBootstrap({ search: '?fonda=1&page=entrainement' });
     const liens = liensIndex(root);
-    assert.equal(liens.length, 8);
     const obtenus = liens.map((a) => {
       const q = new URLSearchParams(a.href.split('?')[1]);
       assert.equal(q.get('fonda'), '1');
       assert.equal(q.get('page'), 'carte');
-      assert.ok(cheminLot(q.get('notion'), q.get('palier')), `lien hors liste fermée : ${a.href}`);
-      return `${q.get('notion')}|${q.get('palier')}`;
+      return q.get('set');
     }).sort();
-    assert.deepEqual(obtenus, attendus);
+    assert.deepEqual(obtenus, CATALOGUE.lots.map((e) => e.set_id).sort());
+    assert.equal(obtenus.length, 8);
     assert.match(texteDe(root), /S'entraîner sur les fondamentaux/);
     assert.match(texteDe(root), /Comprendre une consigne et sélectionner l'information utile/);
     assert.match(texteDe(root), /Français/);
   });
 
-  test('ne lit QUE referentiel.json : ni lot, ni classes, ni calendrier, ni script moteur', async () => {
+  test('ne lit QUE le catalogue et le référentiel ; seul catalogue.js est chargé', async () => {
     const journal = [];
     const journalScripts = [];
     await demarrerBootstrap({ search: '?fonda=1&page=entrainement', journalFetch: journal, journalScripts });
-    assert.deepEqual(journal, ['fonda/data/referentiel.json']);
-    assert.deepEqual(journalScripts, []);
+    assert.deepEqual(journal, ['fonda/data/catalogue-fonda.json', 'fonda/data/referentiel.json']);
+    assert.deepEqual(journalScripts, ['fonda/engine/catalogue.js?v=2']);
   });
 
-  test('référentiel indisponible : la liste s\'affiche quand même (identifiants), jamais une impasse', async () => {
-    const journal = [];
+  test('référentiel indisponible : la liste s\'affiche quand même (identifiants)', async () => {
     global.__referentielEnPanne = true;
-    const root = await demarrerBootstrap({ search: '?fonda=1&page=entrainement', journalFetch: journal });
+    const root = await demarrerBootstrap({ search: '?fonda=1&page=entrainement' });
     delete global.__referentielEnPanne;
     assert.equal(liensIndex(root).length, 8);
     assert.match(texteDe(root), /fr\.comprendre-consigne/);
+  });
+
+  test('catalogue indisponible ou non conforme : message visible, pas d\'index vide', async () => {
+    for (const catalogue of [null, { schema: 'autre', lots: [] }]) {
+      const root = await demarrerBootstrap({ search: '?fonda=1&page=entrainement', catalogue });
+      assert.match(texteDe(root), /Entraînement indisponible/);
+      assert.equal(liensIndex(root).length, 0);
+    }
   });
 });
 
@@ -866,34 +867,21 @@ describe('retour vers l\'index depuis un paquet libre', () => {
 });
 
 // --- Invariant G4 « listé = affichable » (décision Éric, chantier feat/box-fonda-index)
-// L'index dérive de LOTS_PUBLIABLES ; la barrière de rendu exige EN PLUS
-// revue_carte_par_carte === true et un lot bien formé. Si les deux divergeaient,
+// L'index dérive du catalogue ; la barrière de rendu exige EN PLUS
+// revue_carte_par_carte === true, la liste blanche et l'empreinte attestée (la
+// cohérence fichiers <-> catalogue est verrouillée par fonda/data/catalogue.test.js). Si les deux divergeaient,
 // l'index proposerait un lien qui meurt sur « Ce défi n'est pas disponible ».
 
 describe('invariant « listé = affichable » : chaque entrée de l\'index passe la barrière de rendu', () => {
-  test('tout lot de LOTS_PUBLIABLES : fichier présent, revue_carte_par_carte === true, bien formé', () => {
-    const { LOTS_PUBLIABLES, cheminLot, lotEstPubliable, lotEstBienForme } = obtenirExportsBootstrap();
-    for (const [notion, paliers] of Object.entries(LOTS_PUBLIABLES)) {
-      for (const palier of paliers) {
-        const chemin = cheminLot(notion, palier);
-        assert.ok(fsTest.existsSync(pathTest.join(__dirname, '../..', chemin)), `fichier absent : ${chemin}`);
-        const lot = JSON.parse(fsTest.readFileSync(pathTest.join(__dirname, '../..', chemin), 'utf8'));
-        assert.equal(lot.revue_carte_par_carte, true, `${notion}/${palier} listé mais non relu -> lien mort`);
-        assert.ok(lotEstPubliable(lot) && lotEstBienForme(lot), `${notion}/${palier} bloqué au rendu`);
-      }
-    }
-  });
-
-  test('parcours réel : chacun des 8 liens de l\'index ouvre bien « Carte 1 / N » (jamais « pas disponible »)', async () => {
+  test('parcours réel : chacun des liens de l\'index ouvre bien « Carte 1 / N » (jamais « pas disponible »)', async () => {
     const index = await demarrerBootstrap({ search: '?fonda=1&page=entrainement' });
     const liens = liensIndex(index);
-    assert.equal(liens.length, 8);
+    assert.equal(liens.length, CATALOGUE.lots.length);
     for (const a of liens) {
       const search = '?' + a.href.split('?')[1];
       const root = await demarrerBootstrap({ search });
-      const q = new URLSearchParams(search);
-      const lot = require('../../' + obtenirExportsBootstrap().cheminLot(q.get('notion'), q.get('palier')));
-      assert.match(texteDe(root), new RegExp(`Carte 1 / ${lot.cartes.length}`), `lien mort : ${search}`);
+      const entree = CATALOGUE.lots.find((e) => e.set_id === new URLSearchParams(search).get('set'));
+      assert.match(texteDe(root), new RegExp(`Carte 1 / ${entree.item_ids.length}`), `lien mort : ${search}`);
       assert.doesNotMatch(texteDe(root), /pas disponible/);
     }
   });

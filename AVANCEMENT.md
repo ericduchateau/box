@@ -12,14 +12,16 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - Tests : `node --test` 408/408, 1 skip (test `non-regression` index.html-vs-design en quarantaine). Smoke-test navigateur réel obligatoire avant chaque merge.
 
 ## Prochaines étapes
-1. **Chantier « secrets hors du dépôt »** (`feat/box-fonda-secrets`, plan proposé le 2026-10-12, non exécuté, critique Codex du plan recommandée) — voir check-list ci-dessous.
-2. **Décider l'affichage des lots FONDA publiés** : un `?set=` FONDA s'affiche aujourd'hui en flip-cards BOX (`loadAndReview` ignore les champs FONDA). Options : exclure les lots FONDA du catalogue ordinaire, ou rediriger leur `?set=` vers le rendu FONDA.
-3. Puis publication des 8 lots (upload `box-fonda-generation` + relecture `/box-select`).
-4. Moteur A (calendrier) : brancher le `setId` du calendrier dans `lancerDefi()` (aujourd'hui choisi par notion+palier) ; émission réelle des événements (T3/T5) depuis `onResultat`.
+1. **Chaîne FONDA séparée de BOX** (décision 2026-10-13, PRD §2 bis) — branche `feat/box-fonda-lane`.
+   - **Bloc 1 (dépôt seul) : fait, PR à relire** — contrats `catalogue-fonda/v1` / `lot-fonda/v1` / `empreinte-fonda/v1` (`fonda/engine/catalogue.js`) ; 8 lots relus migrés vers `fonda/data/lots/<set_id>.json` + `catalogue-fonda.json` (attestation `manuelle-historique` : relu par Éric le 11/10, modif. du 12/10 déclarée pour resolution-problemes) ; secrets retirés des 16 lots ; générateur sans secret, séquence libre ; front re-sourcé (empreinte vérifiée, compat anciens liens, `?v=2`) ; `publier-lot.js` (aucun type d'attestation accepté tant que le bloc 2 n'existe pas) ; test CI de la chaîne. Navigateur réel OK, BOX clair 0 pixel de différence, falsification en vol refusée.
+   - **Bloc 2 (n8n FONDA dédié)** : cahier des charges = points 1-4 et 6-9 de la critique Codex du 2026-10-13 (afficher profils/réponses acceptées en relecture ; clé liée à l'empreinte du contenu ; machine à états + idempotence ; attestation à source de confiance indépendante ; séparation fonctionnelle et dossiers autorisés côté serveur ; expiration/révocation de la clé ; tests XSS + en-têtes ; sélection strictement validée). À valider + relecture Codex AVANT tout workflow ; activation de `/fonda-select` sur feu vert.
+   - **Bloc 3 (prod, feu vert)** : retrait de l'orpheline `box_7e7tcooh` du catalogue BOX.
+2. `feat/box-delete-hardening` (PR BOX séparée, basse priorité) : durcissement `/box-delete`. Le catalogue de test d'octobre contient 47 vrais jeux : utiliser un catalogue de test dédié avant de tester.
+3. Moteur A + **dette `defi_id`** (PRD §16.7) ; collecte `/box-fonda-events` = chantier identifié, non câblé.
 
 ## 🔖 Check-list AVANT PUBLICATION / usage élève réel
 1. **Régénérer la clé API Anthropic** (a circulé en clair) : scripts locaux + nœud `Claude API` (HTTP, header en clair) de `BOX - Generation Flashcards` ; idéalement passer par un credential n8n.
-2. **Secrets commités** : les 16 lots contiennent `code_suppression` + `prof_email` en clair (dépôt public) ; `box-fonda-generation` recopie le code du JSON -> générer le code côté n8n à la publication, retirer les champs des fichiers, test anti-retour. Historique Git inerte dès que les codes publiés sont neufs (`/box-delete` vérifie contre le fichier Drive).
+2. **Secrets commités** : retirés des 16 lots par le bloc 1 (`feat/box-fonda-lane`), test anti-retour en CI. FONDA n'a plus de code de suppression (chaîne séparée). Restent dans l'historique Git : sans effet pour FONDA ; pour BOX, seule l'orpheline `box_7e7tcooh` est concernée (bloc 3).
 3. **Adresse réelle de la relectrice de français** : dans n8n uniquement, **jamais** dans `fonda/data/destinataires.json` (dépôt public).
 4. **Orpheline `box_7e7tcooh`** au catalogue Drive (fichier déjà en corbeille) : la retirer via `/box-delete` (code connu) ou à la main après sauvegarde du catalogue — feu vert Éric requis.
 5. **Fidélité du banc de test** : contexte navigateur unique (vm partagé), parcours depuis `App.initFonda()` — à prioriser avant d'élargir FONDA à d'autres notions.

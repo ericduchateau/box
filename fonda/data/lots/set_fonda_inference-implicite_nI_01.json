@@ -1,19 +1,17 @@
 {
-  "id": "box_x2j1cbsv",
+  "schema": "lot-fonda/v1",
+  "set_id": "set_fonda_inference-implicite_nI_01",
+  "notion_id": "fr.inference-implicite",
+  "palier": "nI",
   "matiere": "Français",
-  "niveau": "Fondamentaux — Initial (accessible)",
   "notion": "Comprendre l'implicite et faire une inférence",
-  "prof_nom": "Box-FONDA (génération automatique)",
-  "prof_email": "ericdnews@yahoo.fr",
-  "relecteur": "Justine Leblanc",
-  "code_suppression": "SUP-XTT953P3",
-  "date_creation": "2026-10-11",
-  "nb_cartes": 6,
-  "source": "fonda-seed",
-  "type": "fonda",
+  "niveau": "Fondamentaux — Initial (accessible)",
   "revue_carte_par_carte": true,
+  "nb_cartes": 6,
+  "date_creation": "2026-10-11",
   "cartes": [
     {
+      "item_id": "it01",
       "numero": 1,
       "question": "Marc enfila sa blouse blanche, ajusta son stéthoscope autour du cou et consulta la liste des patients affichée à l'accueil. Quel est le métier de Marc ?",
       "reponse": "médecin",
@@ -26,10 +24,10 @@
       ],
       "contexte": "medecin-indices-blouse-stethoscope",
       "set_id": "set_fonda_inference-implicite_nI_01",
-      "item_id": "it01",
       "notion_id": "fr.inference-implicite"
     },
     {
+      "item_id": "it02",
       "numero": 2,
       "question": "Les vagues se brisaient contre la jetée pendant que des mouettes tournoyaient au-dessus des bateaux de pêche amarrés le long du quai. Où se déroule cette scène ?",
       "reponse": "port",
@@ -43,10 +41,10 @@
       ],
       "contexte": "port-vagues-bateaux-peche",
       "set_id": "set_fonda_inference-implicite_nI_01",
-      "item_id": "it02",
       "notion_id": "fr.inference-implicite"
     },
     {
+      "item_id": "it03",
       "numero": 3,
       "question": "Les feuilles rousses tombaient en tourbillonnant devant la fenêtre, et Léa sortit son écharpe et ses gants du placard avant de partir. À quelle saison se déroule la scène ?",
       "reponse": "automne",
@@ -59,10 +57,10 @@
       ],
       "contexte": "automne-feuilles-echarpe",
       "set_id": "set_fonda_inference-implicite_nI_01",
-      "item_id": "it03",
       "notion_id": "fr.inference-implicite"
     },
     {
+      "item_id": "it04",
       "numero": 4,
       "question": "Les mains de Sarah tremblaient, elle relisait sans cesse sa copie et évitait le regard du professeur qui s'apprêtait à annoncer les résultats. Que ressent Sarah ?",
       "reponse": "peur",
@@ -78,10 +76,10 @@
       ],
       "contexte": "sarah-anxiete-resultats",
       "set_id": "set_fonda_inference-implicite_nI_01",
-      "item_id": "it04",
       "notion_id": "fr.inference-implicite"
     },
     {
+      "item_id": "it05",
       "numero": 5,
       "question": "Thomas accrocha des ballons multicolores au plafond du salon, disposa un gâteau avec des bougies sur la table et cacha un cadeau emballé derrière le canapé avant que la sonnette ne retentisse. Quel événement prépare-t-il ?",
       "reponse": "anniversaire",
@@ -94,10 +92,10 @@
       ],
       "contexte": "thomas-ballons-gateau-cadeau",
       "set_id": "set_fonda_inference-implicite_nI_01",
-      "item_id": "it05",
       "notion_id": "fr.inference-implicite"
     },
     {
+      "item_id": "it06",
       "numero": 6,
       "question": "Léna enfila ses bottes en caoutchouc, ouvrit son parapluie et regarda les flaques d'eau se former sur le trottoir avant de sortir. Quel temps fait-il dehors ?",
       "reponse": "il pleut",
@@ -110,7 +108,6 @@
       ],
       "contexte": "lena-bottes-parapluie-flaques",
       "set_id": "set_fonda_inference-implicite_nI_01",
-      "item_id": "it06",
       "notion_id": "fr.inference-implicite"
     }
   ]
