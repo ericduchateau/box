@@ -168,7 +168,9 @@ function elementFactice(tag) {
     __click() { (this._listeners.click || []).forEach((fn) => fn({})); },
   };
 }
-const documentFactice = { createElement: elementFactice };
+// `casserRendu` : createElement('span') lève pendant le clic -> exception de RENDU.
+let casserRendu = false;
+const documentFactice = { createElement: (tag) => { if (casserRendu && tag === 'span') throw new Error('rendu'); return elementFactice(tag); } };
 
 function chargerComposant(code, globaux) {
   const window = { ...globaux };
@@ -186,10 +188,12 @@ function rejouer(monter, saisies) {
   const vus = [];
   for (const s of saisies) {
     if (bouton.disabled) break;
+    casserRendu = !!(s && s.rendu);
     if (s && s.leve) Object.defineProperty(input, 'value', { configurable: true, get() { throw new Error('boom'); }, set() {} });
+    else if (s && s.rendu) { Object.defineProperty(input, 'value', { configurable: true, writable: true, value: s.saisie }); }
     else { Object.defineProperty(input, 'value', { configurable: true, writable: true, value: s }); }
     let leve = false;
-    try { bouton.__click(); } catch { leve = true; }
+    try { bouton.__click(); } catch { leve = true; } finally { casserRendu = false; }
     vus.push({ leve, feedback: feedback.textContent, statut: feedback.dataset.statut, reussite: feedback.dataset.reussite, verrouille: input.disabled && bouton.disabled });
   }
   return { vus, comptes };
@@ -235,6 +239,19 @@ describe('différentiel sur les composants réels (ancien a418881 vs nouveau + m
     comparer({ question: 'Q', profil_correction: 'exact', reponses_acceptees: ['a', { toString: null }] }, ['b']);
     comparer({ question: 'Q', profil_correction: 'exact', reponses_acceptees: 'Paris' }, ['Paris']);
     comparer({ question: 'Q', profil_correction: 'numerique', reponses_acceptees: ['8 kg'], unite: 'cm' }, ['8 cm']);
+  });
+
+  test('frontières d\'exception : RENDU qui lève (1re tentative, puis 2e après seconde chance)', () => {
+    const base = { question: 'Q', profil_correction: 'orthographe', reponses_acceptees: ['garçon'], seconde_chance: true };
+    comparer(base, [{ rendu: true, saisie: 'garçon' }]);
+    comparer(base, [{ rendu: true, saisie: 'garcon' }]);
+    comparer(base, ['garcon', { rendu: true, saisie: 'garçon' }]);
+    comparer({ question: 'Q', profil_correction: 'exact', reponses_acceptees: ['a'] }, [{ rendu: true, saisie: 'b' }]);
+    // Le sabotage atteint bien le rendu : message d'erreur affiché, rien de compté.
+    const n = nouveauMontrer();
+    const { vus, comptes } = rejouer((c, comptes) => n(c, { moteur, carte: moteur.preparerCarte(base), onResultat: (r) => comptes.push([r.issue, r.compte]) }), [{ rendu: true, saisie: 'garçon' }]);
+    assert.match(vus[0].feedback, /Impossible de corriger/);
+    assert.deepEqual(comptes, [['erreur', false]]);
   });
 });
 

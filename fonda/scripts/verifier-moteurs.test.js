@@ -74,6 +74,19 @@ describe('historique de confiance — ajout seul, fichiers identiques', () => {
     assert.match(V.verifierHistorique([ref], [{ ...ligneV1, sha256: 'c' }], lire, dir).join(), /ajout seul/);
     assert.match(V.verifierHistorique([ref], [], lire, dir).join(), /ajout seul/);
   });
+  test('fusion -s ours qui masque une ancienne version du moteur : la modification reste détectée', () => {
+    const { dir, ref: v1ref } = depot();
+    const g = (...a) => execFileSync('git', a, { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] });
+    g('checkout', '-q', '-b', 'autre', `${v1ref}`);
+    fs.writeFileSync(path.join(dir, 'fonda/engine/moteur-correction-v1.js'), 'v1 modifié');
+    g('commit', '-q', '-am', 'modif');
+    g('checkout', '-q', '-b', 'fusion', v1ref);
+    fs.writeFileSync(path.join(dir, 'x.txt'), 'x'); g('add', '.'); g('commit', '-q', '-m', 'x');
+    g('merge', '-q', '-s', 'ours', '-m', 'fusion', 'autre');
+    const ref = g('rev-parse', 'HEAD').toString().trim();
+    // L'état courant reprend « v1 » : la version « v1 modifié » de l'historique diffère.
+    assert.match(V.verifierHistorique([ref], [ligneV1], octets({ 'fonda/engine/moteur-correction-v1.js': 'v1' }), dir).join(), /modifié/);
+  });
   test('référence nulle, absente ou introuvable : échec explicite', () => {
     const { dir } = depot();
     const lire = octets({});
@@ -133,6 +146,33 @@ describe('règle 0 de M1 — consommable une seule fois (CDC annexe B)', () => {
   test('M1 consommée : set_id jamais publié avec moteur -> refusé (fail-closed jusqu\'à l\'étape 3)', () => {
     const { dir, ref } = historique([sansMoteur, avecM1]);
     assert.match(V.verifierRegle0([ref], { lots: [...avecM1.lots, entree('set_c', 'sha256:cc', M1)] }, REG, HIST, dir).join(), /jamais publié/);
+  });
+  test('fusion qui reprend le catalogue SANS moteur d\'un autre parent : M1 reste consommée (pas de simplification d\'historique)', () => {
+    const { dir } = historique([sansMoteur]);
+    const g = (...a) => execFileSync('git', a, { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] });
+    const base = g('rev-parse', 'HEAD').toString().trim();
+    g('checkout', '-q', '-b', 'm1');
+    fs.writeFileSync(path.join(dir, 'fonda/data/catalogue-fonda.json'), JSON.stringify(avecM1));
+    g('commit', '-q', '-am', 'M1');
+    g('checkout', '-q', '-b', 'autre', base);
+    fs.writeFileSync(path.join(dir, 'autre.txt'), 'x');
+    g('add', '.'); g('commit', '-q', '-m', 'autre');
+    g('merge', '-q', '-s', 'ours', '-m', 'fusion', 'm1'); // garde le catalogue sans moteur
+    const ref = g('rev-parse', 'HEAD').toString().trim();
+    // Avec simplification par chemin, M1 disparaîtrait et ce rejeu passerait en « M1 ».
+    const regC = [{ ...REG[0], sha256: 'c'.repeat(64) }];
+    const rejeu = { lots: [entree('set_a', 'sha256:aa', { version: 'v1', sha256: 'c'.repeat(64) })] };
+    assert.match(V.verifierRegle0([ref], rejeu, regC, HIST, dir).join(), /tuple/);
+  });
+  test('catalogue historique illisible (JSON invalide) ou de structure invalide : échec, jamais assimilé à une absence', () => {
+    for (const contenu of ['{ pas du json', JSON.stringify({ lots: 3 }), 'null']) {
+      const { dir } = historique([sansMoteur]);
+      const g = (...a) => execFileSync('git', a, { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] });
+      fs.writeFileSync(path.join(dir, 'fonda/data/catalogue-fonda.json'), contenu);
+      g('commit', '-q', '-am', 'abime');
+      const ref = g('rev-parse', 'HEAD').toString().trim();
+      assert.match(V.verifierRegle0([ref], avecM1, REG, HIST, dir).join(), /illisible|structure invalide/, contenu);
+    }
   });
   test('référence nulle ou introuvable -> échec explicite', () => {
     const { dir } = historique([sansMoteur]);

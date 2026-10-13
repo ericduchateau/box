@@ -11,6 +11,10 @@
 //     ayant jamais existé doit être présent et identique octet pour octet.
 //     Référence nulle, introuvable ou historique incomplet -> ÉCHEC explicite
 //     (jamais de comparaison contre un état vide).
+//     Parcours = TOUS les commits accessibles (git rev-list, sans simplification par
+//     chemin : une fusion qui reprend un ancien état ne masque jamais une branche) ;
+//     tout objet illisible ou JSON invalide -> ÉCHEC (seule l'absence avérée du
+//     fichier dans un commit est ignorée).
 //
 //  3. Règle 0 de M1 (CDC annexe B), CONSOMMABLE UNE SEULE FOIS : on parcourt toutes
 //     les versions de fonda/data/catalogue-fonda.json de l'historique de confiance.
@@ -84,26 +88,49 @@ function controlerRefs(refs, git) {
   return { erreurs, valides };
 }
 
+// Versions (blobs distincts) d'un ensemble de chemins sur TOUS les commits accessibles
+// depuis les références, sans simplification d'historique. Renvoie
+// { chemin -> Map(blob -> commit) } ; une erreur Git (autre qu'absence) est remontée.
+function versionsSurHistorique(git, refs, prefixe) {
+  const versions = new Map();
+  const commits = new Set();
+  for (const ref of refs) git(['rev-list', ref]).toString().split('\n').filter(Boolean).forEach((c) => commits.add(c));
+  for (const c of commits) {
+    // ls-tree : sortie vide = chemin absent de ce commit (seul cas ignoré).
+    for (const ligne of git(['ls-tree', '-r', c, '--', prefixe]).toString().split('\n').filter(Boolean)) {
+      const m = /^\d+ blob ([0-9a-f]+)\t(.+)$/.exec(ligne);
+      if (!m) throw new Error(`entrée ls-tree inattendue en ${c.slice(0, 7)} : ${ligne}`);
+      if (!versions.has(m[2])) versions.set(m[2], new Map());
+      if (!versions.get(m[2]).has(m[1])) versions.get(m[2]).set(m[1], c);
+    }
+  }
+  return versions;
+}
+
 function verifierHistorique(refs, registreCourant, lireOctets, racine = RACINE) {
   const git = executeurGit(racine);
   const { erreurs, valides } = controlerRefs(refs, git);
-  for (const ref of valides) {
-    const commits = git(['log', '--format=%H', ref, '--', 'fonda/engine/']).toString().split('\n').filter(Boolean);
-    for (const c of commits) {
-      const fichiers = git(['ls-tree', '-r', '--name-only', c, 'fonda/engine/']).toString().split('\n').filter(Boolean);
-      for (const f of fichiers.filter((x) => MOTIF_FICHIER.test(x))) {
-        const ancien = git(['show', `${c}:${f}`]);
+  if (!valides.length) return erreurs;
+  let versions;
+  try { versions = versionsSurHistorique(git, valides, 'fonda/engine/'); } catch (e) { return [...erreurs, `historique illisible : ${e.message}`]; }
+  for (const [f, blobs] of versions) {
+    const moteur = MOTIF_FICHIER.test(f);
+    if (!moteur && f !== REGISTRE) continue;
+    for (const [blob, c] of blobs) {
+      let ancien;
+      try { ancien = git(['cat-file', 'blob', blob]); } catch { erreurs.push(`${f} : objet ${blob.slice(0, 7)} (en ${c.slice(0, 7)}) illisible — échec`); continue; }
+      if (moteur) {
         const actuel = lireOctets(f);
         if (!actuel) erreurs.push(`${f} (existait en ${c.slice(0, 7)}) : supprimé — un moteur publié ne disparaît jamais`);
         else if (!ancien.equals(actuel)) erreurs.push(`${f} : modifié depuis ${c.slice(0, 7)} — tout changement = nouvelle version`);
+        continue;
       }
-      if (fichiers.includes(REGISTRE)) {
-        let lignes;
-        try { lignes = JSON.parse(git(['show', `${c}:${REGISTRE}`]).toString()); } catch { erreurs.push(`${REGISTRE} illisible en ${c.slice(0, 7)}`); continue; }
-        for (const l of Array.isArray(lignes) ? lignes : []) {
-          if (!registreCourant.some((x) => JSON.stringify(x) === JSON.stringify(l))) {
-            erreurs.push(`${REGISTRE} : ligne ${l && l.version} (en ${c.slice(0, 7)}) retirée ou modifiée — registre en ajout seul`);
-          }
+      let lignes;
+      try { lignes = JSON.parse(ancien.toString('utf8')); } catch { erreurs.push(`${REGISTRE} illisible en ${c.slice(0, 7)} — échec`); continue; }
+      if (!Array.isArray(lignes)) { erreurs.push(`${REGISTRE} en ${c.slice(0, 7)} : structure invalide — échec`); continue; }
+      for (const l of lignes) {
+        if (!registreCourant.some((x) => JSON.stringify(x) === JSON.stringify(l))) {
+          erreurs.push(`${REGISTRE} : ligne ${l && l.version} (en ${c.slice(0, 7)}) retirée ou modifiée — registre en ajout seul`);
         }
       }
     }
@@ -120,19 +147,20 @@ function verifierRegle0(refs, catalogueCourant, registreCourant, historiques, ra
   if (erreurs.length) return erreurs;
   let moteurAExiste = false;
   const publies = new Map(); // set_id -> Set(tuple)
-  for (const ref of valides) {
-    const commits = git(['log', '--format=%H', ref, '--', CATALOGUE]).toString().split('\n').filter(Boolean);
-    for (const c of commits) {
-      let cat;
-      try { cat = JSON.parse(git(['show', `${c}:${CATALOGUE}`]).toString()); } catch { continue; } // fichier supprimé dans ce commit
-      for (const e of (cat && Array.isArray(cat.lots)) ? cat.lots : []) {
-        if (!e || !Object.prototype.hasOwnProperty.call(e, 'moteur')) continue;
-        moteurAExiste = true;
-        if (!publies.has(e.set_id)) publies.set(e.set_id, new Set());
-        publies.get(e.set_id).add(tuple(e));
-      }
+  let versions;
+  try { versions = versionsSurHistorique(git, valides, CATALOGUE); } catch (e) { return [`historique illisible : ${e.message}`]; }
+  for (const [blob, c] of versions.get(CATALOGUE) || []) {
+    let cat;
+    try { cat = JSON.parse(git(['cat-file', 'blob', blob]).toString('utf8')); } catch { erreurs.push(`${CATALOGUE} illisible en ${c.slice(0, 7)} — échec (jamais assimilé à une absence)`); continue; }
+    if (!cat || typeof cat !== 'object' || !Array.isArray(cat.lots)) { erreurs.push(`${CATALOGUE} en ${c.slice(0, 7)} : structure invalide — échec`); continue; }
+    for (const e of cat.lots) {
+      if (!e || !Object.prototype.hasOwnProperty.call(e, 'moteur')) continue;
+      moteurAExiste = true;
+      if (!publies.has(e.set_id)) publies.set(e.set_id, new Set());
+      publies.get(e.set_id).add(tuple(e));
     }
   }
+  if (erreurs.length) return erreurs;
   const lots = catalogueCourant && Array.isArray(catalogueCourant.lots) ? catalogueCourant.lots : [];
   if (!moteurAExiste) {
     const v1 = registreCourant.find((l) => l && l.version === 'v1');
