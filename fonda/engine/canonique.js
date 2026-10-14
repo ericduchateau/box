@@ -10,8 +10,11 @@
 //   'chaine' | 'nombre' | 'booleen'
 //   { type: 'tableau', elements: <schéma> }
 //   { type: 'objet', champs: [[nom, <schéma>], ...] }   (ordre = ordre du contrat)
-// La sortie est construite à la main, champ par champ, à l'identique de
-// JSON.stringify (aucune dépendance à l'ordre d'insertion des clés du moteur JS).
+// Deux phases : (1) copie VALIDÉE de l'entrée (propriétés propres de données lues
+// par descripteur, une seule fois ; getters, symboles, non énumérables, clés
+// inconnues, objets non ordinaires refusés) ; (2) JSON.stringify natif de cette copie,
+// construite dans l'ordre du contrat. Les noms de champ de forme entière et
+// « __proto__ » sont interdits dans les schémas (le moteur JS les réordonnerait).
 //
 // Contrats : seuls ceux dont la forme est ENTIÈREMENT définie au CDC ont un schéma.
 // Un contrat à forme incomplète (sous-objets non encore définis au CDC) est REFUSÉ
@@ -21,8 +24,9 @@
 // Portabilité : zéro dépendance, aucun require, aucune API d'environnement
 // (pas de TextEncoder, Buffer ni crypto) — copiable tel quel dans un nœud Code n8n,
 // où `FondaCanonique` est alors une variable locale. Les vecteurs figés
-// (canonique-vecteurs.json) prouvent que la copie n8n et celle du dépôt produisent
-// les mêmes octets ; toute divergence rendrait une signature invérifiable.
+// (canonique-vecteurs.json, cas positifs ET refus) DÉTECTENT les divergences entre
+// copies (dépôt, nœuds Code n8n) couvertes par leurs cas — pas toutes : chaque copie
+// doit rejouer tout le banc. Une divergence rendrait une signature invérifiable.
 
 var FondaCanonique = (function () {
   'use strict';
@@ -58,52 +62,105 @@ var FondaCanonique = (function () {
     return new Error('canonique : ' + (chemin || '(racine)') + ' : ' + message);
   }
 
-  function estObjetSimple(v) {
-    // Indépendant du « realm » (objets venus d'un autre contexte JS, ex. n8n).
-    return v !== null && typeof v === 'object' && !Array.isArray(v)
-      && Object.prototype.toString.call(v) === '[object Object]';
+  var CLE_ENTIERE = /^(0|[1-9][0-9]*)$/;
+
+  // Validation COMPLÈTE d'un schéma avant tout parcours (y compris sous un tableau
+  // vide) : types connus, noms de champs uniques, ni clé de forme entière (le moteur
+  // JS les réordonnerait) ni « __proto__ ».
+  function validerSchema(schema, chemin) {
+    if (schema === 'chaine' || schema === 'nombre' || schema === 'booleen') return;
+    if (schema && schema.type === 'tableau' && Object.keys(schema).length === 2 && 'elements' in schema) {
+      validerSchema(schema.elements, chemin + '[]');
+      return;
+    }
+    if (schema && schema.type === 'objet' && Array.isArray(schema.champs) && Object.keys(schema).length === 2) {
+      var vus = Object.create(null);
+      for (var i = 0; i < schema.champs.length; i += 1) {
+        var c = schema.champs[i];
+        if (!Array.isArray(c) || c.length !== 2 || typeof c[0] !== 'string') throw erreur(chemin, 'schéma invalide (champ mal formé)');
+        if (CLE_ENTIERE.test(c[0]) || c[0] === '__proto__') throw erreur(chemin, 'schéma invalide (nom de champ interdit : ' + c[0] + ')');
+        if (vus[c[0]]) throw erreur(chemin, 'schéma invalide (champ en double : ' + c[0] + ')');
+        vus[c[0]] = true;
+        validerSchema(c[1], (chemin ? chemin + '.' : '') + c[0]);
+      }
+      return;
+    }
+    throw erreur(chemin, 'schéma invalide');
   }
 
-  function serialiser(valeur, schema, chemin) {
+  // Valeur d'une propriété PROPRE de DONNÉES, lue par son descripteur (jamais par un
+  // accesseur : un getter est refusé, rien n'est exécuté).
+  function valeurPropre(objet, cle, chemin) {
+    var d = Object.getOwnPropertyDescriptor(objet, cle);
+    if (!d) throw erreur(chemin, 'champ manquant');
+    if (!('value' in d)) throw erreur(chemin, 'accesseur (getter/setter) refusé');
+    if (!d.enumerable) throw erreur(chemin, 'propriété non énumérable refusée');
+    return d.value;
+  }
+
+  // Objet de données ordinaire : prototype nul ou prototype « Object.prototype » d'un
+  // contexte JS quelconque (lui-même à prototype nul). Map, Date, instances de
+  // classes… ont un prototype intermédiaire : refusés. (Un Proxy n'est pas
+  // détectable de façon sûre : chaque valeur est lue une seule fois par descripteur,
+  // puis la sortie est calculée sur cette COPIE ; les appelants doivent passer des
+  // données ordinaires — idéalement issues de JSON.parse.)
+  function estObjetDeDonnees(v) {
+    if (v === null || typeof v !== 'object' || Array.isArray(v)) return false;
+    var proto = Object.getPrototypeOf(v);
+    return proto === null || Object.getPrototypeOf(proto) === null;
+  }
+
+  // Phase 1 : copie VALIDÉE (données fraîches, clés dans l'ordre du contrat).
+  function copier(valeur, schema, chemin) {
     if (schema === 'chaine') {
       if (typeof valeur !== 'string') throw erreur(chemin, 'chaîne attendue');
-      return JSON.stringify(valeur);
+      return valeur;
     }
     if (schema === 'nombre') {
       if (typeof valeur !== 'number' || !isFinite(valeur)) throw erreur(chemin, 'nombre fini attendu (NaN/Infinity refusés)');
-      return String(valeur === 0 ? 0 : valeur); // -0 -> 0 ; sinon Number::toString
+      return valeur === 0 ? 0 : valeur; // -0 -> 0
     }
     if (schema === 'booleen') {
       if (typeof valeur !== 'boolean') throw erreur(chemin, 'booléen attendu');
-      return valeur ? 'true' : 'false';
+      return valeur;
     }
-    if (schema && schema.type === 'tableau') {
+    if (schema.type === 'tableau') {
       if (!Array.isArray(valeur)) throw erreur(chemin, 'tableau attendu');
-      var parties = [];
-      for (var i = 0; i < valeur.length; i += 1) {
-        if (!Object.prototype.hasOwnProperty.call(valeur, i)) throw erreur(chemin + '[' + i + ']', 'trou dans le tableau');
-        parties.push(serialiser(valeur[i], schema.elements, chemin + '[' + i + ']'));
-      }
-      return '[' + parties.join(',') + ']';
-    }
-    if (schema && schema.type === 'objet') {
-      if (!estObjetSimple(valeur)) throw erreur(chemin, 'objet attendu');
-      var connus = {};
+      var n = Object.getOwnPropertyDescriptor(valeur, 'length').value; // propre, non énumérable
+      var cles = Reflect.ownKeys(valeur);
+      if (cles.length !== n + 1) throw erreur(chemin, 'tableau à trous ou propriété supplémentaire refusés');
       var sortie = [];
-      for (var j = 0; j < schema.champs.length; j += 1) {
-        var nom = schema.champs[j][0];
-        connus[nom] = true;
-        var sous = (chemin ? chemin + '.' : '') + nom;
-        if (!Object.prototype.hasOwnProperty.call(valeur, nom)) throw erreur(sous, 'champ manquant');
-        sortie.push(JSON.stringify(nom) + ':' + serialiser(valeur[nom], schema.champs[j][1], sous));
+      for (var i = 0; i < n; i += 1) {
+        if (cles.indexOf(String(i)) === -1) throw erreur(chemin + '[' + i + ']', 'trou dans le tableau');
+        sortie.push(copier(valeurPropre(valeur, String(i), chemin + '[' + i + ']'), schema.elements, chemin + '[' + i + ']'));
       }
-      var cles = Object.keys(valeur);
-      for (var k = 0; k < cles.length; k += 1) {
-        if (!connus[cles[k]]) throw erreur((chemin ? chemin + '.' : '') + cles[k], 'champ inconnu');
-      }
-      return '{' + sortie.join(',') + '}';
+      return sortie;
     }
-    throw erreur(chemin, 'schéma invalide');
+    // objet
+    if (!estObjetDeDonnees(valeur)) throw erreur(chemin, 'objet de données attendu');
+    var connus = Object.create(null);
+    var copie = {};
+    for (var j = 0; j < schema.champs.length; j += 1) {
+      var nom = schema.champs[j][0];
+      connus[nom] = true;
+      var sous = (chemin ? chemin + '.' : '') + nom;
+      copie[nom] = copier(valeurPropre(valeur, nom, sous), schema.champs[j][1], sous);
+    }
+    var propres = Reflect.ownKeys(valeur); // symboles et non énumérables compris
+    for (var k = 0; k < propres.length; k += 1) {
+      var cle = propres[k];
+      if (typeof cle !== 'string' || connus[cle] !== true) {
+        throw erreur((chemin ? chemin + '.' : '') + String(cle), 'champ inconnu');
+      }
+    }
+    return copie;
+  }
+
+  // Phase 2 : JSON.stringify d'ECMAScript sur la copie construite dans l'ordre du
+  // contrat (CDC §1, littéralement). Sans espace ni saut de ligne.
+  function serialiser(valeur, schema) {
+    validerSchema(schema, '');
+    return JSON.stringify(copier(valeur, schema, ''));
   }
 
   // UTF-8 (sans BOM) écrit à la main : aucune dépendance à TextEncoder/Buffer.
@@ -140,19 +197,19 @@ var FondaCanonique = (function () {
 
   return Object.freeze({
     // Texte canonique (chaîne JS) d'une valeur selon un schéma explicite.
-    texte: function (valeur, schema) { return serialiser(valeur, schema, ''); },
+    texte: function (valeur, schema) { return serialiser(valeur, schema); },
     // Octets UTF-8 (tableau d'entiers 0..255) et leur hex.
-    octets: function (valeur, schema) { return utf8(serialiser(valeur, schema, '')); },
-    hex: function (valeur, schema) { return hex(utf8(serialiser(valeur, schema, ''))); },
+    octets: function (valeur, schema) { return utf8(serialiser(valeur, schema)); },
+    hex: function (valeur, schema) { return hex(utf8(serialiser(valeur, schema))); },
     // Par nom de contrat (refus si inconnu ou à forme incomplète).
-    texteContrat: function (nom, valeur) { return serialiser(valeur, schemaDuContrat(nom), ''); },
-    octetsContrat: function (nom, valeur) { return utf8(serialiser(valeur, schemaDuContrat(nom), '')); },
-    hexContrat: function (nom, valeur) { return hex(utf8(serialiser(valeur, schemaDuContrat(nom), ''))); },
+    texteContrat: function (nom, valeur) { return serialiser(valeur, schemaDuContrat(nom)); },
+    octetsContrat: function (nom, valeur) { return utf8(serialiser(valeur, schemaDuContrat(nom))); },
+    hexContrat: function (nom, valeur) { return hex(utf8(serialiser(valeur, schemaDuContrat(nom)))); },
     contrats: function () { return Object.keys(CONTRATS).filter(function (n) { return CONTRATS[n] !== null; }); },
     contratsIncomplets: function () { return Object.keys(CONTRATS).filter(function (n) { return CONTRATS[n] === null; }); },
     _utf8: utf8,
   });
 })();
 
-if (typeof module === 'object' && module && module.exports) module.exports = FondaCanonique;
-else if (typeof self !== 'undefined') self.FondaCanonique = FondaCanonique;
+if (typeof module === 'object' && module !== null && typeof module.exports === 'object') module.exports = FondaCanonique;
+else if (typeof self === 'object' && self !== null) self.FondaCanonique = FondaCanonique;

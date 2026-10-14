@@ -1,6 +1,6 @@
 {
   "schema": "vecteurs-canonique-fonda/v1",
-  "note": "Octets attendus FIGÉS (hex UTF-8). Générés par une voie indépendante de canonique.js (JSON.stringify natif + Buffer). Toute copie de canonique.js (dépôt, nœuds Code n8n) doit les reproduire exactement. Ne JAMAIS les régénérer pour faire passer un test.",
+  "note": "Octets attendus FIGÉS (hex UTF-8) des cas positifs, générés par une voie indépendante de canonique.js (JSON.stringify natif sur une valeur construite dans l'ordre du contrat + Buffer), et cas de REFUS (refus: true). Chaque copie de canonique.js (dépôt, nœuds Code n8n) doit rejouer TOUT le banc : les vecteurs détectent les divergences couvertes par leurs cas, pas toutes. Ne JAMAIS les régénérer pour faire passer un test.",
   "vecteurs": [
     {
       "id": "moteur-v1",
@@ -249,8 +249,355 @@
       "hex": "5b747275652c66616c73655d"
     },
     {
-      "id": "objet-cle-entiere",
-      "description": "clé \"1\" de forme entière : ordre du CONTRAT conservé (pas celui du moteur JS)",
+      "id": "utf8-7f",
+      "description": "frontière UTF-8 U+007F : 1 octet (dernier)",
+      "schema": "chaine",
+      "entree": "",
+      "texte": "\"\"",
+      "hex": "227f22"
+    },
+    {
+      "id": "utf8-80",
+      "description": "frontière UTF-8 U+0080 : 2 octets (premier)",
+      "schema": "chaine",
+      "entree": "",
+      "texte": "\"\"",
+      "hex": "22c28022"
+    },
+    {
+      "id": "utf8-7ff",
+      "description": "frontière UTF-8 U+07FF : 2 octets (dernier)",
+      "schema": "chaine",
+      "entree": "߿",
+      "texte": "\"߿\"",
+      "hex": "22dfbf22"
+    },
+    {
+      "id": "utf8-800",
+      "description": "frontière UTF-8 U+0800 : 3 octets (premier)",
+      "schema": "chaine",
+      "entree": "ࠀ",
+      "texte": "\"ࠀ\"",
+      "hex": "22e0a08022"
+    },
+    {
+      "id": "utf8-fffd",
+      "description": "frontière UTF-8 U+FFFD : 3 octets (U+FFFD)",
+      "schema": "chaine",
+      "entree": "�",
+      "texte": "\"�\"",
+      "hex": "22efbfbd22"
+    },
+    {
+      "id": "utf8-ffff",
+      "description": "frontière UTF-8 U+FFFF : 3 octets (dernier)",
+      "schema": "chaine",
+      "entree": "￿",
+      "texte": "\"￿\"",
+      "hex": "22efbfbf22"
+    },
+    {
+      "id": "utf8-10000",
+      "description": "frontière UTF-8 U+10000 : 4 octets (premier)",
+      "schema": "chaine",
+      "entree": "𐀀",
+      "texte": "\"𐀀\"",
+      "hex": "22f090808022"
+    },
+    {
+      "id": "utf8-10ffff",
+      "description": "frontière UTF-8 U+10FFFF : 4 octets (dernier)",
+      "schema": "chaine",
+      "entree": "􏿿",
+      "texte": "\"􏿿\"",
+      "hex": "22f48fbfbf22"
+    },
+    {
+      "id": "refus-champ-manquant",
+      "description": "champ manquant",
+      "refus": true,
+      "contrat": "coeur-decision-fonda/v1",
+      "entree": {
+        "action": "accepter",
+        "selection": [
+          "it01",
+          "it02",
+          "it03",
+          "it04",
+          "it05"
+        ],
+        "empreinte_relue": "sha256:3e715f0e44d520de9ee7f01c218cf667551b8a7fff650c357b1f2bb88561e25d",
+        "empreinte_publiee": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        }
+      }
+    },
+    {
+      "id": "refus-champ-manquant-imbrique",
+      "description": "champ manquant imbriqué (moteur.sha256)",
+      "refus": true,
+      "contrat": "coeur-decision-fonda/v1",
+      "entree": {
+        "action": "accepter",
+        "selection": [
+          "it01",
+          "it02",
+          "it03",
+          "it04",
+          "it05"
+        ],
+        "ecartees": [
+          "it06"
+        ],
+        "empreinte_relue": "sha256:3e715f0e44d520de9ee7f01c218cf667551b8a7fff650c357b1f2bb88561e25d",
+        "empreinte_publiee": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "moteur": {
+          "version": "v1"
+        }
+      }
+    },
+    {
+      "id": "refus-champ-inconnu",
+      "description": "champ inconnu à la racine",
+      "refus": true,
+      "contrat": "coeur-decision-fonda/v1",
+      "entree": {
+        "action": "accepter",
+        "selection": [
+          "it01",
+          "it02",
+          "it03",
+          "it04",
+          "it05"
+        ],
+        "ecartees": [
+          "it06"
+        ],
+        "empreinte_relue": "sha256:3e715f0e44d520de9ee7f01c218cf667551b8a7fff650c357b1f2bb88561e25d",
+        "empreinte_publiee": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "signature": "x"
+      }
+    },
+    {
+      "id": "refus-champ-inconnu-imbrique",
+      "description": "champ inconnu imbriqué",
+      "refus": true,
+      "contrat": "coeur-decision-fonda/v1",
+      "entree": {
+        "action": "accepter",
+        "selection": [
+          "it01",
+          "it02",
+          "it03",
+          "it04",
+          "it05"
+        ],
+        "ecartees": [
+          "it06"
+        ],
+        "empreinte_relue": "sha256:3e715f0e44d520de9ee7f01c218cf667551b8a7fff650c357b1f2bb88561e25d",
+        "empreinte_publiee": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753",
+          "fichier": "x"
+        }
+      }
+    },
+    {
+      "id": "refus-cle-constructor",
+      "description": "clé propre « constructor » (nom hérité d'Object.prototype)",
+      "refus": true,
+      "contrat": "coeur-decision-fonda/v1",
+      "entree": {
+        "action": "accepter",
+        "selection": [
+          "it01",
+          "it02",
+          "it03",
+          "it04",
+          "it05"
+        ],
+        "ecartees": [
+          "it06"
+        ],
+        "empreinte_relue": "sha256:3e715f0e44d520de9ee7f01c218cf667551b8a7fff650c357b1f2bb88561e25d",
+        "empreinte_publiee": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "constructor": "x"
+      }
+    },
+    {
+      "id": "refus-cle-tostring",
+      "description": "clé propre « toString »",
+      "refus": true,
+      "contrat": "moteur-fonda/v1",
+      "entree": {
+        "version": "v1",
+        "sha256": "x",
+        "toString": "y"
+      }
+    },
+    {
+      "id": "refus-cle-proto",
+      "description": "clé propre « __proto__ » (JSON.parse la crée en propriété propre)",
+      "refus": true,
+      "contrat": "moteur-fonda/v1",
+      "entree_json": "{\"version\":\"v1\",\"sha256\":\"x\",\"__proto__\":{\"a\":1}}"
+    },
+    {
+      "id": "refus-type-null",
+      "description": "null au lieu d'une chaîne",
+      "refus": true,
+      "contrat": "coeur-decision-fonda/v1",
+      "entree": {
+        "action": null,
+        "selection": [
+          "it01",
+          "it02",
+          "it03",
+          "it04",
+          "it05"
+        ],
+        "ecartees": [
+          "it06"
+        ],
+        "empreinte_relue": "sha256:3e715f0e44d520de9ee7f01c218cf667551b8a7fff650c357b1f2bb88561e25d",
+        "empreinte_publiee": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        }
+      }
+    },
+    {
+      "id": "refus-type-nombre",
+      "description": "nombre au lieu d'une chaîne",
+      "refus": true,
+      "contrat": "coeur-decision-fonda/v1",
+      "entree": {
+        "action": "accepter",
+        "selection": [
+          "it01",
+          "it02",
+          "it03",
+          "it04",
+          "it05"
+        ],
+        "ecartees": [
+          "it06"
+        ],
+        "empreinte_relue": 1,
+        "empreinte_publiee": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        }
+      }
+    },
+    {
+      "id": "refus-type-objet-pour-tableau",
+      "description": "objet au lieu d'un tableau",
+      "refus": true,
+      "contrat": "coeur-decision-fonda/v1",
+      "entree": {
+        "action": "accepter",
+        "selection": {
+          "0": "it01"
+        },
+        "ecartees": [
+          "it06"
+        ],
+        "empreinte_relue": "sha256:3e715f0e44d520de9ee7f01c218cf667551b8a7fff650c357b1f2bb88561e25d",
+        "empreinte_publiee": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        }
+      }
+    },
+    {
+      "id": "refus-racine-tableau",
+      "description": "tableau à la racine d'un contrat objet",
+      "refus": true,
+      "contrat": "coeur-decision-fonda/v1",
+      "entree": [
+        {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it02",
+            "it03",
+            "it04",
+            "it05"
+          ],
+          "ecartees": [
+            "it06"
+          ],
+          "empreinte_relue": "sha256:3e715f0e44d520de9ee7f01c218cf667551b8a7fff650c357b1f2bb88561e25d",
+          "empreinte_publiee": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        }
+      ]
+    },
+    {
+      "id": "refus-chaine-numerique",
+      "description": "chaîne là où un nombre est attendu",
+      "refus": true,
+      "schema": "nombre",
+      "entree": "1"
+    },
+    {
+      "id": "refus-booleen-entier",
+      "description": "entier là où un booléen est attendu",
+      "refus": true,
+      "schema": "booleen",
+      "entree": 1
+    },
+    {
+      "id": "refus-contrat-incomplet-decision",
+      "description": "contrat à forme incomplète",
+      "refus": true,
+      "contrat": "decision-fonda/v1",
+      "entree": {}
+    },
+    {
+      "id": "refus-contrat-incomplet-instantane",
+      "description": "contrat à forme incomplète",
+      "refus": true,
+      "contrat": "instantane-fonda/v1",
+      "entree": {}
+    },
+    {
+      "id": "refus-contrat-incomplet-attestation",
+      "description": "contrat à forme incomplète",
+      "refus": true,
+      "contrat": "attestation-cloture/v1",
+      "entree": {}
+    },
+    {
+      "id": "refus-contrat-inconnu",
+      "description": "contrat inconnu",
+      "refus": true,
+      "contrat": "lot-fonda/v1",
+      "entree": {}
+    },
+    {
+      "id": "refus-schema-cle-entiere",
+      "description": "schéma : nom de champ de forme entière interdit",
+      "refus": true,
       "schema": {
         "type": "objet",
         "champs": [
@@ -261,26 +608,51 @@
           [
             "1",
             "nombre"
-          ],
-          [
-            "a",
-            {
-              "type": "tableau",
-              "elements": "nombre"
-            }
           ]
         ]
       },
       "entree": {
         "1": 2,
-        "a": [
-          1,
-          0.5
-        ],
         "b": "x"
+      }
+    },
+    {
+      "id": "refus-schema-champ-double",
+      "description": "schéma : champ en double",
+      "refus": true,
+      "schema": {
+        "type": "objet",
+        "champs": [
+          [
+            "a",
+            "chaine"
+          ],
+          [
+            "a",
+            "chaine"
+          ]
+        ]
       },
-      "texte": "{\"b\":\"x\",\"1\":2,\"a\":[1,0.5]}",
-      "hex": "7b2262223a2278222c2231223a322c2261223a5b312c302e355d7d"
+      "entree": {
+        "a": "x"
+      }
+    },
+    {
+      "id": "refus-schema-enfant-invalide-tableau-vide",
+      "description": "schéma enfant invalide, même sous un tableau vide",
+      "refus": true,
+      "schema": {
+        "type": "tableau",
+        "elements": "inconnu"
+      },
+      "entree": []
+    },
+    {
+      "id": "refus-schema-type-inconnu",
+      "description": "type de schéma inconnu",
+      "refus": true,
+      "schema": "inconnu",
+      "entree": "x"
     }
   ]
 }

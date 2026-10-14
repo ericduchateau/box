@@ -1,8 +1,10 @@
 // Tests de fonda/engine/canonique.js — octets canoniques (CDC relecture §1, §11).
-// Le cœur : les VECTEURS FIGÉS de canonique-vecteurs.json (hex UTF-8), générés par
-// une voie indépendante. La copie du dépôt ET une copie « nœud Code n8n » (exécutée
-// sans module, sans require, sans self, sans TextEncoder/Buffer) doivent les
-// reproduire exactement. Usage : node --test fonda/engine/canonique.test.js
+// Le cœur : le BANC PARTAGÉ canonique-vecteurs.json (cas positifs à hex figé,
+// générés par une voie indépendante, et cas de refus), rejoué À L'IDENTIQUE par
+// chaque copie : celle du dépôt et une copie exécutée en contexte nu (comme un nœud
+// Code n8n : sans module, require, self, TextEncoder ni Buffer). Les vecteurs
+// détectent les divergences couvertes par leurs cas — pas toutes.
+// Usage : node --test fonda/engine/canonique.test.js
 
 'use strict';
 
@@ -12,143 +14,145 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const C = require('./canonique.js');
 const V = require('./canonique-vecteurs.json');
 const SOURCE = fs.readFileSync(path.join(__dirname, 'canonique.js'), 'utf8');
+const charger = (source, contexte = Object.create(null)) => vm.runInNewContext(`${source}\n;FondaCanonique`, contexte);
 
-const calculer = (impl, x) => (x.contrat ? impl.hexContrat(x.contrat, x.entree) : impl.hex(x.entree, x.schema));
+const COPIES = {
+  depot: require('./canonique.js'),
+  'contexte nu (n8n)': charger(SOURCE),
+};
 
-describe('vecteurs figés — copie du dépôt', () => {
-  test('format du fichier de vecteurs', () => {
+const entreeDe = (x) => (x.entree_json !== undefined ? JSON.parse(x.entree_json) : x.entree);
+const calculer = (impl, x) => (x.contrat ? impl.hexContrat(x.contrat, entreeDe(x)) : impl.hex(entreeDe(x), x.schema));
+
+describe('banc partagé — format', () => {
+  test('fichier de vecteurs bien formé, id uniques, positifs ET refus', () => {
     assert.equal(V.schema, 'vecteurs-canonique-fonda/v1');
-    assert.ok(V.vecteurs.length >= 20);
-    assert.equal(new Set(V.vecteurs.map((x) => x.id)).size, V.vecteurs.length, 'id uniques');
+    assert.equal(new Set(V.vecteurs.map((x) => x.id)).size, V.vecteurs.length);
+    assert.ok(V.vecteurs.filter((x) => !x.refus).length >= 25);
+    assert.ok(V.vecteurs.filter((x) => x.refus).length >= 15);
   });
-  for (const x of V.vecteurs) {
-    test(`${x.id} — ${x.description}`, () => {
-      assert.equal(calculer(C, x), x.hex);
-      assert.equal(Buffer.from(x.texte, 'utf8').toString('hex'), x.hex, 'texte et hex du vecteur cohérents');
-      assert.equal(x.contrat ? C.texteContrat(x.contrat, x.entree) : C.texte(x.entree, x.schema), x.texte);
-    });
-  }
-  test('les vecteurs couvrent chaque contrat entièrement défini', () => {
-    for (const nom of C.contrats()) assert.ok(V.vecteurs.some((x) => x.contrat === nom), nom);
-  });
-});
-
-describe('vecteurs figés — copie « nœud Code n8n » (contexte nu)', () => {
-  // Contexte vide : ni module, ni require, ni self, ni TextEncoder, ni Buffer.
-  const nu = vm.runInNewContext(`${SOURCE}\n;FondaCanonique`, Object.create(null));
-  test('le fichier s\'exécute tel quel sans aucune API d\'environnement', () => {
-    assert.equal(typeof nu.hexContrat, 'function');
-    const code = SOURCE.split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n'); // hors commentaires
-    assert.doesNotMatch(code, /\brequire\s*\(|TextEncoder|Buffer|crypto|process\.|globalThis/);
-  });
-  for (const x of V.vecteurs) {
-    test(`n8n : ${x.id}`, () => assert.equal(calculer(nu, x), x.hex));
-  }
-  test('entrée construite dans un AUTRE contexte (objets d\'un autre realm, comme n8n) : mêmes octets', () => {
-    const x = V.vecteurs.find((v) => v.id === 'coeur-nominal');
-    const entreeEtrangere = vm.runInNewContext(`(${JSON.stringify(x.entree)})`);
-    assert.equal(C.hexContrat(x.contrat, entreeEtrangere), x.hex);
-  });
-});
-
-describe('nombres', () => {
-  test('-0 normalisé en 0', () => {
-    assert.equal(C.texte(-0, 'nombre'), '0');
-    assert.equal(C.texte([-0, 0], { type: 'tableau', elements: 'nombre' }), '[0,0]');
-  });
-  test('décimaux : forme Number::toString (= JSON.stringify)', () => {
-    for (const n of [0.5, -0.5, 1.5e-7, 123.456, 1 / 3, 5e-324, Number.MAX_VALUE, -1e21]) {
-      assert.equal(C.texte(n, 'nombre'), JSON.stringify(n), String(n));
+  test('positifs : texte = JSON.stringify natif, hex = UTF-8 du texte (référence indépendante)', () => {
+    for (const x of V.vecteurs.filter((v) => !v.refus)) {
+      assert.equal(Buffer.from(x.texte, 'utf8').toString('hex'), x.hex, x.id);
     }
   });
-  for (const n of [Number.NaN, Infinity, -Infinity]) {
-    test(`${n} refusé`, () => assert.throws(() => C.texte(n, 'nombre'), /nombre fini/));
-  }
-  test('chaîne numérique ou BigInt refusés là où un nombre est attendu', () => {
-    assert.throws(() => C.texte('1', 'nombre'), /nombre fini/);
-    assert.throws(() => C.texte(1n, 'nombre'), /nombre fini/);
-  });
 });
 
-describe('chaînes : aucune normalisation Unicode', () => {
-  test('« é » précomposé et décomposé donnent des octets DIFFÉRENTS (documenté, voulu)', () => {
-    const a = C.hex('é', 'chaine');
-    const b = C.hex('é', 'chaine');
-    assert.notEqual(a, b);
-    assert.equal(a, '22c3a922');
-    assert.equal(b, '2265cc8122');
+for (const [nom, C] of Object.entries(COPIES)) {
+  describe(`copie ${nom} — banc partagé complet`, () => {
+    for (const x of V.vecteurs) {
+      test(`${x.id} — ${x.description}`, () => {
+        if (x.refus) assert.throws(() => calculer(C, x), /canonique :/);
+        else {
+          assert.equal(calculer(C, x), x.hex);
+          assert.equal(x.contrat ? C.texteContrat(x.contrat, entreeDe(x)) : C.texte(entreeDe(x), x.schema), x.texte);
+        }
+      });
+    }
+    test('chaque contrat entièrement défini a au moins un vecteur positif', () => {
+      for (const n of C.contrats()) assert.ok(V.vecteurs.some((x) => x.contrat === n && !x.refus), n);
+    });
+    test('nombres : -0 -> 0 ; décimaux = JSON.stringify ; NaN/Infinity/BigInt refusés', () => {
+      assert.equal(C.texte(-0, 'nombre'), '0');
+      for (const n of [0.5, -0.5, 1.5e-7, 123.456, 1 / 3, 5e-324, Number.MAX_VALUE, -1e21]) assert.equal(C.texte(n, 'nombre'), JSON.stringify(n));
+      for (const n of [Number.NaN, Infinity, -Infinity, 1n]) assert.throws(() => C.texte(n, 'nombre'), /nombre fini/);
+    });
+    test('UTF-8 = Buffer sur un balayage du BMP et des points hors BMP', () => {
+      let s = '';
+      for (let i = 0; i < 0x10000; i += 1) if (i < 0xd800 || i > 0xdfff) s += String.fromCharCode(i);
+      s += '😀𝄞\u{10ffff}𐀀';
+      assert.deepEqual([...C.octets(s, 'chaine')], [...Buffer.from(JSON.stringify(s), 'utf8')]);
+    });
   });
-  test('contrôles et échappements identiques à JSON.stringify', () => {
-    let tous = '';
-    for (let i = 0; i < 0x80; i += 1) tous += String.fromCharCode(i);
-    assert.equal(C.texte(tous, 'chaine'), JSON.stringify(tous));
-  });
-  test('UTF-8 manuel = Buffer sur tout le BMP et des points hors BMP', () => {
-    let s = '';
-    for (let i = 0; i < 0xffff; i += 97) if (i < 0xd800 || i > 0xdfff) s += String.fromCharCode(i);
-    s += '😀𝄞\u{10ffff}';
-    assert.deepEqual(C.octets(s, 'chaine'), [...Buffer.from(JSON.stringify(s), 'utf8')]);
-  });
-  test('pas de BOM, pas d\'espace ni de saut de ligne ajoutés', () => {
-    const x = V.vecteurs.find((v) => v.id === 'coeur-nominal');
-    const t = C.texteContrat(x.contrat, x.entree);
-    assert.ok(!t.startsWith('﻿') && !/[\n\r]/.test(t) && !/[,:] /.test(t));
-    assert.notEqual(C.octets('', 'chaine')[0], 0xef);
-  });
-});
+}
 
-describe('champs : tous présents, aucun inconnu, types stricts (refus explicite)', () => {
-  const base = () => JSON.parse(JSON.stringify(V.vecteurs.find((v) => v.id === 'coeur-nominal').entree));
-  const N = 'coeur-decision-fonda/v1';
-  test('champ manquant', () => {
-    const c = base(); delete c.ecartees;
-    assert.throws(() => C.hexContrat(N, c), /ecartees : champ manquant/);
+describe('entrées adverses : jamais de champ ignoré, rien d\'exécuté', () => {
+  const C = COPIES.depot;
+  const M = 'moteur-fonda/v1';
+  const base = () => ({ version: 'v1', sha256: 'x' });
+  test('getter refusé SANS être exécuté', () => {
+    let appels = 0;
+    const o = { sha256: 'x' };
+    Object.defineProperty(o, 'version', { enumerable: true, get() { appels += 1; return 'v1'; } });
+    assert.throws(() => C.hexContrat(M, o), /accesseur/);
+    assert.equal(appels, 0);
   });
-  test('champ manquant imbriqué', () => {
-    const c = base(); delete c.moteur.sha256;
-    assert.throws(() => C.hexContrat(N, c), /moteur\.sha256 : champ manquant/);
+  test('symbole, propriété non énumérable : refusés', () => {
+    assert.throws(() => C.hexContrat(M, { ...base(), [Symbol('s')]: 1 }), /champ inconnu/);
+    const o = base();
+    Object.defineProperty(o, 'cache', { value: 1, enumerable: false });
+    assert.throws(() => C.hexContrat(M, o), /champ inconnu/);
+    const p = { sha256: 'x' };
+    Object.defineProperty(p, 'version', { value: 'v1', enumerable: false });
+    assert.throws(() => C.hexContrat(M, p), /non énumérable/);
   });
-  test('champ inconnu (racine et imbriqué)', () => {
-    assert.throws(() => C.hexContrat(N, { ...base(), signature: 'x' }), /signature : champ inconnu/);
-    const c = base(); c.moteur.fichier = 'x';
-    assert.throws(() => C.hexContrat(N, c), /moteur\.fichier : champ inconnu/);
+  test('champ requis seulement HÉRITÉ : refusé (propriétés propres uniquement)', () => {
+    assert.throws(() => C.hexContrat(M, Object.assign(Object.create({ version: 'v1' }), { sha256: 'x' })), /objet de données attendu|champ manquant/);
   });
-  test('undefined n\'est pas une absence silencieuse', () => {
-    assert.throws(() => C.hexContrat(N, { ...base(), action: undefined }), /chaîne attendue/);
+  test('Map, Date, instance de classe — même avec Symbol.toStringTag « Object » : refusés', () => {
+    const m = new Map();
+    m.version = 'v1'; m.sha256 = 'x';
+    Object.defineProperty(m, Symbol.toStringTag, { value: 'Object' });
+    class K { constructor() { this.version = 'v1'; this.sha256 = 'x'; } }
+    for (const v of [m, new Date(0), new K()]) assert.throws(() => C.hexContrat(M, v), /objet de données attendu/);
   });
-  test('types stricts : null, nombre au lieu de chaîne, objet au lieu de tableau, tableau à trous', () => {
-    assert.throws(() => C.hexContrat(N, { ...base(), action: null }), /chaîne attendue/);
-    assert.throws(() => C.hexContrat(N, { ...base(), empreinte_relue: 1 }), /chaîne attendue/);
-    assert.throws(() => C.hexContrat(N, { ...base(), selection: { 0: 'it01' } }), /tableau attendu/);
+  test('tableau avec propriété supplémentaire ou trou : refusé', () => {
+    const c = JSON.parse(JSON.stringify(V.vecteurs.find((x) => x.id === 'coeur-nominal').entree));
+    c.selection.secret = 'x';
+    assert.throws(() => C.hexContrat('coeur-decision-fonda/v1', c), /tableau/);
     // eslint-disable-next-line no-sparse-arrays
-    assert.throws(() => C.hexContrat(N, { ...base(), selection: ['it01', , 'it03'] }), /trou/);
-    assert.throws(() => C.hexContrat(N, null), /objet attendu/);
-    assert.throws(() => C.hexContrat(N, ['x']), /objet attendu/);
+    assert.throws(() => C.texte(['a', , 'c'], { type: 'tableau', elements: 'chaine' }), /trou|tableau/);
   });
-  test('booléen strict', () => {
-    assert.throws(() => C.texte(1, 'booleen'), /booléen attendu/);
+  test('admis : objet à prototype nul et objet d\'un autre contexte JS (données ordinaires)', () => {
+    const nul = Object.assign(Object.create(null), base());
+    const etranger = vm.runInNewContext('({ version: "v1", sha256: "x" })');
+    assert.equal(C.texteContrat(M, nul), '{"version":"v1","sha256":"x"}');
+    assert.equal(C.texteContrat(M, etranger), '{"version":"v1","sha256":"x"}');
   });
-  test('schéma invalide refusé', () => {
-    assert.throws(() => C.texte('x', 'inconnu'), /schéma invalide/);
+  test('Proxy : valeurs lues une seule fois par descripteur ; sortie calculée sur la copie', () => {
+    let lectures = 0;
+    const p = new Proxy(base(), { getOwnPropertyDescriptor(t, k) { lectures += 1; return Reflect.getOwnPropertyDescriptor(t, k); } });
+    assert.equal(C.texteContrat(M, p), '{"version":"v1","sha256":"x"}');
+    assert.equal(lectures, 2);
   });
 });
 
-describe('contrats à forme incomplète : refus (fail-closed)', () => {
-  for (const nom of ['decision-fonda/v1', 'instantane-fonda/v1', 'attestation-cloture/v1']) {
-    test(`${nom} refusé tant que ses sous-objets ne sont pas définis au CDC`, () => {
-      assert.ok(C.contratsIncomplets().includes(nom));
-      assert.throws(() => C.hexContrat(nom, {}), /forme incomplète/);
-      assert.throws(() => C.octetsContrat(nom, {}), /forme incomplète/);
-      assert.throws(() => C.texteContrat(nom, {}), /forme incomplète/);
+describe('portabilité : export final et absence d\'API d\'environnement', () => {
+  test('aucune API d\'environnement dans le code (hors commentaires)', () => {
+    const code = SOURCE.split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
+    assert.doesNotMatch(code, /\brequire\s*\(|TextEncoder|Buffer|crypto|process\.|globalThis/);
+  });
+  test('contextes variés : self nul, self objet, module sans exports — chargement sans erreur', () => {
+    for (const ctx of [{ self: null }, { self: {} }, { module: {} }, { module: null }, { module: { exports: {} } }]) {
+      const C = charger(SOURCE, ctx);
+      assert.equal(C.texteContrat('moteur-fonda/v1', { version: 'v1', sha256: 'x' }), '{"version":"v1","sha256":"x"}');
+    }
+    const s = {};
+    charger(SOURCE, { self: s });
+    assert.equal(typeof s.FondaCanonique.hexContrat, 'function');
+  });
+});
+
+// Mutations de recopie : le banc partagé doit détecter une copie dérivée.
+describe('mutations de copie détectées par le banc partagé', () => {
+  const mutations = [
+    ['seuil UTF-8 0x800 -> 0x1000', (s) => s.replace('c < 0x800', 'c < 0x1000')],
+    ['contrôle des champs inconnus supprimé', (s) => s.replace("if (typeof cle !== 'string' || connus[cle] !== true) {", 'if (false) {')],
+    ['-0 non normalisé et nombre non vérifié', (s) => s.replace("if (typeof valeur !== 'number' || !isFinite(valeur))", 'if (false)')],
+    ['ordre des champs inversé', (s) => s.replace('for (var j = 0; j < schema.champs.length; j += 1) {', 'for (var j = schema.champs.length - 1; j >= 0; j -= 1) {')],
+    ['schéma non validé', (s) => s.replace("    validerSchema(schema, '');\n", '')],
+  ];
+  for (const [nom, muter] of mutations) {
+    test(nom, () => {
+      const mutant = muter(SOURCE);
+      assert.notEqual(mutant, SOURCE, 'point de mutation introuvable');
+      const C = charger(mutant);
+      const echecs = V.vecteurs.filter((x) => {
+        try { const h = calculer(C, x); return x.refus || h !== x.hex; } catch { return !x.refus; }
+      });
+      assert.ok(echecs.length > 0, 'le banc partagé n\'a rien détecté');
     });
   }
-  test('contrat inconnu refusé', () => {
-    assert.throws(() => C.hexContrat('lot-fonda/v1', {}), /contrat inconnu/);
-  });
-  test('contrats entièrement définis : exactement moteur et cœur', () => {
-    assert.deepEqual(C.contrats().sort(), ['coeur-decision-fonda/v1', 'moteur-fonda/v1']);
-  });
 });
