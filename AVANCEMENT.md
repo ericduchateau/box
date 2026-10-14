@@ -5,7 +5,7 @@
 ## Objectif
 Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correction par profil, mesure par groupe, fiches générées puis relues par un humain), sans casser BOX. Dépôt AAP CARDIE-SEPIA, échéance **21/10/2026**. Source de vérité : `docs/PRD-Box-FONDA.md` ; règles : `AGENTS.md`.
 
-## État actuel (design = `f226b07`, main intact `7ea4f28`)
+## État actuel (design = `f4c2f99`, main intact `7ea4f28`)
 - **BOX prod** : 9 workflows n8n actifs, Google Form + Tally, relecture carte par carte (`/box-select`), front `https://ericduchateau.github.io/box/` (`main`).
 - **FONDA sur `design`** : thème sombre, correction par profil, index `?fonda=1&page=entrainement` ; **chaîne séparée (bloc 1, PR #6/#7 mergées)** : `catalogue-fonda.json` + `fonda/data/lots/` (8 lots relus, empreintes figées `HISTORIQUES_FIGES`), CI `tests (node --test)` obligatoire sur `design`/`main`.
 - **CDC relecture v8.1** : `docs/CDC-fonda-relecture.md` (branche `feat/box-fonda-relecture`, non mergée). Preuve C8 faite (SRI/CORS/export OK ; CSP en `<meta>`).
@@ -21,9 +21,9 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - Changement visible voulu (CDC §12) : badge « Fiche relue par Éric Duchateau » (avant : « Fiche relue et validée par … avant publication. »).
 
 ## Prochaines étapes
-1. **En cours — étape 3, chantier 3** : `feat/box-fonda-immuabilite` → `design`. `fonda/scripts/verifier-immuabilite.js` (règle unique du tuple, règle 0 de M1 transférée depuis `verifier-moteurs.js`, journal en ajout seul, retraits, moteurs rejoués via les fonctions de `verifier-moteurs.js`) + job CI `immuabilite` + `.github/CODEOWNERS` (signal, pas barrière). Frontière écrite en tête des deux vérificateurs.
-2. **Après merge (Éric)** : déclarer `immuabilite` requis sur `design` et `main` (après un premier passage) ; puis retirer l'étape « moteurs » transitoire du job `tests`. Réglages : décocher « Allow rebase merging » ; « Do not allow bypassing ». CODEOWNERS devra aussi arriver sur `main` (transit design -> main).
-3. Puis point d'étape ; chantier 4 : clés + `signer-cloture.js`.
+1. **Étape 3, chantiers 1 à 3 mergés** (canonique, journal + M2, immuabilité + CODEOWNERS). `immuabilite` est **requis** sur `design` et `main` (vérifié par Éric). **En cours** : `chore/ci-retrait-etape-moteurs` — retrait de l'étape « moteurs » transitoire du job `tests` (rejouée par `immuabilite`).
+2. Puis point d'étape ; chantier 4 : clés + `signer-cloture.js`.
+3. Réglages restants à confirmer (Éric) : « Allow rebase merging » décoché ; « Do not allow bypassing » ; CODEOWNERS à faire arriver sur `main` (transit design -> main).
 4. Bloc 3 (prod, feu vert) : orpheline `box_7e7tcooh`. `feat/box-delete-hardening` ; Moteur A + dette `defi_id` ; collecte `/box-fonda-events` ; recette `canonique.js` en vrai nœud n8n.
 
 ## 🔖 Check-list AVANT PUBLICATION / usage élève réel

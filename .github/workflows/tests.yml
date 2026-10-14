@@ -42,21 +42,17 @@ jobs:
           done
       - name: node --test
         run: node --test
-      # Moteurs de correction élève : registre en ajout seul, fichiers jamais modifiés
-      # ni supprimés (CDC relecture annexe B). Référence nulle/introuvable -> échec.
-      # Conservé ici tant que le job `immuabilite` (qui le rejoue) n'est pas un contrôle
-      # requis des protections de branche ; à retirer ensuite (une seule implémentation,
-      # deux exécutions transitoires).
-      - name: Immuabilité des moteurs de correction
-        env:
-          FONDA_REF_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: node fonda/scripts/verifier-moteurs.js
+      # Les contrôles des moteurs de correction (registre en ajout seul, fichiers jamais
+      # modifiés ni supprimés, SHA-256 = registre = SRI, continuité) ne sont plus lancés
+      # ici : le job `immuabilite` (contrôle requis sur design et main) les exécute via
+      # les fonctions de verifier-moteurs.js — une seule implémentation, une seule
+      # exécution.
 
-  # Immuabilité des lots publiés (CDC relecture annexe B §17) : tuple (empreinte,
-  # moteur), règle 0 de M1, journal des set_id en ajout seul, retraits, moteurs,
-  # continuité du premier parent. Même frontière que le job `tests` : vérification
-  # publique uniquement, aucun secret. À déclarer requis dans les protections de
-  # `design` et `main` une fois qu'il a tourné au moins une fois (annexe A, point 6).
+  # Immuabilité (CDC relecture annexe B §17) : tuple (empreinte, moteur) des lots
+  # publiés, règle 0 de M1, journal des set_id en ajout seul, retraits, MOTEURS
+  # (fonctions de verifier-moteurs.js) et continuité du premier parent. Même
+  # frontière que le job `tests` : vérification publique uniquement, aucun secret.
+  # Contrôle REQUIS dans les protections de `design` et `main` (annexe A, point 6).
   immuabilite:
     name: immuabilite
     runs-on: ubuntu-latest
