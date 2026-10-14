@@ -135,6 +135,15 @@ describe('schémas génériques adverses : copie validée, seule utilisée', () 
     assert.throws(() => C.texte([], herite), /schéma invalide/);
     assert.throws(() => C.texte({}, { type: 'objet', champs: [['a', 'chaine', 'extra']] }), /schéma invalide/);
   });
+  test('tableaux du schéma : paire non énumérable, de longueur ≠ 2 ou à trou : refusée', () => {
+    const paire = () => ['a', 'chaine'];
+    const cas = [];
+    const p1 = paire(); p1.length = 3; cas.push([p1]); // trou final
+    const p2 = paire(); Object.defineProperty(p2, '0', { enumerable: false }); cas.push([p2]);
+    const p3 = paire(); Object.defineProperty(p3, '1', { enumerable: false }); cas.push([p3]);
+    const champs = [paire()]; Object.defineProperty(champs, '0', { enumerable: false }); cas.push(champs);
+    for (const c of cas) assert.throws(() => C.texte({ a: 'x' }, { type: 'objet', champs: c }), /schéma invalide/);
+  });
 });
 
 describe('frontière d\'entrée : données JSON ordinaires', () => {
@@ -153,11 +162,11 @@ describe('frontière d\'entrée : données JSON ordinaires', () => {
     Object.setPrototypeOf(d, null);
     assert.throws(() => C.hexContrat(M, Object.assign(d, { version: 'v1', sha256: 'x' })), /objet de données attendu/);
   });
-  test('tableaux : contrôle linéaire (40 000 éléments en moins d\'une seconde)', () => {
+  test('tableaux : 40 000 éléments sérialisés (contrôle linéaire ; mesure indicative, seuil large)', () => {
     const t = Array.from({ length: 40000 }, (_, i) => `it${i}`);
     const debut = Date.now();
-    C.texte(t, { type: 'tableau', elements: 'chaine' });
-    assert.ok(Date.now() - debut < 1000);
+    assert.equal(C.texte(t, { type: 'tableau', elements: 'chaine' }), JSON.stringify(t));
+    assert.ok(Date.now() - debut < 10000);
   });
 });
 

@@ -101,11 +101,14 @@ var FondaCanonique = (function () {
       var champs = [];
       for (var i = 0; i < n; i += 1) {
         var dc = Object.getOwnPropertyDescriptor(o.champs, String(i));
-        if (!dc || !('value' in dc) || !Array.isArray(dc.value)) throw erreur(chemin, 'schéma invalide (champ mal formé)');
+        if (!dc || !('value' in dc) || !dc.enumerable || !Array.isArray(dc.value)) throw erreur(chemin, 'schéma invalide (champ mal formé)');
         var c = dc.value;
         var d0 = Object.getOwnPropertyDescriptor(c, '0');
         var d1 = Object.getOwnPropertyDescriptor(c, '1');
-        if (Reflect.ownKeys(c).length !== 3 || !d0 || !d1 || !('value' in d0) || !('value' in d1) || typeof d0.value !== 'string') {
+        // Paire EXACTE : length 2, clés « 0 », « 1 », « length », données énumérables.
+        if (Object.getOwnPropertyDescriptor(c, 'length').value !== 2 || Reflect.ownKeys(c).length !== 3
+          || !d0 || !d1 || !('value' in d0) || !('value' in d1) || !d0.enumerable || !d1.enumerable
+          || typeof d0.value !== 'string') {
           throw erreur(chemin, 'schéma invalide (champ mal formé)');
         }
         var nom = d0.value;
