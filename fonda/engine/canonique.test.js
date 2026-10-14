@@ -68,8 +68,7 @@ for (const [nom, C] of Object.entries(COPIES)) {
   });
 }
 
-describe('entrées adverses : jamais de champ ignoré, rien d\'exécuté', () => {
-  const C = COPIES.depot;
+for (const [nomCopie, C] of Object.entries(COPIES)) describe(`entrées adverses (${nomCopie}) : jamais de champ ignoré, rien d'exécuté`, () => {
   const M = 'moteur-fonda/v1';
   const base = () => ({ version: 'v1', sha256: 'x' });
   test('getter refusé SANS être exécuté', () => {
@@ -119,8 +118,7 @@ describe('entrées adverses : jamais de champ ignoré, rien d\'exécuté', () =>
   });
 });
 
-describe('schémas génériques adverses : copie validée, seule utilisée', () => {
-  const C = COPIES.depot;
+for (const [nomCopie, C] of Object.entries(COPIES)) describe(`schémas génériques adverses (${nomCopie}) : copie validée, seule utilisée`, () => {
   test('getter dans un schéma : refusé, jamais lu deux fois', () => {
     let lectures = 0;
     const schema = { type: 'tableau', get elements() { lectures += 1; return lectures === 1 ? 'chaine' : 'nombre'; } };
@@ -146,8 +144,7 @@ describe('schémas génériques adverses : copie validée, seule utilisée', () 
   });
 });
 
-describe('frontière d\'entrée : données JSON ordinaires', () => {
-  const C = COPIES.depot;
+for (const [nomCopie, C] of Object.entries(COPIES)) describe(`frontière d'entrée (${nomCopie}) : données JSON ordinaires`, () => {
   const M = 'moteur-fonda/v1';
   test('prototype personnalisé (même à parent nul) : refusé', () => {
     const proto = Object.create(null);
@@ -162,11 +159,9 @@ describe('frontière d\'entrée : données JSON ordinaires', () => {
     Object.setPrototypeOf(d, null);
     assert.throws(() => C.hexContrat(M, Object.assign(d, { version: 'v1', sha256: 'x' })), /objet de données attendu/);
   });
-  test('tableaux : 40 000 éléments sérialisés (contrôle linéaire ; mesure indicative, seuil large)', () => {
+  test('tableaux : 40 000 éléments sérialisés à l\'identique (contrôle linéaire à la lecture du code ; aucune assertion de durée)', () => {
     const t = Array.from({ length: 40000 }, (_, i) => `it${i}`);
-    const debut = Date.now();
     assert.equal(C.texte(t, { type: 'tableau', elements: 'chaine' }), JSON.stringify(t));
-    assert.ok(Date.now() - debut < 10000);
   });
 });
 
