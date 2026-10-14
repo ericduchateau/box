@@ -257,3 +257,137 @@ describe('règle 0 de M1 — consommable une seule fois (CDC annexe B)', () => {
     assert.match(V.verifierRegle0(['deadbeef'], avecM1, REG, HIST, dir).join(), /introuvable/);
   });
 });
+
+// --- Continuité du premier parent, modes d'intégration, fail-closed ---------------
+// Contrat : intégration par merge commit ou squash ; le filet DÉTECTE une violation
+// (échec), la protection de branche l'EMPÊCHE.
+describe('continuité et modes d\'intégration (CDC annexe B, contrat premier parent)', () => {
+  const ligne = (contenu) => ({ version: 'v1', fichier: 'fonda/engine/moteur-correction-v1.js', sha256: contenu, sri: 'x' });
+  function depotDesign() {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'continuite-'));
+    const g = (...a) => execFileSync('git', a, { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    g('init', '-q', '-b', 'design'); g('config', 'user.email', 't@t'); g('config', 'user.name', 't');
+    fs.mkdirSync(path.join(dir, 'fonda', 'engine'), { recursive: true });
+    fs.mkdirSync(path.join(dir, 'fonda', 'data'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'README'), 'x');
+    g('add', '.'); g('commit', '-q', '-m', 'base');
+    return { dir, g };
+  }
+  const ecrire = (dir, rel, contenu) => fs.writeFileSync(path.join(dir, rel), contenu);
+  function brouillonsSurPr(dir, g) {
+    g('checkout', '-q', '-b', 'pr');
+    for (const v of ['brouillon 1', 'v1']) {
+      ecrire(dir, 'fonda/engine/moteur-correction-v1.js', v);
+      ecrire(dir, 'fonda/engine/moteurs.json', JSON.stringify([ligne(v)]));
+      g('add', '.'); g('commit', '-q', '-m', v);
+    }
+    g('checkout', '-q', 'design');
+  }
+  const octets = (contenus) => (f) => (contenus[f] === undefined ? null : Buffer.from(contenus[f]));
+  const lire = octets({ 'fonda/engine/moteur-correction-v1.js': 'v1' });
+
+  test('merge commit normal : continuité OK, historique OK (pas de faux positif)', () => {
+    const { dir, g } = depotDesign();
+    const avant = g('rev-parse', 'HEAD');
+    brouillonsSurPr(dir, g);
+    g('merge', '-q', '--no-ff', '-m', 'Merge pull request', 'pr');
+    assert.deepEqual(V.verifierContinuite(avant, 'HEAD', dir), []);
+    assert.deepEqual(V.verifierHistorique([avant, 'HEAD'], [ligne('v1')], lire, dir), []);
+  });
+
+  test('squash normal : continuité OK, historique OK (pas de faux positif)', () => {
+    const { dir, g } = depotDesign();
+    const avant = g('rev-parse', 'HEAD');
+    brouillonsSurPr(dir, g);
+    g('merge', '-q', '--squash', 'pr'); g('commit', '-q', '-m', 'squash');
+    assert.deepEqual(V.verifierContinuite(avant, 'HEAD', dir), []);
+    assert.deepEqual(V.verifierHistorique([avant, 'HEAD'], [ligne('v1')], lire, dir), []);
+  });
+
+  test('parents inversés puis fast-forward : refus dès le PREMIER contrôle (push qui avance design)', () => {
+    const { dir, g } = depotDesign();
+    const avantM1 = g('rev-parse', 'HEAD');
+    ecrire(dir, 'fonda/data/catalogue-fonda.json', JSON.stringify({ lots: [{ set_id: 'set_a', empreinte: 'sha256:aa', moteur: { version: 'v1', sha256: 'a'.repeat(64) } }] }));
+    g('add', '.'); g('commit', '-q', '-m', 'M1');
+    const P = g('rev-parse', 'HEAD');
+    g('checkout', '-q', '-b', 'ancien', avantM1);
+    ecrire(dir, 'autre.txt', 'x'); g('add', '.'); g('commit', '-q', '-m', 'ancien');
+    g('merge', '-q', '--no-edit', '-s', 'ours', 'design'); // premier parent = ancien, second = P
+    g('checkout', '-q', 'design');
+    g('merge', '-q', '--ff-only', 'ancien'); // design avance par fast-forward sur M
+    const M = g('rev-parse', 'HEAD');
+    // 1er contrôle (push : before = P, HEAD = M) : la continuité est rompue -> échec.
+    assert.match(V.verifierContinuite(P, M, dir).join(), /continuité rompue/);
+    // Ce que ce filet NE fait pas : au contrôle suivant (base = design = M), P est
+    // hors chaîne et la règle 0 se réarmerait — d'où l'échec au 1er contrôle ET la
+    // protection de branche (pas de push direct, pas de contournement).
+    assert.deepEqual(V.verifierContinuite(M, M, dir), []);
+  });
+
+  test('rebase-merge avec brouillons du moteur sur la chaîne du premier parent : refus', () => {
+    const { dir, g } = depotDesign();
+    const avant = g('rev-parse', 'HEAD');
+    brouillonsSurPr(dir, g);
+    g('merge', '-q', '--ff-only', 'pr'); // équivalent linéaire d'un rebase-merge
+    assert.deepEqual(V.verifierContinuite(avant, 'HEAD', dir), [], 'la continuité seule ne voit rien…');
+    assert.match(V.verifierHistorique([avant, 'HEAD'], [ligne('v1')], lire, dir).join(), /modifié/, '…mais les brouillons publiés sont refusés');
+  });
+
+  test('clone superficiel : refus (continuité, historique, règle 0)', () => {
+    const { dir, g } = depotDesign();
+    ecrire(dir, 'y', '1'); g('add', '.'); g('commit', '-q', '-m', 'y');
+    const clone = fs.mkdtempSync(path.join(os.tmpdir(), 'superficiel-'));
+    execFileSync('git', ['clone', '-q', '--depth', '1', `file://${dir}`, clone], { stdio: 'ignore' });
+    const tete = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: clone }).toString().trim();
+    assert.match(V.verifierContinuite(tete, 'HEAD', clone).join(), /clone superficiel/);
+    assert.match(V.verifierHistorique([tete], [], lire, clone).join(), /clone superficiel/);
+    assert.match(V.verifierRegle0([tete], { lots: [] }, [], {}, clone).join(), /clone superficiel/);
+  });
+
+  test('objet Git supprimé (illisible) : refus, jamais assimilé à une absence', () => {
+    const { dir, g } = depotDesign();
+    ecrire(dir, 'fonda/engine/moteur-correction-v1.js', 'v1');
+    ecrire(dir, 'fonda/engine/moteurs.json', JSON.stringify([ligne('v1')]));
+    ecrire(dir, 'fonda/data/catalogue-fonda.json', JSON.stringify({ lots: [] }));
+    g('add', '.'); g('commit', '-q', '-m', 'v1');
+    const supprimer = (rel) => {
+      const blob = g('rev-parse', `HEAD:${rel}`);
+      fs.rmSync(path.join(dir, '.git', 'objects', blob.slice(0, 2), blob.slice(2)));
+    };
+    supprimer('fonda/engine/moteur-correction-v1.js');
+    supprimer('fonda/data/catalogue-fonda.json');
+    assert.match(V.verifierHistorique(['HEAD'], [ligne('v1')], lire, dir).join(), /illisible/);
+    assert.match(V.verifierRegle0(['HEAD'], { lots: [] }, [ligne('v1')], {}, dir).join(), /illisible/);
+  });
+
+  // Mutation-test PERMANENT : le même vérificateur SANS --first-parent doit échouer
+  // sur le scénario de l'incident (brouillons de PR mergée) et sur les brouillons de M1.
+  test('mutation : sans --first-parent, l\'incident et les brouillons de M1 sont (faussement) refusés', () => {
+    const source = fs.readFileSync(path.join(__dirname, 'verifier-moteurs.js'), 'utf8');
+    const mutant = source.replace("git(['rev-list', '--first-parent', ref])", "git(['rev-list', ref])");
+    assert.notEqual(mutant, source, 'point de mutation introuvable');
+    const fichier = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mutant-')), 'verifier-moteurs.js');
+    fs.writeFileSync(fichier, mutant);
+    const Mut = require(fichier);
+    const { dir, g } = depotDesign();
+    const avant = g('rev-parse', 'HEAD');
+    brouillonsSurPr(dir, g);
+    g('merge', '-q', '--no-ff', '-m', 'Merge pull request', 'pr');
+    assert.deepEqual(V.verifierHistorique([avant, 'HEAD'], [ligne('v1')], lire, dir), [], 'vérificateur réel : accepté');
+    assert.match(Mut.verifierHistorique([avant, 'HEAD'], [ligne('v1')], lire, dir).join(), /modifié/, 'mutant : faux refus attendu');
+    // Brouillons de M1 dans une PR
+    const d2 = depotDesign();
+    const base2 = d2.g('rev-parse', 'HEAD');
+    ecrire(d2.dir, 'fonda/data/catalogue-fonda.json', JSON.stringify({ lots: [] })); d2.g('add', '.'); d2.g('commit', '-q', '-m', 'catalogue');
+    d2.g('checkout', '-q', '-b', 'pr');
+    const cat = (sha) => JSON.stringify({ lots: [{ set_id: 'set_a', empreinte: 'sha256:aa', moteur: { version: 'v1', sha256: sha } }] });
+    ecrire(d2.dir, 'fonda/data/catalogue-fonda.json', cat('b'.repeat(64))); d2.g('commit', '-q', '-am', 'M1 brouillon');
+    ecrire(d2.dir, 'fonda/data/catalogue-fonda.json', cat('a'.repeat(64))); d2.g('commit', '-q', '-am', 'M1 finale');
+    d2.g('checkout', '-q', 'design');
+    d2.g('merge', '-q', '--no-ff', '-m', 'Merge', 'pr');
+    const courant = JSON.parse(cat('a'.repeat(64)));
+    const reg = [{ ...ligne('x'), sha256: 'a'.repeat(64) }];
+    assert.deepEqual(V.verifierRegle0([base2, 'HEAD'], courant, reg, { set_a: 'sha256:aa' }, d2.dir), []);
+    assert.match(Mut.verifierRegle0([base2, 'HEAD'], courant, reg, { set_a: 'sha256:aa' }, d2.dir).join(), /tuple/);
+  });
+});

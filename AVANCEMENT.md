@@ -21,7 +21,8 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - Changement visible voulu (CDC §12) : badge « Fiche relue par Éric Duchateau » (avant : « Fiche relue et validée par … avant publication. »).
 
 ## Prochaines étapes
-1. **En cours** : `fix/ci-immuabilite-first-parent` → `design`. Le push post-merge de la PR #8 a mis l'étape « Immuabilité des moteurs » en échec (run 38471882811) : `rev-list` sans `--first-parent` voyait les brouillons de la PR (autre empreinte du moteur v1). Correctif : historique de confiance = chaîne du premier parent. Relecture Codex + Éric avant merge.
+1. **En cours** : `fix/ci-immuabilite-first-parent` → `design`. Le push post-merge de la PR #8 a mis l'étape « Immuabilité des moteurs » en échec (run 38471882811) : `rev-list` sans `--first-parent` voyait les brouillons de la PR (autre empreinte du moteur v1). Correctif : historique de confiance = chaîne du premier parent + contrôle de continuité (référence sur le premier parent de HEAD) + fail-closed complet. Relecture Codex + Éric avant merge ; au merge, vérifier le run au push sur design.
+   - **Réglages GitHub à faire par Éric** (CDC annexe A) : décocher « Allow rebase merging » ; « Do not allow bypassing » sur `design` et `main`.
 2. Puis **point d'étape avec Éric** avant étape 3 (canonique, clés, journal set_ids, signature/clôture, CODEOWNERS, workflows inactifs — activation sur go explicite).
 3. Bloc 3 (prod, feu vert) : retrait de l'orpheline `box_7e7tcooh` du catalogue BOX.
 4. `feat/box-delete-hardening` (basse priorité) ; Moteur A + dette `defi_id` ; collecte `/box-fonda-events`.
@@ -46,7 +47,7 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - Relecteur affiché **lu dans la donnée**, jamais déduit de la matière (badge = affirmation G4).
 - Publication FONDA : aucun type d'attestation accepté tant que la relecture signée (étape 3) n'existe pas.
 - « Carte invalide = échec compté » conservé (filet défensif, n'y revenir que si observé).
-- **Historique de confiance = chaîne du premier parent** de la référence et de `design` (états réellement publiés) : les commits intermédiaires d'une PR ne comptent pas, son merge oui. À reporter dans le CDC §17.
+- **Historique de confiance = chaîne du premier parent** de la référence et de `design` (états réellement publiés) : les commits intermédiaires d'une PR ne comptent pas, son merge oui. Suppose merge commit ou squash (rebase-merge et push direct exclus). Le CI **détecte** une violation, la **protection de branche l'empêche**. Reporté au CDC §17 + annexe A.
 
 ## Pièges
 - Chrome met `css/style.css` en cache : désactiver le cache pour toute preuve visuelle ; figer `Math.random` (sinon deux captures du même état BOX diffèrent).

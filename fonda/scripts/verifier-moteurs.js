@@ -18,6 +18,16 @@
 //     filtrage par chemin (aucun état publié n'est sauté) ; tout objet illisible ou
 //     JSON invalide -> ÉCHEC (seule l'absence avérée du fichier dans un commit est
 //     ignorée). Appliqué identiquement aux moteurs et au catalogue (règle 0).
+//     HYPOTHÈSE du contrat : intégration à `design`/`main` par MERGE COMMIT ou SQUASH
+//     uniquement (rebase-merge et push direct exclus — réglages GitHub, CDC annexe A).
+//     Un rebase-merge placerait les brouillons d'une PR sur le premier parent ; un
+//     fast-forward vers un merge aux parents inversés ferait sortir des états publiés
+//     de la chaîne.
+//  2 bis. CONTINUITÉ : la référence doit figurer sur la chaîne du premier parent de
+//     HEAD (PR : le merge simulé a base.sha pour premier parent ; push : l'ancien
+//     sommet est premier-parent-ancêtre du nouveau). Sinon ÉCHEC explicite.
+//     Le filet DÉTECTE une violation (CI rouge, au plus tard au push qui avance la
+//     branche) ; il ne l'EMPÊCHE pas — la prévention est la protection de branche.
 //
 //  3. Règle 0 de M1 (CDC annexe B), CONSOMMABLE UNE SEULE FOIS : on parcourt toutes
 //     les versions de fonda/data/catalogue-fonda.json de l'historique de confiance.
@@ -83,12 +93,31 @@ function controlerRefs(refs, git) {
   for (const ref of refs) {
     if (!ref || /^0+$/.test(ref)) { erreurs.push(`référence nulle (${ref || 'absente'}) : échec explicite`); continue; }
     try { git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]); } catch { erreurs.push(`référence introuvable : ${ref}`); continue; }
-    let superficiel = 'false';
-    try { superficiel = git(['rev-parse', '--is-shallow-repository']).toString().trim(); } catch { /* git ancien */ }
-    if (superficiel === 'true') { erreurs.push('historique incomplet (clone superficiel)'); continue; }
+    let superficiel;
+    try { superficiel = git(['rev-parse', '--is-shallow-repository']).toString().trim(); } catch { superficiel = null; }
+    if (superficiel !== 'false') { erreurs.push(superficiel === 'true' ? 'historique incomplet (clone superficiel)' : 'impossible de vérifier que l\'historique est complet — échec'); continue; }
     valides.push(ref);
   }
   return { erreurs, valides };
+}
+
+// Continuité (2 bis) : `ref` doit être sur la chaîne du premier parent de `head`.
+function verifierContinuite(ref, head = 'HEAD', racine = RACINE) {
+  const git = executeurGit(racine);
+  const { erreurs, valides } = controlerRefs([ref], git);
+  if (!valides.length) return erreurs;
+  let tete;
+  let base;
+  try {
+    tete = git(['rev-parse', '--verify', '--quiet', `${head}^{commit}`]).toString().trim();
+    base = git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]).toString().trim();
+  } catch { return [`continuité : ${head} introuvable — échec`]; }
+  let chaine;
+  try { chaine = git(['rev-list', '--first-parent', tete]).toString().split('\n'); } catch { return ['continuité : historique illisible — échec']; }
+  if (!chaine.includes(base)) {
+    return [`continuité rompue : la référence ${base.slice(0, 7)} n'est pas sur la chaîne du premier parent de ${tete.slice(0, 7)} (merge aux parents inversés, fast-forward ou réécriture) — échec`];
+  }
+  return [];
 }
 
 // Versions (blobs distincts) d'un ensemble de chemins sur la chaîne du PREMIER PARENT
@@ -200,6 +229,7 @@ function main() {
   const { HISTORIQUES_FIGES } = require('../engine/catalogue.js');
   const erreurs = [...new Set([
     ...invariantsRegistre(registre, lireOctetsDisque, fichiersMoteursDisque()),
+    ...verifierContinuite(process.env.FONDA_REF_BASE),
     ...verifierHistorique(refs, registre, lireOctetsDisque),
     ...verifierRegle0(refs, catalogue, registre, HISTORIQUES_FIGES),
   ])];
@@ -209,9 +239,9 @@ function main() {
     process.exitCode = 1;
     return;
   }
-  console.log(`✓ moteurs immuables (${registre.map((l) => l.version).join(', ')}) + règle 0 de M1 — références : ${refs.join(', ')}`);
+  console.log(`✓ moteurs immuables (${registre.map((l) => l.version).join(', ')}) + continuité + règle 0 de M1 — références : ${refs.join(', ')}`);
 }
 
-module.exports = { invariantsRegistre, verifierHistorique, verifierRegle0, lireOctetsDisque, fichiersMoteursDisque, MOTIF_FICHIER };
+module.exports = { invariantsRegistre, verifierContinuite, verifierHistorique, verifierRegle0, lireOctetsDisque, fichiersMoteursDisque, MOTIF_FICHIER };
 
 if (require.main === module) main();
