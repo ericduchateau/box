@@ -471,13 +471,44 @@ function lireJournalLocal() {
   return j;
 }
 
-// Journal de l'AUTORITÉ (design), lu via git — jamais la copie locale.
-function lireJournalDesign(ref = REF_DESIGN) {
+// Journal de l'AUTORITÉ (design), lu via git — jamais la copie locale. L'actualisation
+// (git fetch origin design) est OBLIGATOIRE et doit réussir ; le journal est lu sur
+// le SHA ainsi fixé (affiché). Ne prétend pas à une transaction distribuée : réduit
+// la fenêtre d'une référence périmée, sans la supprimer.
+function lireJournalDesign() {
+  const git = (a) => execFileSync('git', a, { cwd: path.join(ROOT, '..'), stdio: ['ignore', 'pipe', 'pipe'] }).toString();
+  try { git(['fetch', '--quiet', 'origin', 'design']); } catch { throw new Error('actualisation de origin/design impossible (réseau ?) — arrêt, aucun appel API'); }
+  let sha;
   let texte;
-  try { texte = execFileSync('git', ['show', `${ref}:${JOURNAL_GIT}`], { cwd: path.join(ROOT, '..'), stdio: ['ignore', 'pipe', 'pipe'] }).toString(); } catch {
-    throw new Error(`journal introuvable sur ${ref} (faire « git fetch », la réservation est-elle fusionnée ?) — arrêt`);
+  try {
+    sha = git(['rev-parse', '--verify', 'origin/design^{commit}']).trim();
+    texte = git(['show', `${sha}:${JOURNAL_GIT}`]);
+  } catch {
+    throw new Error('journal introuvable sur origin/design (la réservation est-elle fusionnée ?) — arrêt');
   }
-  return Journal.lireJournalTexte(texte);
+  return { sha, journal: Journal.lireJournalTexte(texte) };
+}
+
+// Pur — décision AVANT tout appel API et toute écriture :
+//   - réservation présente dans le journal de design, avec EXACTEMENT cette ref, état
+//     courant « reserve » ;
+//   - journal local conforme et NON contradictoire pour ce set_id (même état, même
+//     ligne de réservation) ;
+//   - aucun fichier candidat ou publié ne porte déjà ce set_id, QUEL QUE SOIT son nom
+//     de fichier : une calibration réservée est PROMOUVABLE, pas régénérable.
+function verifierAvantGeneration({ journalDesign, journalLocal, setId, ref, idsFichiers }) {
+  const r = Journal.verifierReservation(journalDesign, setId, ref);
+  if (!r.ok) return r;
+  const vl = Journal.validerJournal(journalLocal);
+  if (!vl.valide) return { ok: false, raison: `journal local non conforme : ${vl.erreurs.join(' ; ')}` };
+  const locale = journalLocal.lignes.find((l) => l.set_id === setId && l.transition === 'reserve');
+  if (vl.etats.get(setId) !== 'reserve' || !locale || locale.ref !== ref) {
+    return { ok: false, raison: `${setId} : journal local contradictoire avec design (état local ${vl.etats.get(setId) || 'absent'}) — synchroniser avant de générer` };
+  }
+  if (idsFichiers.includes(setId)) {
+    return { ok: false, raison: `${setId} : déjà porté par un fichier candidat ou publié — une calibration réservée est promouvable, pas régénérable` };
+  }
+  return { ok: true };
 }
 
 // Pur : prochain set_id d'un (notion, palier) ; séquence 99 atteinte -> exception.
@@ -601,12 +632,18 @@ async function main() {
 
   // 2. GÉNÉRATION d'un set_id réservé : vérification dans le journal de design AVANT
   //    tout appel réseau et toute écriture.
-  const journalDesign = lireJournalDesign();
-  const r = Journal.verifierReservation(journalDesign, setIdArg, refArg);
+  const { sha, journal: journalDesign } = lireJournalDesign();
+  console.log(`journal de référence : origin/design @ ${sha.slice(0, 12)}`);
+  const r = verifierAvantGeneration({
+    journalDesign,
+    journalLocal: lireJournalLocal(),
+    setId: setIdArg,
+    ref: refArg,
+    idsFichiers: setIdsExistants(null), // fail-closed : tout fichier illisible arrête ici
+  });
   if (!r.ok) { console.log(`✗ ${r.raison} — arrêt, aucun appel API`); process.exitCode = 1; return; }
   const { notion, palier, sequence } = notionDuSetId(setIdArg, referentiel);
   if (estNotionExclue(notion.id)) { console.log(`✗ ${notion.id} exclue de la génération automatique — arrêt`); process.exitCode = 1; return; }
-  setIdsExistants(lireJournalLocal()); // fail-closed : tout fichier illisible arrête ici
   const sortiePath = path.join(SORTIE_DIR, `${setIdArg}.json`);
   if (fs.existsSync(sortiePath)) { console.log(`✗ ${path.relative(ROOT, sortiePath)} existe déjà — refus d'écraser`); process.exitCode = 1; return; }
   fs.mkdirSync(SORTIE_DIR, { recursive: true });
@@ -661,6 +698,7 @@ module.exports = {
   prochainSetIdReserve,
   notionDuSetId,
   setIdsExistants,
+  verifierAvantGeneration,
 };
 
 if (require.main === module) {

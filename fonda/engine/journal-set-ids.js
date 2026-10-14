@@ -54,7 +54,8 @@ function validerJournal(journal) {
     if (cles.length !== CHAMPS_LIGNE.length || !CHAMPS_LIGNE.every((k) => cles.includes(k))) { erreurs.push(`${p} : champs attendus exactement ${CHAMPS_LIGNE.join(', ')}`); return; }
     if (typeof l.set_id !== 'string' || !SET_ID_PATTERN.test(l.set_id)) { erreurs.push(`${p} : set_id invalide`); return; }
     if (!TRANSITIONS.includes(l.transition)) { erreurs.push(`${p} : transition inconnue`); return; }
-    if (typeof l.le !== 'string' || !DATE_PATTERN.test(l.le)) erreurs.push(`${p} : date « le » invalide`);
+    if (typeof l.le !== 'string' || !DATE_PATTERN.test(l.le) || Number.isNaN(Date.parse(l.le))
+      || new Date(Date.parse(l.le.slice(0, 10))).toISOString().slice(0, 10) !== l.le.slice(0, 10)) erreurs.push(`${p} : date « le » invalide`);
     if (typeof l.ref !== 'string' || !REF_PATTERN.test(l.ref)) erreurs.push(`${p} : ref invalide`);
     const avant = etats.get(l.set_id);
     if (l.transition === 'reserve') {
@@ -116,33 +117,57 @@ function coherenceAvecDepot(journal, { catalogueIds, calibrationIds }) {
   return erreurs;
 }
 
-// Classement M2 (pur, fail-closed). Entrées : identifiants ACTUELS (catalogue,
-// fichiers de lots/, fichiers de calibration) et identifiants vus dans l'HISTORIQUE
-// Git de ces fichiers (scan textuel, sur-inclusif). Sortie : lignes du journal.
-//   - publié = au catalogue ET fichier lots/<set_id>.json présent -> reserve + publie ;
-//   - lot de calibration présent (non publié) -> reserve (promouvable) ;
-//   - tout autre identifiant vu dans l'historique -> reserve + abandonne ;
-//   - incohérence actuelle (catalogue sans fichier, fichier sans catalogue, publié ET
-//     en calibration, identifiant non canonique) -> EXCEPTION : M2 s'arrête, décision
-//     humaine requise (jamais de classement deviné).
-function classerM2({ catalogueIds, lotsIds, calibrationIds, historiqueIds, le, prefixeRef }) {
-  const tous = new Set([...catalogueIds, ...lotsIds, ...calibrationIds, ...historiqueIds]);
+// Projection pédagogique d'une carte, indépendante du format de fichier (ancien
+// format de calibration ou lot-fonda/v1) : sert à constater qu'une histoire est
+// déterminée (un seul contenu sous un identifiant).
+function projectionCarte(c) {
+  return JSON.stringify([c.question, c.reponse, c.reponses_acceptees, c.profil_correction,
+    c.unite === undefined ? null : c.unite, c.arrondi === undefined ? null : c.arrondi,
+    c.seconde_chance === undefined ? null : c.seconde_chance]);
+}
+
+// Classement M2 (pur, fail-closed). `observations` : Map(set_id -> { auCatalogue,
+// dansLots, cheminsCalibration: Set, contenus: Set }) établie sur TOUTES les versions
+// historiques examinées ; `actuels` : identifiants actuels. Règles :
+//   - PUBLIE  : au catalogue ET fichier lots/ actuels ET lot historique figé
+//     (HISTORIQUES_FIGES, empreinte actuelle = empreinte figée). Ses contenus
+//     antérieurs sont couverts par l'attestation humaine de ces 8 lots. Tout autre
+//     publié actuel -> ARRÊT (aucune autre publication n'a jamais été admise).
+//   - RESERVE : calibration actuelle (un seul fichier) ET histoire DÉTERMINÉE :
+//     jamais au catalogue ni dans lots/, un seul chemin de calibration et UN SEUL
+//     contenu pédagogique sur tout l'historique.
+//   - ABANDONNE : tout le reste — disparu sans publication, ou histoire ambiguë
+//     (publié puis retiré, plusieurs contenus, plusieurs chemins), même si un
+//     fichier de calibration existe encore (il n'est alors plus promouvable).
+//   - Incohérence actuelle (catalogue sans fichier, fichier hors catalogue, publié ET
+//     en calibration, identifiant non canonique, calibration en double) -> ARRÊT.
+function classerM2({ observations, catalogueIds, lotsIds, calibrationIds, historiques, empreintesActuelles, le, prefixeRef }) {
+  const tous = new Set([...catalogueIds, ...lotsIds, ...calibrationIds, ...observations.keys()]);
   for (const id of tous) if (!SET_ID_PATTERN.test(id)) throw new Error(`M2 : identifiant non canonique « ${id} » — arrêt`);
   for (const id of catalogueIds) if (!lotsIds.includes(id)) throw new Error(`M2 : ${id} au catalogue sans fichier lots/ — arrêt`);
   for (const id of lotsIds) if (!catalogueIds.includes(id)) throw new Error(`M2 : ${id} a un fichier lots/ hors catalogue — arrêt`);
   for (const id of calibrationIds) if (catalogueIds.includes(id)) throw new Error(`M2 : ${id} à la fois publié et en calibration — arrêt`);
   if (new Set(calibrationIds).size !== calibrationIds.length) throw new Error('M2 : set_id de calibration en double — arrêt');
+  for (const id of catalogueIds) {
+    if (!Object.prototype.hasOwnProperty.call(historiques, id) || empreintesActuelles[id] !== historiques[id]) {
+      throw new Error(`M2 : ${id} publié hors des lots historiques figés (ou empreinte ≠ figée) — arrêt`);
+    }
+  }
+  const vide = { auCatalogue: false, dansLots: false, cheminsCalibration: new Set(), contenus: new Set() };
   const lignes = [];
-  const reserve = (id) => lignes.push({ set_id: id, transition: 'reserve', le, ref: `${prefixeRef}:${id}` });
+  const ajouter = (id, transition, suffixe) => lignes.push({ set_id: id, transition, le, ref: `${prefixeRef}:${id}${suffixe}` });
   for (const id of [...tous].sort()) {
-    reserve(id);
-    if (catalogueIds.includes(id)) lignes.push({ set_id: id, transition: 'publie', le, ref: `${prefixeRef}:${id}:publie` });
-    else if (!calibrationIds.includes(id)) lignes.push({ set_id: id, transition: 'abandonne', le, ref: `${prefixeRef}:${id}:abandonne` });
+    const o = observations.get(id) || vide;
+    ajouter(id, 'reserve', '');
+    if (catalogueIds.includes(id)) { ajouter(id, 'publie', ':publie'); continue; }
+    const determinee = calibrationIds.includes(id) && !o.auCatalogue && !o.dansLots
+      && o.cheminsCalibration.size === 1 && o.contenus.size === 1;
+    if (!determinee) ajouter(id, 'abandonne', ':abandonne');
   }
   return lignes;
 }
 
 module.exports = {
   SCHEMA_JOURNAL, TRANSITIONS, lireJournalTexte, validerJournal, etatCourant, verifierReservation,
-  ligneReservation, coherenceAvecDepot, classerM2,
+  ligneReservation, coherenceAvecDepot, classerM2, projectionCarte,
 };

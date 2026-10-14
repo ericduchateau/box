@@ -429,3 +429,52 @@ describe('generer-lot-fonda — journal des set_id (fail-closed)', () => {
     assert.throws(() => G.setIdsExistants(journal, { dirs: [dir], cataloguePath: pathJ.join(dir, 'catalogue.json') }), /illisible/);
   });
 });
+
+describe('generer-lot-fonda — vérification AVANT tout appel API (réservation, autorité, fichiers)', () => {
+  const G = require('./generer-lot-fonda.js');
+  const fsV = require('fs');
+  const pathV = require('path');
+  const ID = 'set_fonda_lexique_nI_02';
+  const res = (ref = 'ma-ref-0001') => ({ set_id: ID, transition: 'reserve', le: '2026-10-14', ref });
+  const J = (...lignes) => ({ schema: 'set-ids-journal/v1', lignes });
+  const ok = { journalDesign: J(res()), journalLocal: J(res()), setId: ID, ref: 'ma-ref-0001', idsFichiers: [] };
+
+  test('cas nominal : réservé sur design, local identique, aucun fichier -> ok', () => {
+    assert.deepEqual(G.verifierAvantGeneration(ok), { ok: true });
+  });
+  test('ref différente ou réservation absente de design -> arrêt', () => {
+    assert.equal(G.verifierAvantGeneration({ ...ok, ref: 'autre-ref-0001' }).ok, false);
+    assert.equal(G.verifierAvantGeneration({ ...ok, journalDesign: J() }).ok, false);
+  });
+  test('design dit déjà « abandonne » ou « publie » -> arrêt', () => {
+    for (const t of ['abandonne', 'publie']) {
+      const r = G.verifierAvantGeneration({ ...ok, journalDesign: J(res(), { set_id: ID, transition: t, le: '2026-10-14', ref: `x-${t}-1` }) });
+      assert.match(r.raison, /état courant/);
+    }
+  });
+  test('journal local contradictoire (abandon local, ou réservation locale absente / autre ref) -> arrêt', () => {
+    const abandon = J(res(), { set_id: ID, transition: 'abandonne', le: '2026-10-14', ref: 'x-abandon-1' });
+    assert.match(G.verifierAvantGeneration({ ...ok, journalLocal: abandon }).raison, /contradictoire/);
+    assert.match(G.verifierAvantGeneration({ ...ok, journalLocal: J() }).raison, /contradictoire/);
+    assert.match(G.verifierAvantGeneration({ ...ok, journalLocal: J(res('autre-ref-0001')) }).raison, /contradictoire/);
+  });
+  test('identifiant déjà porté par un fichier (ex. calibration sous un nom historique) -> arrêt : promouvable, pas régénérable', () => {
+    assert.match(G.verifierAvantGeneration({ ...ok, idsFichiers: [ID] }).raison, /pas régénérable/);
+  });
+  test('cas réel du dépôt : set_fonda_lexique_nI_01 (fr-lexique_nI.json, réservé par M2) n\'est PAS régénérable', () => {
+    const journal = JSON.parse(fsV.readFileSync(pathV.join(__dirname, '../data/set_ids-journal.json'), 'utf8'));
+    const id = 'set_fonda_lexique_nI_01';
+    const ref = journal.lignes.find((l) => l.set_id === id && l.transition === 'reserve').ref;
+    const r = G.verifierAvantGeneration({ journalDesign: journal, journalLocal: journal, setId: id, ref, idsFichiers: G.setIdsExistants(null) });
+    assert.match(r.raison, /pas régénérable/);
+  });
+  test('ordre dans main() : la vérification et son arrêt précèdent tout appel au modèle', () => {
+    const src = fsV.readFileSync(pathV.join(__dirname, 'generer-lot-fonda.js'), 'utf8');
+    const corps = src.slice(src.indexOf('async function main()'));
+    const iVerif = corps.indexOf('verifierAvantGeneration({');
+    const iArret = corps.indexOf("if (!r.ok) { console.log(`✗ ${r.raison} — arrêt, aucun appel API`)");
+    const iAppel = corps.indexOf('genererLotPourNotionPalier(');
+    assert.ok(iVerif > 0 && iArret > iVerif && iAppel > iArret, 'vérification -> arrêt -> appel');
+    assert.ok(corps.indexOf('lireJournalDesign()') < iVerif);
+  });
+});

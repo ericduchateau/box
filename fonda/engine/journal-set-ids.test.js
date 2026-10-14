@@ -86,27 +86,54 @@ describe('réservation et vérification avant création du candidat', () => {
   });
 });
 
-describe('classement M2 (fail-closed)', () => {
+describe('classement M2 (fail-closed, sur observations)', () => {
   const P = 'set_fonda_comprendre-consigne_nI_01';
-  const base = { le: '2026-10-14', prefixeRef: 'm2-2026-10-14' };
-  test('publié -> reserve+publie ; calibration -> reserve ; disparu de l\'historique -> reserve+abandonne', () => {
-    const lignes = J.classerM2({ ...base, catalogueIds: [P], lotsIds: [P], calibrationIds: [A], historiqueIds: [P, A, B] });
-    const v = J.validerJournal(journal(...lignes));
-    assert.deepEqual(v.erreurs, []);
-    assert.deepEqual(Object.fromEntries(v.etats), { [P]: 'publie', [A]: 'reserve', [B]: 'abandonne' });
+  const HIST = { [P]: 'sha256:pp' };
+  const o = (x = {}) => ({ auCatalogue: false, dansLots: false, cheminsCalibration: new Set(), contenus: new Set(), ...x });
+  const det = () => o({ cheminsCalibration: new Set(['fonda/data/lots-fonda-calibration/x.json']), contenus: new Set(['c1']) });
+  const base = (observations, x = {}) => ({
+    observations: new Map(Object.entries(observations)), catalogueIds: [], lotsIds: [], calibrationIds: [],
+    historiques: HIST, empreintesActuelles: {}, le: '2026-10-14', prefixeRef: 'm2-2026-10-14', ...x,
   });
-  const incoherences = [
-    ['catalogue sans fichier lots/', { catalogueIds: [P], lotsIds: [], calibrationIds: [], historiqueIds: [] }, /sans fichier/],
-    ['fichier lots/ hors catalogue', { catalogueIds: [], lotsIds: [P], calibrationIds: [], historiqueIds: [] }, /hors catalogue/],
-    ['publié ET en calibration', { catalogueIds: [P], lotsIds: [P], calibrationIds: [P], historiqueIds: [] }, /publié et en calibration/],
-    ['identifiant non canonique', { catalogueIds: [], lotsIds: [], calibrationIds: [], historiqueIds: ['set_fonda_x'] }, /non canonique/],
-    ['calibration en double', { catalogueIds: [], lotsIds: [], calibrationIds: [A, A], historiqueIds: [] }, /double/],
+  const etats = (lignes) => Object.fromEntries(J.validerJournal(journal(...lignes)).etats);
+
+  test('publié figé -> publie ; calibration à histoire déterminée -> reserve ; disparu -> abandonne', () => {
+    const lignes = J.classerM2(base({ [P]: o({ auCatalogue: true, dansLots: true, contenus: new Set(['a', 'b']) }), [A]: det(), [B]: o() },
+      { catalogueIds: [P], lotsIds: [P], calibrationIds: [A], empreintesActuelles: { [P]: 'sha256:pp' } }));
+    assert.deepEqual(etats(lignes), { [P]: 'publie', [A]: 'reserve', [B]: 'abandonne' });
+  });
+  const ambigus = [
+    ['publié puis retiré, candidat différent en calibration aujourd\'hui', { auCatalogue: true }],
+    ['passé par lots/ (publié) puis disparu', { dansLots: true }],
+    ['deux contenus pédagogiques sous le même identifiant (ex. deux branches)', { contenus: new Set(['c1', 'c2']) }],
+    ['deux chemins de calibration', { cheminsCalibration: new Set(['a.json', 'b.json']) }],
   ];
-  for (const [libelle, entrees, motif] of incoherences) {
-    test(`arrêt (jamais de classement deviné) : ${libelle}`, () => {
-      assert.throws(() => J.classerM2({ ...base, ...entrees }), motif);
+  for (const [libelle, x] of ambigus) {
+    test(`histoire ambiguë -> abandonne (jamais reserve) : ${libelle}`, () => {
+      const lignes = J.classerM2(base({ [A]: { ...det(), ...x } }, { calibrationIds: [A] }));
+      assert.deepEqual(etats(lignes), { [A]: 'abandonne' });
     });
   }
+  const incoherences = [
+    ['catalogue sans fichier lots/', { catalogueIds: [P], empreintesActuelles: { [P]: 'sha256:pp' } }, /sans fichier/],
+    ['fichier lots/ hors catalogue', { lotsIds: [P] }, /hors catalogue/],
+    ['publié ET en calibration', { catalogueIds: [P], lotsIds: [P], calibrationIds: [P], empreintesActuelles: { [P]: 'sha256:pp' } }, /publié et en calibration/],
+    ['publié hors des lots historiques figés', { catalogueIds: [A], lotsIds: [A], empreintesActuelles: { [A]: 'x' } }, /hors des lots historiques/],
+    ['publié historique à empreinte modifiée', { catalogueIds: [P], lotsIds: [P], empreintesActuelles: { [P]: 'sha256:zz' } }, /hors des lots historiques/],
+    ['calibration en double', { calibrationIds: [A, A] }, /double/],
+  ];
+  for (const [libelle, x, motif] of incoherences) {
+    test(`arrêt (jamais de classement deviné) : ${libelle}`, () => {
+      assert.throws(() => J.classerM2(base({}, x)), motif);
+    });
+  }
+  test('identifiant non canonique observé : arrêt', () => {
+    assert.throws(() => J.classerM2(base({ set_fonda_x: o() })), /non canonique/);
+  });
+  test('dates impossibles refusées', () => {
+    assert.match(J.validerJournal(journal({ ...ligne(A, 'reserve'), le: '2026-99-99' })).erreurs.join(), /date/);
+    assert.match(J.validerJournal(journal({ ...ligne(A, 'reserve'), le: '2026-02-30' })).erreurs.join(), /date/);
+  });
 });
 
 describe('M2 — historique Git (scan sur-inclusif, fail-closed)', () => {
@@ -129,6 +156,24 @@ describe('M2 — historique Git (scan sur-inclusif, fail-closed)', () => {
     g('add', '.'); g('commit', '-q', '-m', 'b');
     g('checkout', '-q', '-');
     assert.deepEqual(idsHistorique(dir).ids.sort(), [A, B]);
+  });
+  test('identifiant écrit avec un échappement JSON (\\u005f) : trouvé par le parcours des valeurs décodées', () => {
+    const { dir, g } = depot();
+    ecrire(dir, 'fonda/data/lots-fonda-calibration/x.json', '{"note":"set\\u005ffonda_lexique_nI_98"}');
+    g('add', '.'); g('commit', '-q', '-m', 'echappe');
+    assert.ok(idsHistorique(dir).ids.includes('set_fonda_lexique_nI_98'));
+  });
+  test('observations : deux contenus sous un identifiant sur deux branches -> ambigu', () => {
+    const { observerHistorique } = require('../scripts/migrer-journal-m2.js');
+    const { dir, g } = depot();
+    const lot = (q) => JSON.stringify({ set_id: A, cartes: [{ set_id: A, question: q, reponse: 'r' }] });
+    ecrire(dir, 'fonda/data/lots-fonda-calibration/x.json', lot('Q1')); g('add', '.'); g('commit', '-q', '-m', '1');
+    g('checkout', '-q', '-b', 'autre');
+    ecrire(dir, 'fonda/data/lots-fonda-calibration/x.json', lot('Q2')); g('commit', '-q', '-am', '2');
+    g('checkout', '-q', '-');
+    const o = observerHistorique(dir).observations.get(A);
+    assert.equal(o.contenus.size, 2);
+    assert.equal(o.cheminsCalibration.size, 1);
   });
   test('version JSON illisible dans l\'historique : arrêt (histoire indéterminée)', () => {
     const { dir, g } = depot();
