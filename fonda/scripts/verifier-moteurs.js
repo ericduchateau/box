@@ -17,7 +17,8 @@
 //     avant relecture) n'en font pas partie ; son commit de merge, si. Parcours sans
 //     filtrage par chemin (aucun état publié n'est sauté) ; tout objet illisible ou
 //     JSON invalide -> ÉCHEC (seule l'absence avérée du fichier dans un commit est
-//     ignorée). Appliqué identiquement aux moteurs et au catalogue (règle 0).
+//     ignorée). Même primitive (versionsSurHistorique) réutilisée par
+//     verifier-immuabilite.js pour le catalogue et le journal.
 //     HYPOTHÈSE du contrat : intégration à `design`/`main` par MERGE COMMIT ou SQUASH
 //     uniquement (rebase-merge et push direct exclus — réglages GitHub, CDC annexe A).
 //     Un rebase-merge placerait les brouillons d'une PR sur le premier parent ; un
@@ -29,21 +30,13 @@
 //     Le filet DÉTECTE une violation (CI rouge, au plus tard au push qui avance la
 //     branche) ; il ne l'EMPÊCHE pas — la prévention est la protection de branche.
 //
-//  3. Règle 0 de M1 (CDC annexe B), CONSOMMABLE UNE SEULE FOIS : on parcourt toutes
-//     les versions de fonda/data/catalogue-fonda.json de l'historique de confiance.
-//     - Si AUCUNE n'a jamais contenu de champ `moteur` : la migration M1 est admise,
-//       et elle seule — chaque entrée du catalogue courant doit être un des 8
-//       HISTORIQUES_FIGES, à empreinte figée inchangée, liée au moteur v1 du registre.
-//     - Sinon (M1 consommée) : tout set_id déjà publié avec un moteur garde EXACTEMENT
-//       son tuple (empreinte, moteur.version, moteur.sha256) — couvre le transit
-//       design -> main ; un set_id jamais publié avec moteur est REFUSÉ ici (fail-closed)
-//       tant que la règle générale n'existe pas.
-//
-// Frontière avec fonda/scripts/verifier-immuabilite.js (étape 3, à venir) : CE fichier
-// ne possède que « moteurs + règle 0 ». La règle générale du tuple (journal des
-// set_ids, premières publications, retraits) appartiendra à verifier-immuabilite.js ;
-// à sa création, la branche « M1 consommée » ci-dessus lui sera transférée et retirée
-// d'ici (pas de double implémentation).
+// FRONTIÈRE (étape 3, chantier 3) : CE fichier ne possède que les MOTEURS — invariants
+// du registre (1), historique des fichiers moteurs et du registre (2), continuité
+// (2 bis) — et les primitives Git partagées (références, premier parent, versions).
+// La RÈGLE 0 DE M1 et toute la règle du TUPLE des lots publiés (catalogue, journal
+// des set_id, premières publications, retraits) appartiennent à
+// fonda/scripts/verifier-immuabilite.js, qui RÉUTILISE ces fonctions (une seule
+// implémentation) et rejoue aussi les contrôles moteurs dans le job `immuabilite`.
 //
 // Usage : FONDA_REF_BASE=<sha> node fonda/scripts/verifier-moteurs.js
 
@@ -56,7 +49,6 @@ const { execFileSync } = require('child_process');
 
 const RACINE = path.join(__dirname, '..', '..');
 const REGISTRE = 'fonda/engine/moteurs.json';
-const CATALOGUE = 'fonda/data/catalogue-fonda.json';
 const MOTIF_FICHIER = /^fonda\/engine\/moteur-correction-(v[1-9][0-9]*)\.js$/;
 
 function invariantsRegistre(registre, lireOctets, fichiersMoteurs) {
@@ -170,48 +162,6 @@ function verifierHistorique(refs, registreCourant, lireOctets, racine = RACINE) 
   return [...new Set(erreurs)];
 }
 
-const tuple = (e) => JSON.stringify([e.empreinte, e.moteur && e.moteur.version, e.moteur && e.moteur.sha256]);
-
-// Règle 0 de M1. `historiques` = { set_id: empreinte figée } (catalogue.js).
-function verifierRegle0(refs, catalogueCourant, registreCourant, historiques, racine = RACINE) {
-  const git = executeurGit(racine);
-  const { erreurs, valides } = controlerRefs(refs, git);
-  if (erreurs.length) return erreurs;
-  let moteurAExiste = false;
-  const publies = new Map(); // set_id -> Set(tuple)
-  let versions;
-  try { versions = versionsSurHistorique(git, valides, CATALOGUE); } catch (e) { return [`historique illisible : ${e.message}`]; }
-  for (const [blob, c] of versions.get(CATALOGUE) || []) {
-    let cat;
-    try { cat = JSON.parse(git(['cat-file', 'blob', blob]).toString('utf8')); } catch { erreurs.push(`${CATALOGUE} illisible en ${c.slice(0, 7)} — échec (jamais assimilé à une absence)`); continue; }
-    if (!cat || typeof cat !== 'object' || !Array.isArray(cat.lots)) { erreurs.push(`${CATALOGUE} en ${c.slice(0, 7)} : structure invalide — échec`); continue; }
-    for (const e of cat.lots) {
-      if (!e || !Object.prototype.hasOwnProperty.call(e, 'moteur')) continue;
-      moteurAExiste = true;
-      if (!publies.has(e.set_id)) publies.set(e.set_id, new Set());
-      publies.get(e.set_id).add(tuple(e));
-    }
-  }
-  if (erreurs.length) return erreurs;
-  const lots = catalogueCourant && Array.isArray(catalogueCourant.lots) ? catalogueCourant.lots : [];
-  if (!moteurAExiste) {
-    const v1 = registreCourant.find((l) => l && l.version === 'v1');
-    for (const e of lots) {
-      const p = `règle 0 (M1) : ${e && e.set_id}`;
-      if (!Object.prototype.hasOwnProperty.call(historiques, e.set_id)) erreurs.push(`${p} — seuls les 8 lots historiques peuvent entrer par M1`);
-      else if (e.empreinte !== historiques[e.set_id]) erreurs.push(`${p} — empreinte ≠ empreinte figée`);
-      if (!v1 || !e.moteur || e.moteur.version !== 'v1' || e.moteur.sha256 !== v1.sha256) erreurs.push(`${p} — M1 n'admet que le moteur v1 du registre`);
-    }
-    return erreurs;
-  }
-  for (const e of lots) {
-    const connus = publies.get(e && e.set_id);
-    if (!connus) erreurs.push(`${e && e.set_id} : jamais publié avec un moteur dans l'historique de confiance — M1 déjà consommée, première publication refusée ici (règle générale : étape 3)`);
-    else if (connus.size !== 1 || !connus.has(tuple(e))) erreurs.push(`${e.set_id} : tuple (empreinte, moteur) ≠ tuple déjà publié — un lot publié est immuable`);
-  }
-  return erreurs;
-}
-
 function lireOctetsDisque(rel) {
   const p = path.join(RACINE, rel);
   return fs.existsSync(p) ? fs.readFileSync(p) : null;
@@ -225,13 +175,10 @@ function fichiersMoteursDisque() {
 function main() {
   const registre = JSON.parse(fs.readFileSync(path.join(RACINE, REGISTRE), 'utf8'));
   const refs = [...new Set([process.env.FONDA_REF_BASE, 'design'])];
-  const catalogue = JSON.parse(fs.readFileSync(path.join(RACINE, CATALOGUE), 'utf8'));
-  const { HISTORIQUES_FIGES } = require('../engine/catalogue.js');
   const erreurs = [...new Set([
     ...invariantsRegistre(registre, lireOctetsDisque, fichiersMoteursDisque()),
     ...verifierContinuite(process.env.FONDA_REF_BASE),
     ...verifierHistorique(refs, registre, lireOctetsDisque),
-    ...verifierRegle0(refs, catalogue, registre, HISTORIQUES_FIGES),
   ])];
   if (erreurs.length) {
     console.error('✗ Immuabilité des moteurs :');
@@ -239,9 +186,13 @@ function main() {
     process.exitCode = 1;
     return;
   }
-  console.log(`✓ moteurs immuables (${registre.map((l) => l.version).join(', ')}) + continuité + règle 0 de M1 — références : ${refs.join(', ')}`);
+  console.log(`✓ moteurs immuables (${registre.map((l) => l.version).join(', ')}) + continuité — références : ${refs.join(', ')}`);
 }
 
-module.exports = { invariantsRegistre, verifierContinuite, verifierHistorique, verifierRegle0, lireOctetsDisque, fichiersMoteursDisque, MOTIF_FICHIER };
+module.exports = {
+  invariantsRegistre, verifierContinuite, verifierHistorique, lireOctetsDisque, fichiersMoteursDisque, MOTIF_FICHIER,
+  // Primitives Git partagées avec verifier-immuabilite.js :
+  executeurGit, controlerRefs, versionsSurHistorique, RACINE,
+};
 
 if (require.main === module) main();

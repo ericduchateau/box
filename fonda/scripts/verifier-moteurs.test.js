@@ -161,106 +161,9 @@ describe('historique de confiance — ajout seul, fichiers identiques', () => {
   });
 });
 
-describe('règle 0 de M1 — consommable une seule fois (CDC annexe B)', () => {
-  const SHA_V1 = 'a'.repeat(64);
-  const REG = [{ version: 'v1', fichier: 'fonda/engine/moteur-correction-v1.js', sha256: SHA_V1, sri: 'x' }];
-  const HIST = { set_a: 'sha256:aa', set_b: 'sha256:bb' };
-  const entree = (set_id, empreinte, moteur) => ({ set_id, empreinte, ...(moteur ? { moteur } : {}) });
-  const M1 = { version: 'v1', sha256: SHA_V1 };
+// Règle 0 de M1 et règle du tuple : transférées à verifier-immuabilite.js (étape 3,
+// chantier 3) — tests dans verifier-immuabilite.test.js.
 
-  // Dépôt temporaire dont l'historique contient les catalogues successifs donnés.
-  function historique(catalogues) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'regle0-'));
-    const g = (...a) => execFileSync('git', a, { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] });
-    g('init', '-q'); g('config', 'user.email', 't@t'); g('config', 'user.name', 't');
-    fs.mkdirSync(path.join(dir, 'fonda', 'data'), { recursive: true });
-    catalogues.forEach((cat, i) => {
-      fs.writeFileSync(path.join(dir, 'fonda/data/catalogue-fonda.json'), JSON.stringify(cat));
-      g('add', '.'); g('commit', '-q', '-m', `c${i}`);
-    });
-    return { dir, ref: g('rev-parse', 'HEAD').toString().trim() };
-  }
-  const sansMoteur = { lots: [entree('set_a', 'sha256:aa'), entree('set_b', 'sha256:bb')] };
-  const avecM1 = { lots: [entree('set_a', 'sha256:aa', M1), entree('set_b', 'sha256:bb', M1)] };
-
-  test('aucun moteur dans l\'historique : M1 sur les lots historiques, empreintes figées, v1 -> accepté', () => {
-    const { dir, ref } = historique([sansMoteur]);
-    assert.deepEqual(V.verifierRegle0([ref], avecM1, REG, HIST, dir), []);
-  });
-  test('aucun moteur dans l\'historique : lot hors historiques, empreinte modifiée ou autre moteur -> refusé', () => {
-    const { dir, ref } = historique([sansMoteur]);
-    assert.match(V.verifierRegle0([ref], { lots: [...avecM1.lots, entree('set_c', 'sha256:cc', M1)] }, REG, HIST, dir).join(), /seuls les 8 lots historiques/);
-    assert.match(V.verifierRegle0([ref], { lots: [entree('set_a', 'sha256:zz', M1)] }, REG, HIST, dir).join(), /empreinte figée/);
-    assert.match(V.verifierRegle0([ref], { lots: [entree('set_a', 'sha256:aa', { version: 'v2', sha256: SHA_V1 })] }, REG, HIST, dir).join(), /moteur v1/);
-    assert.match(V.verifierRegle0([ref], { lots: [entree('set_a', 'sha256:aa', { version: 'v1', sha256: 'b'.repeat(64) })] }, REG, HIST, dir).join(), /moteur v1/);
-  });
-  test('M1 déjà publiée : tuple identique accepté (transit design -> main)', () => {
-    const { dir, ref } = historique([sansMoteur, avecM1]);
-    assert.deepEqual(V.verifierRegle0([ref], avecM1, REG, HIST, dir), []);
-  });
-  test('M1 déjà publiée : moteur ou empreinte changés -> refusé (M1 non rejouable)', () => {
-    const { dir, ref } = historique([sansMoteur, avecM1]);
-    const autre = { lots: [entree('set_a', 'sha256:aa', { version: 'v1', sha256: 'b'.repeat(64) }), avecM1.lots[1]] };
-    assert.match(V.verifierRegle0([ref], autre, REG, HIST, dir).join(), /tuple/);
-  });
-  test('catalogue vidé APRÈS M1 : la règle 0 ne se réarme pas (rejeu avec un autre moteur refusé)', () => {
-    const { dir, ref } = historique([sansMoteur, avecM1, { lots: [] }]);
-    const rejeu = { lots: [entree('set_a', 'sha256:aa', { version: 'v1', sha256: 'c'.repeat(64) })] };
-    assert.match(V.verifierRegle0([ref], rejeu, [{ ...REG[0], sha256: 'c'.repeat(64) }], HIST, dir).join(), /tuple/);
-  });
-  test('M1 consommée : set_id jamais publié avec moteur -> refusé (fail-closed jusqu\'à l\'étape 3)', () => {
-    const { dir, ref } = historique([sansMoteur, avecM1]);
-    assert.match(V.verifierRegle0([ref], { lots: [...avecM1.lots, entree('set_c', 'sha256:cc', M1)] }, REG, HIST, dir).join(), /jamais publié/);
-  });
-  test('M1 publiée puis fusion reprenant un ancien catalogue SANS moteur : M1 reste consommée', () => {
-    const { dir } = historique([sansMoteur, avecM1]); // M1 sur la chaîne du premier parent
-    const g = (...a) => execFileSync('git', a, { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] });
-    const m1 = g('rev-parse', 'HEAD').toString().trim();
-    g('checkout', '-q', '-b', 'ancien', 'HEAD~1');
-    fs.writeFileSync(path.join(dir, 'autre.txt'), 'x'); g('add', '.'); g('commit', '-q', '-m', 'ancien');
-    g('checkout', '-q', '-'); // retour sur la branche principale (sommet = M1)
-    assert.equal(g('rev-parse', 'HEAD').toString().trim(), m1);
-    g('merge', '-q', '--no-ff', '--no-commit', 'ancien');
-    fs.writeFileSync(path.join(dir, 'fonda/data/catalogue-fonda.json'), JSON.stringify(sansMoteur)); // reprend l'ancien catalogue
-    g('add', '.'); g('commit', '-q', '-m', 'fusion reprenant l\'ancien catalogue');
-    const ref = g('rev-parse', 'HEAD').toString().trim();
-    const regC = [{ ...REG[0], sha256: 'c'.repeat(64) }];
-    const rejeu = { lots: [entree('set_a', 'sha256:aa', { version: 'v1', sha256: 'c'.repeat(64) })] };
-    assert.match(V.verifierRegle0([ref], rejeu, regC, HIST, dir).join(), /tuple/);
-  });
-  test('M1 seulement sur une branche de PR jamais fusionnée telle quelle : brouillons ignorés, M1 finale acceptée', () => {
-    const { dir } = historique([sansMoteur]);
-    const g = (...a) => execFileSync('git', a, { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] });
-    const base = g('rev-parse', 'HEAD').toString().trim();
-    g('checkout', '-q', '-b', 'pr');
-    const brouillon = { lots: [entree('set_a', 'sha256:aa', { version: 'v1', sha256: 'b'.repeat(64) }), entree('set_b', 'sha256:bb', { version: 'v1', sha256: 'b'.repeat(64) })] };
-    fs.writeFileSync(path.join(dir, 'fonda/data/catalogue-fonda.json'), JSON.stringify(brouillon)); g('commit', '-q', '-am', 'M1 brouillon');
-    fs.writeFileSync(path.join(dir, 'fonda/data/catalogue-fonda.json'), JSON.stringify(avecM1)); g('commit', '-q', '-am', 'M1 finale');
-    g('checkout', '-q', '-');
-    g('merge', '-q', '--no-ff', '-m', 'Merge pull request', 'pr');
-    const merge = g('rev-parse', 'HEAD').toString().trim();
-    assert.deepEqual(V.verifierRegle0([base, merge], avecM1, REG, HIST, dir), []);
-  });
-  test('catalogue historique illisible (JSON invalide) ou de structure invalide : échec, jamais assimilé à une absence', () => {
-    for (const contenu of ['{ pas du json', JSON.stringify({ lots: 3 }), 'null']) {
-      const { dir } = historique([sansMoteur]);
-      const g = (...a) => execFileSync('git', a, { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] });
-      fs.writeFileSync(path.join(dir, 'fonda/data/catalogue-fonda.json'), contenu);
-      g('commit', '-q', '-am', 'abime');
-      const ref = g('rev-parse', 'HEAD').toString().trim();
-      assert.match(V.verifierRegle0([ref], avecM1, REG, HIST, dir).join(), /illisible|structure invalide/, contenu);
-    }
-  });
-  test('référence nulle ou introuvable -> échec explicite', () => {
-    const { dir } = historique([sansMoteur]);
-    assert.match(V.verifierRegle0(['0'.repeat(40)], avecM1, REG, HIST, dir).join(), /nulle/);
-    assert.match(V.verifierRegle0(['deadbeef'], avecM1, REG, HIST, dir).join(), /introuvable/);
-  });
-});
-
-// --- Continuité du premier parent, modes d'intégration, fail-closed ---------------
-// Contrat : intégration par merge commit ou squash ; le filet DÉTECTE une violation
-// (échec), la protection de branche l'EMPÊCHE.
 describe('continuité et modes d\'intégration (CDC annexe B, contrat premier parent)', () => {
   const ligne = (contenu) => ({ version: 'v1', fichier: 'fonda/engine/moteur-correction-v1.js', sha256: contenu, sri: 'x' });
   function depotDesign() {
@@ -341,7 +244,6 @@ describe('continuité et modes d\'intégration (CDC annexe B, contrat premier pa
     const tete = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: clone }).toString().trim();
     assert.match(V.verifierContinuite(tete, 'HEAD', clone).join(), /clone superficiel/);
     assert.match(V.verifierHistorique([tete], [], lire, clone).join(), /clone superficiel/);
-    assert.match(V.verifierRegle0([tete], { lots: [] }, [], {}, clone).join(), /clone superficiel/);
   });
 
   test('détection de clone superficiel en échec ou réponse inattendue : refus (jamais ignorée)', () => {
@@ -354,7 +256,7 @@ describe('continuité et modes d\'intégration (CDC annexe B, contrat premier pa
       const PATH = process.env.PATH;
       process.env.PATH = `${bin}:${PATH}`;
       try {
-        for (const r of [V.verifierContinuite(tete, 'HEAD', dir), V.verifierHistorique([tete], [], () => null, dir), V.verifierRegle0([tete], { lots: [] }, [], {}, dir)]) {
+        for (const r of [V.verifierContinuite(tete, 'HEAD', dir), V.verifierHistorique([tete], [], () => null, dir)]) {
           assert.match(r.join(), /historique est complet|clone superficiel/, nom);
         }
       } finally { process.env.PATH = PATH; }
@@ -374,12 +276,11 @@ describe('continuité et modes d\'intégration (CDC annexe B, contrat premier pa
     supprimer('fonda/engine/moteur-correction-v1.js');
     supprimer('fonda/data/catalogue-fonda.json');
     assert.match(V.verifierHistorique(['HEAD'], [ligne('v1')], lire, dir).join(), /illisible/);
-    assert.match(V.verifierRegle0(['HEAD'], { lots: [] }, [ligne('v1')], {}, dir).join(), /illisible/);
   });
 
   // Mutation-test PERMANENT : le même vérificateur SANS --first-parent doit échouer
   // sur le scénario de l'incident (brouillons de PR mergée) et sur les brouillons de M1.
-  test('mutation : sans --first-parent, l\'incident et les brouillons de M1 sont (faussement) refusés', () => {
+  test('mutation : sans --first-parent, l\'incident est faussement refusé et les brouillons de M1 sont vus comme publiés', () => {
     const source = fs.readFileSync(path.join(__dirname, 'verifier-moteurs.js'), 'utf8');
     const mutant = source.replace("git(['rev-list', '--first-parent', ref])", "git(['rev-list', ref])");
     assert.notEqual(mutant, source, 'point de mutation introuvable');
@@ -402,9 +303,12 @@ describe('continuité et modes d\'intégration (CDC annexe B, contrat premier pa
     ecrire(d2.dir, 'fonda/data/catalogue-fonda.json', cat('a'.repeat(64))); d2.g('commit', '-q', '-am', 'M1 finale');
     d2.g('checkout', '-q', 'design');
     d2.g('merge', '-q', '--no-ff', '-m', 'Merge', 'pr');
-    const courant = JSON.parse(cat('a'.repeat(64)));
-    const reg = [{ ...ligne('x'), sha256: 'a'.repeat(64) }];
-    assert.deepEqual(V.verifierRegle0([base2, 'HEAD'], courant, reg, { set_a: 'sha256:aa' }, d2.dir), []);
-    assert.match(Mut.verifierRegle0([base2, 'HEAD'], courant, reg, { set_a: 'sha256:aa' }, d2.dir).join(), /tuple/);
+    // Les brouillons de M1 de la PR ne sont pas des versions publiées : le vrai
+    // parcours (premier parent) n'en voit pas, le mutant si.
+    const git2 = V.executeurGit(d2.dir);
+    const reelles = V.versionsSurHistorique(git2, [base2, 'HEAD'], 'fonda/data/catalogue-fonda.json').get('fonda/data/catalogue-fonda.json');
+    const mutantes = Mut.versionsSurHistorique(git2, [base2, 'HEAD'], 'fonda/data/catalogue-fonda.json').get('fonda/data/catalogue-fonda.json');
+    assert.equal(reelles.size, 2, 'catalogue vide + M1 finale');
+    assert.equal(mutantes.size, 3, 'le mutant voit aussi le brouillon');
   });
 });
