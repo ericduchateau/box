@@ -11,10 +11,23 @@
 //     ayant jamais existé doit être présent et identique octet pour octet.
 //     Référence nulle, introuvable ou historique incomplet -> ÉCHEC explicite
 //     (jamais de comparaison contre un état vide).
-//     Parcours = TOUS les commits accessibles (git rev-list, sans simplification par
-//     chemin : une fusion qui reprend un ancien état ne masque jamais une branche) ;
-//     tout objet illisible ou JSON invalide -> ÉCHEC (seule l'absence avérée du
-//     fichier dans un commit est ignorée).
+//     Historique de confiance = CHAÎNE DU PREMIER PARENT de chaque référence
+//     (git rev-list --first-parent) : les états successifs réellement publiés sur la
+//     branche. Les commits intermédiaires d'une PR fusionnée (brouillons, révisions
+//     avant relecture) n'en font pas partie ; son commit de merge, si. Parcours sans
+//     filtrage par chemin (aucun état publié n'est sauté) ; tout objet illisible ou
+//     JSON invalide -> ÉCHEC (seule l'absence avérée du fichier dans un commit est
+//     ignorée). Appliqué identiquement aux moteurs et au catalogue (règle 0).
+//     HYPOTHÈSE du contrat : intégration à `design`/`main` par MERGE COMMIT ou SQUASH
+//     uniquement (rebase-merge et push direct exclus — réglages GitHub, CDC annexe A).
+//     Un rebase-merge placerait les brouillons d'une PR sur le premier parent ; un
+//     fast-forward vers un merge aux parents inversés ferait sortir des états publiés
+//     de la chaîne.
+//  2 bis. CONTINUITÉ : la référence doit figurer sur la chaîne du premier parent de
+//     HEAD (PR : le merge simulé a base.sha pour premier parent ; push : l'ancien
+//     sommet est premier-parent-ancêtre du nouveau). Sinon ÉCHEC explicite.
+//     Le filet DÉTECTE une violation (CI rouge, au plus tard au push qui avance la
+//     branche) ; il ne l'EMPÊCHE pas — la prévention est la protection de branche.
 //
 //  3. Règle 0 de M1 (CDC annexe B), CONSOMMABLE UNE SEULE FOIS : on parcourt toutes
 //     les versions de fonda/data/catalogue-fonda.json de l'historique de confiance.
@@ -80,21 +93,40 @@ function controlerRefs(refs, git) {
   for (const ref of refs) {
     if (!ref || /^0+$/.test(ref)) { erreurs.push(`référence nulle (${ref || 'absente'}) : échec explicite`); continue; }
     try { git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]); } catch { erreurs.push(`référence introuvable : ${ref}`); continue; }
-    let superficiel = 'false';
-    try { superficiel = git(['rev-parse', '--is-shallow-repository']).toString().trim(); } catch { /* git ancien */ }
-    if (superficiel === 'true') { erreurs.push('historique incomplet (clone superficiel)'); continue; }
+    let superficiel;
+    try { superficiel = git(['rev-parse', '--is-shallow-repository']).toString().trim(); } catch { superficiel = null; }
+    if (superficiel !== 'false') { erreurs.push(superficiel === 'true' ? 'historique incomplet (clone superficiel)' : 'impossible de vérifier que l\'historique est complet — échec'); continue; }
     valides.push(ref);
   }
   return { erreurs, valides };
 }
 
-// Versions (blobs distincts) d'un ensemble de chemins sur TOUS les commits accessibles
-// depuis les références, sans simplification d'historique. Renvoie
+// Continuité (2 bis) : `ref` doit être sur la chaîne du premier parent de `head`.
+function verifierContinuite(ref, head = 'HEAD', racine = RACINE) {
+  const git = executeurGit(racine);
+  const { erreurs, valides } = controlerRefs([ref], git);
+  if (!valides.length) return erreurs;
+  let tete;
+  let base;
+  try {
+    tete = git(['rev-parse', '--verify', '--quiet', `${head}^{commit}`]).toString().trim();
+    base = git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]).toString().trim();
+  } catch { return [`continuité : ${head} introuvable — échec`]; }
+  let chaine;
+  try { chaine = git(['rev-list', '--first-parent', tete]).toString().split('\n'); } catch { return ['continuité : historique illisible — échec']; }
+  if (!chaine.includes(base)) {
+    return [`continuité rompue : la référence ${base.slice(0, 7)} n'est pas sur la chaîne du premier parent de ${tete.slice(0, 7)} (merge aux parents inversés, fast-forward ou réécriture) — échec`];
+  }
+  return [];
+}
+
+// Versions (blobs distincts) d'un ensemble de chemins sur la chaîne du PREMIER PARENT
+// de chaque référence (états publiés), sans filtrage par chemin. Renvoie
 // { chemin -> Map(blob -> commit) } ; une erreur Git (autre qu'absence) est remontée.
 function versionsSurHistorique(git, refs, prefixe) {
   const versions = new Map();
   const commits = new Set();
-  for (const ref of refs) git(['rev-list', ref]).toString().split('\n').filter(Boolean).forEach((c) => commits.add(c));
+  for (const ref of refs) git(['rev-list', '--first-parent', ref]).toString().split('\n').filter(Boolean).forEach((c) => commits.add(c));
   for (const c of commits) {
     // ls-tree : sortie vide = chemin absent de ce commit (seul cas ignoré).
     for (const ligne of git(['ls-tree', '-r', c, '--', prefixe]).toString().split('\n').filter(Boolean)) {
@@ -197,6 +229,7 @@ function main() {
   const { HISTORIQUES_FIGES } = require('../engine/catalogue.js');
   const erreurs = [...new Set([
     ...invariantsRegistre(registre, lireOctetsDisque, fichiersMoteursDisque()),
+    ...verifierContinuite(process.env.FONDA_REF_BASE),
     ...verifierHistorique(refs, registre, lireOctetsDisque),
     ...verifierRegle0(refs, catalogue, registre, HISTORIQUES_FIGES),
   ])];
@@ -206,9 +239,9 @@ function main() {
     process.exitCode = 1;
     return;
   }
-  console.log(`✓ moteurs immuables (${registre.map((l) => l.version).join(', ')}) + règle 0 de M1 — références : ${refs.join(', ')}`);
+  console.log(`✓ moteurs immuables (${registre.map((l) => l.version).join(', ')}) + continuité + règle 0 de M1 — références : ${refs.join(', ')}`);
 }
 
-module.exports = { invariantsRegistre, verifierHistorique, verifierRegle0, lireOctetsDisque, fichiersMoteursDisque, MOTIF_FICHIER };
+module.exports = { invariantsRegistre, verifierContinuite, verifierHistorique, verifierRegle0, lireOctetsDisque, fichiersMoteursDisque, MOTIF_FICHIER };
 
 if (require.main === module) main();
