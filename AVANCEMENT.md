@@ -21,7 +21,7 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - Changement visible voulu (CDC §12) : badge « Fiche relue par Éric Duchateau » (avant : « Fiche relue et validée par … avant publication. »).
 
 ## Prochaines étapes
-1. **En cours** : `fix/ci-immuabilite-first-parent` → `design`. Le push post-merge de la PR #8 a mis l'étape « Immuabilité des moteurs » en échec (run 38471882811) : `rev-list` sans `--first-parent` voyait les brouillons de la PR (autre empreinte du moteur v1). Correctif : historique de confiance = chaîne du premier parent + contrôle de continuité (référence sur le premier parent de HEAD) + fail-closed complet. Relecture Codex + Éric avant merge ; au merge, vérifier le run au push sur design.
+1. **En cours** : `fix/ci-immuabilite-first-parent` → `design`. Le push post-merge de la PR #8 a mis l'étape « Immuabilité des moteurs » en échec (run 38471882811) : `rev-list` sans `--first-parent` voyait les brouillons de la PR (autre empreinte du moteur v1). Correctif : historique de confiance = chaîne du premier parent + contrôle de continuité (référence sur le premier parent de HEAD) + fail-closed complet. Codex : « propre pour merge ». Lecture Éric avant merge ; au merge, vérifier le run au push sur design.
    - **Réglages GitHub à faire par Éric** (CDC annexe A) : décocher « Allow rebase merging » ; « Do not allow bypassing » sur `design` et `main`.
 2. Puis **point d'étape avec Éric** avant étape 3 (canonique, clés, journal set_ids, signature/clôture, CODEOWNERS, workflows inactifs — activation sur go explicite).
 3. Bloc 3 (prod, feu vert) : retrait de l'orpheline `box_7e7tcooh` du catalogue BOX.

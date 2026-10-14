@@ -344,6 +344,23 @@ describe('continuité et modes d\'intégration (CDC annexe B, contrat premier pa
     assert.match(V.verifierRegle0([tete], { lots: [] }, [], {}, clone).join(), /clone superficiel/);
   });
 
+  test('détection de clone superficiel en échec ou réponse inattendue : refus (jamais ignorée)', () => {
+    const { dir, g } = depotDesign();
+    const tete = g('rev-parse', 'HEAD');
+    const vraiGit = execFileSync('which', ['git']).toString().trim();
+    for (const [nom, action] of [['echec', 'exit 1'], ['inattendu', 'echo peut-etre; exit 0']]) {
+      const bin = fs.mkdtempSync(path.join(os.tmpdir(), `git-${nom}-`));
+      fs.writeFileSync(path.join(bin, 'git'), `#!/bin/sh\nfor a in "$@"; do [ "$a" = "--is-shallow-repository" ] && { ${action}; }; done\nexec "${vraiGit}" "$@"\n`, { mode: 0o755 });
+      const PATH = process.env.PATH;
+      process.env.PATH = `${bin}:${PATH}`;
+      try {
+        for (const r of [V.verifierContinuite(tete, 'HEAD', dir), V.verifierHistorique([tete], [], () => null, dir), V.verifierRegle0([tete], { lots: [] }, [], {}, dir)]) {
+          assert.match(r.join(), /historique est complet|clone superficiel/, nom);
+        }
+      } finally { process.env.PATH = PATH; }
+    }
+  });
+
   test('objet Git supprimé (illisible) : refus, jamais assimilé à une absence', () => {
     const { dir, g } = depotDesign();
     ecrire(dir, 'fonda/engine/moteur-correction-v1.js', 'v1');
