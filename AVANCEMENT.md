@@ -5,7 +5,7 @@
 ## Objectif
 Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correction par profil, mesure par groupe, fiches générées puis relues par un humain), sans casser BOX. Dépôt AAP CARDIE-SEPIA, échéance **21/10/2026**. Source de vérité : `docs/PRD-Box-FONDA.md` ; règles : `AGENTS.md`.
 
-## État actuel (design = `f226b07`, main intact `7ea4f28`)
+## État actuel (design = `f4c2f99`, main intact `7ea4f28`)
 - **BOX prod** : 9 workflows n8n actifs, Google Form + Tally, relecture carte par carte (`/box-select`), front `https://ericduchateau.github.io/box/` (`main`).
 - **FONDA sur `design`** : thème sombre, correction par profil, index `?fonda=1&page=entrainement` ; **chaîne séparée (bloc 1, PR #6/#7 mergées)** : `catalogue-fonda.json` + `fonda/data/lots/` (8 lots relus, empreintes figées `HISTORIQUES_FIGES`), CI `tests (node --test)` obligatoire sur `design`/`main`.
 - **CDC relecture v8.1** : `docs/CDC-fonda-relecture.md` (branche `feat/box-fonda-relecture`, non mergée). Preuve C8 faite (SRI/CORS/export OK ; CSP en `<meta>`).
@@ -15,15 +15,15 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - `moteurs.json` (sha256 + SRI) ; `bootstrap.js::obtenirMoteur` (concordance registre avant tout chargement, cache par clé, SRI, origine connue, `instance.version`) ; entrée résolue avant chargement ; échec → « pas disponible ».
 - `carte-reponse-produite.js` purement présentationnel `{ moteur, carte, badge, onResultat }` ; E1–E4 appliqués, tests révisés marqués « RÉVISÉ Ex ».
 - **M1** : `moteur: { version: "v1", sha256 }` + badge `{ forme: "relue_par", nom_affiche: "Éric Duchateau", id: "eric" }` sur les 8 entrées historiques, empreintes inchangées ; figés dans `catalogue.js` (`MOTEUR_HISTORIQUE`, `BADGE_HISTORIQUE`).
-- Générateur / publication / CI valident avec **le moteur du lot** ; profils et bornes d'arrondi sortis de `validerLot` (seulement `moteur.valider`). CI `verifier-moteurs.js` : moteurs immuables + **règle 0 de M1** (consommable une fois ; branche « M1 consommée » à transférer à `verifier-immuabilite.js` en étape 3).
+- Générateur / publication / CI valident avec **le moteur du lot** ; profils et bornes d'arrondi sortis de `validerLot` (seulement `moteur.valider`). CI : moteurs immuables (`verifier-moteurs.js`) ; **règle 0 de M1** transférée à `verifier-immuabilite.js` (étape 3, chantier 3 — fait), les deux exécutés par le job requis `immuabilite`.
 - Critique Codex (6 points) corrigée : règle 0, règles pédagogiques hors catalogue, frontière DOM → `moteur.echec`, purge du cache sur tout échec, octets bruts, différentiel sur le vrai composant a418881. Re-review Codex : 5/6 corrigés, point 1 complété (parcours sans simplification d’historique, lecture illisible = échec) ; 2e re-review ciblée : « propre pour merge ».
 - Preuves : `node --test` 598/598 (1 skip) ; différentiels ancien/nouveau (correcteur et composant a418881 réellement exécutés, frontières d'exception comprises ; mutations détectées) ; navigateur réel (Chrome 155) : 8 lots parcourus, SRI altérée bloquée ; BOX clair 0 pixel de différence vs design.
 - Changement visible voulu (CDC §12) : badge « Fiche relue par Éric Duchateau » (avant : « Fiche relue et validée par … avant publication. »).
 
 ## Prochaines étapes
-1. **En cours — étape 3, chantier 3** : `feat/box-fonda-immuabilite` → `design`. `fonda/scripts/verifier-immuabilite.js` (règle unique du tuple, règle 0 de M1 transférée depuis `verifier-moteurs.js`, journal en ajout seul, retraits, moteurs rejoués via les fonctions de `verifier-moteurs.js`) + job CI `immuabilite` + `.github/CODEOWNERS` (signal, pas barrière). Frontière écrite en tête des deux vérificateurs.
-2. **Après merge (Éric)** : déclarer `immuabilite` requis sur `design` et `main` (après un premier passage) ; puis retirer l'étape « moteurs » transitoire du job `tests`. Réglages : décocher « Allow rebase merging » ; « Do not allow bypassing ». CODEOWNERS devra aussi arriver sur `main` (transit design -> main).
-3. Puis point d'étape ; chantier 4 : clés + `signer-cloture.js`.
+1. **Étape 3, chantiers 1 à 3 mergés** (canonique, journal + M2, immuabilité + CODEOWNERS). `immuabilite` est **requis** sur `design` et `main` (vérifié par Éric). **En cours** : `chore/ci-retrait-etape-moteurs` — retrait de l'étape « moteurs » transitoire du job `tests` (rejouée par `immuabilite`).
+2. Puis point d'étape ; chantier 4 : clés + `signer-cloture.js`.
+3. Réglages restants à confirmer (Éric) : « Allow rebase merging » décoché ; « Do not allow bypassing » ; CODEOWNERS à faire arriver sur `main` (transit design -> main).
 4. Bloc 3 (prod, feu vert) : orpheline `box_7e7tcooh`. `feat/box-delete-hardening` ; Moteur A + dette `defi_id` ; collecte `/box-fonda-events` ; recette `canonique.js` en vrai nœud n8n.
 
 ## 🔖 Check-list AVANT PUBLICATION / usage élève réel
