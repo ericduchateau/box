@@ -119,6 +119,48 @@ describe('entrées adverses : jamais de champ ignoré, rien d\'exécuté', () =>
   });
 });
 
+describe('schémas génériques adverses : copie validée, seule utilisée', () => {
+  const C = COPIES.depot;
+  test('getter dans un schéma : refusé, jamais lu deux fois', () => {
+    let lectures = 0;
+    const schema = { type: 'tableau', get elements() { lectures += 1; return lectures === 1 ? 'chaine' : 'nombre'; } };
+    assert.throws(() => C.texte([42], schema), /schéma invalide/);
+    assert.equal(lectures, 0);
+  });
+  test('propriété cachée ou héritée dans un schéma : refusée', () => {
+    const cache = { type: 'tableau', elements: 'chaine' };
+    Object.defineProperty(cache, 'x', { value: 1, enumerable: false });
+    assert.throws(() => C.texte([], cache), /schéma invalide/);
+    const herite = Object.assign(Object.create({ type: 'tableau', elements: 'chaine' }), { a: 1, b: 2 });
+    assert.throws(() => C.texte([], herite), /schéma invalide/);
+    assert.throws(() => C.texte({}, { type: 'objet', champs: [['a', 'chaine', 'extra']] }), /schéma invalide/);
+  });
+});
+
+describe('frontière d\'entrée : données JSON ordinaires', () => {
+  const C = COPIES.depot;
+  const M = 'moteur-fonda/v1';
+  test('prototype personnalisé (même à parent nul) : refusé', () => {
+    const proto = Object.create(null);
+    assert.throws(() => C.hexContrat(M, Object.assign(Object.create(proto), { version: 'v1', sha256: 'x' })), /objet de données attendu/);
+  });
+  test('Map ramenée à prototype nul (emplacements internes) : refusée', () => {
+    const m = new Map([['secret', 42]]);
+    Object.setPrototypeOf(m, null);
+    m.version = 'v1'; m.sha256 = 'x';
+    assert.throws(() => C.hexContrat(M, m), /objet de données attendu/);
+    const d = new Date(0);
+    Object.setPrototypeOf(d, null);
+    assert.throws(() => C.hexContrat(M, Object.assign(d, { version: 'v1', sha256: 'x' })), /objet de données attendu/);
+  });
+  test('tableaux : contrôle linéaire (40 000 éléments en moins d\'une seconde)', () => {
+    const t = Array.from({ length: 40000 }, (_, i) => `it${i}`);
+    const debut = Date.now();
+    C.texte(t, { type: 'tableau', elements: 'chaine' });
+    assert.ok(Date.now() - debut < 1000);
+  });
+});
+
 describe('portabilité : export final et absence d\'API d\'environnement', () => {
   test('aucune API d\'environnement dans le code (hors commentaires)', () => {
     const code = SOURCE.split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
@@ -140,17 +182,19 @@ describe('mutations de copie détectées par le banc partagé', () => {
   const mutations = [
     ['seuil UTF-8 0x800 -> 0x1000', (s) => s.replace('c < 0x800', 'c < 0x1000')],
     ['contrôle des champs inconnus supprimé', (s) => s.replace("if (typeof cle !== 'string' || connus[cle] !== true) {", 'if (false) {')],
-    ['-0 non normalisé et nombre non vérifié', (s) => s.replace("if (typeof valeur !== 'number' || !isFinite(valeur))", 'if (false)')],
+    ['contrôle des nombres finis supprimé', (s) => s.replace("if (typeof valeur !== 'number' || !isFinite(valeur))", 'if (false)')],
     ['ordre des champs inversé', (s) => s.replace('for (var j = 0; j < schema.champs.length; j += 1) {', 'for (var j = schema.champs.length - 1; j >= 0; j -= 1) {')],
-    ['schéma non validé', (s) => s.replace("    validerSchema(schema, '');\n", '')],
+    ['noms de champ interdits non vérifiés', (s) => s.replace("if (CLE_ENTIERE.test(nom) || nom === '__proto__')", 'if (false)')],
+    ['champs en double non vérifiés', (s) => s.replace('if (vus[nom]) throw', 'if (false) throw')],
   ];
   for (const [nom, muter] of mutations) {
     test(nom, () => {
       const mutant = muter(SOURCE);
       assert.notEqual(mutant, SOURCE, 'point de mutation introuvable');
       const C = charger(mutant);
+      // Même exigence que le banc normal : un refus doit être une erreur « canonique : ».
       const echecs = V.vecteurs.filter((x) => {
-        try { const h = calculer(C, x); return x.refus || h !== x.hex; } catch { return !x.refus; }
+        try { const h = calculer(C, x); return x.refus || h !== x.hex; } catch (e) { return !x.refus || !/canonique :/.test(e.message); }
       });
       assert.ok(echecs.length > 0, 'le banc partagé n\'a rien détecté');
     });

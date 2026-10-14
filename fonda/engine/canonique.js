@@ -10,10 +10,11 @@
 //   'chaine' | 'nombre' | 'booleen'
 //   { type: 'tableau', elements: <schéma> }
 //   { type: 'objet', champs: [[nom, <schéma>], ...] }   (ordre = ordre du contrat)
-// Deux phases : (1) copie VALIDÉE de l'entrée (propriétés propres de données lues
-// par descripteur, une seule fois ; getters, symboles, non énumérables, clés
-// inconnues, objets non ordinaires refusés) ; (2) JSON.stringify natif de cette copie,
-// construite dans l'ordre du contrat. Les noms de champ de forme entière et
+// Deux phases : (1) copies VALIDÉES du schéma puis de l'entrée (propriétés propres de
+// données lues par descripteur, une seule fois ; getters, symboles, non énumérables,
+// clés inconnues refusés) ; (2) JSON.stringify natif de la copie, construite dans
+// l'ordre du contrat. Frontière d'entrée garantie : données JSON ordinaires (voir
+// estObjetDeDonnees). Les noms de champ de forme entière et
 // « __proto__ » sont interdits dans les schémas (le moteur JS les réordonnerait).
 //
 // Contrats : seuls ceux dont la forme est ENTIÈREMENT définie au CDC ont un schéma.
@@ -64,26 +65,57 @@ var FondaCanonique = (function () {
 
   var CLE_ENTIERE = /^(0|[1-9][0-9]*)$/;
 
-  // Validation COMPLÈTE d'un schéma avant tout parcours (y compris sous un tableau
-  // vide) : types connus, noms de champs uniques, ni clé de forme entière (le moteur
-  // JS les réordonnerait) ni « __proto__ ».
-  function validerSchema(schema, chemin) {
-    if (schema === 'chaine' || schema === 'nombre' || schema === 'booleen') return;
-    if (schema && schema.type === 'tableau' && Object.keys(schema).length === 2 && 'elements' in schema) {
-      validerSchema(schema.elements, chemin + '[]');
-      return;
+  // Lecture d'un objet de SCHÉMA : propriétés propres de données, énumérables, clés
+  // EXACTEMENT celles attendues (rien d'hérité, rien de caché, aucun accesseur).
+  function lireSchema(objet, attendues, chemin) {
+    if (objet === null || typeof objet !== 'object' || Array.isArray(objet)) throw erreur(chemin, 'schéma invalide');
+    var propres = Reflect.ownKeys(objet);
+    if (propres.length !== attendues.length) throw erreur(chemin, 'schéma invalide (clés)');
+    var sortie = {};
+    for (var i = 0; i < attendues.length; i += 1) {
+      var d = Object.getOwnPropertyDescriptor(objet, attendues[i]);
+      if (!d || !('value' in d) || !d.enumerable) throw erreur(chemin, 'schéma invalide (' + attendues[i] + ')');
+      sortie[attendues[i]] = d.value;
     }
-    if (schema && schema.type === 'objet' && Array.isArray(schema.champs) && Object.keys(schema).length === 2) {
+    return sortie;
+  }
+
+  // COPIE VALIDÉE d'un schéma, faite une seule fois avant tout parcours (y compris
+  // sous un tableau vide) ; seule cette copie est utilisée ensuite. Types connus,
+  // noms de champs uniques, ni clé de forme entière (le moteur JS les réordonnerait)
+  // ni « __proto__ ».
+  function copierSchema(schema, chemin) {
+    if (schema === 'chaine' || schema === 'nombre' || schema === 'booleen') return schema;
+    if (schema === null || typeof schema !== 'object') throw erreur(chemin, 'schéma invalide');
+    var dType = Object.getOwnPropertyDescriptor(schema, 'type');
+    var type = dType && 'value' in dType ? dType.value : undefined;
+    if (type === 'tableau') {
+      var t = lireSchema(schema, ['type', 'elements'], chemin);
+      return Object.freeze({ type: 'tableau', elements: copierSchema(t.elements, chemin + '[]') });
+    }
+    if (type === 'objet') {
+      var o = lireSchema(schema, ['type', 'champs'], chemin);
+      if (!Array.isArray(o.champs)) throw erreur(chemin, 'schéma invalide (champs)');
+      var n = Object.getOwnPropertyDescriptor(o.champs, 'length').value;
       var vus = Object.create(null);
-      for (var i = 0; i < schema.champs.length; i += 1) {
-        var c = schema.champs[i];
-        if (!Array.isArray(c) || c.length !== 2 || typeof c[0] !== 'string') throw erreur(chemin, 'schéma invalide (champ mal formé)');
-        if (CLE_ENTIERE.test(c[0]) || c[0] === '__proto__') throw erreur(chemin, 'schéma invalide (nom de champ interdit : ' + c[0] + ')');
-        if (vus[c[0]]) throw erreur(chemin, 'schéma invalide (champ en double : ' + c[0] + ')');
-        vus[c[0]] = true;
-        validerSchema(c[1], (chemin ? chemin + '.' : '') + c[0]);
+      var champs = [];
+      for (var i = 0; i < n; i += 1) {
+        var dc = Object.getOwnPropertyDescriptor(o.champs, String(i));
+        if (!dc || !('value' in dc) || !Array.isArray(dc.value)) throw erreur(chemin, 'schéma invalide (champ mal formé)');
+        var c = dc.value;
+        var d0 = Object.getOwnPropertyDescriptor(c, '0');
+        var d1 = Object.getOwnPropertyDescriptor(c, '1');
+        if (Reflect.ownKeys(c).length !== 3 || !d0 || !d1 || !('value' in d0) || !('value' in d1) || typeof d0.value !== 'string') {
+          throw erreur(chemin, 'schéma invalide (champ mal formé)');
+        }
+        var nom = d0.value;
+        if (CLE_ENTIERE.test(nom) || nom === '__proto__') throw erreur(chemin, 'schéma invalide (nom de champ interdit : ' + nom + ')');
+        if (vus[nom]) throw erreur(chemin, 'schéma invalide (champ en double : ' + nom + ')');
+        vus[nom] = true;
+        champs.push(Object.freeze([nom, copierSchema(d1.value, (chemin ? chemin + '.' : '') + nom)]));
       }
-      return;
+      if (Reflect.ownKeys(o.champs).length !== n + 1) throw erreur(chemin, 'schéma invalide (champs)');
+      return Object.freeze({ type: 'objet', champs: Object.freeze(champs) });
     }
     throw erreur(chemin, 'schéma invalide');
   }
@@ -98,16 +130,39 @@ var FondaCanonique = (function () {
     return d.value;
   }
 
-  // Objet de données ordinaire : prototype nul ou prototype « Object.prototype » d'un
-  // contexte JS quelconque (lui-même à prototype nul). Map, Date, instances de
-  // classes… ont un prototype intermédiaire : refusés. (Un Proxy n'est pas
-  // détectable de façon sûre : chaque valeur est lue une seule fois par descripteur,
-  // puis la sortie est calculée sur cette COPIE ; les appelants doivent passer des
-  // données ordinaires — idéalement issues de JSON.parse.)
+  // FRONTIÈRE D'ENTRÉE GARANTIE : des DONNÉES JSON ORDINAIRES (issues de JSON.parse
+  // ou de littéraux), éventuellement d'un autre contexte JS (ex. n8n). Admis : objet à
+  // prototype nul, ou dont le prototype est un « Object.prototype » (prototype à
+  // parent nul dont `constructor` est la fonction native Object). Refusés : Map, Set,
+  // Date (marques internes vérifiées), instances de classes, prototypes personnalisés.
+  // Ce filtre n'est PAS une détection générale des objets exotiques : un Proxy (dont
+  // les traps peuvent s'exécuter) ou un objet construit pour imiter Object.prototype
+  // ne sont pas détectables de façon sûre. Chaque valeur est lue une fois par
+  // descripteur et la sortie est calculée sur la COPIE.
+  function aUneMarque(v) {
+    var essais = [
+      function () { Map.prototype.has.call(v, 0); },
+      function () { Set.prototype.has.call(v, 0); },
+      function () { Date.prototype.getTime.call(v); },
+    ];
+    for (var i = 0; i < essais.length; i += 1) {
+      try { essais[i](); return true; } catch (e) { /* pas cette marque */ }
+    }
+    return false;
+  }
+  function estObjectPrototype(proto) {
+    if (Object.getPrototypeOf(proto) !== null) return false;
+    var d = Object.getOwnPropertyDescriptor(proto, 'constructor');
+    if (!d || !('value' in d) || typeof d.value !== 'function' || d.value.name !== 'Object') return false;
+    var dp = Object.getOwnPropertyDescriptor(d.value, 'prototype');
+    if (!dp || dp.value !== proto) return false;
+    return /\{\s*\[native code\]\s*\}\s*$/.test(Function.prototype.toString.call(d.value));
+  }
   function estObjetDeDonnees(v) {
     if (v === null || typeof v !== 'object' || Array.isArray(v)) return false;
     var proto = Object.getPrototypeOf(v);
-    return proto === null || Object.getPrototypeOf(proto) === null;
+    if (proto !== null && !estObjectPrototype(proto)) return false;
+    return !aUneMarque(v);
   }
 
   // Phase 1 : copie VALIDÉE (données fraîches, clés dans l'ordre du contrat).
@@ -118,7 +173,7 @@ var FondaCanonique = (function () {
     }
     if (schema === 'nombre') {
       if (typeof valeur !== 'number' || !isFinite(valeur)) throw erreur(chemin, 'nombre fini attendu (NaN/Infinity refusés)');
-      return valeur === 0 ? 0 : valeur; // -0 -> 0
+      return valeur === 0 ? 0 : valeur; // -0 -> 0 (JSON.stringify le fait aussi ; explicite)
     }
     if (schema === 'booleen') {
       if (typeof valeur !== 'boolean') throw erreur(chemin, 'booléen attendu');
@@ -128,10 +183,15 @@ var FondaCanonique = (function () {
       if (!Array.isArray(valeur)) throw erreur(chemin, 'tableau attendu');
       var n = Object.getOwnPropertyDescriptor(valeur, 'length').value; // propre, non énumérable
       var cles = Reflect.ownKeys(valeur);
+      // Contrôle linéaire : exactement « length » + les indices 0..n-1 (clés distinctes).
       if (cles.length !== n + 1) throw erreur(chemin, 'tableau à trous ou propriété supplémentaire refusés');
+      for (var q = 0; q < cles.length; q += 1) {
+        if (cles[q] !== 'length' && !(typeof cles[q] === 'string' && CLE_ENTIERE.test(cles[q]) && Number(cles[q]) < n)) {
+          throw erreur(chemin, 'tableau à trous ou propriété supplémentaire refusés');
+        }
+      }
       var sortie = [];
       for (var i = 0; i < n; i += 1) {
-        if (cles.indexOf(String(i)) === -1) throw erreur(chemin + '[' + i + ']', 'trou dans le tableau');
         sortie.push(copier(valeurPropre(valeur, String(i), chemin + '[' + i + ']'), schema.elements, chemin + '[' + i + ']'));
       }
       return sortie;
@@ -159,8 +219,8 @@ var FondaCanonique = (function () {
   // Phase 2 : JSON.stringify d'ECMAScript sur la copie construite dans l'ordre du
   // contrat (CDC §1, littéralement). Sans espace ni saut de ligne.
   function serialiser(valeur, schema) {
-    validerSchema(schema, '');
-    return JSON.stringify(copier(valeur, schema, ''));
+    var sch = copierSchema(schema, '');
+    return JSON.stringify(copier(valeur, sch, ''));
   }
 
   // UTF-8 (sans BOM) écrit à la main : aucune dépendance à TextEncoder/Buffer.
