@@ -211,6 +211,7 @@ Rotation : nouvelle clé, `valide_au` sur l'ancienne. Compromission : **une seul
 
 Script `fonda/scripts/verifier-immuabilite.js` + job **`immuabilite`**.
 - **Référence** : sur `pull_request`, `github.event.pull_request.base.sha` ; sur `push`, `github.event.before`. Référence **nulle, introuvable ou historique incomplet → échec explicite** ; jamais de comparaison contre un état vide. Le checkout d'une PR teste le **résultat de fusion simulé**, comparé à la référence.
+- **Historique de confiance = chaîne du premier parent** (`git rev-list --first-parent`) de la référence **et** de `design` : les états **réellement publiés** sur la branche. Les commits intermédiaires d'une PR fusionnée (brouillons, révisions avant relecture) n'en font **pas** partie ; son commit de merge, **si**. Parcours sans filtrage par chemin ; objet illisible ou JSON invalide → échec. *(Précision 2026-10-14, suite à l'échec du push post-merge de la PR #8 : sans `--first-parent`, les brouillons du moteur v1 de la PR étaient pris pour des versions publiées.)*
 - **Tuple d'identité d'un lot publié** : `set_id → (empreinte pédagogique, moteur.version, moteur.sha256)`.
 - **Registre des tuples** : l'ensemble de **tous les tuples ayant jamais été publiés**, lu dans **l'historique Git de `design`** (autorité) **et** de la référence : catalogue de chaque version + journal des identifiants.
 - **Règle unique** — pour chaque entrée du catalogue de la PR :
