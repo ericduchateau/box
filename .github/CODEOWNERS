@@ -1,0 +1,50 @@
+# Fichiers de confiance FONDA (CDC relecture §15). SIGNAL, PAS BARRIÈRE :
+# GitHub demande automatiquement la relecture de @ericduchateau sur toute PR prête à
+# relire qui touche ces chemins ; « Require review from Code Owners » reste DÉCOCHÉ
+# (mainteneur unique : un auteur ne peut pas approuver sa propre PR). Un agent qui agit
+# sous le compte d'Éric EST Éric pour GitHub : la relecture du diff reste un geste
+# humain non délégable. Ce fichier doit exister sur `design` ET `main` (la PR qui
+# l'installe n'en bénéficie pas encore).
+
+# CI et ce fichier lui-même
+/.github/workflows/                        @ericduchateau
+/.github/CODEOWNERS                        @ericduchateau
+
+# Moteur, contrats, octets canoniques, front qui charge le moteur
+/fonda/engine/catalogue.js                 @ericduchateau
+/fonda/engine/canonique.js                 @ericduchateau
+/fonda/engine/moteurs.json                 @ericduchateau
+/fonda/engine/moteur-correction-v*.js      @ericduchateau
+/fonda/engine/carte-reponse-produite.js    @ericduchateau
+/fonda/page/bootstrap.js                   @ericduchateau
+
+# Scripts de publication, signature, génération, contrôles d'immuabilité
+/fonda/scripts/publier-lot.js              @ericduchateau
+/fonda/scripts/signer-cloture.js           @ericduchateau
+/fonda/scripts/verifier-immuabilite.js     @ericduchateau
+/fonda/scripts/generer-lot-fonda.js        @ericduchateau
+# Ajouts au §15 (même rôle de contrôle) : vérificateur des moteurs, module du journal
+# et chargeur Node des moteurs, utilisés par la CI et la publication.
+/fonda/scripts/verifier-moteurs.js         @ericduchateau
+/fonda/engine/journal-set-ids.js           @ericduchateau
+/fonda/scripts/moteurs.js                  @ericduchateau
+
+# Données de confiance
+/fonda/data/cles/                          @ericduchateau
+/fonda/data/set_ids-journal.json           @ericduchateau
+/fonda/data/catalogue-fonda.json           @ericduchateau
+
+# Tests de ces fichiers (et vecteurs figés)
+/fonda/engine/catalogue.test.js            @ericduchateau
+/fonda/engine/canonique.test.js            @ericduchateau
+/fonda/engine/canonique-vecteurs.json      @ericduchateau
+/fonda/engine/moteur-correction-v*.test.js @ericduchateau
+/fonda/engine/carte-reponse-produite.test.js @ericduchateau
+/fonda/engine/journal-set-ids.test.js      @ericduchateau
+/fonda/page/bootstrap.test.js              @ericduchateau
+/fonda/data/catalogue.test.js              @ericduchateau
+/fonda/scripts/publier-lot.test.js         @ericduchateau
+/fonda/scripts/signer-cloture.test.js      @ericduchateau
+/fonda/scripts/verifier-immuabilite.test.js @ericduchateau
+/fonda/scripts/verifier-moteurs.test.js    @ericduchateau
+/fonda/scripts/generer-lot-fonda.test.js   @ericduchateau
