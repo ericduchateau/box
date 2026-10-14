@@ -39,6 +39,9 @@
 /fonda/engine/canonique.test.js            @ericduchateau
 /fonda/engine/canonique-vecteurs.json      @ericduchateau
 /fonda/engine/moteur-correction-v*.test.js @ericduchateau
+# Tests du correcteur v1 (via la façade Node correction.js, elle aussi couverte).
+/fonda/engine/correction.test.js           @ericduchateau
+/fonda/engine/correction.js                @ericduchateau
 /fonda/engine/carte-reponse-produite.test.js @ericduchateau
 /fonda/engine/journal-set-ids.test.js      @ericduchateau
 /fonda/page/bootstrap.test.js              @ericduchateau

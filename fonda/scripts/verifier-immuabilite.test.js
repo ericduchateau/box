@@ -149,7 +149,7 @@ describe('intégration Git : références, premier parent, lecture fail-closed',
   }
   // Les historiques réels de ce module utilisent HISTORIQUES_FIGES ; on teste ici des
   // set_id NON historiques, qui suivent donc la règle générale.
-  test('PR de première publication puis merge : accepté au contrôle de PR et au push', () => {
+  test('PR de première publication puis merge sur design : accepté (contrôle au push)', () => {
     const { dir, g } = depot();
     etat(dir, C(), J());
     g('add', '.'); g('commit', '-q', '-m', 'vide');
@@ -159,6 +159,51 @@ describe('intégration Git : références, premier parent, lecture fail-closed',
     g('commit', '-q', '-am', 'publication');
     g('checkout', '-q', 'design');
     g('merge', '-q', '--no-ff', '-m', 'Merge', 'pr');
+    assert.deepEqual(I.verifier({ refBase: avant, racine: dir }), []);
+  });
+  test('merge SIMULÉ d\'une PR (premier parent = base.sha) puis push consécutif : accepté aux deux contrôles', () => {
+    const { dir, g } = depot();
+    etat(dir, C(), J()); g('add', '.'); g('commit', '-q', '-m', 'vide');
+    const base = g('rev-parse', 'HEAD');
+    g('checkout', '-q', '-b', 'pr');
+    etat(dir, C(e(A, 'sha256:aa', M1)), J(l(A, 'reserve'), l(A, 'publie'))); g('commit', '-q', '-am', 'publication');
+    // Contrôle de PR : HEAD = merge simulé (refs/pull/N/merge), premier parent = base.
+    g('checkout', '-q', '--detach', base);
+    g('merge', '-q', '--no-ff', '-m', 'merge simulé', 'pr');
+    assert.deepEqual(I.verifier({ refBase: base, racine: dir }), []);
+    // Push : design avance sur ce merge ; référence = ancien sommet (before).
+    g('branch', '-f', 'design', 'HEAD'); g('checkout', '-q', 'design');
+    assert.deepEqual(I.verifier({ refBase: base, racine: dir }), []);
+  });
+  test('première fusion design -> main (main sans catalogue ni journal) puis push sur main : accepté', () => {
+    const { dir, g } = depot();
+    fs.writeFileSync(path.join(dir, 'README'), 'box'); g('add', '.'); g('commit', '-q', '-m', 'main historique');
+    g('branch', 'main');
+    etat(dir, C(e(A, 'sha256:aa', M1)), J(l(A, 'reserve'), l(A, 'publie'))); g('add', '.'); g('commit', '-q', '-m', 'design publie A');
+    const mainAvant = g('rev-parse', 'main');
+    g('checkout', '-q', 'main');
+    g('merge', '-q', '--no-ff', '-m', 'Merge design into main', 'design');
+    assert.deepEqual(I.verifier({ refBase: mainAvant, racine: dir }), []);
+  });
+  test('deux PR réservant le même set_id : la seconde, mise à jour sur design, est refusée (double reserve)', () => {
+    const { dir, g } = depot();
+    etat(dir, C(), J(l(H, 'reserve'))); g('add', '.'); g('commit', '-q', '-m', 'base');
+    const base = g('rev-parse', 'HEAD');
+    g('checkout', '-q', '-b', 'pr1'); etat(dir, C(), J(l(H, 'reserve'), l(B, 'reserve', 'ref-pr1-0001'))); g('commit', '-q', '-am', 'pr1');
+    g('checkout', '-q', '-b', 'pr2', base); etat(dir, C(), J(l(H, 'reserve'), l(B, 'reserve', 'ref-pr2-0001'))); g('commit', '-q', '-am', 'pr2');
+    g('checkout', '-q', 'design'); g('merge', '-q', '--no-ff', '-m', 'Merge pr1', 'pr1');
+    const apresPr1 = g('rev-parse', 'HEAD');
+    // pr2 mise à jour sur design (« Require branches to be up to date ») : les deux lignes coexistent.
+    g('checkout', '-q', '--detach', apresPr1);
+    etat(dir, C(), J(l(H, 'reserve'), l(B, 'reserve', 'ref-pr1-0001'), l(B, 'reserve', 'ref-pr2-0001')));
+    assert.match(I.verifier({ refBase: apresPr1, racine: dir }).join(), /double reserve/);
+  });
+  test('anciennes versions SANS journal (avant M2) : ignorées comme absences avérées', () => {
+    const { dir, g } = depot();
+    ecrire(dir, 'fonda/data/catalogue-fonda.json', C()); ecrire(dir, 'fonda/engine/moteurs.json', REG);
+    g('add', '.'); g('commit', '-q', '-m', 'avant journal');
+    const avant = g('rev-parse', 'HEAD');
+    etat(dir, C(), J(l(A, 'reserve')));
     assert.deepEqual(I.verifier({ refBase: avant, racine: dir }), []);
   });
   test('modification d\'un tuple publié sur design : refusée', () => {

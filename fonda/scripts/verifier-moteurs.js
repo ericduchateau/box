@@ -17,7 +17,8 @@
 //     avant relecture) n'en font pas partie ; son commit de merge, si. Parcours sans
 //     filtrage par chemin (aucun état publié n'est sauté) ; tout objet illisible ou
 //     JSON invalide -> ÉCHEC (seule l'absence avérée du fichier dans un commit est
-//     ignorée). Appliqué identiquement aux moteurs et au catalogue (règle 0).
+//     ignorée). Même primitive (versionsSurHistorique) réutilisée par
+//     verifier-immuabilite.js pour le catalogue et le journal.
 //     HYPOTHÈSE du contrat : intégration à `design`/`main` par MERGE COMMIT ou SQUASH
 //     uniquement (rebase-merge et push direct exclus — réglages GitHub, CDC annexe A).
 //     Un rebase-merge placerait les brouillons d'une PR sur le premier parent ; un
