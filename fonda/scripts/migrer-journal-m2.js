@@ -107,11 +107,14 @@ function observerCatalogue(obs, ids, j) {
   for (const id of ids) if (!entrees.has(id)) obs(id).inexploitable = true;
 }
 
-// Carte exploitable = contenu pédagogique réel : question non vide ET réponse ou
-// réponses acceptées. Sinon (ex. carte réduite à set_id) : inexploitable.
+// Carte exploitable = contenu pédagogique réel : question non vide ET au moins une
+// réponse RÉELLE (texte non vide ou nombre fini), dans reponse ou reponses_acceptees. Sinon (ex. carte réduite à set_id) : inexploitable.
+function reponseReelle(r) {
+  return (typeof r === 'string' && r.trim() !== '') || (typeof r === 'number' && Number.isFinite(r));
+}
 function carteExploitable(c) {
   return !!c && typeof c.question === 'string' && c.question.trim() !== ''
-    && ((typeof c.reponse === 'string' && c.reponse.trim() !== '') || (Array.isArray(c.reponses_acceptees) && c.reponses_acceptees.length > 0));
+    && (reponseReelle(c.reponse) || (Array.isArray(c.reponses_acceptees) && c.reponses_acceptees.some(reponseReelle)));
 }
 
 function cartesParId(j) {
@@ -211,7 +214,7 @@ async function main() {
   console.log('✓ fonda/data/set_ids-journal.json créé — relire le diff, puis commit + PR.');
 }
 
-module.exports = { observerHistorique, idsHistorique, idsActuels, idsDansJson, empreintesRecalculees };
+module.exports = { observerHistorique, idsHistorique, idsActuels, idsDansJson, empreintesRecalculees, carteExploitable };
 
 if (require.main === module) {
   main().catch((e) => { console.error(`✗ ${e.message}`); process.exitCode = 1; });

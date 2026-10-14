@@ -206,6 +206,15 @@ describe('M2 — historique Git (scan sur-inclusif, fail-closed)', () => {
     const lignes = J.classerM2({ observations: new Map([[A, o]]), catalogueIds: [], lotsIds: [], calibrationIds: [A], historiques: {}, empreintesActuelles: {}, le: '2026-10-14', prefixeRef: 'm2' });
     assert.equal(J.validerJournal(journal(...lignes)).etats.get(A), 'abandonne');
   });
+  test('carte avec question mais sans réponse RÉELLE ([null], [""], ["   "], [{}]) : inexploitable', () => {
+    const { carteExploitable } = require('../scripts/migrer-journal-m2.js');
+    for (const ra of [[null], [''], ['   '], [{}], []]) assert.equal(carteExploitable({ question: 'Q', reponses_acceptees: ra }), false, JSON.stringify(ra));
+    assert.equal(carteExploitable({ question: 'Q', reponse: '  ', reponses_acceptees: [''] }), false);
+    assert.equal(carteExploitable({ question: ' ', reponse: 'r' }), false);
+    assert.equal(carteExploitable({ question: 'Q', reponses_acceptees: ['', 'ok'] }), true);
+    assert.equal(carteExploitable({ question: 'Q', reponses_acceptees: [2] }), true);
+    assert.equal(carteExploitable({ question: 'Q', reponse: 'r' }), true);
+  });
   test('calibration modifiée dans la copie de travail (Q1 commité, Q2 local) : deux contenus -> ambigu', () => {
     const { observerHistorique } = require('../scripts/migrer-journal-m2.js');
     const { dir, g } = depot();
