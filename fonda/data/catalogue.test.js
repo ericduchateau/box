@@ -54,6 +54,28 @@ describe('chaîne publiée FONDA — cohérence complète', () => {
     });
   }
 
+  // Journal des identifiants (CDC §6) — cohérence de CET état du dépôt. Le contrôle
+  // sur l'historique de confiance (ajout seul, double reserve à travers les fusions)
+  // appartient à verifier-immuabilite.js (étape 3, chantier 3).
+  test('journal des set_id : conforme, catalogue = publiés, calibration réservée ou abandonnée', () => {
+    const J = require('../engine/journal-set-ids.js');
+    const journal = J.lireJournalTexte(fs.readFileSync(path.join(DATA, 'set_ids-journal.json'), 'utf8'));
+    assert.deepEqual(J.validerJournal(journal).erreurs, []);
+    const calibrationIds = fs.readdirSync(path.join(DATA, 'lots-fonda-calibration')).filter((f) => f.endsWith('.json'))
+      .map((f) => lire(`lots-fonda-calibration/${f}`).set_id);
+    assert.deepEqual(J.coherenceAvecDepot(journal, { catalogueIds: CATALOGUE.lots.map((e) => e.set_id), calibrationIds }), []);
+  });
+
+  test('M2 : amorçage figé — 8 publiés (reserve+publie), 8 de calibration (reserve), rien d\'autre', () => {
+    const J = require('../engine/journal-set-ids.js');
+    const journal = J.lireJournalTexte(fs.readFileSync(path.join(DATA, 'set_ids-journal.json'), 'utf8'));
+    const m2 = journal.lignes.filter((l) => l.ref.startsWith('m2-2026-10-14:'));
+    const etats = J.validerJournal({ schema: journal.schema, lignes: m2 }).etats;
+    assert.deepEqual([...etats.entries()].filter(([, e]) => e === 'publie').map(([id]) => id).sort(), [...HISTORIQUES].sort());
+    assert.equal([...etats.values()].filter((e) => e === 'reserve').length, 8);
+    assert.equal(etats.size, 16);
+  });
+
   test('aucun fichier publié orphelin dans lots/ (tout fichier est au catalogue)', () => {
     const fichiers = fs.readdirSync(path.join(DATA, 'lots')).filter((f) => f.endsWith('.json')).map((f) => `lots/${f}`).sort();
     assert.deepEqual(fichiers, CATALOGUE.lots.map((e) => e.fichier).sort());

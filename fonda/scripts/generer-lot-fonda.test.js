@@ -393,3 +393,39 @@ describe('garde-fou : cible APRÈS arrondi, pas la forme littérale (relecture C
     });
   }
 });
+
+// --- Journal des identifiants (CDC §6) : réservation, arrêts explicites -------------
+describe('generer-lot-fonda — journal des set_id (fail-closed)', () => {
+  const G = require('./generer-lot-fonda.js');
+  const fsJ = require('fs');
+  const osJ = require('os');
+  const pathJ = require('path');
+  const REF = require('../data/referentiel.json');
+
+  test('séquence 99 atteinte : arrêt explicite, jamais de recyclage', () => {
+    const existants = ['set_fonda_lexique_nI_99'];
+    assert.throws(() => G.prochainSetIdReserve('fr.lexique', 'nI', existants), /99 atteinte/);
+    assert.equal(G.prochainSetIdReserve('fr.lexique', 'nI', ['set_fonda_lexique_nI_01']), 'set_fonda_lexique_nI_02');
+  });
+
+  test('un set_id réservé désigne exactement sa notion et son palier', () => {
+    const r = G.notionDuSetId('set_fonda_lexique_nF_03', REF);
+    assert.deepEqual([r.notion.id, r.palier, r.sequence], ['fr.lexique', 'nF', 3]);
+    assert.throws(() => G.notionDuSetId('set_fonda_inexistante_nI_01', REF), /introuvable/);
+    assert.throws(() => G.notionDuSetId('pas-un-set-id', REF), /invalide/);
+  });
+
+  test('setIdsExistants : un fichier illisible ARRÊTE (plus jamais ignoré) ; le journal compte', () => {
+    const dir = fsJ.mkdtempSync(pathJ.join(osJ.tmpdir(), 'gen-'));
+    fsJ.writeFileSync(pathJ.join(dir, 'ok.json'), JSON.stringify({ set_id: 'set_fonda_lexique_nI_01' }));
+    const journal = { schema: 'set-ids-journal/v1', lignes: [{ set_id: 'set_fonda_lexique_nI_05', transition: 'reserve', le: '2026-10-14', ref: 'r-0001' }] };
+    const ids = G.setIdsExistants(journal, { dirs: [dir], cataloguePath: pathJ.join(dir, 'absent.json') });
+    assert.deepEqual(ids.sort(), ['set_fonda_lexique_nI_01', 'set_fonda_lexique_nI_05']);
+    assert.equal(G.prochainSetIdReserve('fr.lexique', 'nI', ids), 'set_fonda_lexique_nI_06', 'une réservation abandonnée ou en cours n\'est jamais recyclée');
+    fsJ.writeFileSync(pathJ.join(dir, 'casse.json'), '{ cassé');
+    assert.throws(() => G.setIdsExistants(journal, { dirs: [dir], cataloguePath: pathJ.join(dir, 'absent.json') }), /illisible/);
+    fsJ.writeFileSync(pathJ.join(dir, 'catalogue.json'), '{ cassé');
+    fsJ.rmSync(pathJ.join(dir, 'casse.json'));
+    assert.throws(() => G.setIdsExistants(journal, { dirs: [dir], cataloguePath: pathJ.join(dir, 'catalogue.json') }), /illisible/);
+  });
+});

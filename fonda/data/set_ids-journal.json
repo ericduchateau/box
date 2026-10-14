@@ -1,0 +1,149 @@
+{
+  "schema": "set-ids-journal/v1",
+  "lignes": [
+    {
+      "set_id": "set_fonda_comprendre-consigne_nF_01",
+      "transition": "reserve",
+      "le": "2026-10-14",
+      "ref": "m2-2026-10-14:set_fonda_comprendre-consigne_nF_01"
+    },
+    {
+      "set_id": "set_fonda_comprendre-consigne_nF_01",
+      "transition": "publie",
+      "le": "2026-10-14",
+      "ref": "m2-2026-10-14:set_fonda_comprendre-consigne_nF_01:publie"
+    },
+    {
+      "set_id": "set_fonda_comprendre-consigne_nI_01",
+      "transition": "reserve",
+      "le": "2026-10-14",
+      "ref": "m2-2026-10-14:set_fonda_comprendre-consigne_nI_01"
+    },
+    {
+      "set_id": "set_fonda_comprendre-consigne_nI_01",
+      "transition": "publie",
+      "le": "2026-10-14",
+      "ref": "m2-2026-10-14:set_fonda_comprendre-consigne_nI_01:publie"
+    },
+    {
+      "set_id": "set_fonda_grandeurs-mesures_nF_01",
+      "transition": "reserve",
+      "le": "2026-10-14",
+      "ref": "m2-2026-10-14:set_fonda_grandeurs-mesures_nF_01"
+    },
+    {
+      "set_id": "set_fonda_grandeurs-mesures_nF_01",
+      "transition": "publie",
+      "le": "2026-10-14",
+      "ref": "m2-2026-10-14:set_fonda_grandeurs-mesures_nF_01:publie"
+    },
+    {
+      "set_id": "set_fonda_grandeurs-mesures_nI_01",
+      "transition": "reserve",
+      "le": "2026-10-14",
+      "ref": "m2-2026-10-14:set_fonda_grandeurs-mesures_nI_01"
+    },
+    {
+      "set_id": "set_fonda_grandeurs-mesures_nI_01",
+      "transition": "publie",
+      "le": "2026-10-14",
+      "ref": "m2-2026-10-14:set_fonda_grandeurs-mesures_nI_01:publie"
+    },
+    {
+      "set_id": "set_fonda_inference-implicite_nF_01",
+      "transition": "reserve",
+      "le": "2026-10-14",
+      "ref": "m2-2026-10-14:set_fonda_inference-implicite_nF_01"
+    },
+    {
+      "set_id": "set_fonda_inference-implicite_nF_01",
+      "transition": "publie",
+      "le": "2026-10-14",
+      "ref": "m2-2026-10-14:set_fonda_inference-implicite_nF_01:publie"
+    },
+    {
+      "set_id": "set_fonda_inference-implicite_nI_01",
+      "transition": "reserve",
+      "le": "2026-10-14",
+      "ref": "m2-2026-10-14:set_fonda_inference-implicite_nI_01"
+    },
+    {
+      "set_id": "set_fonda_inference-implicite_nI_01",
+      "transition": "publie",
+      "le": "2026-10-14",
+      "ref": "m2-2026-10-14:set_fonda_inference-implicite_nI_01:publie"
+    },
+    {
+      "set_id": "set_fonda_lexique_nF_01",
+      "transition": "reserve",
+      "le": "2026-10-14",
+      "ref": "m2-2026-10-14:set_fonda_lexique_nF_01"
+    },
+    {
+      "set_id": "set_fonda_lexique_nI_01",
+      "transition": "reserve",
+      "le": "2026-10-14",
+      "ref": "m2-2026-10-14:set_fonda_lexique_nI_01"
+    },
+    {
+      "set_id": "set_fonda_nombres-fractions-relatifs_nF_01",
+      "transition": "reserve",
+      "le": "2026-10-14",
+      "ref": "m2-2026-10-14:set_fonda_nombres-fractions-relatifs_nF_01"
+    },
+    {
+      "set_id": "set_fonda_nombres-fractions-relatifs_nI_01",
+      "transition": "reserve",
+      "le": "2026-10-14",
+      "ref": "m2-2026-10-14:set_fonda_nombres-fractions-relatifs_nI_01"
+    },
+    {
+      "set_id": "set_fonda_proportionnalite_nF_01",
+      "transition": "reserve",
+      "le": "2026-10-14",
+      "ref": "m2-2026-10-14:set_fonda_proportionnalite_nF_01"
+    },
+    {
+      "set_id": "set_fonda_proportionnalite_nI_01",
+      "transition": "reserve",
+      "le": "2026-10-14",
+      "ref": "m2-2026-10-14:set_fonda_proportionnalite_nI_01"
+    },
+    {
+      "set_id": "set_fonda_resolution-problemes_nF_01",
+      "transition": "reserve",
+      "le": "2026-10-14",
+      "ref": "m2-2026-10-14:set_fonda_resolution-problemes_nF_01"
+    },
+    {
+      "set_id": "set_fonda_resolution-problemes_nF_01",
+      "transition": "publie",
+      "le": "2026-10-14",
+      "ref": "m2-2026-10-14:set_fonda_resolution-problemes_nF_01:publie"
+    },
+    {
+      "set_id": "set_fonda_resolution-problemes_nI_01",
+      "transition": "reserve",
+      "le": "2026-10-14",
+      "ref": "m2-2026-10-14:set_fonda_resolution-problemes_nI_01"
+    },
+    {
+      "set_id": "set_fonda_resolution-problemes_nI_01",
+      "transition": "publie",
+      "le": "2026-10-14",
+      "ref": "m2-2026-10-14:set_fonda_resolution-problemes_nI_01:publie"
+    },
+    {
+      "set_id": "set_fonda_sens-mot-inconnu_nF_01",
+      "transition": "reserve",
+      "le": "2026-10-14",
+      "ref": "m2-2026-10-14:set_fonda_sens-mot-inconnu_nF_01"
+    },
+    {
+      "set_id": "set_fonda_sens-mot-inconnu_nI_01",
+      "transition": "reserve",
+      "le": "2026-10-14",
+      "ref": "m2-2026-10-14:set_fonda_sens-mot-inconnu_nI_01"
+    }
+  ]
+}
