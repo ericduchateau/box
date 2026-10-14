@@ -26,10 +26,16 @@
 // dur dans ce fichier, jamais committée. Absente -> le script s'arrête avant tout
 // appel réseau avec un message clair (voir appellerModeleClaude).
 //
-// Usage :
-//   ANTHROPIC_API_KEY=sk-ant-... node fonda/scripts/generer-lot-fonda.js <notion_id> [<notion_id> ...] [--n=6]
-//   Exemple (étape 1bis, calibration) :
-//     ANTHROPIC_API_KEY=sk-ant-... node fonda/scripts/generer-lot-fonda.js maths.proportionnalite --n=4
+// Usage — RÉSERVATION EN DEUX TEMPS (journal des identifiants, CDC §6) :
+//   1. Réserver (aucun appel réseau) : ajoute au journal LOCAL une ligne « reserve »
+//      par palier, avec une ref unique ; puis commit + PR vers design.
+//        node fonda/scripts/generer-lot-fonda.js --reserver <notion_id> [<notion_id> ...]
+//   2. Après fusion sur design (git fetch) : générer le candidat d'UN set_id réservé.
+//      Le journal lu est celui de origin/design (autorité) ; la ligne « reserve » de
+//      ce set_id doit porter EXACTEMENT la ref donnée, sinon arrêt avant tout appel.
+//        ANTHROPIC_API_KEY=sk-ant-... node fonda/scripts/generer-lot-fonda.js --set-id=<set_id> --ref=<ref> [--n=6]
+//   Tout fichier illisible (journal, lots, catalogue) -> ARRÊT. Séquence 99 atteinte
+//   -> ARRÊT explicite, jamais de recyclage.
 //
 // Notions EXCLUES par construction (voir NOTIONS_EXCLUES_FIGURES ci-dessous) : le
 // script refuse de les traiter même si leur notion_id est passé en argument — pas
@@ -38,7 +44,8 @@
 // Sortie : un fichier CANDIDAT par (notion_id, palier), au format lot-fonda/v1
 // (fonda/engine/catalogue.js : liste blanche, aucun secret ni coordonnée), nommé
 // <set_id>.json dans fonda/data/lots-fonda-calibration/ (dossier de travail, jamais
-// lu par l'app). set_id = séquence libre suivante (jamais d'écrasement). Il ne
+// lu par l'app). set_id = celui RÉSERVÉ au journal (séquence suivante calculée à la
+// réservation sur le journal ET les fichiers existants ; jamais d'écrasement). Il ne
 // devient publié qu'après relecture humaine puis fonda/scripts/publier-lot.js
 // (chaîne FONDA séparée de BOX, PRD §2 bis). Rien n'est écrit tant qu'un seul rejet (correcteur ou G4) subsiste
 // pour CE (notion_id, palier) — même politique stricte que generer-pilote-t6.js.
@@ -65,13 +72,18 @@ const { dernierMoteur, chargerMoteurNode } = require('./moteurs.js');
 const MOTEUR_GENERATION = dernierMoteur();
 const MOTEUR = chargerMoteurNode(MOTEUR_GENERATION.version, MOTEUR_GENERATION.sha256);
 const OUTILS_MOTEUR = MOTEUR.outils;
-const { SCHEMA_LOT, validerLot: validerLotFonda, prochainSetId, decomposerSetId } = require('../engine/catalogue.js');
+const { SCHEMA_LOT, validerLot: validerLotFonda, prochainSetId, decomposerSetId, slugDeNotion } = require('../engine/catalogue.js');
+const Journal = require('../engine/journal-set-ids.js');
+const { execFileSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..');
 const REFERENTIEL_PATH = path.join(ROOT, 'data', 'referentiel.json');
 const LOTS_PUBLIES_DIR = path.join(ROOT, 'data', 'lots');
 const CATALOGUE_PATH = path.join(ROOT, 'data', 'catalogue-fonda.json');
 const SORTIE_DIR = path.join(ROOT, 'data', 'lots-fonda-calibration');
+const JOURNAL_PATH = path.join(ROOT, 'data', 'set_ids-journal.json');
+const JOURNAL_GIT = 'fonda/data/set_ids-journal.json';
+const REF_DESIGN = 'origin/design';
 
 const SOURCE_FONDA_SEED = 'T6b-seed';
 
@@ -428,20 +440,111 @@ function construireLotFonda({ notion, palier, candidats }) {
   return lot;
 }
 
-// set_id déjà pris (publiés, en attente de relecture, non relus) : la séquence
-// suivante est calculée dessus — jamais d'écrasement silencieux d'un lot existant.
-function setIdsExistants() {
-  const ids = new Set();
+// set_id déjà pris (journal, publiés, en attente de relecture, non relus) : la
+// séquence suivante est calculée dessus — jamais d'écrasement ni de recyclage.
+// FAIL-CLOSED : tout fichier illisible (lot, catalogue) -> exception, jamais ignoré.
+function setIdsExistants(journal, { dirs = [SORTIE_DIR, LOTS_PUBLIES_DIR], cataloguePath = CATALOGUE_PATH } = {}) {
+  const ids = new Set(journal ? journal.lignes.map((l) => l.set_id) : []);
+  for (const dir of dirs) {
+    if (!fs.existsSync(dir)) continue;
+    for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.json'))) {
+      let l;
+      try { l = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); } catch (e) { throw new Error(`${path.relative(ROOT, path.join(dir, f))} illisible — arrêt (${e.message})`); }
+      if (!l || typeof l.set_id !== 'string') throw new Error(`${path.relative(ROOT, path.join(dir, f))} sans set_id — arrêt`);
+      ids.add(l.set_id);
+    }
+  }
+  if (fs.existsSync(cataloguePath)) {
+    let cat;
+    try { cat = JSON.parse(fs.readFileSync(cataloguePath, 'utf8')); } catch (e) { throw new Error(`catalogue-fonda.json illisible — arrêt (${e.message})`); }
+    for (const e of cat.lots || []) ids.add(e.set_id);
+  }
+  return [...ids];
+}
+
+function lireJournalLocal() {
+  let texte;
+  try { texte = fs.readFileSync(JOURNAL_PATH, 'utf8'); } catch (e) { throw new Error(`journal des set_id illisible (${path.relative(ROOT, JOURNAL_PATH)}) — arrêt`); }
+  const j = Journal.lireJournalTexte(texte);
+  const v = Journal.validerJournal(j);
+  if (!v.valide) throw new Error(`journal des set_id non conforme — arrêt : ${v.erreurs.join(' ; ')}`);
+  return j;
+}
+
+// Journal de l'AUTORITÉ (design), lu via git — jamais la copie locale. L'actualisation
+// (git fetch origin design) est OBLIGATOIRE et doit réussir ; le journal est lu sur
+// le SHA ainsi fixé (affiché). Ne prétend pas à une transaction distribuée : réduit
+// la fenêtre d'une référence périmée, sans la supprimer.
+function lireJournalDesign() {
+  const git = (a) => execFileSync('git', a, { cwd: path.join(ROOT, '..'), stdio: ['ignore', 'pipe', 'pipe'] }).toString();
+  try { git(['fetch', '--quiet', 'origin', 'design']); } catch { throw new Error('actualisation de origin/design impossible (réseau ?) — arrêt, aucun appel API'); }
+  let sha;
+  let texte;
+  try {
+    sha = git(['rev-parse', '--verify', 'origin/design^{commit}']).trim();
+    texte = git(['show', `${sha}:${JOURNAL_GIT}`]);
+  } catch {
+    throw new Error('journal introuvable sur origin/design (la réservation est-elle fusionnée ?) — arrêt');
+  }
+  return { sha, journal: Journal.lireJournalTexte(texte) };
+}
+
+// Pur — décision AVANT tout appel API et toute écriture :
+//   - réservation présente dans le journal de design, avec EXACTEMENT cette ref, état
+//     courant « reserve » ;
+//   - journal local conforme et NON contradictoire pour ce set_id (même état, même
+//     ligne de réservation) ;
+//   - aucun fichier candidat ou publié ne porte déjà ce set_id, QUEL QUE SOIT son nom
+//     de fichier : une calibration réservée est PROMOUVABLE, pas régénérable.
+function verifierAvantGeneration({ journalDesign, journalLocal, setId, ref, idsFichiers }) {
+  const r = Journal.verifierReservation(journalDesign, setId, ref);
+  if (!r.ok) return r;
+  const vl = Journal.validerJournal(journalLocal);
+  if (!vl.valide) return { ok: false, raison: `journal local non conforme : ${vl.erreurs.join(' ; ')}` };
+  const locale = journalLocal.lignes.find((l) => l.set_id === setId && l.transition === 'reserve');
+  if (vl.etats.get(setId) !== 'reserve' || !locale || locale.ref !== ref) {
+    return { ok: false, raison: `${setId} : journal local contradictoire avec design (état local ${vl.etats.get(setId) || 'absent'}) — synchroniser avant de générer` };
+  }
+  if (idsFichiers.includes(setId)) {
+    return { ok: false, raison: `${setId} : déjà porté par un fichier candidat ou publié — une calibration réservée est promouvable, pas régénérable` };
+  }
+  return { ok: true };
+}
+
+// Pur : prochain set_id d'un (notion, palier) ; séquence 99 atteinte -> exception.
+function prochainSetIdReserve(notionId, palier, existants) {
+  const id = prochainSetId(notionId, palier, existants);
+  if (!id) throw new Error(`${notionId}/${palier} : plus de séquence libre (99 atteinte) ou notion/palier invalide — arrêt, jamais de recyclage`);
+  return id;
+}
+
+function nouvelleRef(le) {
+  return `${le}-${require('crypto').randomBytes(6).toString('hex')}`;
+}
+
+// Pur : la notion et le palier encodés dans un set_id réservé, contre le référentiel.
+function notionDuSetId(setId, referentiel) {
+  const d = decomposerSetId(setId);
+  if (!d) throw new Error(`set_id invalide : ${setId}`);
+  const notions = referentiel.notions.filter((n) => slugDeNotion(n.id) === d.slug);
+  if (notions.length !== 1) throw new Error(`${setId} : notion du référentiel introuvable ou ambiguë pour le slug ${d.slug}`);
+  if (!notions[0].paliers.includes(d.palier)) throw new Error(`${setId} : palier ${d.palier} non prévu pour ${notions[0].id}`);
+  return { notion: notions[0], palier: d.palier, sequence: d.sequence };
+}
+
+// Contextes déjà utilisés par l'AUTRE palier de la même notion (lots publiés et de
+// calibration) : point 2 (pas de réutilisation de contexte entre nI et nF), désormais
+// appliqué d'une exécution à l'autre puisqu'on génère un palier à la fois.
+function contextesAutrePalier(notion, palier) {
+  const out = [];
   for (const dir of [SORTIE_DIR, LOTS_PUBLIES_DIR]) {
     if (!fs.existsSync(dir)) continue;
     for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.json'))) {
-      try { const l = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); if (l.set_id) ids.add(l.set_id); } catch { /* fichier illisible : ignoré */ }
+      const l = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+      if (l.notion_id === notion.id && l.palier !== palier) for (const c of l.cartes || []) if (c.contexte) out.push(c.contexte);
     }
   }
-  if (fs.existsSync(CATALOGUE_PATH)) {
-    for (const e of JSON.parse(fs.readFileSync(CATALOGUE_PATH, 'utf8')).lots || []) ids.add(e.set_id);
-  }
-  return [...ids];
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -485,10 +588,13 @@ async function main() {
   const args = process.argv.slice(2);
   const nArg = args.find((a) => a.startsWith('--n='));
   const nCartes = nArg ? parseInt(nArg.slice(4), 10) : 6;
+  const setIdArg = (args.find((a) => a.startsWith('--set-id=')) || '').slice(9);
+  const refArg = (args.find((a) => a.startsWith('--ref=')) || '').slice(6);
+  const reserver = args.includes('--reserver');
   const notionIdsDemandes = args.filter((a) => !a.startsWith('--'));
 
-  if (notionIdsDemandes.length === 0) {
-    console.log('Usage : node fonda/scripts/generer-lot-fonda.js <notion_id> [<notion_id> ...] [--n=6]');
+  if (!reserver && !setIdArg) {
+    console.log('Usage :\n  node fonda/scripts/generer-lot-fonda.js --reserver <notion_id> [<notion_id> ...]\n  ANTHROPIC_API_KEY=... node fonda/scripts/generer-lot-fonda.js --set-id=<set_id> --ref=<ref> [--n=6]');
     process.exitCode = 1;
     return;
   }
@@ -496,83 +602,97 @@ async function main() {
   const referentiel = JSON.parse(fs.readFileSync(REFERENTIEL_PATH, 'utf-8'));
   const notionIdsConnus = new Set(referentiel.notions.map((n) => n.id));
 
-  const notions = referentiel.notions.filter((n) => notionIdsDemandes.includes(n.id));
-  const manquants = notionIdsDemandes.filter((id) => !notionIdsConnus.has(id));
-  if (manquants.length > 0) {
-    console.log(`notion_id inconnu(s) du référentiel : ${manquants.join(', ')}`);
-    process.exitCode = 1;
-    return;
-  }
-
-  // Exclusion figures (point 4, demande d'Éric) : vérifiée ICI, avant tout appel
-  // réseau — un refus explicite, jamais un simple espoir que le prompt suffise.
-  const exclues = notionIdsDemandes.filter(estNotionExclue);
-  if (exclues.length > 0) {
-    console.log(`Notion(s) exclue(s) de la génération automatique (figures/schémas requis, pas évaluables en texte seul) : ${exclues.join(', ')}`);
-    console.log('Aucun appel API effectué. Retire ces notion_id de la commande pour lancer les autres.');
-    process.exitCode = 1;
-    return;
-  }
-
-  fs.mkdirSync(SORTIE_DIR, { recursive: true });
-
-  for (const notion of notions) {
-    const contextesParPalier = {}; // point 2 : interdire la réutilisation de contexte entre nI et nF.
-
-    for (const palier of notion.paliers) {
-      const contextesAutresPaliers = Object.keys(contextesParPalier)
-        .filter((p) => p !== palier)
-        .flatMap((p) => contextesParPalier[p]);
-
-      console.log(`\n=== ${notion.id} / ${palier} (${nCartes} cartes demandées) ===`);
-      const prochain = prochainSetId(notion.id, palier, setIdsExistants());
-      if (!prochain) { console.log('  ✗ plus de séquence libre (99 atteint) ou notion/palier invalide'); continue; }
-      const sequence = decomposerSetId(prochain).sequence;
-      const resultat = await genererLotPourNotionPalier({ notion, palier, nCartes, contextesAutresPaliers, sequence });
-
-      if (!resultat.ok) {
-        console.log(`  ✗ ${resultat.erreur}`);
-        (resultat.rejets || []).forEach((r) => console.log(`    - carte ${r.index} rejetée : ${r.raison}`));
-        continue;
-      }
-
-      (resultat.rejets || []).forEach((r) => console.log(`  ⚠ carte ${r.index} rejetée par le correcteur : ${r.raison}`));
-      (resultat.corrections || []).forEach((c) => console.log(`  ✎ carte ${c.index} auto-corrigée : reponse "${c.ancienneReponse}" -> "${c.nouvelleReponse}"`));
-
-      // Validation G4 complète (le vrai garde-fou — generation.js, pas dupliqué ici).
-      candidatsAvecValidationForme:
-      {
-        let erreurForme = null;
-        for (let i = 0; i < resultat.candidats.length; i++) {
-          const v = validerCandidate(resultat.candidats[i], { notionIdsConnus });
-          if (!v.valide) { erreurForme = `carte ${i} : ${v.erreurs.join(', ')}`; break; }
-        }
-        if (erreurForme) {
-          console.log(`  ✗ rejeté par validerCandidate : ${erreurForme}`);
-          continue;
-        }
-      }
-
-      const depot = deposerEnRelecture(resultat.candidats, { notions: referentiel.notions });
-      if (depot.invalides.length > 0) {
-        console.log(`  ✗ deposerEnRelecture a écarté ${depot.invalides.length} carte(s) — rien n'est écrit pour ce palier :`);
-        depot.invalides.forEach((inv) => console.log(`    - index ${inv.index} : ${inv.raisons.join(', ')}`));
-        continue;
-      }
-
-      const relecteur = relecteurDepuisMatiere(notion.matiere);
-      const candidatsDeposes = depot.parRelecteur[relecteur];
-      contextesParPalier[palier] = candidatsDeposes.map((c) => c.contexte);
-      const fichier = construireLotFonda({ notion, palier, candidats: candidatsDeposes });
-
-      const sortiePath = path.join(SORTIE_DIR, `${fichier.set_id}.json`);
-      if (fs.existsSync(sortiePath)) { console.log(`  ✗ ${path.relative(ROOT, sortiePath)} existe déjà — refus d'écraser`); continue; }
-      fs.writeFileSync(sortiePath, JSON.stringify(fichier, null, 2) + '\n', { flag: 'wx' });
-
-      console.log(`  ✓ ${candidatsDeposes.length}/${nCartes} cartes retenues → ${path.relative(ROOT, sortiePath)} (candidat, NON relu)`);
-      console.log(`    Relecteur attribué (référentiel) : ${relecteur}`);
+  if (reserver) {
+    // 1. RÉSERVATION : aucun appel réseau ; ajout au journal local, à committer.
+    const manquants = notionIdsDemandes.filter((id) => !notionIdsConnus.has(id));
+    const exclues = notionIdsDemandes.filter(estNotionExclue);
+    if (!notionIdsDemandes.length || manquants.length || exclues.length) {
+      console.log(`Réservation refusée : ${!notionIdsDemandes.length ? 'aucune notion' : ''}${manquants.length ? `notion_id inconnu(s) : ${manquants.join(', ')} ` : ''}${exclues.length ? `notion(s) exclue(s) : ${exclues.join(', ')}` : ''}`);
+      process.exitCode = 1;
+      return;
     }
+    const journal = lireJournalLocal();
+    const le = new Date().toISOString().slice(0, 10);
+    const nouvelles = [];
+    for (const notion of referentiel.notions.filter((n) => notionIdsDemandes.includes(n.id))) {
+      for (const palier of notion.paliers) {
+        const courant = { schema: journal.schema, lignes: [...journal.lignes, ...nouvelles] };
+        const id = prochainSetIdReserve(notion.id, palier, setIdsExistants(courant));
+        nouvelles.push(Journal.ligneReservation(courant, id, le, nouvelleRef(le)));
+      }
+    }
+    const final = { schema: journal.schema, lignes: [...journal.lignes, ...nouvelles] };
+    const v = Journal.validerJournal(final);
+    if (!v.valide) throw new Error(v.erreurs.join(' ; '));
+    fs.writeFileSync(JOURNAL_PATH, JSON.stringify(final, null, 2) + '\n');
+    nouvelles.forEach((l) => console.log(`  ✓ réservé ${l.set_id}  ref=${l.ref}`));
+    console.log('Commit + PR vers design ; après fusion : --set-id=<set_id> --ref=<ref>.');
+    return;
   }
+
+  // 2. GÉNÉRATION d'un set_id réservé.
+  const r = await genererReserve({ setId: setIdArg, ref: refArg, nCartes, referentiel });
+  if (!r.ok) process.exitCode = 1;
+}
+
+// Génération d'UN set_id réservé — séquence complète, dépendances injectables
+// (tests : git, fichiers et API simulés). ORDRE : journal de design (fetch) ->
+// vérification pure -> exclusions -> AUCUN appel API avant que tout soit vérifié.
+// Toute exception ou tout refus avant l'appel -> { ok: false }, zéro appel API.
+async function genererReserve({ setId, ref, nCartes, referentiel }, deps = {}) {
+  const d = {
+    lireJournalDesign, lireJournalLocal, setIdsExistants, generer: genererLotPourNotionPalier,
+    contextes: contextesAutrePalier, existe: fs.existsSync, ecrire: (p, t) => fs.writeFileSync(p, t, { flag: 'wx' }),
+    preparer: (dir) => fs.mkdirSync(dir, { recursive: true }),
+    log: (m) => console.log(m), sortieDir: SORTIE_DIR, ...deps,
+  };
+  const arret = (m) => { d.log(`✗ ${m} — arrêt, aucun appel API`); return { ok: false, raison: m }; };
+  let verification;
+  try {
+    const { sha, journal: journalDesign } = d.lireJournalDesign();
+    d.log(`journal de référence : origin/design @ ${sha.slice(0, 12)}`);
+    verification = verifierAvantGeneration({
+      journalDesign, journalLocal: d.lireJournalLocal(), setId, ref,
+      idsFichiers: d.setIdsExistants(null), // fail-closed : tout fichier illisible arrête ici
+    });
+  } catch (e) { return arret(e.message); }
+  if (!verification.ok) return arret(verification.raison);
+  let cible;
+  try { cible = notionDuSetId(setId, referentiel); } catch (e) { return arret(e.message); }
+  const { notion, palier, sequence } = cible;
+  if (estNotionExclue(notion.id)) return arret(`${notion.id} exclue de la génération automatique`);
+  const notionIdsConnus = new Set(referentiel.notions.map((n) => n.id));
+  const sortiePath = path.join(d.sortieDir, `${setId}.json`);
+  if (d.existe(sortiePath)) return arret(`${path.relative(ROOT, sortiePath)} existe déjà — refus d'écraser`);
+  try { d.preparer(d.sortieDir); } catch (e) { return arret(`dossier de sortie impossible à préparer : ${e.message}`); } // AVANT l'appel API
+
+  d.log(`\n=== ${setId} (${notion.id} / ${palier}, ${nCartes} cartes demandées) ===`);
+  const resultat = await d.generer({ notion, palier, nCartes, contextesAutresPaliers: d.contextes(notion, palier), sequence });
+  if (!resultat.ok) {
+    d.log(`  ✗ ${resultat.erreur}`);
+    (resultat.rejets || []).forEach((x) => d.log(`    - carte ${x.index} rejetée : ${x.raison}`));
+    return { ok: false, raison: resultat.erreur };
+  }
+  (resultat.rejets || []).forEach((x) => d.log(`  ⚠ carte ${x.index} rejetée par le correcteur : ${x.raison}`));
+  (resultat.corrections || []).forEach((c) => d.log(`  ✎ carte ${c.index} auto-corrigée : reponse "${c.ancienneReponse}" -> "${c.nouvelleReponse}"`));
+  for (let i = 0; i < resultat.candidats.length; i++) {
+    const v = validerCandidate(resultat.candidats[i], { notionIdsConnus });
+    if (!v.valide) { d.log(`  ✗ rejeté par validerCandidate : carte ${i} : ${v.erreurs.join(', ')}`); return { ok: false }; }
+  }
+  const depot = deposerEnRelecture(resultat.candidats, { notions: referentiel.notions });
+  if (depot.invalides.length > 0) {
+    d.log(`  ✗ deposerEnRelecture a écarté ${depot.invalides.length} carte(s) — rien n'est écrit :`);
+    depot.invalides.forEach((inv) => d.log(`    - index ${inv.index} : ${inv.raisons.join(', ')}`));
+    return { ok: false };
+  }
+  const relecteur = relecteurDepuisMatiere(notion.matiere);
+  const candidatsDeposes = depot.parRelecteur[relecteur];
+  const fichier = construireLotFonda({ notion, palier, candidats: candidatsDeposes });
+  if (fichier.set_id !== setId) return { ok: false, raison: `set_id produit ${fichier.set_id} ≠ set_id réservé ${setId}` };
+  d.ecrire(sortiePath, JSON.stringify(fichier, null, 2) + '\n');
+  d.log(`  ✓ ${candidatsDeposes.length}/${nCartes} cartes retenues → ${path.relative(ROOT, sortiePath)} (candidat, NON relu)`);
+  d.log(`    Relecteur attribué (référentiel) : ${relecteur}`);
+  return { ok: true, fichier };
 }
 
 module.exports = {
@@ -591,11 +711,16 @@ module.exports = {
   appellerModeleClaude,
   MODELE,
   SOURCE_FONDA_SEED,
+  prochainSetIdReserve,
+  notionDuSetId,
+  setIdsExistants,
+  verifierAvantGeneration,
+  genererReserve,
 };
 
 if (require.main === module) {
   main().catch((err) => {
-    console.error(err);
+    console.error(`✗ ${err && err.message ? err.message : err}`);
     process.exitCode = 1;
   });
 }

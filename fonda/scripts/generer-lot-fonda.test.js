@@ -393,3 +393,175 @@ describe('garde-fou : cible APRÈS arrondi, pas la forme littérale (relecture C
     });
   }
 });
+
+// --- Journal des identifiants (CDC §6) : réservation, arrêts explicites -------------
+describe('generer-lot-fonda — journal des set_id (fail-closed)', () => {
+  const G = require('./generer-lot-fonda.js');
+  const fsJ = require('fs');
+  const osJ = require('os');
+  const pathJ = require('path');
+  const REF = require('../data/referentiel.json');
+
+  test('séquence 99 atteinte : arrêt explicite, jamais de recyclage', () => {
+    const existants = ['set_fonda_lexique_nI_99'];
+    assert.throws(() => G.prochainSetIdReserve('fr.lexique', 'nI', existants), /99 atteinte/);
+    assert.equal(G.prochainSetIdReserve('fr.lexique', 'nI', ['set_fonda_lexique_nI_01']), 'set_fonda_lexique_nI_02');
+  });
+
+  test('un set_id réservé désigne exactement sa notion et son palier', () => {
+    const r = G.notionDuSetId('set_fonda_lexique_nF_03', REF);
+    assert.deepEqual([r.notion.id, r.palier, r.sequence], ['fr.lexique', 'nF', 3]);
+    assert.throws(() => G.notionDuSetId('set_fonda_inexistante_nI_01', REF), /introuvable/);
+    assert.throws(() => G.notionDuSetId('pas-un-set-id', REF), /invalide/);
+  });
+
+  test('setIdsExistants : un fichier illisible ARRÊTE (plus jamais ignoré) ; le journal compte', () => {
+    const dir = fsJ.mkdtempSync(pathJ.join(osJ.tmpdir(), 'gen-'));
+    fsJ.writeFileSync(pathJ.join(dir, 'ok.json'), JSON.stringify({ set_id: 'set_fonda_lexique_nI_01' }));
+    const journal = { schema: 'set-ids-journal/v1', lignes: [{ set_id: 'set_fonda_lexique_nI_05', transition: 'reserve', le: '2026-10-14', ref: 'r-0001' }] };
+    const ids = G.setIdsExistants(journal, { dirs: [dir], cataloguePath: pathJ.join(dir, 'absent.json') });
+    assert.deepEqual(ids.sort(), ['set_fonda_lexique_nI_01', 'set_fonda_lexique_nI_05']);
+    assert.equal(G.prochainSetIdReserve('fr.lexique', 'nI', ids), 'set_fonda_lexique_nI_06', 'une réservation abandonnée ou en cours n\'est jamais recyclée');
+    fsJ.writeFileSync(pathJ.join(dir, 'casse.json'), '{ cassé');
+    assert.throws(() => G.setIdsExistants(journal, { dirs: [dir], cataloguePath: pathJ.join(dir, 'absent.json') }), /illisible/);
+    fsJ.writeFileSync(pathJ.join(dir, 'catalogue.json'), '{ cassé');
+    fsJ.rmSync(pathJ.join(dir, 'casse.json'));
+    assert.throws(() => G.setIdsExistants(journal, { dirs: [dir], cataloguePath: pathJ.join(dir, 'catalogue.json') }), /illisible/);
+  });
+});
+
+describe('generer-lot-fonda — vérification AVANT tout appel API (réservation, autorité, fichiers)', () => {
+  const G = require('./generer-lot-fonda.js');
+  const fsV = require('fs');
+  const pathV = require('path');
+  const ID = 'set_fonda_lexique_nI_02';
+  const res = (ref = 'ma-ref-0001') => ({ set_id: ID, transition: 'reserve', le: '2026-10-14', ref });
+  const J = (...lignes) => ({ schema: 'set-ids-journal/v1', lignes });
+  const ok = { journalDesign: J(res()), journalLocal: J(res()), setId: ID, ref: 'ma-ref-0001', idsFichiers: [] };
+
+  test('cas nominal : réservé sur design, local identique, aucun fichier -> ok', () => {
+    assert.deepEqual(G.verifierAvantGeneration(ok), { ok: true });
+  });
+  test('ref différente ou réservation absente de design -> arrêt', () => {
+    assert.equal(G.verifierAvantGeneration({ ...ok, ref: 'autre-ref-0001' }).ok, false);
+    assert.equal(G.verifierAvantGeneration({ ...ok, journalDesign: J() }).ok, false);
+  });
+  test('design dit déjà « abandonne » ou « publie » -> arrêt', () => {
+    for (const t of ['abandonne', 'publie']) {
+      const r = G.verifierAvantGeneration({ ...ok, journalDesign: J(res(), { set_id: ID, transition: t, le: '2026-10-14', ref: `x-${t}-1` }) });
+      assert.match(r.raison, /état courant/);
+    }
+  });
+  test('journal local contradictoire (abandon local, ou réservation locale absente / autre ref) -> arrêt', () => {
+    const abandon = J(res(), { set_id: ID, transition: 'abandonne', le: '2026-10-14', ref: 'x-abandon-1' });
+    assert.match(G.verifierAvantGeneration({ ...ok, journalLocal: abandon }).raison, /contradictoire/);
+    assert.match(G.verifierAvantGeneration({ ...ok, journalLocal: J() }).raison, /contradictoire/);
+    assert.match(G.verifierAvantGeneration({ ...ok, journalLocal: J(res('autre-ref-0001')) }).raison, /contradictoire/);
+  });
+  test('identifiant déjà porté par un fichier (ex. calibration sous un nom historique) -> arrêt : promouvable, pas régénérable', () => {
+    assert.match(G.verifierAvantGeneration({ ...ok, idsFichiers: [ID] }).raison, /pas régénérable/);
+  });
+  test('cas réel du dépôt : set_fonda_lexique_nI_01 (fr-lexique_nI.json, réservé par M2) n\'est PAS régénérable', () => {
+    const journal = JSON.parse(fsV.readFileSync(pathV.join(__dirname, '../data/set_ids-journal.json'), 'utf8'));
+    const id = 'set_fonda_lexique_nI_01';
+    const ref = journal.lignes.find((l) => l.set_id === id && l.transition === 'reserve').ref;
+    const r = G.verifierAvantGeneration({ journalDesign: journal, journalLocal: journal, setId: id, ref, idsFichiers: G.setIdsExistants(null) });
+    assert.match(r.raison, /pas régénérable/);
+  });
+});
+
+describe('generer-lot-fonda — séquence réelle genererReserve : zéro appel API sur chaque refus', () => {
+  const G = require('./generer-lot-fonda.js');
+  const REFJ = require('../data/referentiel.json');
+  const ID = 'set_fonda_lexique_nI_02';
+  const REF = 'ma-ref-0001';
+  const J = (...lignes) => ({ schema: 'set-ids-journal/v1', lignes });
+  const res = { set_id: ID, transition: 'reserve', le: '2026-10-14', ref: REF };
+  function deps(x = {}) {
+    const appels = { api: 0, ecritures: 0 };
+    const d = {
+      lireJournalDesign: () => ({ sha: 'a'.repeat(40), journal: J(res) }),
+      lireJournalLocal: () => J(res),
+      setIdsExistants: () => [],
+      generer: async () => { appels.api += 1; return { ok: false, erreur: 'stub API' }; },
+      contextes: () => [],
+      existe: () => false,
+      preparer: () => {},
+      ecrire: () => { appels.ecritures += 1; },
+      log: () => {},
+      ...x,
+    };
+    return { d, appels };
+  }
+  const lancer = (d, setId = ID, ref = REF) => G.genererReserve({ setId, ref, nCartes: 6, referentiel: REFJ }, d);
+  const leve = (m) => () => { throw new Error(m); };
+
+  test('nominal : la séquence atteint l\'API (1 appel) une fois tout vérifié', async () => {
+    const { d, appels } = deps();
+    await lancer(d);
+    assert.equal(appels.api, 1);
+  });
+  const refus = [
+    ['fetch de design en échec', { lireJournalDesign: leve('actualisation de origin/design impossible') }],
+    ['journal de design sans la réservation', { lireJournalDesign: () => ({ sha: 'b'.repeat(40), journal: J() }) }],
+    ['ref donnée ≠ ref réservée', {}, ID, 'autre-ref-0001'],
+    ['design dit « abandonne »', { lireJournalDesign: () => ({ sha: 'c'.repeat(40), journal: J(res, { set_id: ID, transition: 'abandonne', le: '2026-10-14', ref: 'x-ab-0001' }) }) }],
+    ['journal local illisible', { lireJournalLocal: leve('journal des set_id illisible') }],
+    ['journal local contradictoire', { lireJournalLocal: () => J() }],
+    ['fichier de lot illisible', { setIdsExistants: leve('x.json illisible — arrêt') }],
+    ['identifiant déjà porté par un fichier', { setIdsExistants: () => [ID] }],
+    ['fichier de sortie déjà présent', { existe: () => true }],
+  ];
+  for (const [libelle, x, setId, ref] of refus) {
+    test(`refus avant API : ${libelle}`, async () => {
+      const { d, appels } = deps(x);
+      const r = await lancer(d, setId, ref);
+      assert.equal(r.ok, false);
+      assert.equal(appels.api, 0, 'aucun appel API');
+      assert.equal(appels.ecritures, 0, 'aucune écriture');
+    });
+  }
+  test('parcours RÉUSSI jusqu\'à l\'écriture, dossier de sortie absent : préparé AVANT l\'API, fichier écrit', async () => {
+    const fsT = require('fs'); const osT = require('os'); const pathT = require('path');
+    const sortieDir = pathT.join(fsT.mkdtempSync(pathT.join(osT.tmpdir(), 'gen-ok-')), 'absent', 'calibration');
+    const ordre = [];
+    const { d, appels } = deps({
+      sortieDir,
+      existe: fsT.existsSync,
+      preparer: (dir) => { ordre.push('preparer'); fsT.mkdirSync(dir, { recursive: true }); },
+      ecrire: (p, t) => { ordre.push('ecrire'); fsT.writeFileSync(p, t, { flag: 'wx' }); },
+      generer: async ({ notion, palier, sequence }) => {
+        ordre.push('api');
+        appels.api += 1;
+        const cartesBrutes = [
+          { question: 'Que signifie « ravi » ?', reponse: 'content', difficulte: 'facile', profil_correction: 'sens', reponses_acceptees: ['content', 'heureux'], contexte: 'ctx-a' },
+          { question: 'Que signifie « las » ?', reponse: 'fatigué', difficulte: 'moyen', profil_correction: 'sens', reponses_acceptees: ['fatigué'], contexte: 'ctx-b' },
+        ];
+        return { ok: true, candidats: G.construireCandidats({ notion, palier, cartesBrutes, sequence, ts: '2026-10-14T00:00:00.000Z' }) };
+      },
+    });
+    const r = await lancer(d);
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.deepEqual(ordre, ['preparer', 'api', 'ecrire']);
+    const ecrit = JSON.parse(fsT.readFileSync(pathT.join(sortieDir, `${ID}.json`), 'utf8'));
+    assert.equal(ecrit.set_id, ID);
+    assert.equal(ecrit.cartes.length, 2);
+  });
+  test('dossier de sortie impossible à préparer : refus AVANT l\'API', async () => {
+    const { d, appels } = deps({ preparer: () => { throw new Error('EACCES'); } });
+    const r = await lancer(d);
+    assert.equal(r.ok, false);
+    assert.equal(appels.api, 0);
+  });
+  test('notion exclue (figures) : refus avant API', async () => {
+    const exclue = REFJ.notions.find((n) => G.estNotionExclue(n.id));
+    if (!exclue) return; // aucune notion exclue au référentiel
+    const C = require('../engine/catalogue.js');
+    const id = `set_fonda_${C.slugDeNotion(exclue.id)}_${exclue.paliers[0]}_02`;
+    const r0 = { ...res, set_id: id };
+    const { d, appels } = deps({ lireJournalDesign: () => ({ sha: 'd'.repeat(40), journal: J(r0) }), lireJournalLocal: () => J(r0) });
+    const r = await lancer(d, id, REF);
+    assert.equal(r.ok, false);
+    assert.equal(appels.api, 0);
+  });
+});
