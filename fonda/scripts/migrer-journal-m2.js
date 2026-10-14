@@ -76,10 +76,7 @@ function observerHistorique(racine = RACINE) {
         idsDansJson(j, ids);
       }
       for (const id of ids) obs(id); // toute mention compte (au pire : abandonne)
-      if (chemin === 'fonda/data/catalogue-fonda.json') {
-        for (const e of (j && Array.isArray(j.lots)) ? j.lots : []) if (e && typeof e.set_id === 'string') obs(e.set_id).auCatalogue = true;
-        continue;
-      }
+      if (chemin === 'fonda/data/catalogue-fonda.json') { observerCatalogue(obs, ids, j); continue; }
       const parId = cartesParId(j);
       observerVersion(obs, chemin, ids, parId);
     }
@@ -94,13 +91,27 @@ function observerHistorique(racine = RACINE) {
     const ids = new Set([...(chemin.match(new RegExp(RE_ID, 'g')) || []), ...(texte.match(RE_ID) || [])]);
     idsDansJson(j, ids);
     for (const id of ids) obs(id);
-    if (chemin === 'fonda/data/catalogue-fonda.json') {
-      for (const e of Array.isArray(j.lots) ? j.lots : []) if (e && typeof e.set_id === 'string') obs(e.set_id).auCatalogue = true;
-      continue;
-    }
+    if (chemin === 'fonda/data/catalogue-fonda.json') { observerCatalogue(obs, ids, j); continue; }
     observerVersion(obs, chemin, ids, cartesParId(j));
   }
   return { observations, refs, commits: commits.length, versions: vus.size };
+}
+
+// Catalogue : un identifiant porté par une entrée lots[].set_id est « au catalogue » ;
+// toute AUTRE mention (note, attestation, champ libre) est inexploitable.
+function observerCatalogue(obs, ids, j) {
+  const entrees = new Set();
+  for (const e of (j && Array.isArray(j.lots)) ? j.lots : []) {
+    if (e && typeof e.set_id === 'string') { obs(e.set_id).auCatalogue = true; entrees.add(e.set_id); }
+  }
+  for (const id of ids) if (!entrees.has(id)) obs(id).inexploitable = true;
+}
+
+// Carte exploitable = contenu pédagogique réel : question non vide ET réponse ou
+// réponses acceptées. Sinon (ex. carte réduite à set_id) : inexploitable.
+function carteExploitable(c) {
+  return !!c && typeof c.question === 'string' && c.question.trim() !== ''
+    && ((typeof c.reponse === 'string' && c.reponse.trim() !== '') || (Array.isArray(c.reponses_acceptees) && c.reponses_acceptees.length > 0));
 }
 
 function cartesParId(j) {
@@ -109,7 +120,7 @@ function cartesParId(j) {
     const id = (carte && carte.set_id) || (j && j.set_id);
     if (typeof id !== 'string') continue;
     if (!parId.has(id)) parId.set(id, []);
-    parId.get(id).push(J.projectionCarte(carte || {}));
+    parId.get(id).push(carteExploitable(carte) ? J.projectionCarte(carte) : null); // null = inexploitable
   }
   return parId;
 }
@@ -123,8 +134,9 @@ function observerVersion(obs, chemin, ids, parId) {
     const o = obs(id);
     if (dansLots) o.dansLots = true;
     else o.cheminsCalibration.add(chemin);
-    if (parId.has(id)) o.contenus.add(JSON.stringify(parId.get(id)));
-    else o.inexploitable = true;
+    const cartes = parId.get(id);
+    if (!cartes || cartes.includes(null)) o.inexploitable = true;
+    else o.contenus.add(JSON.stringify(cartes));
   }
 }
 

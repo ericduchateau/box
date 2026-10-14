@@ -486,6 +486,7 @@ describe('generer-lot-fonda — séquence réelle genererReserve : zéro appel A
       generer: async () => { appels.api += 1; return { ok: false, erreur: 'stub API' }; },
       contextes: () => [],
       existe: () => false,
+      preparer: () => {},
       ecrire: () => { appels.ecritures += 1; },
       log: () => {},
       ...x,
@@ -520,6 +521,38 @@ describe('generer-lot-fonda — séquence réelle genererReserve : zéro appel A
       assert.equal(appels.ecritures, 0, 'aucune écriture');
     });
   }
+  test('parcours RÉUSSI jusqu\'à l\'écriture, dossier de sortie absent : préparé AVANT l\'API, fichier écrit', async () => {
+    const fsT = require('fs'); const osT = require('os'); const pathT = require('path');
+    const sortieDir = pathT.join(fsT.mkdtempSync(pathT.join(osT.tmpdir(), 'gen-ok-')), 'absent', 'calibration');
+    const ordre = [];
+    const { d, appels } = deps({
+      sortieDir,
+      existe: fsT.existsSync,
+      preparer: (dir) => { ordre.push('preparer'); fsT.mkdirSync(dir, { recursive: true }); },
+      ecrire: (p, t) => { ordre.push('ecrire'); fsT.writeFileSync(p, t, { flag: 'wx' }); },
+      generer: async ({ notion, palier, sequence }) => {
+        ordre.push('api');
+        appels.api += 1;
+        const cartesBrutes = [
+          { question: 'Que signifie « ravi » ?', reponse: 'content', difficulte: 'facile', profil_correction: 'sens', reponses_acceptees: ['content', 'heureux'], contexte: 'ctx-a' },
+          { question: 'Que signifie « las » ?', reponse: 'fatigué', difficulte: 'moyen', profil_correction: 'sens', reponses_acceptees: ['fatigué'], contexte: 'ctx-b' },
+        ];
+        return { ok: true, candidats: G.construireCandidats({ notion, palier, cartesBrutes, sequence, ts: '2026-10-14T00:00:00.000Z' }) };
+      },
+    });
+    const r = await lancer(d);
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.deepEqual(ordre, ['preparer', 'api', 'ecrire']);
+    const ecrit = JSON.parse(fsT.readFileSync(pathT.join(sortieDir, `${ID}.json`), 'utf8'));
+    assert.equal(ecrit.set_id, ID);
+    assert.equal(ecrit.cartes.length, 2);
+  });
+  test('dossier de sortie impossible à préparer : refus AVANT l\'API', async () => {
+    const { d, appels } = deps({ preparer: () => { throw new Error('EACCES'); } });
+    const r = await lancer(d);
+    assert.equal(r.ok, false);
+    assert.equal(appels.api, 0);
+  });
   test('notion exclue (figures) : refus avant API', async () => {
     const exclue = REFJ.notions.find((n) => G.estNotionExclue(n.id));
     if (!exclue) return; // aucune notion exclue au référentiel

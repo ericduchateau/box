@@ -185,6 +185,27 @@ describe('M2 — historique Git (scan sur-inclusif, fail-closed)', () => {
     const lignes = J.classerM2({ observations: new Map([[A, o]]), catalogueIds: [], lotsIds: [], calibrationIds: [A], historiques: {}, empreintesActuelles: {}, le: '2026-10-14', prefixeRef: 'm2' });
     assert.equal(J.validerJournal(journal(...lignes)).etats.get(A), 'abandonne');
   });
+  test('mention dans le catalogue HORS lots[] (+ calibration valide) : inexploitable -> abandonne', () => {
+    const { observerHistorique } = require('../scripts/migrer-journal-m2.js');
+    const { dir, g } = depot();
+    ecrire(dir, 'fonda/data/lots-fonda-calibration/x.json', JSON.stringify({ set_id: A, cartes: [{ set_id: A, question: 'Q', reponse: 'r' }] }));
+    ecrire(dir, 'fonda/data/catalogue-fonda.json', JSON.stringify({ lots: [], note: A }));
+    g('add', '.'); g('commit', '-q', '-m', 'note');
+    const o = observerHistorique(dir).observations.get(A);
+    assert.equal(o.inexploitable, true);
+    const lignes = J.classerM2({ observations: new Map([[A, o]]), catalogueIds: [], lotsIds: [], calibrationIds: [A], historiques: {}, empreintesActuelles: {}, le: '2026-10-14', prefixeRef: 'm2' });
+    assert.equal(J.validerJournal(journal(...lignes)).etats.get(A), 'abandonne');
+  });
+  test('carte réduite à set_id (sans question ni réponse) : inexploitable -> abandonne', () => {
+    const { observerHistorique } = require('../scripts/migrer-journal-m2.js');
+    const { dir, g } = depot();
+    ecrire(dir, 'fonda/data/lots-fonda-calibration/x.json', JSON.stringify({ set_id: A, cartes: [{ set_id: A }] }));
+    g('add', '.'); g('commit', '-q', '-m', 'vide');
+    const o = observerHistorique(dir).observations.get(A);
+    assert.equal(o.inexploitable, true);
+    const lignes = J.classerM2({ observations: new Map([[A, o]]), catalogueIds: [], lotsIds: [], calibrationIds: [A], historiques: {}, empreintesActuelles: {}, le: '2026-10-14', prefixeRef: 'm2' });
+    assert.equal(J.validerJournal(journal(...lignes)).etats.get(A), 'abandonne');
+  });
   test('calibration modifiée dans la copie de travail (Q1 commité, Q2 local) : deux contenus -> ambigu', () => {
     const { observerHistorique } = require('../scripts/migrer-journal-m2.js');
     const { dir, g } = depot();

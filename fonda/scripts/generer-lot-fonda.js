@@ -643,6 +643,7 @@ async function genererReserve({ setId, ref, nCartes, referentiel }, deps = {}) {
   const d = {
     lireJournalDesign, lireJournalLocal, setIdsExistants, generer: genererLotPourNotionPalier,
     contextes: contextesAutrePalier, existe: fs.existsSync, ecrire: (p, t) => fs.writeFileSync(p, t, { flag: 'wx' }),
+    preparer: (dir) => fs.mkdirSync(dir, { recursive: true }),
     log: (m) => console.log(m), sortieDir: SORTIE_DIR, ...deps,
   };
   const arret = (m) => { d.log(`✗ ${m} — arrêt, aucun appel API`); return { ok: false, raison: m }; };
@@ -663,6 +664,7 @@ async function genererReserve({ setId, ref, nCartes, referentiel }, deps = {}) {
   const notionIdsConnus = new Set(referentiel.notions.map((n) => n.id));
   const sortiePath = path.join(d.sortieDir, `${setId}.json`);
   if (d.existe(sortiePath)) return arret(`${path.relative(ROOT, sortiePath)} existe déjà — refus d'écraser`);
+  try { d.preparer(d.sortieDir); } catch (e) { return arret(`dossier de sortie impossible à préparer : ${e.message}`); } // AVANT l'appel API
 
   d.log(`\n=== ${setId} (${notion.id} / ${palier}, ${nCartes} cartes demandées) ===`);
   const resultat = await d.generer({ notion, palier, nCartes, contextesAutresPaliers: d.contextes(notion, palier), sequence });
