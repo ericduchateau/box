@@ -1,5 +1,6 @@
 // Immuabilité des moteurs de correction élève (CDC relecture annexe B, « autres
-// contrôles » ; étape 2) — exécuté par la CI (job « tests (node --test) »).
+// contrôles » ; étape 2) — exécuté en CI par le job « immuabilite » via
+// verifier-immuabilite.js (fonctions importées) ; utilisable seul en ligne de commande.
 //
 //  1. Invariants du registre courant (aussi couverts par node --test) : versions
 //     uniques, fichier = fonda/engine/moteur-correction-<version>.js présent,
