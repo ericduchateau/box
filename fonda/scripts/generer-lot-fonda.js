@@ -630,53 +630,67 @@ async function main() {
     return;
   }
 
-  // 2. GÉNÉRATION d'un set_id réservé : vérification dans le journal de design AVANT
-  //    tout appel réseau et toute écriture.
-  const { sha, journal: journalDesign } = lireJournalDesign();
-  console.log(`journal de référence : origin/design @ ${sha.slice(0, 12)}`);
-  const r = verifierAvantGeneration({
-    journalDesign,
-    journalLocal: lireJournalLocal(),
-    setId: setIdArg,
-    ref: refArg,
-    idsFichiers: setIdsExistants(null), // fail-closed : tout fichier illisible arrête ici
-  });
-  if (!r.ok) { console.log(`✗ ${r.raison} — arrêt, aucun appel API`); process.exitCode = 1; return; }
-  const { notion, palier, sequence } = notionDuSetId(setIdArg, referentiel);
-  if (estNotionExclue(notion.id)) { console.log(`✗ ${notion.id} exclue de la génération automatique — arrêt`); process.exitCode = 1; return; }
-  const sortiePath = path.join(SORTIE_DIR, `${setIdArg}.json`);
-  if (fs.existsSync(sortiePath)) { console.log(`✗ ${path.relative(ROOT, sortiePath)} existe déjà — refus d'écraser`); process.exitCode = 1; return; }
-  fs.mkdirSync(SORTIE_DIR, { recursive: true });
+  // 2. GÉNÉRATION d'un set_id réservé.
+  const r = await genererReserve({ setId: setIdArg, ref: refArg, nCartes, referentiel });
+  if (!r.ok) process.exitCode = 1;
+}
 
-  console.log(`\n=== ${setIdArg} (${notion.id} / ${palier}, ${nCartes} cartes demandées) ===`);
-  const resultat = await genererLotPourNotionPalier({ notion, palier, nCartes, contextesAutresPaliers: contextesAutrePalier(notion, palier), sequence });
+// Génération d'UN set_id réservé — séquence complète, dépendances injectables
+// (tests : git, fichiers et API simulés). ORDRE : journal de design (fetch) ->
+// vérification pure -> exclusions -> AUCUN appel API avant que tout soit vérifié.
+// Toute exception ou tout refus avant l'appel -> { ok: false }, zéro appel API.
+async function genererReserve({ setId, ref, nCartes, referentiel }, deps = {}) {
+  const d = {
+    lireJournalDesign, lireJournalLocal, setIdsExistants, generer: genererLotPourNotionPalier,
+    contextes: contextesAutrePalier, existe: fs.existsSync, ecrire: (p, t) => fs.writeFileSync(p, t, { flag: 'wx' }),
+    log: (m) => console.log(m), sortieDir: SORTIE_DIR, ...deps,
+  };
+  const arret = (m) => { d.log(`✗ ${m} — arrêt, aucun appel API`); return { ok: false, raison: m }; };
+  let verification;
+  try {
+    const { sha, journal: journalDesign } = d.lireJournalDesign();
+    d.log(`journal de référence : origin/design @ ${sha.slice(0, 12)}`);
+    verification = verifierAvantGeneration({
+      journalDesign, journalLocal: d.lireJournalLocal(), setId, ref,
+      idsFichiers: d.setIdsExistants(null), // fail-closed : tout fichier illisible arrête ici
+    });
+  } catch (e) { return arret(e.message); }
+  if (!verification.ok) return arret(verification.raison);
+  let cible;
+  try { cible = notionDuSetId(setId, referentiel); } catch (e) { return arret(e.message); }
+  const { notion, palier, sequence } = cible;
+  if (estNotionExclue(notion.id)) return arret(`${notion.id} exclue de la génération automatique`);
+  const notionIdsConnus = new Set(referentiel.notions.map((n) => n.id));
+  const sortiePath = path.join(d.sortieDir, `${setId}.json`);
+  if (d.existe(sortiePath)) return arret(`${path.relative(ROOT, sortiePath)} existe déjà — refus d'écraser`);
+
+  d.log(`\n=== ${setId} (${notion.id} / ${palier}, ${nCartes} cartes demandées) ===`);
+  const resultat = await d.generer({ notion, palier, nCartes, contextesAutresPaliers: d.contextes(notion, palier), sequence });
   if (!resultat.ok) {
-    console.log(`  ✗ ${resultat.erreur}`);
-    (resultat.rejets || []).forEach((x) => console.log(`    - carte ${x.index} rejetée : ${x.raison}`));
-    process.exitCode = 1;
-    return;
+    d.log(`  ✗ ${resultat.erreur}`);
+    (resultat.rejets || []).forEach((x) => d.log(`    - carte ${x.index} rejetée : ${x.raison}`));
+    return { ok: false, raison: resultat.erreur };
   }
-  (resultat.rejets || []).forEach((x) => console.log(`  ⚠ carte ${x.index} rejetée par le correcteur : ${x.raison}`));
-  (resultat.corrections || []).forEach((c) => console.log(`  ✎ carte ${c.index} auto-corrigée : reponse "${c.ancienneReponse}" -> "${c.nouvelleReponse}"`));
-
+  (resultat.rejets || []).forEach((x) => d.log(`  ⚠ carte ${x.index} rejetée par le correcteur : ${x.raison}`));
+  (resultat.corrections || []).forEach((c) => d.log(`  ✎ carte ${c.index} auto-corrigée : reponse "${c.ancienneReponse}" -> "${c.nouvelleReponse}"`));
   for (let i = 0; i < resultat.candidats.length; i++) {
     const v = validerCandidate(resultat.candidats[i], { notionIdsConnus });
-    if (!v.valide) { console.log(`  ✗ rejeté par validerCandidate : carte ${i} : ${v.erreurs.join(', ')}`); process.exitCode = 1; return; }
+    if (!v.valide) { d.log(`  ✗ rejeté par validerCandidate : carte ${i} : ${v.erreurs.join(', ')}`); return { ok: false }; }
   }
   const depot = deposerEnRelecture(resultat.candidats, { notions: referentiel.notions });
   if (depot.invalides.length > 0) {
-    console.log(`  ✗ deposerEnRelecture a écarté ${depot.invalides.length} carte(s) — rien n'est écrit :`);
-    depot.invalides.forEach((inv) => console.log(`    - index ${inv.index} : ${inv.raisons.join(', ')}`));
-    process.exitCode = 1;
-    return;
+    d.log(`  ✗ deposerEnRelecture a écarté ${depot.invalides.length} carte(s) — rien n'est écrit :`);
+    depot.invalides.forEach((inv) => d.log(`    - index ${inv.index} : ${inv.raisons.join(', ')}`));
+    return { ok: false };
   }
   const relecteur = relecteurDepuisMatiere(notion.matiere);
   const candidatsDeposes = depot.parRelecteur[relecteur];
   const fichier = construireLotFonda({ notion, palier, candidats: candidatsDeposes });
-  if (fichier.set_id !== setIdArg) throw new Error(`set_id produit ${fichier.set_id} ≠ set_id réservé ${setIdArg} — arrêt`);
-  fs.writeFileSync(sortiePath, JSON.stringify(fichier, null, 2) + '\n', { flag: 'wx' });
-  console.log(`  ✓ ${candidatsDeposes.length}/${nCartes} cartes retenues → ${path.relative(ROOT, sortiePath)} (candidat, NON relu)`);
-  console.log(`    Relecteur attribué (référentiel) : ${relecteur}`);
+  if (fichier.set_id !== setId) return { ok: false, raison: `set_id produit ${fichier.set_id} ≠ set_id réservé ${setId}` };
+  d.ecrire(sortiePath, JSON.stringify(fichier, null, 2) + '\n');
+  d.log(`  ✓ ${candidatsDeposes.length}/${nCartes} cartes retenues → ${path.relative(ROOT, sortiePath)} (candidat, NON relu)`);
+  d.log(`    Relecteur attribué (référentiel) : ${relecteur}`);
+  return { ok: true, fichier };
 }
 
 module.exports = {
@@ -699,6 +713,7 @@ module.exports = {
   notionDuSetId,
   setIdsExistants,
   verifierAvantGeneration,
+  genererReserve,
 };
 
 if (require.main === module) {

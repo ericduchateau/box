@@ -134,8 +134,9 @@ function projectionCarte(c) {
 //     antérieurs sont couverts par l'attestation humaine de ces 8 lots. Tout autre
 //     publié actuel -> ARRÊT (aucune autre publication n'a jamais été admise).
 //   - RESERVE : calibration actuelle (un seul fichier) ET histoire DÉTERMINÉE :
-//     jamais au catalogue ni dans lots/, un seul chemin de calibration et UN SEUL
-//     contenu pédagogique sur tout l'historique.
+//     jamais au catalogue ni dans lots/, un seul chemin de calibration, UN SEUL
+//     contenu pédagogique sur tout l'historique ET la copie de travail, et aucune
+//     observation inexploitable (mention sans cartes = contenu inconnu).
 //   - ABANDONNE : tout le reste — disparu sans publication, ou histoire ambiguë
 //     (publié puis retiré, plusieurs contenus, plusieurs chemins), même si un
 //     fichier de calibration existe encore (il n'est alors plus promouvable).
@@ -153,14 +154,14 @@ function classerM2({ observations, catalogueIds, lotsIds, calibrationIds, histor
       throw new Error(`M2 : ${id} publié hors des lots historiques figés (ou empreinte ≠ figée) — arrêt`);
     }
   }
-  const vide = { auCatalogue: false, dansLots: false, cheminsCalibration: new Set(), contenus: new Set() };
+  const vide = { auCatalogue: false, dansLots: false, cheminsCalibration: new Set(), contenus: new Set(), inexploitable: true };
   const lignes = [];
   const ajouter = (id, transition, suffixe) => lignes.push({ set_id: id, transition, le, ref: `${prefixeRef}:${id}${suffixe}` });
   for (const id of [...tous].sort()) {
     const o = observations.get(id) || vide;
     ajouter(id, 'reserve', '');
     if (catalogueIds.includes(id)) { ajouter(id, 'publie', ':publie'); continue; }
-    const determinee = calibrationIds.includes(id) && !o.auCatalogue && !o.dansLots
+    const determinee = calibrationIds.includes(id) && !o.auCatalogue && !o.dansLots && o.inexploitable === false
       && o.cheminsCalibration.size === 1 && o.contenus.size === 1;
     if (!determinee) ajouter(id, 'abandonne', ':abandonne');
   }

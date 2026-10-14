@@ -89,7 +89,7 @@ describe('réservation et vérification avant création du candidat', () => {
 describe('classement M2 (fail-closed, sur observations)', () => {
   const P = 'set_fonda_comprendre-consigne_nI_01';
   const HIST = { [P]: 'sha256:pp' };
-  const o = (x = {}) => ({ auCatalogue: false, dansLots: false, cheminsCalibration: new Set(), contenus: new Set(), ...x });
+  const o = (x = {}) => ({ auCatalogue: false, dansLots: false, cheminsCalibration: new Set(), contenus: new Set(), inexploitable: false, ...x });
   const det = () => o({ cheminsCalibration: new Set(['fonda/data/lots-fonda-calibration/x.json']), contenus: new Set(['c1']) });
   const base = (observations, x = {}) => ({
     observations: new Map(Object.entries(observations)), catalogueIds: [], lotsIds: [], calibrationIds: [],
@@ -174,6 +174,39 @@ describe('M2 — historique Git (scan sur-inclusif, fail-closed)', () => {
     const o = observerHistorique(dir).observations.get(A);
     assert.equal(o.contenus.size, 2);
     assert.equal(o.cheminsCalibration.size, 1);
+  });
+  test('mention SANS cartes (contenu inconnu) : inexploitable -> jamais « reserve »', () => {
+    const { observerHistorique } = require('../scripts/migrer-journal-m2.js');
+    const { dir, g } = depot();
+    ecrire(dir, 'fonda/data/lots-fonda-calibration/x.json', JSON.stringify({ set_id: A }));
+    g('add', '.'); g('commit', '-q', '-m', 'sans cartes');
+    const o = observerHistorique(dir).observations.get(A);
+    assert.equal(o.inexploitable, true);
+    const lignes = J.classerM2({ observations: new Map([[A, o]]), catalogueIds: [], lotsIds: [], calibrationIds: [A], historiques: {}, empreintesActuelles: {}, le: '2026-10-14', prefixeRef: 'm2' });
+    assert.equal(J.validerJournal(journal(...lignes)).etats.get(A), 'abandonne');
+  });
+  test('calibration modifiée dans la copie de travail (Q1 commité, Q2 local) : deux contenus -> ambigu', () => {
+    const { observerHistorique } = require('../scripts/migrer-journal-m2.js');
+    const { dir, g } = depot();
+    const lot = (q) => JSON.stringify({ set_id: A, cartes: [{ set_id: A, question: q, reponse: 'r' }] });
+    ecrire(dir, 'fonda/data/lots-fonda-calibration/x.json', lot('Q1')); g('add', '.'); g('commit', '-q', '-m', '1');
+    ecrire(dir, 'fonda/data/lots-fonda-calibration/x.json', lot('Q2')); // non commité
+    assert.equal(observerHistorique(dir).observations.get(A).contenus.size, 2);
+  });
+  test('empreintes des lots publiés RECALCULÉES : fichier modifié -> arrêt (jamais l\'empreinte déclarée)', async () => {
+    const { empreintesRecalculees } = require('../scripts/migrer-journal-m2.js');
+    const data = path.join(__dirname, '..', 'data');
+    const catalogue = JSON.parse(fs.readFileSync(path.join(data, 'catalogue-fonda.json'), 'utf8'));
+    const ids = catalogue.lots.map((e) => e.set_id);
+    const ok = await empreintesRecalculees(ids, catalogue, data);
+    assert.deepEqual(ok, Object.fromEntries(catalogue.lots.map((e) => [e.set_id, e.empreinte])));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'm2-emp-'));
+    fs.mkdirSync(path.join(tmp, 'lots'));
+    for (const id of ids) fs.copyFileSync(path.join(data, 'lots', `${id}.json`), path.join(tmp, 'lots', `${id}.json`));
+    const l = JSON.parse(fs.readFileSync(path.join(tmp, 'lots', `${ids[0]}.json`), 'utf8'));
+    l.cartes[0].question += ' (modifiée)';
+    fs.writeFileSync(path.join(tmp, 'lots', `${ids[0]}.json`), JSON.stringify(l));
+    await assert.rejects(empreintesRecalculees(ids, catalogue, tmp), /empreinte du fichier/);
   });
   test('version JSON illisible dans l\'historique : arrêt (histoire indéterminée)', () => {
     const { dir, g } = depot();

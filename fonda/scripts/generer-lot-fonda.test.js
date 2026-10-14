@@ -468,13 +468,67 @@ describe('generer-lot-fonda — vérification AVANT tout appel API (réservation
     const r = G.verifierAvantGeneration({ journalDesign: journal, journalLocal: journal, setId: id, ref, idsFichiers: G.setIdsExistants(null) });
     assert.match(r.raison, /pas régénérable/);
   });
-  test('ordre dans main() : la vérification et son arrêt précèdent tout appel au modèle', () => {
-    const src = fsV.readFileSync(pathV.join(__dirname, 'generer-lot-fonda.js'), 'utf8');
-    const corps = src.slice(src.indexOf('async function main()'));
-    const iVerif = corps.indexOf('verifierAvantGeneration({');
-    const iArret = corps.indexOf("if (!r.ok) { console.log(`✗ ${r.raison} — arrêt, aucun appel API`)");
-    const iAppel = corps.indexOf('genererLotPourNotionPalier(');
-    assert.ok(iVerif > 0 && iArret > iVerif && iAppel > iArret, 'vérification -> arrêt -> appel');
-    assert.ok(corps.indexOf('lireJournalDesign()') < iVerif);
+});
+
+describe('generer-lot-fonda — séquence réelle genererReserve : zéro appel API sur chaque refus', () => {
+  const G = require('./generer-lot-fonda.js');
+  const REFJ = require('../data/referentiel.json');
+  const ID = 'set_fonda_lexique_nI_02';
+  const REF = 'ma-ref-0001';
+  const J = (...lignes) => ({ schema: 'set-ids-journal/v1', lignes });
+  const res = { set_id: ID, transition: 'reserve', le: '2026-10-14', ref: REF };
+  function deps(x = {}) {
+    const appels = { api: 0, ecritures: 0 };
+    const d = {
+      lireJournalDesign: () => ({ sha: 'a'.repeat(40), journal: J(res) }),
+      lireJournalLocal: () => J(res),
+      setIdsExistants: () => [],
+      generer: async () => { appels.api += 1; return { ok: false, erreur: 'stub API' }; },
+      contextes: () => [],
+      existe: () => false,
+      ecrire: () => { appels.ecritures += 1; },
+      log: () => {},
+      ...x,
+    };
+    return { d, appels };
+  }
+  const lancer = (d, setId = ID, ref = REF) => G.genererReserve({ setId, ref, nCartes: 6, referentiel: REFJ }, d);
+  const leve = (m) => () => { throw new Error(m); };
+
+  test('nominal : la séquence atteint l\'API (1 appel) une fois tout vérifié', async () => {
+    const { d, appels } = deps();
+    await lancer(d);
+    assert.equal(appels.api, 1);
+  });
+  const refus = [
+    ['fetch de design en échec', { lireJournalDesign: leve('actualisation de origin/design impossible') }],
+    ['journal de design sans la réservation', { lireJournalDesign: () => ({ sha: 'b'.repeat(40), journal: J() }) }],
+    ['ref donnée ≠ ref réservée', {}, ID, 'autre-ref-0001'],
+    ['design dit « abandonne »', { lireJournalDesign: () => ({ sha: 'c'.repeat(40), journal: J(res, { set_id: ID, transition: 'abandonne', le: '2026-10-14', ref: 'x-ab-0001' }) }) }],
+    ['journal local illisible', { lireJournalLocal: leve('journal des set_id illisible') }],
+    ['journal local contradictoire', { lireJournalLocal: () => J() }],
+    ['fichier de lot illisible', { setIdsExistants: leve('x.json illisible — arrêt') }],
+    ['identifiant déjà porté par un fichier', { setIdsExistants: () => [ID] }],
+    ['fichier de sortie déjà présent', { existe: () => true }],
+  ];
+  for (const [libelle, x, setId, ref] of refus) {
+    test(`refus avant API : ${libelle}`, async () => {
+      const { d, appels } = deps(x);
+      const r = await lancer(d, setId, ref);
+      assert.equal(r.ok, false);
+      assert.equal(appels.api, 0, 'aucun appel API');
+      assert.equal(appels.ecritures, 0, 'aucune écriture');
+    });
+  }
+  test('notion exclue (figures) : refus avant API', async () => {
+    const exclue = REFJ.notions.find((n) => G.estNotionExclue(n.id));
+    if (!exclue) return; // aucune notion exclue au référentiel
+    const C = require('../engine/catalogue.js');
+    const id = `set_fonda_${C.slugDeNotion(exclue.id)}_${exclue.paliers[0]}_02`;
+    const r0 = { ...res, set_id: id };
+    const { d, appels } = deps({ lireJournalDesign: () => ({ sha: 'd'.repeat(40), journal: J(r0) }), lireJournalLocal: () => J(r0) });
+    const r = await lancer(d, id, REF);
+    assert.equal(r.ok, false);
+    assert.equal(appels.api, 0);
   });
 });
