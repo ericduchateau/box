@@ -1,0 +1,286 @@
+{
+  "schema": "vecteurs-canonique-fonda/v1",
+  "note": "Octets attendus FIGÉS (hex UTF-8). Générés par une voie indépendante de canonique.js (JSON.stringify natif + Buffer). Toute copie de canonique.js (dépôt, nœuds Code n8n) doit les reproduire exactement. Ne JAMAIS les régénérer pour faire passer un test.",
+  "vecteurs": [
+    {
+      "id": "moteur-v1",
+      "description": "moteur v1 du registre",
+      "contrat": "moteur-fonda/v1",
+      "entree": {
+        "version": "v1",
+        "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+      },
+      "texte": "{\"version\":\"v1\",\"sha256\":\"ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753\"}",
+      "hex": "7b2276657273696f6e223a227631222c22736861323536223a2263653134633365343937393439393133613337666438646166366335376432663061393633303665303866303634626639323331363030353732616431373533227d"
+    },
+    {
+      "id": "coeur-nominal",
+      "description": "cœur accepter, 5 gardées / 1 écartée",
+      "contrat": "coeur-decision-fonda/v1",
+      "entree": {
+        "action": "accepter",
+        "selection": [
+          "it01",
+          "it02",
+          "it03",
+          "it04",
+          "it05"
+        ],
+        "ecartees": [
+          "it06"
+        ],
+        "empreinte_relue": "sha256:3e715f0e44d520de9ee7f01c218cf667551b8a7fff650c357b1f2bb88561e25d",
+        "empreinte_publiee": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        }
+      },
+      "texte": "{\"action\":\"accepter\",\"selection\":[\"it01\",\"it02\",\"it03\",\"it04\",\"it05\"],\"ecartees\":[\"it06\"],\"empreinte_relue\":\"sha256:3e715f0e44d520de9ee7f01c218cf667551b8a7fff650c357b1f2bb88561e25d\",\"empreinte_publiee\":\"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"moteur\":{\"version\":\"v1\",\"sha256\":\"ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753\"}}",
+      "hex": "7b22616374696f6e223a226163636570746572222c2273656c656374696f6e223a5b2269743031222c2269743032222c2269743033222c2269743034222c2269743035225d2c226563617274656573223a5b2269743036225d2c22656d707265696e74655f72656c7565223a227368613235363a33653731356630653434643532306465396565376630316332313863663636373535316238613766666636353063333537623166326262383835363165323564222c22656d707265696e74655f7075626c696565223a227368613235363a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226d6f74657572223a7b2276657273696f6e223a227631222c22736861323536223a2263653134633365343937393439393133613337666438646166366335376432663061393633303665303866303634626639323331363030353732616431373533227d7d"
+    },
+    {
+      "id": "coeur-tout-garde",
+      "description": "cœur sans carte écartée (tableau vide)",
+      "contrat": "coeur-decision-fonda/v1",
+      "entree": {
+        "action": "accepter",
+        "selection": [
+          "it01",
+          "it02",
+          "it03",
+          "it04",
+          "it05",
+          "it06"
+        ],
+        "ecartees": [],
+        "empreinte_relue": "sha256:3e715f0e44d520de9ee7f01c218cf667551b8a7fff650c357b1f2bb88561e25d",
+        "empreinte_publiee": "sha256:3e715f0e44d520de9ee7f01c218cf667551b8a7fff650c357b1f2bb88561e25d",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        }
+      },
+      "texte": "{\"action\":\"accepter\",\"selection\":[\"it01\",\"it02\",\"it03\",\"it04\",\"it05\",\"it06\"],\"ecartees\":[],\"empreinte_relue\":\"sha256:3e715f0e44d520de9ee7f01c218cf667551b8a7fff650c357b1f2bb88561e25d\",\"empreinte_publiee\":\"sha256:3e715f0e44d520de9ee7f01c218cf667551b8a7fff650c357b1f2bb88561e25d\",\"moteur\":{\"version\":\"v1\",\"sha256\":\"ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753\"}}",
+      "hex": "7b22616374696f6e223a226163636570746572222c2273656c656374696f6e223a5b2269743031222c2269743032222c2269743033222c2269743034222c2269743035222c2269743036225d2c226563617274656573223a5b5d2c22656d707265696e74655f72656c7565223a227368613235363a33653731356630653434643532306465396565376630316332313863663636373535316238613766666636353063333537623166326262383835363165323564222c22656d707265696e74655f7075626c696565223a227368613235363a33653731356630653434643532306465396565376630316332313863663636373535316238613766666636353063333537623166326262383835363165323564222c226d6f74657572223a7b2276657273696f6e223a227631222c22736861323536223a2263653134633365343937393439393133613337666438646166366335376432663061393633303665303866303634626639323331363030353732616431373533227d7d"
+    },
+    {
+      "id": "coeur-rejet",
+      "description": "cœur de rejet total (forme seulement)",
+      "contrat": "coeur-decision-fonda/v1",
+      "entree": {
+        "action": "rejeter",
+        "selection": [],
+        "ecartees": [
+          "it01",
+          "it02"
+        ],
+        "empreinte_relue": "sha256:3e715f0e44d520de9ee7f01c218cf667551b8a7fff650c357b1f2bb88561e25d",
+        "empreinte_publiee": "",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        }
+      },
+      "texte": "{\"action\":\"rejeter\",\"selection\":[],\"ecartees\":[\"it01\",\"it02\"],\"empreinte_relue\":\"sha256:3e715f0e44d520de9ee7f01c218cf667551b8a7fff650c357b1f2bb88561e25d\",\"empreinte_publiee\":\"\",\"moteur\":{\"version\":\"v1\",\"sha256\":\"ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753\"}}",
+      "hex": "7b22616374696f6e223a2272656a65746572222c2273656c656374696f6e223a5b5d2c226563617274656573223a5b2269743031222c2269743032225d2c22656d707265696e74655f72656c7565223a227368613235363a33653731356630653434643532306465396565376630316332313863663636373535316238613766666636353063333537623166326262383835363165323564222c22656d707265696e74655f7075626c696565223a22222c226d6f74657572223a7b2276657273696f6e223a227631222c22736861323536223a2263653134633365343937393439393133613337666438646166366335376432663061393633303665303866303634626639323331363030353732616431373533227d7d"
+    },
+    {
+      "id": "coeur-ordre-entree",
+      "description": "clés fournies dans le désordre : sortie dans l'ordre du contrat",
+      "contrat": "coeur-decision-fonda/v1",
+      "entree": {
+        "moteur": {
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753",
+          "version": "v1"
+        },
+        "ecartees": [],
+        "empreinte_publiee": "sha256:3e715f0e44d520de9ee7f01c218cf667551b8a7fff650c357b1f2bb88561e25d",
+        "action": "accepter",
+        "empreinte_relue": "sha256:3e715f0e44d520de9ee7f01c218cf667551b8a7fff650c357b1f2bb88561e25d",
+        "selection": [
+          "it02",
+          "it01"
+        ]
+      },
+      "texte": "{\"action\":\"accepter\",\"selection\":[\"it02\",\"it01\"],\"ecartees\":[],\"empreinte_relue\":\"sha256:3e715f0e44d520de9ee7f01c218cf667551b8a7fff650c357b1f2bb88561e25d\",\"empreinte_publiee\":\"sha256:3e715f0e44d520de9ee7f01c218cf667551b8a7fff650c357b1f2bb88561e25d\",\"moteur\":{\"version\":\"v1\",\"sha256\":\"ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753\"}}",
+      "hex": "7b22616374696f6e223a226163636570746572222c2273656c656374696f6e223a5b2269743032222c2269743031225d2c226563617274656573223a5b5d2c22656d707265696e74655f72656c7565223a227368613235363a33653731356630653434643532306465396565376630316332313863663636373535316238613766666636353063333537623166326262383835363165323564222c22656d707265696e74655f7075626c696565223a227368613235363a33653731356630653434643532306465396565376630316332313863663636373535316238613766666636353063333537623166326262383835363165323564222c226d6f74657572223a7b2276657273696f6e223a227631222c22736861323536223a2263653134633365343937393439393133613337666438646166366335376432663061393633303665303866303634626639323331363030353732616431373533227d7d"
+    },
+    {
+      "id": "chaine-e-precompose",
+      "description": "« é » précomposé U+00E9 (aucune normalisation)",
+      "schema": "chaine",
+      "entree": "é",
+      "texte": "\"é\"",
+      "hex": "22c3a922"
+    },
+    {
+      "id": "chaine-e-decompose",
+      "description": "« e » + accent combinant U+0301 : octets DIFFÉRENTS de la précomposée",
+      "schema": "chaine",
+      "entree": "é",
+      "texte": "\"é\"",
+      "hex": "2265cc8122"
+    },
+    {
+      "id": "chaine-controles",
+      "description": "caractères de contrôle U+0000–U+001F : \\b \\f \\n \\r \\t courts, autres en \\u00XX ; U+007F (DEL) non échappé",
+      "schema": "chaine",
+      "entree": "\u0000\u0001\b\f\n\r\t\u001f",
+      "texte": "\"\\u0000\\u0001\\b\\f\\n\\r\\t\\u001f\"",
+      "hex": "225c75303030305c75303030315c625c665c6e5c725c745c75303031667f22"
+    },
+    {
+      "id": "chaine-echappements",
+      "description": "guillemet et barre oblique inverse échappés ; / non échappé",
+      "schema": "chaine",
+      "entree": "\"\\/",
+      "texte": "\"\\\"\\\\/\"",
+      "hex": "225c225c5c2f22"
+    },
+    {
+      "id": "chaine-separateurs",
+      "description": "U+2028 et U+2029 non échappés (JSON.stringify ES2019)",
+      "schema": "chaine",
+      "entree": "  ",
+      "texte": "\"  \"",
+      "hex": "22e280a8e280a922"
+    },
+    {
+      "id": "chaine-astral",
+      "description": "emoji hors BMP : UTF-8 sur 4 octets",
+      "schema": "chaine",
+      "entree": "😀",
+      "texte": "\"😀\"",
+      "hex": "22f09f988022"
+    },
+    {
+      "id": "chaine-substitut-isole",
+      "description": "substitut isolé : échappé en \\ud800 (JSON bien formé)",
+      "schema": "chaine",
+      "entree": "\ud800",
+      "texte": "\"\\ud800\"",
+      "hex": "225c756438303022"
+    },
+    {
+      "id": "chaine-espaces",
+      "description": "espaces conservés (aucun trim) ; insécable U+00A0 non transformée",
+      "schema": "chaine",
+      "entree": " a b ",
+      "texte": "\" a b \"",
+      "hex": "222061c2a0622022"
+    },
+    {
+      "id": "nombre-zero",
+      "description": "nombre 0 (Number::toString)",
+      "schema": "nombre",
+      "entree": 0,
+      "texte": "0",
+      "hex": "30"
+    },
+    {
+      "id": "nombre-demi",
+      "description": "nombre 0.5 (Number::toString)",
+      "schema": "nombre",
+      "entree": 0.5,
+      "texte": "0.5",
+      "hex": "302e35"
+    },
+    {
+      "id": "nombre-negatif",
+      "description": "nombre -1.25 (Number::toString)",
+      "schema": "nombre",
+      "entree": -1.25,
+      "texte": "-1.25",
+      "hex": "2d312e3235"
+    },
+    {
+      "id": "nombre-somme",
+      "description": "nombre 0.30000000000000004 (Number::toString)",
+      "schema": "nombre",
+      "entree": 0.30000000000000004,
+      "texte": "0.30000000000000004",
+      "hex": "302e3330303030303030303030303030303034"
+    },
+    {
+      "id": "nombre-grand",
+      "description": "nombre 1e+21 (Number::toString)",
+      "schema": "nombre",
+      "entree": 1e+21,
+      "texte": "1e+21",
+      "hex": "31652b3231"
+    },
+    {
+      "id": "nombre-petit",
+      "description": "nombre 1e-7 (Number::toString)",
+      "schema": "nombre",
+      "entree": 1e-7,
+      "texte": "1e-7",
+      "hex": "31652d37"
+    },
+    {
+      "id": "nombre-2p53",
+      "description": "nombre 9007199254740992 (Number::toString)",
+      "schema": "nombre",
+      "entree": 9007199254740992,
+      "texte": "9007199254740992",
+      "hex": "39303037313939323534373430393932"
+    },
+    {
+      "id": "nombre-entier",
+      "description": "nombre 42 (Number::toString)",
+      "schema": "nombre",
+      "entree": 42,
+      "texte": "42",
+      "hex": "3432"
+    },
+    {
+      "id": "booleens",
+      "description": "booléens",
+      "schema": {
+        "type": "tableau",
+        "elements": "booleen"
+      },
+      "entree": [
+        true,
+        false
+      ],
+      "texte": "[true,false]",
+      "hex": "5b747275652c66616c73655d"
+    },
+    {
+      "id": "objet-cle-entiere",
+      "description": "clé \"1\" de forme entière : ordre du CONTRAT conservé (pas celui du moteur JS)",
+      "schema": {
+        "type": "objet",
+        "champs": [
+          [
+            "b",
+            "chaine"
+          ],
+          [
+            "1",
+            "nombre"
+          ],
+          [
+            "a",
+            {
+              "type": "tableau",
+              "elements": "nombre"
+            }
+          ]
+        ]
+      },
+      "entree": {
+        "1": 2,
+        "a": [
+          1,
+          0.5
+        ],
+        "b": "x"
+      },
+      "texte": "{\"b\":\"x\",\"1\":2,\"a\":[1,0.5]}",
+      "hex": "7b2262223a2278222c2231223a322c2261223a5b312c302e355d7d"
+    }
+  ]
+}

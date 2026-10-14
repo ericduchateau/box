@@ -5,7 +5,7 @@
 ## Objectif
 Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correction par profil, mesure par groupe, fiches générées puis relues par un humain), sans casser BOX. Dépôt AAP CARDIE-SEPIA, échéance **21/10/2026**. Source de vérité : `docs/PRD-Box-FONDA.md` ; règles : `AGENTS.md`.
 
-## État actuel (design = `1a1af9f`, main intact `7ea4f28`)
+## État actuel (design = `cf18a03`, main intact `7ea4f28`)
 - **BOX prod** : 9 workflows n8n actifs, Google Form + Tally, relecture carte par carte (`/box-select`), front `https://ericduchateau.github.io/box/` (`main`).
 - **FONDA sur `design`** : thème sombre, correction par profil, index `?fonda=1&page=entrainement` ; **chaîne séparée (bloc 1, PR #6/#7 mergées)** : `catalogue-fonda.json` + `fonda/data/lots/` (8 lots relus, empreintes figées `HISTORIQUES_FIGES`), CI `tests (node --test)` obligatoire sur `design`/`main`.
 - **CDC relecture v8.1** : `docs/CDC-fonda-relecture.md` (branche `feat/box-fonda-relecture`, non mergée). Preuve C8 faite (SRI/CORS/export OK ; CSP en `<meta>`).
@@ -21,11 +21,10 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - Changement visible voulu (CDC §12) : badge « Fiche relue par Éric Duchateau » (avant : « Fiche relue et validée par … avant publication. »).
 
 ## Prochaines étapes
-1. **En cours** : `fix/ci-immuabilite-first-parent` → `design`. Le push post-merge de la PR #8 a mis l'étape « Immuabilité des moteurs » en échec (run 38471882811) : `rev-list` sans `--first-parent` voyait les brouillons de la PR (autre empreinte du moteur v1). Correctif : historique de confiance = chaîne du premier parent + contrôle de continuité (référence sur le premier parent de HEAD) + fail-closed complet. Codex : « propre pour merge ». Lecture Éric avant merge ; au merge, vérifier le run au push sur design.
-   - **Réglages GitHub à faire par Éric** (CDC annexe A) : décocher « Allow rebase merging » ; « Do not allow bypassing » sur `design` et `main`.
-2. Puis **point d'étape avec Éric** avant étape 3 (canonique, clés, journal set_ids, signature/clôture, CODEOWNERS, workflows inactifs — activation sur go explicite).
-3. Bloc 3 (prod, feu vert) : retrait de l'orpheline `box_7e7tcooh` du catalogue BOX.
-4. `feat/box-delete-hardening` (basse priorité) ; Moteur A + dette `defi_id` ; collecte `/box-fonda-events`.
+1. **En cours — étape 3, chantier 1** : `feat/box-fonda-canonique` → `design`. `fonda/engine/canonique.js` (octets canoniques CDC §1, mécanisme générique piloté par schéma, UMD sans dépendance, copiable en nœud Code n8n) + `canonique-vecteurs.json` (23 vecteurs figés, générés par une voie indépendante). Contrats entièrement définis : `moteur-fonda/v1`, `coeur-decision-fonda/v1`. **Décision Éric (2026-10-14)** : `decision-fonda/v1`, `instantane-fonda/v1`, `attestation-cloture/v1` **refusés** (formes incomplètes : `lot_relu`, `candidat_lot`, `recapitulatif`, `confirmation`, `fidelite_transmission`, `provenances`, `execution_cloture`) ; leurs schémas et vecteurs viendront au chantier qui les produit, après définition au CDC et relecture Codex — jamais inventés dans le code.
+2. Puis point d'étape ; chantier 2 : journal `set_ids-journal.json` + M2.
+3. Réglages GitHub (Éric) : décocher « Allow rebase merging » ; « Do not allow bypassing » sur `design` et `main`.
+4. Bloc 3 (prod, feu vert) : orpheline `box_7e7tcooh`. `feat/box-delete-hardening` (basse priorité) ; Moteur A + dette `defi_id` ; collecte `/box-fonda-events`.
 
 ## 🔖 Check-list AVANT PUBLICATION / usage élève réel
 1. **Régénérer la clé API Anthropic** (a circulé en clair) : scripts locaux + nœud `Claude API` (HTTP, header en clair) de `BOX - Generation Flashcards` ; idéalement passer par un credential n8n.
