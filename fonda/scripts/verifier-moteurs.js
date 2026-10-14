@@ -11,10 +11,13 @@
 //     ayant jamais existé doit être présent et identique octet pour octet.
 //     Référence nulle, introuvable ou historique incomplet -> ÉCHEC explicite
 //     (jamais de comparaison contre un état vide).
-//     Parcours = TOUS les commits accessibles (git rev-list, sans simplification par
-//     chemin : une fusion qui reprend un ancien état ne masque jamais une branche) ;
-//     tout objet illisible ou JSON invalide -> ÉCHEC (seule l'absence avérée du
-//     fichier dans un commit est ignorée).
+//     Historique de confiance = CHAÎNE DU PREMIER PARENT de chaque référence
+//     (git rev-list --first-parent) : les états successifs réellement publiés sur la
+//     branche. Les commits intermédiaires d'une PR fusionnée (brouillons, révisions
+//     avant relecture) n'en font pas partie ; son commit de merge, si. Parcours sans
+//     filtrage par chemin (aucun état publié n'est sauté) ; tout objet illisible ou
+//     JSON invalide -> ÉCHEC (seule l'absence avérée du fichier dans un commit est
+//     ignorée). Appliqué identiquement aux moteurs et au catalogue (règle 0).
 //
 //  3. Règle 0 de M1 (CDC annexe B), CONSOMMABLE UNE SEULE FOIS : on parcourt toutes
 //     les versions de fonda/data/catalogue-fonda.json de l'historique de confiance.
@@ -88,13 +91,13 @@ function controlerRefs(refs, git) {
   return { erreurs, valides };
 }
 
-// Versions (blobs distincts) d'un ensemble de chemins sur TOUS les commits accessibles
-// depuis les références, sans simplification d'historique. Renvoie
+// Versions (blobs distincts) d'un ensemble de chemins sur la chaîne du PREMIER PARENT
+// de chaque référence (états publiés), sans filtrage par chemin. Renvoie
 // { chemin -> Map(blob -> commit) } ; une erreur Git (autre qu'absence) est remontée.
 function versionsSurHistorique(git, refs, prefixe) {
   const versions = new Map();
   const commits = new Set();
-  for (const ref of refs) git(['rev-list', ref]).toString().split('\n').filter(Boolean).forEach((c) => commits.add(c));
+  for (const ref of refs) git(['rev-list', '--first-parent', ref]).toString().split('\n').filter(Boolean).forEach((c) => commits.add(c));
   for (const c of commits) {
     // ls-tree : sortie vide = chemin absent de ce commit (seul cas ignoré).
     for (const ligne of git(['ls-tree', '-r', c, '--', prefixe]).toString().split('\n').filter(Boolean)) {

@@ -74,15 +74,15 @@ describe('historique de confiance — ajout seul, fichiers identiques', () => {
     assert.match(V.verifierHistorique([ref], [{ ...ligneV1, sha256: 'c' }], lire, dir).join(), /ajout seul/);
     assert.match(V.verifierHistorique([ref], [], lire, dir).join(), /ajout seul/);
   });
-  test('fusion -s ours qui masque une ligne du registre modifiée : détectée', () => {
-    const { dir, ref: v1ref } = depot();
+  test('registre modifié sur la chaîne du premier parent (puis rétabli) : détecté', () => {
+    const { dir } = depot();
     const g = (...a) => execFileSync('git', a, { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] });
-    g('checkout', '-q', '-b', 'autre', v1ref);
-    fs.writeFileSync(path.join(dir, 'fonda/engine/moteurs.json'), JSON.stringify([{ ...ligneV1, sri: 'autre' }]));
+    const reg = path.join(dir, 'fonda/engine/moteurs.json');
+    const original = fs.readFileSync(reg, 'utf8');
+    fs.writeFileSync(reg, JSON.stringify([{ ...ligneV1, sri: 'autre' }]));
     g('commit', '-q', '-am', 'registre modifié');
-    g('checkout', '-q', '-b', 'fusion', v1ref);
-    fs.writeFileSync(path.join(dir, 'x.txt'), 'x'); g('add', '.'); g('commit', '-q', '-m', 'x');
-    g('merge', '-q', '-s', 'ours', '-m', 'fusion', 'autre');
+    fs.writeFileSync(reg, original);
+    g('commit', '-q', '-am', 'registre rétabli');
     const ref = g('rev-parse', 'HEAD').toString().trim();
     assert.match(V.verifierHistorique([ref], [ligneV1], octets({ 'fonda/engine/moteur-correction-v1.js': 'v1' }), dir).join(), /ajout seul/);
   });
@@ -96,19 +96,62 @@ describe('historique de confiance — ajout seul, fichiers identiques', () => {
       assert.match(V.verifierHistorique([ref], [ligneV1], octets({ 'fonda/engine/moteur-correction-v1.js': 'v1' }), dir).join(), /illisible|structure invalide/, contenu);
     }
   });
-  test('fusion -s ours qui masque une ancienne version du moteur : la modification reste détectée', () => {
-    const { dir, ref: v1ref } = depot();
+  // Incident du 2026-10-14 (run 38471882811) : une PR révise le moteur v1 en cours de
+  // route (plusieurs empreintes intermédiaires) puis est fusionnée par commit de merge.
+  // Seul l'état fusionné est publié : les brouillons de la PR ne comptent pas.
+  function depotSansMoteur() {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'moteurs-'));
     const g = (...a) => execFileSync('git', a, { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] });
-    g('checkout', '-q', '-b', 'autre', `${v1ref}`);
-    fs.writeFileSync(path.join(dir, 'fonda/engine/moteur-correction-v1.js'), 'v1 modifié');
-    g('commit', '-q', '-am', 'modif');
-    g('checkout', '-q', '-b', 'fusion', v1ref);
-    fs.writeFileSync(path.join(dir, 'x.txt'), 'x'); g('add', '.'); g('commit', '-q', '-m', 'x');
-    g('merge', '-q', '-s', 'ours', '-m', 'fusion', 'autre');
-    const ref = g('rev-parse', 'HEAD').toString().trim();
-    // L'état courant reprend « v1 » : la version « v1 modifié » de l'historique diffère.
-    assert.match(V.verifierHistorique([ref], [ligneV1], octets({ 'fonda/engine/moteur-correction-v1.js': 'v1' }), dir).join(), /modifié/);
+    g('init', '-q', '-b', 'design'); g('config', 'user.email', 't@t'); g('config', 'user.name', 't');
+    fs.writeFileSync(path.join(dir, 'README'), 'x');
+    g('add', '.'); g('commit', '-q', '-m', 'base');
+    return { dir, g };
+  }
+  function prRevisantLeMoteur(g, dir) {
+    g('checkout', '-q', '-b', 'pr');
+    fs.mkdirSync(path.join(dir, 'fonda', 'engine'), { recursive: true });
+    for (const version of ['brouillon 1', 'brouillon 2', 'v1']) {
+      fs.writeFileSync(path.join(dir, 'fonda/engine/moteur-correction-v1.js'), version);
+      fs.writeFileSync(path.join(dir, 'fonda/engine/moteurs.json'), JSON.stringify([{ ...ligneV1, sha256: version }]));
+      g('add', '.'); g('commit', '-q', '-m', version);
+    }
+    g('checkout', '-q', 'design');
+    g('merge', '-q', '--no-ff', '-m', 'Merge pull request', 'pr');
+    return g('rev-parse', 'HEAD').toString().trim();
+  }
+
+  test('PR qui révise le moteur en cours de route (brouillons) puis merge : accepté (premier parent)', () => {
+    const { dir, g } = depotSansMoteur();
+    const base = g('rev-parse', 'HEAD').toString().trim();
+    const merge = prRevisantLeMoteur(g, dir);
+    const final = [{ ...ligneV1, sha256: 'v1' }];
+    // Au push après merge : référence = ancien sommet, design = merge.
+    assert.deepEqual(V.verifierHistorique([base, merge], final, octets({ 'fonda/engine/moteur-correction-v1.js': 'v1' }), dir), []);
   });
+
+  test('moteur modifié APRÈS publication, sur la chaîne du premier parent : refusé', () => {
+    const { dir, g } = depotSansMoteur();
+    prRevisantLeMoteur(g, dir);
+    fs.writeFileSync(path.join(dir, 'fonda/engine/moteur-correction-v1.js'), 'v1 retouché');
+    g('commit', '-q', '-am', 'retouche du moteur publié');
+    const ref = g('rev-parse', 'HEAD').toString().trim();
+    const final = [{ ...ligneV1, sha256: 'v1' }];
+    assert.match(V.verifierHistorique([ref], final, octets({ 'fonda/engine/moteur-correction-v1.js': 'v1 retouché' }), dir).join(), /modifié/);
+    assert.match(V.verifierHistorique([ref], final, octets({ 'fonda/engine/moteur-correction-v1.js': 'v1' }), dir).join(), /modifié/);
+  });
+
+  test('moteur publié retouché dans une PR puis mergé : refusé (le merge est sur le premier parent)', () => {
+    const { dir, g } = depotSansMoteur();
+    prRevisantLeMoteur(g, dir);
+    g('checkout', '-q', '-b', 'pr2');
+    fs.writeFileSync(path.join(dir, 'fonda/engine/moteur-correction-v1.js'), 'v1 retouché');
+    g('commit', '-q', '-am', 'retouche');
+    g('checkout', '-q', 'design');
+    g('merge', '-q', '--no-ff', '-m', 'Merge pr2', 'pr2');
+    const ref = g('rev-parse', 'HEAD').toString().trim();
+    assert.match(V.verifierHistorique([ref], [{ ...ligneV1, sha256: 'v1' }], octets({ 'fonda/engine/moteur-correction-v1.js': 'v1 retouché' }), dir).join(), /modifié/);
+  });
+
   test('référence nulle, absente ou introuvable : échec explicite', () => {
     const { dir } = depot();
     const lire = octets({});
@@ -169,22 +212,34 @@ describe('règle 0 de M1 — consommable une seule fois (CDC annexe B)', () => {
     const { dir, ref } = historique([sansMoteur, avecM1]);
     assert.match(V.verifierRegle0([ref], { lots: [...avecM1.lots, entree('set_c', 'sha256:cc', M1)] }, REG, HIST, dir).join(), /jamais publié/);
   });
-  test('fusion qui reprend le catalogue SANS moteur d\'un autre parent : M1 reste consommée (pas de simplification d\'historique)', () => {
-    const { dir } = historique([sansMoteur]);
+  test('M1 publiée puis fusion reprenant un ancien catalogue SANS moteur : M1 reste consommée', () => {
+    const { dir } = historique([sansMoteur, avecM1]); // M1 sur la chaîne du premier parent
     const g = (...a) => execFileSync('git', a, { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] });
-    const base = g('rev-parse', 'HEAD').toString().trim();
-    g('checkout', '-q', '-b', 'm1');
-    fs.writeFileSync(path.join(dir, 'fonda/data/catalogue-fonda.json'), JSON.stringify(avecM1));
-    g('commit', '-q', '-am', 'M1');
-    g('checkout', '-q', '-b', 'autre', base);
-    fs.writeFileSync(path.join(dir, 'autre.txt'), 'x');
-    g('add', '.'); g('commit', '-q', '-m', 'autre');
-    g('merge', '-q', '-s', 'ours', '-m', 'fusion', 'm1'); // garde le catalogue sans moteur
+    const m1 = g('rev-parse', 'HEAD').toString().trim();
+    g('checkout', '-q', '-b', 'ancien', 'HEAD~1');
+    fs.writeFileSync(path.join(dir, 'autre.txt'), 'x'); g('add', '.'); g('commit', '-q', '-m', 'ancien');
+    g('checkout', '-q', '-'); // retour sur la branche principale (sommet = M1)
+    assert.equal(g('rev-parse', 'HEAD').toString().trim(), m1);
+    g('merge', '-q', '--no-ff', '--no-commit', 'ancien');
+    fs.writeFileSync(path.join(dir, 'fonda/data/catalogue-fonda.json'), JSON.stringify(sansMoteur)); // reprend l'ancien catalogue
+    g('add', '.'); g('commit', '-q', '-m', 'fusion reprenant l\'ancien catalogue');
     const ref = g('rev-parse', 'HEAD').toString().trim();
-    // Avec simplification par chemin, M1 disparaîtrait et ce rejeu passerait en « M1 ».
     const regC = [{ ...REG[0], sha256: 'c'.repeat(64) }];
     const rejeu = { lots: [entree('set_a', 'sha256:aa', { version: 'v1', sha256: 'c'.repeat(64) })] };
     assert.match(V.verifierRegle0([ref], rejeu, regC, HIST, dir).join(), /tuple/);
+  });
+  test('M1 seulement sur une branche de PR jamais fusionnée telle quelle : brouillons ignorés, M1 finale acceptée', () => {
+    const { dir } = historique([sansMoteur]);
+    const g = (...a) => execFileSync('git', a, { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] });
+    const base = g('rev-parse', 'HEAD').toString().trim();
+    g('checkout', '-q', '-b', 'pr');
+    const brouillon = { lots: [entree('set_a', 'sha256:aa', { version: 'v1', sha256: 'b'.repeat(64) }), entree('set_b', 'sha256:bb', { version: 'v1', sha256: 'b'.repeat(64) })] };
+    fs.writeFileSync(path.join(dir, 'fonda/data/catalogue-fonda.json'), JSON.stringify(brouillon)); g('commit', '-q', '-am', 'M1 brouillon');
+    fs.writeFileSync(path.join(dir, 'fonda/data/catalogue-fonda.json'), JSON.stringify(avecM1)); g('commit', '-q', '-am', 'M1 finale');
+    g('checkout', '-q', '-');
+    g('merge', '-q', '--no-ff', '-m', 'Merge pull request', 'pr');
+    const merge = g('rev-parse', 'HEAD').toString().trim();
+    assert.deepEqual(V.verifierRegle0([base, merge], avecM1, REG, HIST, dir), []);
   });
   test('catalogue historique illisible (JSON invalide) ou de structure invalide : échec, jamais assimilé à une absence', () => {
     for (const contenu of ['{ pas du json', JSON.stringify({ lots: 3 }), 'null']) {
