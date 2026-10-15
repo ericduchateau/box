@@ -1,4 +1,5 @@
-// Octets canoniques FONDA (CDC relecture §1, §11) — étape 3, chantier 1.
+// Octets canoniques FONDA (CDC relecture §1, §11, §11 bis) — étape 3, chantier 1 ;
+// étendu à l'étape 4.0 (null, « chaîne ou nombre », récapitulatif, charge signée).
 //
 // Règle (CDC §1) : JSON.stringify d'ECMAScript sur une valeur construite dans l'ORDRE
 // DE CLÉS DU CONTRAT ; UTF-8 sans BOM, sans espace ni saut de ligne ; nombres finis,
@@ -7,15 +8,22 @@
 // différents, voulu) ; tous les champs présents ; aucun champ inconnu.
 //
 // Mécanisme GÉNÉRIQUE piloté par schéma (données JSON, sérialisables) :
-//   'chaine' | 'nombre' | 'booleen'
+//   'chaine' | 'nombre' | 'booleen' | 'chaine_ou_nombre'
 //   { type: 'tableau', elements: <schéma> }
 //   { type: 'objet', champs: [[nom, <schéma>], ...] }   (ordre = ordre du contrat)
+//   { type: 'nullable', de: <schéma non nullable> }     (« X ou null » : la clé reste
+//                                                         présente ; null n'est jamais
+//                                                         une absence)
 // Deux phases : (1) copies VALIDÉES du schéma puis de l'entrée (propriétés propres de
 // données lues par descripteur, une seule fois ; getters, symboles, non énumérables,
 // clés inconnues refusés) ; (2) JSON.stringify natif de la copie, construite dans
 // l'ordre du contrat. Frontière d'entrée garantie : données JSON ordinaires (voir
 // estObjetDeDonnees). Les noms de champ de forme entière et
 // « __proto__ » sont interdits dans les schémas (le moteur JS les réordonnerait).
+//
+// canonique.js vérifie la FORME (clés, ordre, types, null) ; les VALEURS (énumérations,
+// égalités, tris, grammaire des dates) sont des invariants vérifiés par le script de
+// clôture, publier-lot.js et la CI (CDC §11, §11 bis).
 //
 // Contrats : seuls ceux dont la forme est ENTIÈREMENT définie au CDC ont un schéma.
 // Un contrat à forme incomplète (sous-objets non encore définis au CDC) est REFUSÉ
@@ -48,15 +56,54 @@ var FondaCanonique = (function () {
   };
 
   // null = contrat connu mais à forme INCOMPLÈTE au CDC -> refus explicite.
+  // --- CDC v8.2 §11 bis (étape 4.0) ---------------------------------------------
+  var nul = function (s) { return { type: 'nullable', de: s }; };
+  var objet = function (champs) { return { type: 'objet', champs: champs }; };
+  var tableau = function (s) { return { type: 'tableau', elements: s }; };
+
+  var CARTE_RECAP = objet([
+    ['item_id', 'chaine'], ['question', 'chaine'], ['reponse', nul('chaine')],
+    ['profil_correction', 'chaine'], ['reponses_acceptees', tableau('chaine_ou_nombre')],
+    ['unite', nul('chaine')], ['arrondi', nul('nombre')], ['seconde_chance', nul('booleen')],
+  ]);
+  var RECAPITULATIF = objet([
+    ['schema', 'chaine'], ['set_id', 'chaine'], ['notion_id', 'chaine'], ['palier', 'chaine'],
+    ['moteur', MOTEUR], ['empreinte_relue', 'chaine'], ['empreinte_publiee', 'chaine'],
+    ['cartes_gardees', tableau(CARTE_RECAP)],
+    ['cartes_ecartees', tableau(objet([['item_id', 'chaine'], ['question', 'chaine']]))],
+  ]);
+  var CONFIRMATION = objet([['mode', 'chaine'], ['par', 'chaine'], ['recue_par', 'chaine'], ['le', 'chaine']]);
+  var FIDELITE = objet([['atteste_par', 'chaine'], ['le', 'chaine']]);
+  var PROVENANCE = objet([['execution_id', 'chaine'], ['workflow_id', 'chaine'], ['statut', 'chaine'], ['demarree_le', 'chaine']]);
+  var EXECUTION_CLOTURE = objet([['execution_id', 'chaine'], ['workflow_id', 'chaine'], ['statut', 'chaine'], ['terminee_le', 'chaine']]);
+  var LEVEE = objet([['type', 'chaine'], ['constat', 'chaine']]);
+  var INCIDENT = objet([
+    ['id', 'chaine'], ['nature', 'chaine'], ['detecte_le', 'chaine'], ['statut', 'chaine'],
+    ['resolu_le', nul('chaine')], ['preuve_resolution', nul('chaine')],
+    ['periode', objet([['debut', nul('chaine')], ['fin', nul('chaine')]])],
+  ]);
+  var BADGE = objet([['forme', 'chaine'], ['nom_affiche', 'chaine'], ['id', nul('chaine')]]);
+  // Charge signée : ordre EXACT du §11 ; jamais de champ « signature ».
+  var ATTESTATION = objet([
+    ['schema', 'chaine'], ['set_id', 'chaine'], ['notion_id', 'chaine'], ['palier', 'chaine'],
+    ['coeur', COEUR], ['sha256_instantane', 'chaine'], ['code_confirmation', 'chaine'],
+    ['confirmation', CONFIRMATION], ['fidelite_transmission', FIDELITE],
+    ['relecteur_attribue', 'chaine'], ['relecteur_egal_cloturer', 'booleen'],
+    ['provenances', tableau(PROVENANCE)], ['nb_fichiers_decision', 'nombre'],
+    ['referentiel_version', 'chaine'], ['moteur', MOTEUR], ['execution_cloture', EXECUTION_CLOTURE],
+    ['revoque_le', 'chaine'], ['levees', tableau(LEVEE)], ['incidents_connus', tableau(INCIDENT)],
+    ['cloture_le', 'chaine'], ['badge', BADGE], ['cle_id', 'chaine'],
+  ]);
+
   var CONTRATS = {
     'moteur-fonda/v1': MOTEUR,
     'coeur-decision-fonda/v1': COEUR,
-    // lot_relu (forme exacte du lot relu) non fixée au CDC §1.
+    'recapitulatif-fonda/v1': RECAPITULATIF,
+    'attestation-cloture/v1': ATTESTATION,
+    // lot_relu (forme exacte du lot relu) non fixée au CDC (§11 bis : défini avec le
+    // workflow de relecture) -> decision et instantané restent REFUSÉS.
     'decision-fonda/v1': null,
-    // candidat_lot, lot_relu, recapitulatif non fixés au CDC §3.
     'instantane-fonda/v1': null,
-    // confirmation, fidelite_transmission, provenances, execution_cloture non fixés au CDC §11.
-    'attestation-cloture/v1': null,
   };
 
   function erreur(chemin, message) {
@@ -85,10 +132,16 @@ var FondaCanonique = (function () {
   // noms de champs uniques, ni clé de forme entière (le moteur JS les réordonnerait)
   // ni « __proto__ ».
   function copierSchema(schema, chemin) {
-    if (schema === 'chaine' || schema === 'nombre' || schema === 'booleen') return schema;
+    if (schema === 'chaine' || schema === 'nombre' || schema === 'booleen' || schema === 'chaine_ou_nombre') return schema;
     if (schema === null || typeof schema !== 'object') throw erreur(chemin, 'schéma invalide');
     var dType = Object.getOwnPropertyDescriptor(schema, 'type');
     var type = dType && 'value' in dType ? dType.value : undefined;
+    if (type === 'nullable') {
+      var u = lireSchema(schema, ['type', 'de'], chemin);
+      var de = copierSchema(u.de, chemin);
+      if (de && de.type === 'nullable') throw erreur(chemin, 'schéma invalide (nullable imbriqué)');
+      return Object.freeze({ type: 'nullable', de: de });
+    }
     if (type === 'tableau') {
       var t = lireSchema(schema, ['type', 'elements'], chemin);
       return Object.freeze({ type: 'tableau', elements: copierSchema(t.elements, chemin + '[]') });
@@ -181,6 +234,16 @@ var FondaCanonique = (function () {
     if (schema === 'booleen') {
       if (typeof valeur !== 'boolean') throw erreur(chemin, 'booléen attendu');
       return valeur;
+    }
+    if (schema === 'chaine_ou_nombre') {
+      if (typeof valeur === 'string') return valeur;
+      if (typeof valeur === 'number' && isFinite(valeur)) return valeur === 0 ? 0 : valeur;
+      throw erreur(chemin, 'chaîne ou nombre fini attendu');
+    }
+    if (schema.type === 'nullable') {
+      // null explicite seulement : undefined (ou absence de la clé, refusée en amont)
+      // n'est jamais assimilé à null.
+      return valeur === null ? null : copier(valeur, schema.de, chemin);
     }
     if (schema.type === 'tableau') {
       if (!Array.isArray(valeur)) throw erreur(chemin, 'tableau attendu');

@@ -5,7 +5,7 @@
 ## Objectif
 Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correction par profil, mesure par groupe, fiches générées puis relues par un humain), sans casser BOX. Dépôt AAP CARDIE-SEPIA, échéance **21/10/2026**. Source de vérité : `docs/PRD-Box-FONDA.md` ; règles : `AGENTS.md`.
 
-## État actuel (design = `f4c2f99`, main intact `7ea4f28`)
+## État actuel (design = `1b6b0ea`, main intact `7ea4f28`)
 - **BOX prod** : 9 workflows n8n actifs, Google Form + Tally, relecture carte par carte (`/box-select`), front `https://ericduchateau.github.io/box/` (`main`).
 - **FONDA sur `design`** : thème sombre, correction par profil, index `?fonda=1&page=entrainement` ; **chaîne séparée (bloc 1, PR #6/#7 mergées)** : `catalogue-fonda.json` + `fonda/data/lots/` (8 lots relus, empreintes figées `HISTORIQUES_FIGES`), CI `tests (node --test)` obligatoire sur `design`/`main`.
 - **CDC relecture v8.1** : `docs/CDC-fonda-relecture.md` (branche `feat/box-fonda-relecture`, non mergée). Preuve C8 faite (SRI/CORS/export OK ; CSP en `<meta>`).
@@ -21,10 +21,11 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - Changement visible voulu (CDC §12) : badge « Fiche relue par Éric Duchateau » (avant : « Fiche relue et validée par … avant publication. »).
 
 ## Prochaines étapes
-1. **Étape 3, chantiers 1 à 3 mergés** (canonique, journal + M2, immuabilité + CODEOWNERS). `immuabilite` est **requis** sur `design` et `main` (vérifié par Éric). **En cours** : `chore/ci-retrait-etape-moteurs` — retrait de l'étape « moteurs » transitoire du job `tests` (rejouée par `immuabilite`).
-2. Puis point d'étape ; chantier 4 : clés + `signer-cloture.js`.
-3. Réglages restants à confirmer (Éric) : « Allow rebase merging » décoché ; « Do not allow bypassing » ; CODEOWNERS à faire arriver sur `main` (transit design -> main).
-4. Bloc 3 (prod, feu vert) : orpheline `box_7e7tcooh`. `feat/box-delete-hardening` ; Moteur A + dette `defi_id` ; collecte `/box-fonda-events` ; recette `canonique.js` en vrai nœud n8n.
+1. **Étape 3 terminée** (canonique, journal + M2, immuabilité + CODEOWNERS, nettoyage CI) ; `immuabilite` requis sur `design` et `main`.
+2. **En cours — chantier 4.0** : CDC v8.2 §11 bis validé par Éric (formes de la charge signée et du récapitulatif ; rapprochement exécution n8n ↔ lot HORS périmètre figé, clôture signée interdite tant qu'il n'est pas défini). Code : `feat/box-fonda-canonique-attestation` → `design` : `canonique.js` étendu (`nullable`, `chaine_ou_nombre`), schémas `recapitulatif-fonda/v1` et `attestation-cloture/v1` (récapitulatif NON imbriqué dans la charge : §11), vecteurs 51 -> 71 (anciens inchangés). `decision-fonda/v1` et `instantane-fonda/v1` toujours refusés.
+3. Puis 4a : `publier-lot.js` accepte et vérifie le Type 2 (clés éphémères de test) ; 4b : `signer-cloture.js` + vraie clé RSA d'Éric sur le Mac.
+4. Réglages à confirmer (Éric) : « Allow rebase merging » décoché ; « Do not allow bypassing » ; CODEOWNERS sur `main`.
+5. Bloc 3 (prod, feu vert) : orpheline `box_7e7tcooh`. `feat/box-delete-hardening` ; Moteur A + dette `defi_id` ; collecte `/box-fonda-events` ; recette `canonique.js` en vrai nœud n8n.
 
 ## 🔖 Check-list AVANT PUBLICATION / usage élève réel
 1. **Régénérer la clé API Anthropic** (a circulé en clair) : scripts locaux + nœud `Claude API` (HTTP, header en clair) de `BOX - Generation Flashcards` ; idéalement passer par un credential n8n.
@@ -56,4 +57,4 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - Moteur publié **immuable** : toute retouche de `moteur-correction-v1.js` change son SHA-256 → interdit après merge ; nouveau comportement = `v2` + nouveaux `set_id`.
 - Le classificateur auto-mode bloque les commandes contenant la clé API : Éric lance lui-même les générations.
 
-_Dernière mise à jour : 2026-10-14 — Claude Code (Opus 5.5)._
+_Dernière mise à jour : 2026-10-15 — Claude Code (Opus 5.5)._

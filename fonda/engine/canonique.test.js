@@ -165,6 +165,53 @@ for (const [nomCopie, C] of Object.entries(COPIES)) describe(`frontière d'entr�
   });
 });
 
+// --- Étape 4.0 : null, « chaîne ou nombre », contrats acceptés / refusés ------------
+for (const [nomCopie, C] of Object.entries(COPIES)) describe(`étape 4.0 (${nomCopie}) : nullable, chaîne ou nombre, contrats`, () => {
+  const N = { type: 'objet', champs: [['a', { type: 'nullable', de: 'chaine' }]] };
+  test('nullable : null explicite accepté ; absence et undefined refusés (jamais assimilés à null)', () => {
+    assert.equal(C.texte({ a: null }, N), '{"a":null}');
+    assert.equal(C.texte({ a: 'x' }, N), '{"a":"x"}');
+    assert.throws(() => C.texte({}, N), /champ manquant/);
+    assert.throws(() => C.texte({ a: undefined }, N), /chaîne attendue/);
+    assert.throws(() => C.texte({ a: 1 }, N), /chaîne attendue/);
+  });
+  test('chaîne ou nombre : types conservés (4 ≠ « 4 »), -0 -> 0, booléen/null/NaN refusés', () => {
+    const T = { type: 'tableau', elements: 'chaine_ou_nombre' };
+    assert.equal(C.texte([4, '4', -0, 0.5], T), '[4,"4",0,0.5]');
+    for (const v of [true, null, Number.NaN, Infinity, {}]) assert.throws(() => C.texte([v], T), /chaîne ou nombre/);
+  });
+  test('schéma nullable : clés exactes, pas d\'imbrication', () => {
+    assert.throws(() => C.texte(null, { type: 'nullable' }), /schéma invalide/);
+    assert.throws(() => C.texte(null, { type: 'nullable', de: { type: 'nullable', de: 'chaine' } }), /nullable imbriqué/);
+    assert.throws(() => C.texte(null, { type: 'nullable', de: 'inconnu' }), /schéma invalide/);
+  });
+  test('contrats acceptés : moteur, cœur, récapitulatif, charge signée ; decision et instantané REFUSÉS (lot_relu non défini)', () => {
+    assert.deepEqual([...C.contrats()].sort(), ['attestation-cloture/v1', 'coeur-decision-fonda/v1', 'moteur-fonda/v1', 'recapitulatif-fonda/v1']);
+    assert.deepEqual([...C.contratsIncomplets()].sort(), ['decision-fonda/v1', 'instantane-fonda/v1']);
+    for (const n of ['decision-fonda/v1', 'instantane-fonda/v1']) assert.throws(() => C.hexContrat(n, {}), /forme incomplète/);
+  });
+  test('charge : jamais de champ signature ; ordre de sortie = ordre du §11 quel que soit l\'ordre reçu', () => {
+    const x = V.vecteurs.find((v) => v.id === 'attestation-auto-nominale');
+    const inverse = Object.fromEntries(Object.entries(x.entree).reverse());
+    assert.equal(C.hexContrat('attestation-cloture/v1', inverse), x.hex);
+    assert.throws(() => C.hexContrat('attestation-cloture/v1', { ...x.entree, signature: 's' }), /signature : champ inconnu/);
+    const cles = Object.keys(JSON.parse(C.texteContrat('attestation-cloture/v1', x.entree)));
+    assert.deepEqual(cles, ['schema', 'set_id', 'notion_id', 'palier', 'coeur', 'sha256_instantane', 'code_confirmation', 'confirmation',
+      'fidelite_transmission', 'relecteur_attribue', 'relecteur_egal_cloturer', 'provenances', 'nb_fichiers_decision', 'referentiel_version',
+      'moteur', 'execution_cloture', 'revoque_le', 'levees', 'incidents_connus', 'cloture_le', 'badge', 'cle_id']);
+  });
+});
+
+// `undefined` n'existe pas en JSON : le banc partagé ne peut pas l'exprimer. Ce
+// contrôle est donc vérifié ici, directement, sur la copie et sur un mutant.
+test('mutation hors banc : nullable acceptant undefined — détectée par le test direct', () => {
+  const N = { type: 'objet', champs: [['a', { type: 'nullable', de: 'chaine' }]] };
+  const mutant = SOURCE.replace('return valeur === null ? null : copier(valeur, schema.de, chemin);', 'return valeur == null ? null : copier(valeur, schema.de, chemin);');
+  assert.notEqual(mutant, SOURCE);
+  assert.equal(charger(mutant).texte({ a: undefined }, N), '{"a":null}', 'le mutant accepte');
+  for (const C of Object.values(COPIES)) assert.throws(() => C.texte({ a: undefined }, N), /chaîne attendue/);
+});
+
 describe('portabilité : export final et absence d\'API d\'environnement', () => {
   test('aucune API d\'environnement dans le code (hors commentaires)', () => {
     const code = SOURCE.split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
@@ -190,6 +237,11 @@ describe('mutations de copie détectées par le banc partagé', () => {
     ['ordre des champs inversé', (s) => s.replace('for (var j = 0; j < schema.champs.length; j += 1) {', 'for (var j = schema.champs.length - 1; j >= 0; j -= 1) {')],
     ['noms de champ interdits non vérifiés', (s) => s.replace("if (CLE_ENTIERE.test(nom) || nom === '__proto__')", 'if (false)')],
     ['champs en double non vérifiés', (s) => s.replace('if (vus[nom]) throw', 'if (false) throw')],
+    ['chaîne ou nombre : booléen accepté', (s) => s.replace("throw erreur(chemin, 'chaîne ou nombre fini attendu');", 'return valeur;')],
+    ['nullable imbriqué non refusé', (s) => s.replace("if (de && de.type === 'nullable') throw", 'if (false) throw')],
+    ['tableaux triés (tri par défaut : chaînes par unité de code)', (s) => s.replace('      return sortie;\n    }\n    // objet', '      return sortie.sort();\n    }\n    // objet')],
+    ['tableaux triés numériquement quand c\'est possible', (s) => s.replace('      return sortie;\n    }\n    // objet', '      return sortie.sort(function (x, y) { return (+x.execution_id || 0) - (+y.execution_id || 0) || 0; });\n    }\n    // objet')],
+    ['charge : ordre de deux champs inversé', (s) => s.replace("['relecteur_attribue', 'chaine'], ['relecteur_egal_cloturer', 'booleen'],", "['relecteur_egal_cloturer', 'booleen'], ['relecteur_attribue', 'chaine'],")],
   ];
   for (const [nom, muter] of mutations) {
     test(nom, () => {
