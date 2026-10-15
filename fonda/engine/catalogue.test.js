@@ -125,6 +125,42 @@ describe('M1 — moteur v1 et badge figés des lots historiques (CDC §4.3, §12
   });
 });
 
+describe('cloture-signee (Type 2) : forme et cohérence charge <-> entrée (sans crypto)', () => {
+  const entreeType2 = () => {
+    const e = copie(CATALOGUE.lots.find((x) => x.set_id === LOT.set_id));
+    e.set_id = 'set_fonda_comprendre-consigne_nI_02';
+    e.fichier = `lots/${e.set_id}.json`;
+    e.relecteur = { forme: 'relue_et_validee', nom_affiche: 'Relectrice de test', id: 'justine' };
+    e.attestation = { type: 'cloture-signee', signature: 'QUJD', charge: {
+      set_id: e.set_id, notion_id: e.notion_id, palier: e.palier, relecteur_attribue: 'justine',
+      coeur: { selection: [...e.item_ids], empreinte_publiee: e.empreinte, moteur: { ...e.moteur } },
+      moteur: { ...e.moteur }, badge: { ...e.relecteur } } };
+    return e;
+  };
+  test('entrée Type 2 cohérente : forme acceptée (la signature est vérifiée en Node)', () => {
+    assert.deepEqual(C.validerAttestation(entreeType2().attestation, entreeType2()), []);
+  });
+  const cas = [
+    ['enveloppe sans signature', (e) => { delete e.attestation.signature; }],
+    ['champ en trop dans l\'enveloppe', (e) => { e.attestation.extra = 1; }],
+    ['empreinte publiée ≠ entrée', (e) => { e.attestation.charge.coeur.empreinte_publiee = 'sha256:' + '0'.repeat(64); }],
+    ['sélection ≠ item_ids', (e) => { e.attestation.charge.coeur.selection.reverse(); }],
+    ['moteur ≠ entrée', (e) => { e.attestation.charge.moteur = { version: 'v2', sha256: 'a'.repeat(64) }; }],
+    ['badge ≠ relecteur de l\'entrée', (e) => { e.attestation.charge.badge.id = 'eric'; }],
+    ['set_id ≠ entrée', (e) => { e.attestation.charge.set_id = 'set_fonda_comprendre-consigne_nI_03'; }],
+  ];
+  for (const [libelle, alterer] of cas) {
+    test(`refusé : ${libelle}`, () => {
+      const e = entreeType2();
+      alterer(e);
+      assert.notDeepEqual(C.validerAttestation(e.attestation, e), []);
+    });
+  }
+  test('type réservé n8n-relecture désormais inconnu', () => {
+    assert.match(C.validerAttestation({ type: 'n8n-relecture' }, entreeType2()).join(), /inconnu/);
+  });
+});
+
 describe('verifierLotContreEntree — le fichier servi est exactement celui attesté', () => {
   const entree = CATALOGUE.lots.find((e) => e.set_id === LOT.set_id);
   test('fichier intact -> valide', async () => {

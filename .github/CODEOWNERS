@@ -20,6 +20,7 @@
 
 # Scripts de publication, signature, génération, contrôles d'immuabilité
 /fonda/scripts/publier-lot.js              @ericduchateau
+/fonda/scripts/attestation-signee.js       @ericduchateau
 /fonda/scripts/signer-cloture.js           @ericduchateau
 /fonda/scripts/verifier-immuabilite.js     @ericduchateau
 /fonda/scripts/generer-lot-fonda.js        @ericduchateau
