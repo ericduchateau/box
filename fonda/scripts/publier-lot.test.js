@@ -84,12 +84,18 @@ describe('publier-lot — Type 2 accepté et vérifié (aller-retour signé)', (
     assert.equal(r.ok, true, JSON.stringify(r.erreurs));
     assert.deepEqual(r.entree.relecteur, { forme: 'relue_par', nom_affiche: 'Éric Duchateau', id: 'eric' });
   });
-  test('cles.json du dépôt VIDE : aucune publication Type 2 réelle possible avant 4b (fail-closed)', async () => {
+  test('clés du dépôt (seule eric-2026, publique) : une charge signée par une clé éphémère est refusée', async () => {
     const lot = LOT_FR();
-    assert.deepEqual(clesDuDepot().ids, []);
-    const r = await preparerPublication(base({ lot, attestation: enveloppe(await chargePour(lot, 'reponse_message')), cles: clesDuDepot() }));
-    assert.equal(r.ok, false);
-    assert.match(r.erreurs.join(), /non déclarée/);
+    assert.deepEqual(clesDuDepot().ids, ['eric-2026']);
+    // cle_id non déclaré dans le dépôt
+    const r1 = await preparerPublication(base({ lot, attestation: enveloppe(await chargePour(lot, 'reponse_message')), cles: clesDuDepot() }));
+    assert.equal(r1.ok, false);
+    assert.match(r1.erreurs.join(), /non déclarée/);
+    // cle_id « eric-2026 » usurpé, signé par une autre clé : signature invalide
+    const ch = { ...(await chargePour(lot, 'reponse_message')), cle_id: 'eric-2026' };
+    const r2 = await preparerPublication(base({ lot, attestation: enveloppe(ch), cles: clesDuDepot() }));
+    assert.equal(r2.ok, false);
+    assert.match(r2.erreurs.join(), /signature RSA-SHA256/);
   });
 });
 
