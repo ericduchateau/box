@@ -279,6 +279,15 @@ describe('correctifs de relecture : refus AVANT signature, conformité, dates, d
     fsN.symlinkSync(path.join(tmp, 'cible-inexistante'), path.join(tmp, 'lien-casse.json'));
     assert.equal(existeSurDisque(path.join(tmp, 'lien-casse.json')), true, 'lien cassé = entrée existante');
   });
+  test('intégré : lien symbolique CASSÉ à la place de attestation.json -> refus, zéro signature', async () => {
+    const { existeSurDisque } = require('./signer-cloture.js');
+    const tmp = fsN.mkdtempSync(path.join(require('os').tmpdir(), 'cloture-lien-casse-'));
+    const lien = path.join(tmp, 'attestation.json');
+    fsN.symlinkSync(path.join(tmp, 'cible-inexistante'), lien);
+    const { deps, etat, setId } = await scenario({ modifier: ({ deps: d }) => { const e = d.fs.existe; d.fs.existe = (p) => (p.endsWith('attestation.json') ? existeSurDisque(lien) : e(p)); } });
+    await assert.rejects(cloturer(setId, deps), /existe déjà/);
+    assert.equal(etat.signatures, 0);
+  });
   test('dossier de clôture via un LIEN SYMBOLIQUE vers le dépôt : refusé', () => {
     const { verifierDossierLocal } = require('./signer-cloture.js');
     const tmp = fsN.mkdtempSync(path.join(require('os').tmpdir(), 'cloture-lien-'));
