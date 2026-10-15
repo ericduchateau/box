@@ -136,6 +136,14 @@ async function observer(api, workflowId) {
   // puis terminée est une évolution normale ; l'inverse est une contradiction.
   for (const status of ['running', 'waiting']) ajouter(await api.listerExecutions({ workflowId, status }), `status=${status}`);
   ajouter(await api.listerExecutions({ workflowId }), 'liste');
+  // Toute exécution TERMINALE observée (quel que soit son lot) doit avoir des dates
+  // renseignées et cohérentes ; sinon observation inexploitable -> incident de chaîne.
+  for (const v of vues.values()) {
+    if (STATUTS_TERMINAUX.includes(v.status)) {
+      if (!v.startedAt || !v.stoppedAt) refuser(`exécution ${v.id} terminée sans startedAt/stoppedAt : incident de chaîne`);
+      if (v.stoppedAt < v.startedAt) refuser(`exécution ${v.id} terminée avant d'avoir démarré : incident de chaîne`);
+    }
+  }
   return [...vues.values()];
 }
 
@@ -303,6 +311,7 @@ async function cloturer(setId, deps) {
     if (!detecte || !resolu || !fin || (i.periode.debut !== null && !debut)) refuser(`incident ${i.id} : dates mal formées`);
     if (fin !== resolu) refuser(`incident ${i.id} : periode.fin ≠ resolu_le`);
     if (debut !== null && debut > fin) refuser(`incident ${i.id} : période inversée`);
+    if (detecte > resolu) refuser(`incident ${i.id} : détecté après sa résolution`);
     if (typeof i.preuve_resolution !== 'string' || !i.preuve_resolution.trim()) refuser(`incident ${i.id} : preuve de résolution absente`);
     // Fenêtre [cree_le, clos_le] ∩ période [debut|−∞, fin] ≠ ∅ (bornes incluses).
     if ((debut === null || debut <= revoqueLe) && fin >= creeLe) refuser(`incident ${i.id} : sa période recouvre la fenêtre de candidature — abandon et nouveau candidat créé après ${fin}`);
@@ -356,6 +365,7 @@ async function cloturer(setId, deps) {
   const shaRecap = sha256Hex(Buffer.from(Canonique.octetsContrat('recapitulatif-fonda/v1', recapitulatif)));
   const code = shaInstantane.slice(0, 16);
   const dossierLot = path.join(config.dossier, `${setId}-${code}`);
+  verifierDossierLocal(dossierLot, deps.fs && deps.fs.realpath); // destination finale, avant toute écriture
   deps.fs.ecrireExclusif(path.join(dossierLot, 'instantane.json'), texteInstantane);
   deps.fs.ecrireExclusif(path.join(dossierLot, 'export.json'), `${JSON.stringify({ sha256_instantane: shaInstantane, sha256_recapitulatif: shaRecap, exporte_le: deps.horloge().toISOString() }, null, 2)}\n`);
   const rendu = rendreRecapitulatif(recapitulatif);
@@ -409,8 +419,11 @@ async function cloturer(setId, deps) {
   const avant = [...S.invariantsValeur(charge), ...S.invariantsDepot(charge, { entree, registre: deps.registre, referentiel })];
   if (avant.length) refuser(`charge refusée avant signature : ${avant.join(' ; ')}`);
   // Signature, puis REVÉRIFICATION IMMÉDIATE complète (même chemin que la publication).
+  // La revérification utilise la clé publique DÉJÀ validée (jamais relue) : aucun refus
+  // possible après signature, hors échec de la vérification cryptographique elle-même.
+  const cleFigee = Object.freeze({ obtenir: (id) => (id === charge.cle_id ? k : { ok: false, raison: `clé « ${id} » non figée` }) });
   const enveloppe = { type: S.TYPE, charge, signature: deps.signer(octets).toString('base64') };
-  const erreurs = S.verifierAttestationSignee(enveloppe, { entree, registre: deps.registre, referentiel, cles: deps.cles });
+  const erreurs = S.verifierAttestationSignee(enveloppe, { entree, registre: deps.registre, referentiel, cles: cleFigee });
   if (erreurs.length) refuser(`revérification immédiate en échec : ${erreurs.join(' ; ')}`);
   deps.fs.ecrireExclusif(path.join(dossierLot, 'attestation.json'), `${JSON.stringify(enveloppe, null, 2)}\n`);
   return { enveloppe, dossierLot, lotPublie: publie };

@@ -207,7 +207,7 @@ describe('correctifs de relecture : refus AVANT signature, conformité, dates, d
     ['fichier lisible mais non conforme (sans set_id)', { modifier: ({ fichiers }) => { fichiers.push({ nom: 'bizarre.json', modifie_le: '2026-10-19T10:00:00.000Z', contenu: { schema: 'inconnu' } }); } }, /non conforme/],
     ['décisions du lot amputées (schema, generation, recu_le, hash)', { modifier: ({ fichiers }) => { for (const f of fichiers) { delete f.contenu.schema; delete f.contenu.generation; delete f.contenu.recu_le; delete f.contenu.hash_formulaire; } } }, /non conforme/],
     ['fenêtre de candidature inversée', { modifier: ({ candidat, deps }) => { candidat.relecture.cree_le = '2026-10-21T00:00:00.000Z'; deps.drive.lireCandidat = async () => copie(candidat); } }, /inversée/],
-    ['exécution du lot « success » sans stoppedAt', { modifier: ({ execs }) => { execs.wfConf[0].stoppedAt = null; } }, /stoppedAt manquants/],
+    ['exécution du lot « success » sans stoppedAt', { modifier: ({ execs }) => { execs.wfConf[0].stoppedAt = null; } }, /startedAt\/stoppedAt/],
     ['exécution sans identifiant', { modifier: ({ execs }) => { execs.wfConf.push({ workflowId: 'wfConf', status: 'success', startedAt: '2026-10-19T10:00:00.000Z', stoppedAt: '2026-10-19T10:00:01.000Z' }); } }, /identifiant/],
     ['incident : début connu touchant la fenêtre (contact à cree_le)', { modifier: ({ deps }) => { deps.incidents = async () => [inc({ resolu_le: '2026-10-18T08:00:00.000Z', periode: { debut: '2026-10-17T00:00:00.000Z', fin: '2026-10-18T08:00:00.000Z' } })]; } }, /recouvre/],
     ['incident : début inconnu, fin après cree_le', { modifier: ({ deps }) => { deps.incidents = async () => [inc({ resolu_le: '2026-10-18T09:00:00.000Z', periode: { debut: null, fin: '2026-10-18T09:00:00.000Z' } })]; } }, /recouvre/],
@@ -215,6 +215,26 @@ describe('correctifs de relecture : refus AVANT signature, conformité, dates, d
     ['incident : fin ≠ résolution', { modifier: ({ deps }) => { deps.incidents = async () => [inc({ periode: { debut: null, fin: '2026-10-03T00:00:00.000Z' } })]; } }, /periode.fin/],
   ];
   for (const [libelle, x, motif] of refusSansSignature) {
+    test(`refus SANS appel au signataire : ${libelle}`, async () => {
+      const { deps, etat, setId } = await scenario(x);
+      await assert.rejects(cloturer(setId, deps), motif);
+      assert.equal(etat.signatures, 0);
+    });
+  }
+  test('PEM valide au premier chargement puis illisible : la revérification n\'est pas affectée (clé figée)', async () => {
+    let n = 0;
+    const decl = [{ cle_id: 'cle-test', fichier: 'cles/cle-test.pem', sha256_pem: crypto.createHash('sha256').update(PEM).digest('hex'), algorithme: 'RSA-SHA256-PKCS1v15', valide_du: '2026-01-01T00:00:00.000Z', valide_au: '2027-12-31T00:00:00.000Z', revoquee_le: null }];
+    const { deps, etat, setId } = await scenario({ modifier: ({ deps: d }) => { d.cles = S.chargerCles(decl, () => { n += 1; if (n > 1) throw new Error('illisible'); return PEM; }); } });
+    await cloturer(setId, deps);
+    assert.equal(etat.signatures, 1);
+    assert.equal(n, 1, 'PEM lu une seule fois');
+  });
+  for (const [libelle, x, motif] of [
+    ['incident détecté après sa résolution', { modifier: ({ deps }) => { deps.incidents = async () => [inc({ detecte_le: '2026-10-19T00:00:00.000Z' })]; } }, /détecté après sa résolution/],
+    ['sous-dossier final lien vers le dépôt', { modifier: ({ deps }) => { deps.fs.realpath = (p) => (/set_fonda_/.test(p) ? path.join(__dirname, 'x') : p); } }, /DANS le dépôt/],
+    ['exécution d\'un AUTRE lot sans dates', { modifier: ({ execs }) => { execs.wfConf[2].startedAt = null; execs.wfConf[2].stoppedAt = null; } }, /sans startedAt\/stoppedAt/],
+    ['exécution terminée avant son démarrage', { modifier: ({ execs }) => { execs.wfConf[0].stoppedAt = '2026-10-19T16:59:59.000Z'; } }, /avant d'avoir démarré/],
+  ]) {
     test(`refus SANS appel au signataire : ${libelle}`, async () => {
       const { deps, etat, setId } = await scenario(x);
       await assert.rejects(cloturer(setId, deps), motif);
