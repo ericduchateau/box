@@ -55,22 +55,12 @@ async function preparerPublication({ lot, attestation, catalogue, referentiel, f
   if (fichierExiste(fichier)) erreurs.push(`${fichier} existe déjà : refus d'écraser`);
   if (erreurs.length) return { ok: false, erreurs };
 
-  // Moteur DU LOT = celui de la charge (vérifié contre le registre par attestation-signee).
+  // 1. Attestation vérifiée EN ENTIER (forme -> clé -> signature -> valeurs -> dépôt)
+  //    AVANT toute exécution de code pédagogique : le moteur n'est chargé qu'une fois
+  //    la charge authentifiée et son moteur rapproché du registre.
   const charge = attestation.charge || {};
-  const moteur = charge.moteur || {};
-  let m;
-  try { m = chargerMoteurNode(moteur.version, moteur.sha256); } catch (e) { return { ok: false, erreurs: [`moteur de la charge : ${e.message}`] }; }
-  lot.cartes.forEach((c) => {
-    const v0 = m.valider(c);
-    if (!v0.valide) erreurs.push(`${c.item_id} : carte refusée par le moteur ${moteur.version} (${v0.raisons.join(', ')})`);
-    const r1 = m.outils.verifierReponseOr(c);
-    if (!r1.ok) erreurs.push(`${c.item_id} : ${r1.raison}`);
-    const r2 = m.outils.verifierFormesAcceptees(c);
-    if (!r2.ok) erreurs.push(`${c.item_id} : ${r2.raison}`);
-  });
-  if (erreurs.length) return { ok: false, erreurs };
-
   const empreinte = await C.calculerEmpreinte(lot, sha256Hex);
+  const moteurCharge = charge.moteur || {};
   const entree = {
     set_id: lot.set_id,
     notion_id: lot.notion_id,
@@ -78,12 +68,25 @@ async function preparerPublication({ lot, attestation, catalogue, referentiel, f
     fichier,
     item_ids: lot.cartes.map((c) => c.item_id),
     empreinte,
-    moteur: { version: moteur.version, sha256: moteur.sha256 },
+    moteur: { version: moteurCharge.version, sha256: moteurCharge.sha256 },
     relecteur: charge.badge,
     attestation,
   };
   const es = S.verifierAttestationSignee(attestation, { entree, registre, referentiel, cles });
   if (es.length) return { ok: false, erreurs: es };
+
+  // 2. Garde-fous pédagogiques du MOTEUR DU LOT (celui de la charge authentifiée).
+  let m;
+  try { m = chargerMoteurNode(entree.moteur.version, entree.moteur.sha256); } catch (e) { return { ok: false, erreurs: [`moteur de la charge : ${e.message}`] }; }
+  lot.cartes.forEach((c) => {
+    const v0 = m.valider(c);
+    if (!v0.valide) erreurs.push(`${c.item_id} : carte refusée par le moteur ${entree.moteur.version} (${v0.raisons.join(', ')})`);
+    const r1 = m.outils.verifierReponseOr(c);
+    if (!r1.ok) erreurs.push(`${c.item_id} : ${r1.raison}`);
+    const r2 = m.outils.verifierFormesAcceptees(c);
+    if (!r2.ok) erreurs.push(`${c.item_id} : ${r2.raison}`);
+  });
+  if (erreurs.length) return { ok: false, erreurs };
   const nouveau = { ...catalogue, lots: [...catalogue.lots, entree] };
   const vc = C.validerCatalogue(nouveau, referentiel);
   if (!vc.valide) return { ok: false, erreurs: vc.erreurs };

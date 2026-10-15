@@ -205,12 +205,14 @@ function validerAttestation(att, entree) {
     if (Object.keys(att).sort().join() !== 'charge,signature,type' || !ch || typeof ch !== 'object' || !estTexte(att.signature)) {
       return ['cloture-signee : enveloppe { type, charge, signature } attendue'];
     }
-    const meme = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const meme = (a, b) => JSON.stringify(a) === JSON.stringify(b); // tableaux ordonnés
+    const memeMoteur = (a, b) => !!a && !!b && a.version === b.version && a.sha256 === b.sha256;
+    const memeBadge = (a, b) => !!a && !!b && a.forme === b.forme && a.nom_affiche === b.nom_affiche && a.id === b.id;
     if (ch.set_id !== entree.set_id || ch.notion_id !== entree.notion_id || ch.palier !== entree.palier) erreurs.push('cloture-signee : identité de la charge ≠ entrée');
     if (!ch.coeur || ch.coeur.empreinte_publiee !== entree.empreinte) erreurs.push('cloture-signee : coeur.empreinte_publiee ≠ empreinte de l\'entrée');
     if (!ch.coeur || !meme(ch.coeur.selection, entree.item_ids)) erreurs.push('cloture-signee : coeur.selection ≠ item_ids de l\'entrée');
-    if (!meme(ch.moteur, entree.moteur) || !ch.coeur || !meme(ch.coeur.moteur, entree.moteur)) erreurs.push('cloture-signee : moteur de la charge ≠ moteur de l\'entrée');
-    if (!meme(ch.badge, entree.relecteur)) erreurs.push('cloture-signee : badge ≠ relecteur de l\'entrée');
+    if (!memeMoteur(ch.moteur, entree.moteur) || !ch.coeur || !memeMoteur(ch.coeur.moteur, entree.moteur)) erreurs.push('cloture-signee : moteur de la charge ≠ moteur de l\'entrée');
+    if (!memeBadge(ch.badge, entree.relecteur)) erreurs.push('cloture-signee : badge ≠ relecteur de l\'entrée');
     return erreurs;
   }
   if (att.empreinte_attestee !== entree.empreinte) erreurs.push('empreinte_attestee ≠ empreinte de l\'entrée');

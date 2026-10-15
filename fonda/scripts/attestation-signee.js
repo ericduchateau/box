@@ -19,10 +19,15 @@
 // de DÉPÔT (entrée du catalogue, lot publié, registre des moteurs, référentiel).
 //
 // FRONTIÈRE : ce module vérifie ce qui est vérifiable depuis la charge, le lot publié,
-// l'entrée et la clé publique. Les invariants LOCAUX — sha256_instantane égal au
-// SHA-256 de l'instantané réel, partition selection/ecartees contre le candidat réel,
-// rapprochement exécution n8n <-> lot — relèvent de signer-cloture.js (étape 4b) :
-// l'instantané et le candidat ne sont pas au dépôt.
+// l'entrée et la clé publique. Relèvent de signer-cloture.js (étape 4b), car
+// l'instantané, le candidat et l'API n8n ne sont pas au dépôt :
+//   - sha256_instantane égal au SHA-256 de l'instantané réel ;
+//   - partition selection/ecartees contre le candidat réel ;
+//   - rapprochement exécution n8n <-> lot, épinglage et choix de l'exécution de
+//     clôture (la plus récente, égalité -> refus) ;
+//   - choix du badge depuis la table des relecteurs VERSIONNÉE au moment de la
+//     clôture. Ici, le badge SIGNÉ fait foi : il n'est jamais recalculé depuis la table
+//     courante.
 
 'use strict';
 
@@ -47,7 +52,30 @@ function dateSignee(v) {
   return !Number.isNaN(t) && new Date(t).toISOString() === v;
 }
 const estTexte = (v) => typeof v === 'string' && v.trim() !== '';
-const egal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const egal = (a, b) => JSON.stringify(a) === JSON.stringify(b); // tableaux ordonnés seulement
+// Égalités d'OBJETS indépendantes de l'ordre des clés (les octets canoniques, eux, sont
+// reconstruits dans l'ordre du contrat) : champ par champ.
+const memeMoteur = (a, b) => !!a && !!b && a.version === b.version && a.sha256 === b.sha256;
+const memeBadge = (a, b) => !!a && !!b && a.forme === b.forme && a.nom_affiche === b.nom_affiche && a.id === b.id;
+
+// PEM de clé PUBLIQUE SPKI strict : un seul bloc « PUBLIC KEY », base64 canonique ;
+// tout autre conteneur (PRIVATE KEY, RSA PUBLIC KEY/PKCS#1, ENCRYPTED, certificat) est
+// refusé AVANT tout chargement. Une clé privée dans le dépôt public = compromission.
+const PEM_SPKI = /^-----BEGIN PUBLIC KEY-----\r?\n((?:[A-Za-z0-9+/=]{1,76}\r?\n)+)-----END PUBLIC KEY-----\r?\n?$/;
+function derSpki(pem) {
+  if (typeof pem !== 'string' || /PRIVATE/.test(pem)) return null;
+  const m = PEM_SPKI.exec(pem);
+  if (!m) return null;
+  const b64 = m[1].replace(/\r?\n/g, '');
+  const der = Buffer.from(b64, 'base64');
+  return der.toString('base64') === b64 ? der : null;
+}
+// Base64 STRICT : une seule écriture admise pour un même contenu (réencodage identique).
+function base64Strict(v) {
+  if (typeof v !== 'string' || v.length === 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(v)) return null;
+  const b = Buffer.from(v, 'base64');
+  return b.toString('base64') === v ? b : null;
+}
 
 // --- Clés -----------------------------------------------------------------------------
 // `lirePem(fichier)` -> chaîne (lecture injectée : tests).
@@ -76,8 +104,11 @@ function chargerCles(cles, lirePem) {
       let pem;
       try { pem = lirePem(c.fichier); } catch { return { ok: false, raison: `${c.fichier} illisible` }; }
       if (crypto.createHash('sha256').update(pem).digest('hex') !== c.sha256_pem) return { ok: false, raison: `${c.fichier} : sha256_pem discordant` };
+      const der = derSpki(pem);
+      if (!der) return { ok: false, raison: `${c.fichier} : un unique bloc PEM « PUBLIC KEY » (SPKI) attendu — clé privée ou autre format refusé` };
       let cle;
-      try { cle = crypto.createPublicKey({ key: pem, format: 'pem', type: 'spki' }); } catch { return { ok: false, raison: `${c.fichier} : clé publique SPKI illisible` }; }
+      try { cle = crypto.createPublicKey({ key: der, format: 'der', type: 'spki' }); } catch { return { ok: false, raison: `${c.fichier} : clé publique SPKI illisible` }; }
+      if (cle.type !== 'public' || !cle.export({ type: 'spki', format: 'der' }).equals(der)) return { ok: false, raison: `${c.fichier} : contenu SPKI non canonique` };
       const d = cle.asymmetricKeyDetails || {};
       if (cle.asymmetricKeyType !== 'rsa' || !(d.modulusLength >= 3072)) return { ok: false, raison: `${c.cle_id} : clé RSA ≥ 3072 bits attendue` };
       return { ok: true, declaration: c, cle };
@@ -159,10 +190,10 @@ function invariantsValeur(ch) {
   // Badge (§11 bis, par priorité)
   const b = ch.badge;
   if (!FORMES_BADGE.includes(b.forme)) e.push(`badge.forme hors énumération (${b.forme})`);
-  if (auto && !egal(b, BADGE_AUTO)) e.push('badge : auto-confirmation ⇒ { relue_par, Éric Duchateau, eric }');
+  if (auto && !memeBadge(b, BADGE_AUTO)) e.push('badge : auto-confirmation ⇒ { relue_par, Éric Duchateau, eric }');
   if (!auto) {
     const nomme = b.forme === 'relue_et_validee' && b.id === ch.relecteur_attribue && estTexte(b.nom_affiche);
-    if (!nomme && !egal(b, BADGE_SANS_NOM)) e.push('badge incohérent : relue_et_validee au nom du relecteur attribué, ou forme « sans nom »');
+    if (!nomme && !memeBadge(b, BADGE_SANS_NOM)) e.push('badge incohérent : relue_et_validee au nom du relecteur attribué, ou forme « sans nom »');
   }
   if (!(b.id === null || b.id === ch.relecteur_attribue)) e.push('badge.id ∉ { relecteur_attribue, null }');
   return e;
@@ -172,12 +203,12 @@ function invariantsValeur(ch) {
 function invariantsDepot(ch, { entree, registre, referentiel }) {
   const e = [];
   for (const k of ['set_id', 'notion_id', 'palier']) if (ch[k] !== entree[k]) e.push(`charge.${k} ≠ entrée`);
-  if (!egal(ch.coeur.moteur, ch.moteur) || !egal(ch.moteur, entree.moteur)) e.push('coeur.moteur = moteur = entree.moteur : non respecté');
+  if (!memeMoteur(ch.coeur.moteur, ch.moteur) || !memeMoteur(ch.moteur, entree.moteur)) e.push('coeur.moteur = moteur = entree.moteur : non respecté');
   const ligne = (registre || []).find((l) => l && l.version === ch.moteur.version);
   if (!ligne || ligne.sha256 !== ch.moteur.sha256) e.push('moteur.sha256 ≠ registre[moteur.version].sha256');
   if (!egal(ch.coeur.selection, entree.item_ids)) e.push('coeur.selection ≠ item_ids du fichier publié (même ordre)');
   if (ch.coeur.empreinte_publiee !== entree.empreinte) e.push('coeur.empreinte_publiee ≠ empreinte du fichier publié');
-  if (!egal(ch.badge, entree.relecteur)) e.push('badge ≠ relecteur de l\'entrée (§12)');
+  if (!memeBadge(ch.badge, entree.relecteur)) e.push('badge ≠ relecteur de l\'entrée (§12)');
   if (referentiel) {
     const n = (referentiel.notions || []).find((x) => x.id === ch.notion_id);
     if (!n || n.relecteur !== ch.relecteur_attribue) e.push('relecteur_attribue ≠ relecteur du référentiel (§2)');
@@ -191,7 +222,8 @@ function verifierAttestationSignee(enveloppe, { entree, registre, referentiel, c
     || Object.keys(enveloppe).sort().join() !== 'charge,signature,type' || enveloppe.type !== TYPE) {
     return [`enveloppe : { type: "${TYPE}", charge, signature } attendu`];
   }
-  if (typeof enveloppe.signature !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(enveloppe.signature)) return ['signature : base64 attendu'];
+  const signature = base64Strict(enveloppe.signature);
+  if (!signature) return ['signature : base64 strict attendu (une seule écriture admise)'];
   let octets;
   try { octets = Buffer.from(Canonique.octetsContrat('attestation-cloture/v1', enveloppe.charge)); } catch (err) { return [`charge : ${err.message}`]; }
   const ch = enveloppe.charge;
@@ -200,7 +232,7 @@ function verifierAttestationSignee(enveloppe, { entree, registre, referentiel, c
   const irrecevable = recevabilite(k.declaration, ch.cloture_le);
   if (irrecevable) return [irrecevable];
   let valide = false;
-  try { valide = crypto.verify('sha256', octets, { key: k.cle, padding: crypto.constants.RSA_PKCS1_PADDING }, Buffer.from(enveloppe.signature, 'base64')); } catch { valide = false; }
+  try { valide = crypto.verify('sha256', octets, { key: k.cle, padding: crypto.constants.RSA_PKCS1_PADDING }, signature); } catch { valide = false; }
   if (!valide) return ['signature RSA-SHA256 PKCS#1 v1.5 invalide sur les octets canoniques de la charge'];
   const ev = invariantsValeur(ch);
   if (ev.length) return ev;

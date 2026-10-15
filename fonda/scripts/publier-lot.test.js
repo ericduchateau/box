@@ -255,3 +255,85 @@ describe('chaîne de publication (inchangée)', () => {
     });
   }
 });
+
+describe('correctifs de relecture : PEM strict, base64 strict, ordre, égalités de champs', () => {
+  const chargeFr = async () => { const lot = LOT_FR(); return { lot, ch: await chargePour(lot, 'reponse_message') }; };
+  test('PEM : clé PRIVÉE (PKCS#8), clé publique PKCS#1, deux blocs, texte parasite -> refusés avant tout chargement', async () => {
+    const { lot, ch } = await chargeFr();
+    const privee = K.privee.export({ type: 'pkcs8', format: 'pem' });
+    const pkcs1 = crypto.createPublicKey(K.pem).export({ type: 'pkcs1', format: 'pem' });
+    for (const pem of [privee, pkcs1, K.pem + K.pem, `commentaire\n${K.pem}`]) {
+      const c = cles([declaration('cle-test', pem)], { 'cles/cle-test.pem': pem });
+      const r = await preparerPublication(base({ lot, attestation: enveloppe(ch), cles: c }));
+      assert.match(r.erreurs.join(), /PUBLIC KEY|SPKI/, pem.slice(0, 40));
+    }
+  });
+  test('base64 non canonique (« = » ou « A » ajouté, espaces) -> refusé', async () => {
+    const { lot, ch } = await chargeFr();
+    const sig = signer(ch);
+    for (const s of [`${sig}=`, `${sig}A`, ` ${sig}`, sig.replace(/=+$/, '')]) {
+      if (s === sig) continue;
+      const r = await preparerPublication(base({ lot, attestation: enveloppe(ch, s) }));
+      assert.equal(r.ok, false, JSON.stringify(s.slice(-4)));
+    }
+  });
+  test('ordre : enveloppe invalide avec moteur inconnu -> refus de l\'ENVELOPPE, moteur jamais chargé', async () => {
+    const { lot, ch } = await chargeFr();
+    const r = await preparerPublication(base({ lot, attestation: { type: 'cloture-signee', charge: { ...ch, moteur: { version: 'v9', sha256: '0'.repeat(64) } }, signature: '!' } }));
+    assert.match(r.erreurs.join(), /signature : base64 strict/);
+  });
+  test('objets aux clés réordonnées (moteur, badge) : même charge canonique, acceptée', async () => {
+    const { lot, ch } = await chargeFr();
+    const sig = signer(ch);
+    const reordonnee = { ...ch, moteur: { sha256: ch.moteur.sha256, version: ch.moteur.version }, badge: { id: ch.badge.id, nom_affiche: ch.badge.nom_affiche, forme: ch.badge.forme } };
+    const r = await preparerPublication(base({ lot, attestation: enveloppe(reordonnee, sig) }));
+    assert.equal(r.ok, true, JSON.stringify(r.erreurs));
+  });
+});
+
+describe('recevabilité : bornes et temporalité (aucune dépendance à la date du jour)', () => {
+  const avecCle = async (decl, cloture) => {
+    const lot = LOT_FR();
+    const ch = { ...(await chargePour(lot, 'reponse_message')), cloture_le: cloture };
+    return preparerPublication(base({ lot, attestation: enveloppe(ch), cles: cles([declaration('cle-test', K.pem, decl)], { 'cles/cle-test.pem': K.pem }) }));
+  };
+  test('cloture_le = valide_du et = valide_au : recevables ; période réduite à un instant : recevable', async () => {
+    assert.equal((await avecCle({ valide_du: '2026-10-20T08:10:00.000Z' }, '2026-10-20T08:10:00.000Z')).ok, true);
+    assert.equal((await avecCle({ valide_au: '2026-10-20T08:10:00.000Z' }, '2026-10-20T08:10:00.000Z')).ok, true);
+    assert.equal((await avecCle({ valide_du: '2026-10-20T08:10:00.000Z', valide_au: '2026-10-20T08:10:00.000Z' }, '2026-10-20T08:10:00.000Z')).ok, true);
+  });
+  test('cloture_le 1 ms après valide_au -> refusé', async () => {
+    assert.match((await avecCle({ valide_au: '2026-10-20T08:09:59.999Z' }, '2026-10-20T08:10:00.000Z')).erreurs.join(), /hors de la période/);
+  });
+  test('clé EXPIRÉE depuis longtemps (période entièrement passée) : attestation de la période toujours recevable', async () => {
+    const r = await avecCle({ valide_du: '2025-01-01T00:00:00.000Z', valide_au: '2025-02-01T00:00:00.000Z' }, '2025-01-15T12:00:00.000Z');
+    assert.equal(r.ok, true, JSON.stringify(r.erreurs));
+  });
+  test('révocation datée dans le futur : irrecevable dès maintenant (§14)', async () => {
+    assert.match((await avecCle({ revoquee_le: '2030-01-01T00:00:00.000Z' }, '2026-10-20T08:10:00.000Z')).erreurs.join(), /révoquée/);
+  });
+});
+
+describe('chemins nominaux et doublons', () => {
+  test('vive_voix et badge « sans nom » : acceptés', async () => {
+    const lot = LOT_FR();
+    const ch = await chargePour(lot, 'vive_voix');
+    ch.badge = { forme: 'relue_par', nom_affiche: 'un professeur', id: null };
+    const r = await preparerPublication(base({ lot, attestation: enveloppe(ch) }));
+    assert.equal(r.ok, true, JSON.stringify(r.erreurs));
+    assert.equal(r.entree.relecteur.id, null);
+  });
+  const inc = (id) => ({ id, nature: 'x', detecte_le: '2026-10-01T00:00:00.000Z', statut: 'resolu', resolu_le: '2026-10-02T00:00:00.000Z', preuve_resolution: 'ok', periode: { debut: null, fin: '2026-10-02T00:00:00.000Z' } });
+  for (const [libelle, alterer, motif] of [
+    ['provenance en double', (c) => { c.provenances = [c.provenances[0], { ...c.provenances[0] }]; }, /double/],
+    ['incident en double', (c) => { c.incidents_connus = [inc('i1'), inc('i1')]; }, /double/],
+    ['levée en double', (c) => { c.levees = [{ type: 'recherche_incomplete', constat: 'a' }, { type: 'recherche_incomplete', constat: 'b' }]; }, /double/],
+  ]) {
+    test(`refusé : ${libelle}`, async () => {
+      const lot = LOT_FR();
+      const ch = await chargePour(lot, 'reponse_message');
+      alterer(ch);
+      assert.match((await preparerPublication(base({ lot, attestation: enveloppe(ch) }))).erreurs.join(' | '), motif);
+    });
+  }
+});
