@@ -233,6 +233,7 @@ describe('correctifs de relecture : refus AVANT signature, conformité, dates, d
     ['incident détecté après sa résolution', { modifier: ({ deps }) => { deps.incidents = async () => [inc({ detecte_le: '2026-10-19T00:00:00.000Z' })]; } }, /détecté après sa résolution/],
     ['sous-dossier final lien vers le dépôt', { modifier: ({ deps }) => { deps.fs.realpath = (p) => (/set_fonda_/.test(p) ? path.join(__dirname, 'x') : p); } }, /DANS le dépôt/],
     ['exécution d\'un AUTRE lot sans dates', { modifier: ({ execs }) => { execs.wfConf[2].startedAt = null; execs.wfConf[2].stoppedAt = null; } }, /sans startedAt\/stoppedAt/],
+    ['attestation.json déjà présent dans le dossier du lot', { modifier: ({ deps }) => { const l = deps.fs.lire; deps.fs.lire = (p) => (p.endsWith('attestation.json') ? Buffer.from('{}') : l(p)); } }, /existe déjà/],
     ['exécution terminée avant son démarrage', { modifier: ({ execs }) => { execs.wfConf[0].stoppedAt = '2026-10-19T16:59:59.000Z'; } }, /avant d'avoir démarré/],
   ]) {
     test(`refus SANS appel au signataire : ${libelle}`, async () => {

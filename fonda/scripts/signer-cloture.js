@@ -419,13 +419,21 @@ async function cloturer(setId, deps) {
   const avant = [...S.invariantsValeur(charge), ...S.invariantsDepot(charge, { entree, registre: deps.registre, referentiel })];
   if (avant.length) refuser(`charge refusée avant signature : ${avant.join(' ; ')}`);
   // Signature, puis REVÉRIFICATION IMMÉDIATE complète (même chemin que la publication).
+  // Destination de l'attestation libre AVANT signature (collision = refus sans appel au
+  // signataire). Une panne d'E/S APRÈS signature reste possible : l'enveloppe n'est
+  // alors pas enregistrée, rien n'est publié, la signature est simplement perdue
+  // (relancer la clôture) — aucune conséquence de confiance.
+  const cheminAttestation = path.join(dossierLot, 'attestation.json');
+  let dejaLa = true;
+  try { deps.fs.lire(cheminAttestation); } catch { dejaLa = false; }
+  if (dejaLa) refuser(`${cheminAttestation} existe déjà : refus d'écraser`);
   // La revérification utilise la clé publique DÉJÀ validée (jamais relue) : aucun refus
   // possible après signature, hors échec de la vérification cryptographique elle-même.
   const cleFigee = Object.freeze({ obtenir: (id) => (id === charge.cle_id ? k : { ok: false, raison: `clé « ${id} » non figée` }) });
   const enveloppe = { type: S.TYPE, charge, signature: deps.signer(octets).toString('base64') };
   const erreurs = S.verifierAttestationSignee(enveloppe, { entree, registre: deps.registre, referentiel, cles: cleFigee });
   if (erreurs.length) refuser(`revérification immédiate en échec : ${erreurs.join(' ; ')}`);
-  deps.fs.ecrireExclusif(path.join(dossierLot, 'attestation.json'), `${JSON.stringify(enveloppe, null, 2)}\n`);
+  deps.fs.ecrireExclusif(cheminAttestation, `${JSON.stringify(enveloppe, null, 2)}\n`);
   return { enveloppe, dossierLot, lotPublie: publie };
 }
 
