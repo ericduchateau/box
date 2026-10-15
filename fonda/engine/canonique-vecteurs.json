@@ -582,7 +582,7 @@
     },
     {
       "id": "refus-contrat-incomplet-attestation",
-      "description": "contrat à forme incomplète",
+      "description": "charge vide : refusée (champs manquants ; contrat défini depuis l'étape 4.0)",
       "refus": true,
       "contrat": "attestation-cloture/v1",
       "entree": {}
@@ -653,6 +653,1263 @@
       "refus": true,
       "schema": "inconnu",
       "entree": "x"
+    },
+    {
+      "id": "recap-nominal",
+      "description": "récapitulatif : 2 cartes gardées dans l'ordre du candidat (it01, it03), 1 écartée ; réponses acceptées chaîne ET nombre (« 10 € » et 10) ; unite/arrondi/seconde_chance renseignés ou null",
+      "contrat": "recapitulatif-fonda/v1",
+      "entree": {
+        "schema": "recapitulatif-fonda/v1",
+        "set_id": "set_fonda_proportionnalite_nI_02",
+        "notion_id": "maths.proportionnalite",
+        "palier": "nI",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "empreinte_relue": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "empreinte_publiee": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "cartes_gardees": [
+          {
+            "item_id": "it01",
+            "question": "3 cahiers coûtent 6 €. Combien coûtent 5 cahiers ?",
+            "reponse": "10 €",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "10 €",
+              10
+            ],
+            "unite": "€",
+            "arrondi": null,
+            "seconde_chance": true
+          },
+          {
+            "item_id": "it03",
+            "question": "Arrondir 1/3 au centième.",
+            "reponse": "0,33",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "1/3"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": false
+          }
+        ],
+        "cartes_ecartees": [
+          {
+            "item_id": "it02",
+            "question": "Question écartée."
+          }
+        ]
+      },
+      "texte": "{\"schema\":\"recapitulatif-fonda/v1\",\"set_id\":\"set_fonda_proportionnalite_nI_02\",\"notion_id\":\"maths.proportionnalite\",\"palier\":\"nI\",\"moteur\":{\"version\":\"v1\",\"sha256\":\"ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753\"},\"empreinte_relue\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"empreinte_publiee\":\"sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"cartes_gardees\":[{\"item_id\":\"it01\",\"question\":\"3 cahiers coûtent 6 €. Combien coûtent 5 cahiers ?\",\"reponse\":\"10 €\",\"profil_correction\":\"numerique\",\"reponses_acceptees\":[\"10 €\",10],\"unite\":\"€\",\"arrondi\":null,\"seconde_chance\":true},{\"item_id\":\"it03\",\"question\":\"Arrondir 1/3 au centième.\",\"reponse\":\"0,33\",\"profil_correction\":\"numerique\",\"reponses_acceptees\":[\"1/3\"],\"unite\":null,\"arrondi\":2,\"seconde_chance\":false}],\"cartes_ecartees\":[{\"item_id\":\"it02\",\"question\":\"Question écartée.\"}]}",
+      "hex": "7b22736368656d61223a2272656361706974756c617469662d666f6e64612f7631222c227365745f6964223a227365745f666f6e64615f70726f706f7274696f6e6e616c6974655f6e495f3032222c226e6f74696f6e5f6964223a226d617468732e70726f706f7274696f6e6e616c697465222c2270616c696572223a226e49222c226d6f74657572223a7b2276657273696f6e223a227631222c22736861323536223a2263653134633365343937393439393133613337666438646166366335376432663061393633303665303866303634626639323331363030353732616431373533227d2c22656d707265696e74655f72656c7565223a227368613235363a31313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131222c22656d707265696e74655f7075626c696565223a227368613235363a32323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232222c226361727465735f67617264656573223a5b7b226974656d5f6964223a2269743031222c227175657374696f6e223a2233206361686965727320636fc3bb74656e74203620e282ac2e20436f6d6269656e20636fc3bb74656e7420352063616869657273203f222c227265706f6e7365223a22313020e282ac222c2270726f66696c5f636f7272656374696f6e223a226e756d657269717565222c227265706f6e7365735f616363657074656573223a5b22313020e282ac222c31305d2c22756e697465223a22e282ac222c226172726f6e6469223a6e756c6c2c227365636f6e64655f6368616e6365223a747275657d2c7b226974656d5f6964223a2269743033222c227175657374696f6e223a224172726f6e64697220312f332061752063656e7469c3a86d652e222c227265706f6e7365223a22302c3333222c2270726f66696c5f636f7272656374696f6e223a226e756d657269717565222c227265706f6e7365735f616363657074656573223a5b22312f33225d2c22756e697465223a6e756c6c2c226172726f6e6469223a322c227365636f6e64655f6368616e6365223a66616c73657d5d2c226361727465735f6563617274656573223a5b7b226974656d5f6964223a2269743032222c227175657374696f6e223a225175657374696f6e20c3a963617274c3a9652e227d5d7d"
+    },
+    {
+      "id": "recap-absents-null",
+      "description": "récapitulatif : champs optionnels ABSENTS de la carte -> null (reponse, unite, arrondi, seconde_chance) ; aucune carte écartée",
+      "contrat": "recapitulatif-fonda/v1",
+      "entree": {
+        "schema": "recapitulatif-fonda/v1",
+        "set_id": "set_fonda_proportionnalite_nI_02",
+        "notion_id": "maths.proportionnalite",
+        "palier": "nI",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "empreinte_relue": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "empreinte_publiee": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "cartes_gardees": [
+          {
+            "item_id": "it01",
+            "question": "Quel mot signifie « heureux » ?",
+            "reponse": null,
+            "profil_correction": "sens",
+            "reponses_acceptees": [
+              "content",
+              "joyeux"
+            ],
+            "unite": null,
+            "arrondi": null,
+            "seconde_chance": null
+          }
+        ],
+        "cartes_ecartees": []
+      },
+      "texte": "{\"schema\":\"recapitulatif-fonda/v1\",\"set_id\":\"set_fonda_proportionnalite_nI_02\",\"notion_id\":\"maths.proportionnalite\",\"palier\":\"nI\",\"moteur\":{\"version\":\"v1\",\"sha256\":\"ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753\"},\"empreinte_relue\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"empreinte_publiee\":\"sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"cartes_gardees\":[{\"item_id\":\"it01\",\"question\":\"Quel mot signifie « heureux » ?\",\"reponse\":null,\"profil_correction\":\"sens\",\"reponses_acceptees\":[\"content\",\"joyeux\"],\"unite\":null,\"arrondi\":null,\"seconde_chance\":null}],\"cartes_ecartees\":[]}",
+      "hex": "7b22736368656d61223a2272656361706974756c617469662d666f6e64612f7631222c227365745f6964223a227365745f666f6e64615f70726f706f7274696f6e6e616c6974655f6e495f3032222c226e6f74696f6e5f6964223a226d617468732e70726f706f7274696f6e6e616c697465222c2270616c696572223a226e49222c226d6f74657572223a7b2276657273696f6e223a227631222c22736861323536223a2263653134633365343937393439393133613337666438646166366335376432663061393633303665303866303634626639323331363030353732616431373533227d2c22656d707265696e74655f72656c7565223a227368613235363a31313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131222c22656d707265696e74655f7075626c696565223a227368613235363a32323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232222c226361727465735f67617264656573223a5b7b226974656d5f6964223a2269743031222c227175657374696f6e223a225175656c206d6f74207369676e6966696520c2ab206865757265757820c2bb203f222c227265706f6e7365223a6e756c6c2c2270726f66696c5f636f7272656374696f6e223a2273656e73222c227265706f6e7365735f616363657074656573223a5b22636f6e74656e74222c226a6f79657578225d2c22756e697465223a6e756c6c2c226172726f6e6469223a6e756c6c2c227365636f6e64655f6368616e6365223a6e756c6c7d5d2c226361727465735f6563617274656573223a5b5d7d"
+    },
+    {
+      "id": "recap-types-reponses",
+      "description": "récapitulatif : 4 et « 4 » conservés distincts, ordre et types recopiés tels quels",
+      "contrat": "recapitulatif-fonda/v1",
+      "entree": {
+        "schema": "recapitulatif-fonda/v1",
+        "set_id": "set_fonda_proportionnalite_nI_02",
+        "notion_id": "maths.proportionnalite",
+        "palier": "nI",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "empreinte_relue": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "empreinte_publiee": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "cartes_gardees": [
+          {
+            "item_id": "it01",
+            "question": "3 cahiers coûtent 6 €. Combien coûtent 5 cahiers ?",
+            "reponse": "10 €",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              4,
+              "4",
+              0.5,
+              "0,5"
+            ],
+            "unite": "€",
+            "arrondi": null,
+            "seconde_chance": true
+          }
+        ],
+        "cartes_ecartees": [
+          {
+            "item_id": "it02",
+            "question": "Question écartée."
+          }
+        ]
+      },
+      "texte": "{\"schema\":\"recapitulatif-fonda/v1\",\"set_id\":\"set_fonda_proportionnalite_nI_02\",\"notion_id\":\"maths.proportionnalite\",\"palier\":\"nI\",\"moteur\":{\"version\":\"v1\",\"sha256\":\"ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753\"},\"empreinte_relue\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"empreinte_publiee\":\"sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"cartes_gardees\":[{\"item_id\":\"it01\",\"question\":\"3 cahiers coûtent 6 €. Combien coûtent 5 cahiers ?\",\"reponse\":\"10 €\",\"profil_correction\":\"numerique\",\"reponses_acceptees\":[4,\"4\",0.5,\"0,5\"],\"unite\":\"€\",\"arrondi\":null,\"seconde_chance\":true}],\"cartes_ecartees\":[{\"item_id\":\"it02\",\"question\":\"Question écartée.\"}]}",
+      "hex": "7b22736368656d61223a2272656361706974756c617469662d666f6e64612f7631222c227365745f6964223a227365745f666f6e64615f70726f706f7274696f6e6e616c6974655f6e495f3032222c226e6f74696f6e5f6964223a226d617468732e70726f706f7274696f6e6e616c697465222c2270616c696572223a226e49222c226d6f74657572223a7b2276657273696f6e223a227631222c22736861323536223a2263653134633365343937393439393133613337666438646166366335376432663061393633303665303866303634626639323331363030353732616431373533227d2c22656d707265696e74655f72656c7565223a227368613235363a31313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131222c22656d707265696e74655f7075626c696565223a227368613235363a32323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232222c226361727465735f67617264656573223a5b7b226974656d5f6964223a2269743031222c227175657374696f6e223a2233206361686965727320636fc3bb74656e74203620e282ac2e20436f6d6269656e20636fc3bb74656e7420352063616869657273203f222c227265706f6e7365223a22313020e282ac222c2270726f66696c5f636f7272656374696f6e223a226e756d657269717565222c227265706f6e7365735f616363657074656573223a5b342c2234222c302e352c22302c35225d2c22756e697465223a22e282ac222c226172726f6e6469223a6e756c6c2c227365636f6e64655f6368616e6365223a747275657d5d2c226361727465735f6563617274656573223a5b7b226974656d5f6964223a2269743032222c227175657374696f6e223a225175657374696f6e20c3a963617274c3a9652e227d5d7d"
+    },
+    {
+      "id": "recap-ordre-entree",
+      "description": "récapitulatif : clés reçues dans le désordre -> mêmes octets que recap-nominal (forme reconstruite)",
+      "contrat": "recapitulatif-fonda/v1",
+      "entree": {
+        "cartes_ecartees": [
+          {
+            "item_id": "it02",
+            "question": "Question écartée."
+          }
+        ],
+        "empreinte_publiee": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "palier": "nI",
+        "moteur": {
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753",
+          "version": "v1"
+        },
+        "schema": "recapitulatif-fonda/v1",
+        "notion_id": "maths.proportionnalite",
+        "set_id": "set_fonda_proportionnalite_nI_02",
+        "empreinte_relue": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "cartes_gardees": [
+          {
+            "seconde_chance": true,
+            "arrondi": null,
+            "unite": "€",
+            "reponses_acceptees": [
+              "10 €",
+              10
+            ],
+            "profil_correction": "numerique",
+            "reponse": "10 €",
+            "question": "3 cahiers coûtent 6 €. Combien coûtent 5 cahiers ?",
+            "item_id": "it01"
+          },
+          {
+            "seconde_chance": false,
+            "arrondi": 2,
+            "unite": null,
+            "reponses_acceptees": [
+              "1/3"
+            ],
+            "profil_correction": "numerique",
+            "reponse": "0,33",
+            "question": "Arrondir 1/3 au centième.",
+            "item_id": "it03"
+          }
+        ]
+      },
+      "texte": "{\"schema\":\"recapitulatif-fonda/v1\",\"set_id\":\"set_fonda_proportionnalite_nI_02\",\"notion_id\":\"maths.proportionnalite\",\"palier\":\"nI\",\"moteur\":{\"version\":\"v1\",\"sha256\":\"ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753\"},\"empreinte_relue\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"empreinte_publiee\":\"sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"cartes_gardees\":[{\"item_id\":\"it01\",\"question\":\"3 cahiers coûtent 6 €. Combien coûtent 5 cahiers ?\",\"reponse\":\"10 €\",\"profil_correction\":\"numerique\",\"reponses_acceptees\":[\"10 €\",10],\"unite\":\"€\",\"arrondi\":null,\"seconde_chance\":true},{\"item_id\":\"it03\",\"question\":\"Arrondir 1/3 au centième.\",\"reponse\":\"0,33\",\"profil_correction\":\"numerique\",\"reponses_acceptees\":[\"1/3\"],\"unite\":null,\"arrondi\":2,\"seconde_chance\":false}],\"cartes_ecartees\":[{\"item_id\":\"it02\",\"question\":\"Question écartée.\"}]}",
+      "hex": "7b22736368656d61223a2272656361706974756c617469662d666f6e64612f7631222c227365745f6964223a227365745f666f6e64615f70726f706f7274696f6e6e616c6974655f6e495f3032222c226e6f74696f6e5f6964223a226d617468732e70726f706f7274696f6e6e616c697465222c2270616c696572223a226e49222c226d6f74657572223a7b2276657273696f6e223a227631222c22736861323536223a2263653134633365343937393439393133613337666438646166366335376432663061393633303665303866303634626639323331363030353732616431373533227d2c22656d707265696e74655f72656c7565223a227368613235363a31313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131222c22656d707265696e74655f7075626c696565223a227368613235363a32323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232222c226361727465735f67617264656573223a5b7b226974656d5f6964223a2269743031222c227175657374696f6e223a2233206361686965727320636fc3bb74656e74203620e282ac2e20436f6d6269656e20636fc3bb74656e7420352063616869657273203f222c227265706f6e7365223a22313020e282ac222c2270726f66696c5f636f7272656374696f6e223a226e756d657269717565222c227265706f6e7365735f616363657074656573223a5b22313020e282ac222c31305d2c22756e697465223a22e282ac222c226172726f6e6469223a6e756c6c2c227365636f6e64655f6368616e6365223a747275657d2c7b226974656d5f6964223a2269743033222c227175657374696f6e223a224172726f6e64697220312f332061752063656e7469c3a86d652e222c227265706f6e7365223a22302c3333222c2270726f66696c5f636f7272656374696f6e223a226e756d657269717565222c227265706f6e7365735f616363657074656573223a5b22312f33225d2c22756e697465223a6e756c6c2c226172726f6e6469223a322c227365636f6e64655f6368616e6365223a66616c73657d5d2c226361727465735f6563617274656573223a5b7b226974656d5f6964223a2269743032222c227175657374696f6e223a225175657374696f6e20c3a963617274c3a9652e227d5d7d"
+    },
+    {
+      "id": "attestation-auto-nominale",
+      "description": "charge complète, auto-confirmation ; provenances triées par date puis execution_id (comparaison par unité de code : « 1042 » < « 1043 », puis « 998 » à une date ultérieure) ; dates ISO UTC à la milliseconde",
+      "contrat": "attestation-cloture/v1",
+      "entree": {
+        "schema": "attestation-cloture/v1",
+        "set_id": "set_fonda_proportionnalite_nI_02",
+        "notion_id": "maths.proportionnalite",
+        "palier": "nI",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "empreinte_publiee": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "abababababababababababababababababababababababababababababababab",
+        "code_confirmation": "abababababababab",
+        "confirmation": {
+          "mode": "auto",
+          "par": "eric",
+          "recue_par": "eric",
+          "le": "2026-10-20T08:15:30.125Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-20T08:16:00.000Z"
+        },
+        "relecteur_attribue": "eric",
+        "relecteur_egal_cloturer": true,
+        "provenances": [
+          {
+            "execution_id": "1042",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T17:02:11.004Z"
+          },
+          {
+            "execution_id": "1043",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T17:02:11.004Z"
+          },
+          {
+            "execution_id": "998",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T18:00:00.000Z"
+          }
+        ],
+        "nb_fichiers_decision": 3,
+        "referentiel_version": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "execution_cloture": {
+          "execution_id": "1100",
+          "workflow_id": "wfCloture0001",
+          "statut": "success",
+          "terminee_le": "2026-10-20T08:10:00.500Z"
+        },
+        "revoque_le": "2026-10-20T08:09:59.000Z",
+        "levees": [],
+        "incidents_connus": [],
+        "cloture_le": "2026-10-20T08:17:00.000Z",
+        "badge": {
+          "forme": "relue_par",
+          "nom_affiche": "Éric Duchateau",
+          "id": "eric"
+        },
+        "cle_id": "cle-test-2026"
+      },
+      "texte": "{\"schema\":\"attestation-cloture/v1\",\"set_id\":\"set_fonda_proportionnalite_nI_02\",\"notion_id\":\"maths.proportionnalite\",\"palier\":\"nI\",\"coeur\":{\"action\":\"accepter\",\"selection\":[\"it01\",\"it03\"],\"ecartees\":[\"it02\"],\"empreinte_relue\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"empreinte_publiee\":\"sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"moteur\":{\"version\":\"v1\",\"sha256\":\"ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753\"}},\"sha256_instantane\":\"abababababababababababababababababababababababababababababababab\",\"code_confirmation\":\"abababababababab\",\"confirmation\":{\"mode\":\"auto\",\"par\":\"eric\",\"recue_par\":\"eric\",\"le\":\"2026-10-20T08:15:30.125Z\"},\"fidelite_transmission\":{\"atteste_par\":\"eric\",\"le\":\"2026-10-20T08:16:00.000Z\"},\"relecteur_attribue\":\"eric\",\"relecteur_egal_cloturer\":true,\"provenances\":[{\"execution_id\":\"1042\",\"workflow_id\":\"wfConfirmation01\",\"statut\":\"success\",\"demarree_le\":\"2026-10-19T17:02:11.004Z\"},{\"execution_id\":\"1043\",\"workflow_id\":\"wfConfirmation01\",\"statut\":\"success\",\"demarree_le\":\"2026-10-19T17:02:11.004Z\"},{\"execution_id\":\"998\",\"workflow_id\":\"wfConfirmation01\",\"statut\":\"success\",\"demarree_le\":\"2026-10-19T18:00:00.000Z\"}],\"nb_fichiers_decision\":3,\"referentiel_version\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\",\"moteur\":{\"version\":\"v1\",\"sha256\":\"ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753\"},\"execution_cloture\":{\"execution_id\":\"1100\",\"workflow_id\":\"wfCloture0001\",\"statut\":\"success\",\"terminee_le\":\"2026-10-20T08:10:00.500Z\"},\"revoque_le\":\"2026-10-20T08:09:59.000Z\",\"levees\":[],\"incidents_connus\":[],\"cloture_le\":\"2026-10-20T08:17:00.000Z\",\"badge\":{\"forme\":\"relue_par\",\"nom_affiche\":\"Éric Duchateau\",\"id\":\"eric\"},\"cle_id\":\"cle-test-2026\"}",
+      "hex": "7b22736368656d61223a226174746573746174696f6e2d636c6f747572652f7631222c227365745f6964223a227365745f666f6e64615f70726f706f7274696f6e6e616c6974655f6e495f3032222c226e6f74696f6e5f6964223a226d617468732e70726f706f7274696f6e6e616c697465222c2270616c696572223a226e49222c22636f657572223a7b22616374696f6e223a226163636570746572222c2273656c656374696f6e223a5b2269743031222c2269743033225d2c226563617274656573223a5b2269743032225d2c22656d707265696e74655f72656c7565223a227368613235363a31313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131222c22656d707265696e74655f7075626c696565223a227368613235363a32323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232222c226d6f74657572223a7b2276657273696f6e223a227631222c22736861323536223a2263653134633365343937393439393133613337666438646166366335376432663061393633303665303866303634626639323331363030353732616431373533227d7d2c227368613235365f696e7374616e74616e65223a2261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162222c22636f64655f636f6e6669726d6174696f6e223a2261626162616261626162616261626162222c22636f6e6669726d6174696f6e223a7b226d6f6465223a226175746f222c22706172223a2265726963222c2272656375655f706172223a2265726963222c226c65223a22323032362d31302d32305430383a31353a33302e3132355a227d2c22666964656c6974655f7472616e736d697373696f6e223a7b22617474657374655f706172223a2265726963222c226c65223a22323032362d31302d32305430383a31363a30302e3030305a227d2c2272656c6563746575725f6174747269627565223a2265726963222c2272656c6563746575725f6567616c5f636c6f7475726572223a747275652c2270726f76656e616e636573223a5b7b22657865637574696f6e5f6964223a2231303432222c22776f726b666c6f775f6964223a227766436f6e6669726d6174696f6e3031222c22737461747574223a2273756363657373222c2264656d61727265655f6c65223a22323032362d31302d31395431373a30323a31312e3030345a227d2c7b22657865637574696f6e5f6964223a2231303433222c22776f726b666c6f775f6964223a227766436f6e6669726d6174696f6e3031222c22737461747574223a2273756363657373222c2264656d61727265655f6c65223a22323032362d31302d31395431373a30323a31312e3030345a227d2c7b22657865637574696f6e5f6964223a22393938222c22776f726b666c6f775f6964223a227766436f6e6669726d6174696f6e3031222c22737461747574223a2273756363657373222c2264656d61727265655f6c65223a22323032362d31302d31395431383a30303a30302e3030305a227d5d2c226e625f66696368696572735f6465636973696f6e223a332c227265666572656e7469656c5f76657273696f6e223a227368613235363a33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333222c226d6f74657572223a7b2276657273696f6e223a227631222c22736861323536223a2263653134633365343937393439393133613337666438646166366335376432663061393633303665303866303634626639323331363030353732616431373533227d2c22657865637574696f6e5f636c6f74757265223a7b22657865637574696f6e5f6964223a2231313030222c22776f726b666c6f775f6964223a227766436c6f7475726530303031222c22737461747574223a2273756363657373222c227465726d696e65655f6c65223a22323032362d31302d32305430383a31303a30302e3530305a227d2c227265766f7175655f6c65223a22323032362d31302d32305430383a30393a35392e3030305a222c226c6576656573223a5b5d2c22696e636964656e74735f636f6e6e7573223a5b5d2c22636c6f747572655f6c65223a22323032362d31302d32305430383a31373a30302e3030305a222c226261646765223a7b22666f726d65223a2272656c75655f706172222c226e6f6d5f61666669636865223a22c38972696320447563686174656175222c226964223a2265726963227d2c22636c655f6964223a22636c652d746573742d32303236227d"
+    },
+    {
+      "id": "attestation-tiers-levees-incidents",
+      "description": "charge complète, confirmation par réponse au message ; 2 levées (ordre du CDC) ; 2 incidents résolus triés par id, periode.debut null ; Unicode non normalisé (e + accent combinant)",
+      "contrat": "attestation-cloture/v1",
+      "entree": {
+        "schema": "attestation-cloture/v1",
+        "set_id": "set_fonda_lexique_nF_02",
+        "notion_id": "fr.lexique",
+        "palier": "nF",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "empreinte_publiee": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "abababababababababababababababababababababababababababababababab",
+        "code_confirmation": "abababababababab",
+        "confirmation": {
+          "mode": "reponse_message",
+          "par": "relectrice-test",
+          "recue_par": "eric",
+          "le": "2026-10-21T19:00:00.000Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-20T08:16:00.000Z"
+        },
+        "relecteur_attribue": "relectrice-test",
+        "relecteur_egal_cloturer": false,
+        "provenances": [
+          {
+            "execution_id": "1042",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T17:02:11.004Z"
+          },
+          {
+            "execution_id": "1043",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T17:02:11.004Z"
+          },
+          {
+            "execution_id": "998",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T18:00:00.000Z"
+          }
+        ],
+        "nb_fichiers_decision": 3,
+        "referentiel_version": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "execution_cloture": {
+          "execution_id": "1100",
+          "workflow_id": "wfCloture0001",
+          "statut": "success",
+          "terminee_le": "2026-10-20T08:10:00.500Z"
+        },
+        "revoque_le": "2026-10-20T08:09:59.000Z",
+        "levees": [
+          {
+            "type": "recherche_incomplete",
+            "constat": "incompleteSearch=true persistant après 3 essais"
+          },
+          {
+            "type": "historique_incomplet",
+            "constat": "historique d'exécutions possiblement purgé avant le 2026-10-01"
+          }
+        ],
+        "incidents_connus": [
+          {
+            "id": "inc-2026-10-02",
+            "nature": "execution_non_terminee",
+            "detecte_le": "2026-10-02T10:00:00.000Z",
+            "statut": "resolu",
+            "resolu_le": "2026-10-02T11:30:00.000Z",
+            "preuve_resolution": "exécution 991 terminée success, rapprochée sans anomalie",
+            "periode": {
+              "debut": null,
+              "fin": "2026-10-02T11:30:00.000Z"
+            }
+          },
+          {
+            "id": "inc-2026-10-05",
+            "nature": "fichier_illisible",
+            "detecte_le": "2026-10-05T09:00:00.000Z",
+            "statut": "resolu",
+            "resolu_le": "2026-10-05T09:45:00.000Z",
+            "preuve_resolution": "fichier placé en quarantaine/ — é décomposé conservé",
+            "periode": {
+              "debut": "2026-10-04T22:00:00.000Z",
+              "fin": "2026-10-05T09:45:00.000Z"
+            }
+          }
+        ],
+        "cloture_le": "2026-10-20T08:17:00.000Z",
+        "badge": {
+          "forme": "relue_et_validee",
+          "nom_affiche": "Relectrice de test",
+          "id": "relectrice-test"
+        },
+        "cle_id": "cle-test-2026"
+      },
+      "texte": "{\"schema\":\"attestation-cloture/v1\",\"set_id\":\"set_fonda_lexique_nF_02\",\"notion_id\":\"fr.lexique\",\"palier\":\"nF\",\"coeur\":{\"action\":\"accepter\",\"selection\":[\"it01\",\"it03\"],\"ecartees\":[\"it02\"],\"empreinte_relue\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"empreinte_publiee\":\"sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"moteur\":{\"version\":\"v1\",\"sha256\":\"ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753\"}},\"sha256_instantane\":\"abababababababababababababababababababababababababababababababab\",\"code_confirmation\":\"abababababababab\",\"confirmation\":{\"mode\":\"reponse_message\",\"par\":\"relectrice-test\",\"recue_par\":\"eric\",\"le\":\"2026-10-21T19:00:00.000Z\"},\"fidelite_transmission\":{\"atteste_par\":\"eric\",\"le\":\"2026-10-20T08:16:00.000Z\"},\"relecteur_attribue\":\"relectrice-test\",\"relecteur_egal_cloturer\":false,\"provenances\":[{\"execution_id\":\"1042\",\"workflow_id\":\"wfConfirmation01\",\"statut\":\"success\",\"demarree_le\":\"2026-10-19T17:02:11.004Z\"},{\"execution_id\":\"1043\",\"workflow_id\":\"wfConfirmation01\",\"statut\":\"success\",\"demarree_le\":\"2026-10-19T17:02:11.004Z\"},{\"execution_id\":\"998\",\"workflow_id\":\"wfConfirmation01\",\"statut\":\"success\",\"demarree_le\":\"2026-10-19T18:00:00.000Z\"}],\"nb_fichiers_decision\":3,\"referentiel_version\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\",\"moteur\":{\"version\":\"v1\",\"sha256\":\"ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753\"},\"execution_cloture\":{\"execution_id\":\"1100\",\"workflow_id\":\"wfCloture0001\",\"statut\":\"success\",\"terminee_le\":\"2026-10-20T08:10:00.500Z\"},\"revoque_le\":\"2026-10-20T08:09:59.000Z\",\"levees\":[{\"type\":\"recherche_incomplete\",\"constat\":\"incompleteSearch=true persistant après 3 essais\"},{\"type\":\"historique_incomplet\",\"constat\":\"historique d'exécutions possiblement purgé avant le 2026-10-01\"}],\"incidents_connus\":[{\"id\":\"inc-2026-10-02\",\"nature\":\"execution_non_terminee\",\"detecte_le\":\"2026-10-02T10:00:00.000Z\",\"statut\":\"resolu\",\"resolu_le\":\"2026-10-02T11:30:00.000Z\",\"preuve_resolution\":\"exécution 991 terminée success, rapprochée sans anomalie\",\"periode\":{\"debut\":null,\"fin\":\"2026-10-02T11:30:00.000Z\"}},{\"id\":\"inc-2026-10-05\",\"nature\":\"fichier_illisible\",\"detecte_le\":\"2026-10-05T09:00:00.000Z\",\"statut\":\"resolu\",\"resolu_le\":\"2026-10-05T09:45:00.000Z\",\"preuve_resolution\":\"fichier placé en quarantaine/ — é décomposé conservé\",\"periode\":{\"debut\":\"2026-10-04T22:00:00.000Z\",\"fin\":\"2026-10-05T09:45:00.000Z\"}}],\"cloture_le\":\"2026-10-20T08:17:00.000Z\",\"badge\":{\"forme\":\"relue_et_validee\",\"nom_affiche\":\"Relectrice de test\",\"id\":\"relectrice-test\"},\"cle_id\":\"cle-test-2026\"}",
+      "hex": "7b22736368656d61223a226174746573746174696f6e2d636c6f747572652f7631222c227365745f6964223a227365745f666f6e64615f6c6578697175655f6e465f3032222c226e6f74696f6e5f6964223a2266722e6c657869717565222c2270616c696572223a226e46222c22636f657572223a7b22616374696f6e223a226163636570746572222c2273656c656374696f6e223a5b2269743031222c2269743033225d2c226563617274656573223a5b2269743032225d2c22656d707265696e74655f72656c7565223a227368613235363a31313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131222c22656d707265696e74655f7075626c696565223a227368613235363a32323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232222c226d6f74657572223a7b2276657273696f6e223a227631222c22736861323536223a2263653134633365343937393439393133613337666438646166366335376432663061393633303665303866303634626639323331363030353732616431373533227d7d2c227368613235365f696e7374616e74616e65223a2261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162222c22636f64655f636f6e6669726d6174696f6e223a2261626162616261626162616261626162222c22636f6e6669726d6174696f6e223a7b226d6f6465223a227265706f6e73655f6d657373616765222c22706172223a2272656c656374726963652d74657374222c2272656375655f706172223a2265726963222c226c65223a22323032362d31302d32315431393a30303a30302e3030305a227d2c22666964656c6974655f7472616e736d697373696f6e223a7b22617474657374655f706172223a2265726963222c226c65223a22323032362d31302d32305430383a31363a30302e3030305a227d2c2272656c6563746575725f6174747269627565223a2272656c656374726963652d74657374222c2272656c6563746575725f6567616c5f636c6f7475726572223a66616c73652c2270726f76656e616e636573223a5b7b22657865637574696f6e5f6964223a2231303432222c22776f726b666c6f775f6964223a227766436f6e6669726d6174696f6e3031222c22737461747574223a2273756363657373222c2264656d61727265655f6c65223a22323032362d31302d31395431373a30323a31312e3030345a227d2c7b22657865637574696f6e5f6964223a2231303433222c22776f726b666c6f775f6964223a227766436f6e6669726d6174696f6e3031222c22737461747574223a2273756363657373222c2264656d61727265655f6c65223a22323032362d31302d31395431373a30323a31312e3030345a227d2c7b22657865637574696f6e5f6964223a22393938222c22776f726b666c6f775f6964223a227766436f6e6669726d6174696f6e3031222c22737461747574223a2273756363657373222c2264656d61727265655f6c65223a22323032362d31302d31395431383a30303a30302e3030305a227d5d2c226e625f66696368696572735f6465636973696f6e223a332c227265666572656e7469656c5f76657273696f6e223a227368613235363a33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333222c226d6f74657572223a7b2276657273696f6e223a227631222c22736861323536223a2263653134633365343937393439393133613337666438646166366335376432663061393633303665303866303634626639323331363030353732616431373533227d2c22657865637574696f6e5f636c6f74757265223a7b22657865637574696f6e5f6964223a2231313030222c22776f726b666c6f775f6964223a227766436c6f7475726530303031222c22737461747574223a2273756363657373222c227465726d696e65655f6c65223a22323032362d31302d32305430383a31303a30302e3530305a227d2c227265766f7175655f6c65223a22323032362d31302d32305430383a30393a35392e3030305a222c226c6576656573223a5b7b2274797065223a227265636865726368655f696e636f6d706c657465222c22636f6e73746174223a22696e636f6d706c6574655365617263683d747275652070657273697374616e7420617072c3a873203320657373616973227d2c7b2274797065223a22686973746f72697175655f696e636f6d706c6574222c22636f6e73746174223a22686973746f72697175652064276578c3a9637574696f6e7320706f737369626c656d656e742070757267c3a9206176616e74206c6520323032362d31302d3031227d5d2c22696e636964656e74735f636f6e6e7573223a5b7b226964223a22696e632d323032362d31302d3032222c226e6174757265223a22657865637574696f6e5f6e6f6e5f7465726d696e6565222c22646574656374655f6c65223a22323032362d31302d30325431303a30303a30302e3030305a222c22737461747574223a227265736f6c75222c227265736f6c755f6c65223a22323032362d31302d30325431313a33303a30302e3030305a222c227072657576655f7265736f6c7574696f6e223a226578c3a9637574696f6e20393931207465726d696ec3a96520737563636573732c2072617070726f6368c3a9652073616e7320616e6f6d616c6965222c22706572696f6465223a7b226465627574223a6e756c6c2c2266696e223a22323032362d31302d30325431313a33303a30302e3030305a227d7d2c7b226964223a22696e632d323032362d31302d3035222c226e6174757265223a22666963686965725f696c6c697369626c65222c22646574656374655f6c65223a22323032362d31302d30355430393a30303a30302e3030305a222c22737461747574223a227265736f6c75222c227265736f6c755f6c65223a22323032362d31302d30355430393a34353a30302e3030305a222c227072657576655f7265736f6c7574696f6e223a226669636869657220706c6163c3a920656e2071756172616e7461696e652f20e280942065cc812064c3a9636f6d706f73c3a920636f6e73657276c3a9222c22706572696f6465223a7b226465627574223a22323032362d31302d30345432323a30303a30302e3030305a222c2266696e223a22323032362d31302d30355430393a34353a30302e3030305a227d7d5d2c22636c6f747572655f6c65223a22323032362d31302d32305430383a31373a30302e3030305a222c226261646765223a7b22666f726d65223a2272656c75655f65745f76616c69646565222c226e6f6d5f61666669636865223a2252656c656374726963652064652074657374222c226964223a2272656c656374726963652d74657374227d2c22636c655f6964223a22636c652d746573742d32303236227d"
+    },
+    {
+      "id": "attestation-badge-sans-nom",
+      "description": "charge complète, badge « sans nom » (id null)",
+      "contrat": "attestation-cloture/v1",
+      "entree": {
+        "schema": "attestation-cloture/v1",
+        "set_id": "set_fonda_lexique_nF_02",
+        "notion_id": "fr.lexique",
+        "palier": "nF",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "empreinte_publiee": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "abababababababababababababababababababababababababababababababab",
+        "code_confirmation": "abababababababab",
+        "confirmation": {
+          "mode": "reponse_message",
+          "par": "relectrice-test",
+          "recue_par": "eric",
+          "le": "2026-10-21T19:00:00.000Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-20T08:16:00.000Z"
+        },
+        "relecteur_attribue": "relectrice-test",
+        "relecteur_egal_cloturer": false,
+        "provenances": [
+          {
+            "execution_id": "1042",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T17:02:11.004Z"
+          },
+          {
+            "execution_id": "1043",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T17:02:11.004Z"
+          },
+          {
+            "execution_id": "998",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T18:00:00.000Z"
+          }
+        ],
+        "nb_fichiers_decision": 3,
+        "referentiel_version": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "execution_cloture": {
+          "execution_id": "1100",
+          "workflow_id": "wfCloture0001",
+          "statut": "success",
+          "terminee_le": "2026-10-20T08:10:00.500Z"
+        },
+        "revoque_le": "2026-10-20T08:09:59.000Z",
+        "levees": [],
+        "incidents_connus": [],
+        "cloture_le": "2026-10-20T08:17:00.000Z",
+        "badge": {
+          "forme": "relue_par",
+          "nom_affiche": "un professeur",
+          "id": null
+        },
+        "cle_id": "cle-test-2026"
+      },
+      "texte": "{\"schema\":\"attestation-cloture/v1\",\"set_id\":\"set_fonda_lexique_nF_02\",\"notion_id\":\"fr.lexique\",\"palier\":\"nF\",\"coeur\":{\"action\":\"accepter\",\"selection\":[\"it01\",\"it03\"],\"ecartees\":[\"it02\"],\"empreinte_relue\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"empreinte_publiee\":\"sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"moteur\":{\"version\":\"v1\",\"sha256\":\"ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753\"}},\"sha256_instantane\":\"abababababababababababababababababababababababababababababababab\",\"code_confirmation\":\"abababababababab\",\"confirmation\":{\"mode\":\"reponse_message\",\"par\":\"relectrice-test\",\"recue_par\":\"eric\",\"le\":\"2026-10-21T19:00:00.000Z\"},\"fidelite_transmission\":{\"atteste_par\":\"eric\",\"le\":\"2026-10-20T08:16:00.000Z\"},\"relecteur_attribue\":\"relectrice-test\",\"relecteur_egal_cloturer\":false,\"provenances\":[{\"execution_id\":\"1042\",\"workflow_id\":\"wfConfirmation01\",\"statut\":\"success\",\"demarree_le\":\"2026-10-19T17:02:11.004Z\"},{\"execution_id\":\"1043\",\"workflow_id\":\"wfConfirmation01\",\"statut\":\"success\",\"demarree_le\":\"2026-10-19T17:02:11.004Z\"},{\"execution_id\":\"998\",\"workflow_id\":\"wfConfirmation01\",\"statut\":\"success\",\"demarree_le\":\"2026-10-19T18:00:00.000Z\"}],\"nb_fichiers_decision\":3,\"referentiel_version\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\",\"moteur\":{\"version\":\"v1\",\"sha256\":\"ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753\"},\"execution_cloture\":{\"execution_id\":\"1100\",\"workflow_id\":\"wfCloture0001\",\"statut\":\"success\",\"terminee_le\":\"2026-10-20T08:10:00.500Z\"},\"revoque_le\":\"2026-10-20T08:09:59.000Z\",\"levees\":[],\"incidents_connus\":[],\"cloture_le\":\"2026-10-20T08:17:00.000Z\",\"badge\":{\"forme\":\"relue_par\",\"nom_affiche\":\"un professeur\",\"id\":null},\"cle_id\":\"cle-test-2026\"}",
+      "hex": "7b22736368656d61223a226174746573746174696f6e2d636c6f747572652f7631222c227365745f6964223a227365745f666f6e64615f6c6578697175655f6e465f3032222c226e6f74696f6e5f6964223a2266722e6c657869717565222c2270616c696572223a226e46222c22636f657572223a7b22616374696f6e223a226163636570746572222c2273656c656374696f6e223a5b2269743031222c2269743033225d2c226563617274656573223a5b2269743032225d2c22656d707265696e74655f72656c7565223a227368613235363a31313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131222c22656d707265696e74655f7075626c696565223a227368613235363a32323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232222c226d6f74657572223a7b2276657273696f6e223a227631222c22736861323536223a2263653134633365343937393439393133613337666438646166366335376432663061393633303665303866303634626639323331363030353732616431373533227d7d2c227368613235365f696e7374616e74616e65223a2261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162222c22636f64655f636f6e6669726d6174696f6e223a2261626162616261626162616261626162222c22636f6e6669726d6174696f6e223a7b226d6f6465223a227265706f6e73655f6d657373616765222c22706172223a2272656c656374726963652d74657374222c2272656375655f706172223a2265726963222c226c65223a22323032362d31302d32315431393a30303a30302e3030305a227d2c22666964656c6974655f7472616e736d697373696f6e223a7b22617474657374655f706172223a2265726963222c226c65223a22323032362d31302d32305430383a31363a30302e3030305a227d2c2272656c6563746575725f6174747269627565223a2272656c656374726963652d74657374222c2272656c6563746575725f6567616c5f636c6f7475726572223a66616c73652c2270726f76656e616e636573223a5b7b22657865637574696f6e5f6964223a2231303432222c22776f726b666c6f775f6964223a227766436f6e6669726d6174696f6e3031222c22737461747574223a2273756363657373222c2264656d61727265655f6c65223a22323032362d31302d31395431373a30323a31312e3030345a227d2c7b22657865637574696f6e5f6964223a2231303433222c22776f726b666c6f775f6964223a227766436f6e6669726d6174696f6e3031222c22737461747574223a2273756363657373222c2264656d61727265655f6c65223a22323032362d31302d31395431373a30323a31312e3030345a227d2c7b22657865637574696f6e5f6964223a22393938222c22776f726b666c6f775f6964223a227766436f6e6669726d6174696f6e3031222c22737461747574223a2273756363657373222c2264656d61727265655f6c65223a22323032362d31302d31395431383a30303a30302e3030305a227d5d2c226e625f66696368696572735f6465636973696f6e223a332c227265666572656e7469656c5f76657273696f6e223a227368613235363a33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333222c226d6f74657572223a7b2276657273696f6e223a227631222c22736861323536223a2263653134633365343937393439393133613337666438646166366335376432663061393633303665303866303634626639323331363030353732616431373533227d2c22657865637574696f6e5f636c6f74757265223a7b22657865637574696f6e5f6964223a2231313030222c22776f726b666c6f775f6964223a227766436c6f7475726530303031222c22737461747574223a2273756363657373222c227465726d696e65655f6c65223a22323032362d31302d32305430383a31303a30302e3530305a227d2c227265766f7175655f6c65223a22323032362d31302d32305430383a30393a35392e3030305a222c226c6576656573223a5b5d2c22696e636964656e74735f636f6e6e7573223a5b5d2c22636c6f747572655f6c65223a22323032362d31302d32305430383a31373a30302e3030305a222c226261646765223a7b22666f726d65223a2272656c75655f706172222c226e6f6d5f61666669636865223a22756e2070726f66657373657572222c226964223a6e756c6c7d2c22636c655f6964223a22636c652d746573742d32303236227d"
+    },
+    {
+      "id": "refus-attestation-signature",
+      "description": "champ « signature » dans la charge : inconnu, refusé",
+      "refus": true,
+      "contrat": "attestation-cloture/v1",
+      "entree": {
+        "schema": "attestation-cloture/v1",
+        "set_id": "set_fonda_proportionnalite_nI_02",
+        "notion_id": "maths.proportionnalite",
+        "palier": "nI",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "empreinte_publiee": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "abababababababababababababababababababababababababababababababab",
+        "code_confirmation": "abababababababab",
+        "confirmation": {
+          "mode": "auto",
+          "par": "eric",
+          "recue_par": "eric",
+          "le": "2026-10-20T08:15:30.125Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-20T08:16:00.000Z"
+        },
+        "relecteur_attribue": "eric",
+        "relecteur_egal_cloturer": true,
+        "provenances": [
+          {
+            "execution_id": "1042",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T17:02:11.004Z"
+          },
+          {
+            "execution_id": "1043",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T17:02:11.004Z"
+          },
+          {
+            "execution_id": "998",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T18:00:00.000Z"
+          }
+        ],
+        "nb_fichiers_decision": 3,
+        "referentiel_version": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "execution_cloture": {
+          "execution_id": "1100",
+          "workflow_id": "wfCloture0001",
+          "statut": "success",
+          "terminee_le": "2026-10-20T08:10:00.500Z"
+        },
+        "revoque_le": "2026-10-20T08:09:59.000Z",
+        "levees": [],
+        "incidents_connus": [],
+        "cloture_le": "2026-10-20T08:17:00.000Z",
+        "badge": {
+          "forme": "relue_par",
+          "nom_affiche": "Éric Duchateau",
+          "id": "eric"
+        },
+        "cle_id": "cle-test-2026",
+        "signature": "x"
+      }
+    },
+    {
+      "id": "refus-attestation-champ-manquant",
+      "description": "charge sans cle_id",
+      "refus": true,
+      "contrat": "attestation-cloture/v1",
+      "entree": {
+        "schema": "attestation-cloture/v1",
+        "set_id": "set_fonda_proportionnalite_nI_02",
+        "notion_id": "maths.proportionnalite",
+        "palier": "nI",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "empreinte_publiee": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "abababababababababababababababababababababababababababababababab",
+        "code_confirmation": "abababababababab",
+        "confirmation": {
+          "mode": "auto",
+          "par": "eric",
+          "recue_par": "eric",
+          "le": "2026-10-20T08:15:30.125Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-20T08:16:00.000Z"
+        },
+        "relecteur_attribue": "eric",
+        "relecteur_egal_cloturer": true,
+        "provenances": [
+          {
+            "execution_id": "1042",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T17:02:11.004Z"
+          },
+          {
+            "execution_id": "1043",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T17:02:11.004Z"
+          },
+          {
+            "execution_id": "998",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T18:00:00.000Z"
+          }
+        ],
+        "nb_fichiers_decision": 3,
+        "referentiel_version": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "execution_cloture": {
+          "execution_id": "1100",
+          "workflow_id": "wfCloture0001",
+          "statut": "success",
+          "terminee_le": "2026-10-20T08:10:00.500Z"
+        },
+        "revoque_le": "2026-10-20T08:09:59.000Z",
+        "levees": [],
+        "incidents_connus": [],
+        "cloture_le": "2026-10-20T08:17:00.000Z",
+        "badge": {
+          "forme": "relue_par",
+          "nom_affiche": "Éric Duchateau",
+          "id": "eric"
+        }
+      }
+    },
+    {
+      "id": "refus-attestation-badge-id-absent",
+      "description": "badge sans clé id (null exigé, jamais une absence)",
+      "refus": true,
+      "contrat": "attestation-cloture/v1",
+      "entree": {
+        "schema": "attestation-cloture/v1",
+        "set_id": "set_fonda_proportionnalite_nI_02",
+        "notion_id": "maths.proportionnalite",
+        "palier": "nI",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "empreinte_publiee": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "abababababababababababababababababababababababababababababababab",
+        "code_confirmation": "abababababababab",
+        "confirmation": {
+          "mode": "auto",
+          "par": "eric",
+          "recue_par": "eric",
+          "le": "2026-10-20T08:15:30.125Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-20T08:16:00.000Z"
+        },
+        "relecteur_attribue": "eric",
+        "relecteur_egal_cloturer": true,
+        "provenances": [
+          {
+            "execution_id": "1042",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T17:02:11.004Z"
+          },
+          {
+            "execution_id": "1043",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T17:02:11.004Z"
+          },
+          {
+            "execution_id": "998",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T18:00:00.000Z"
+          }
+        ],
+        "nb_fichiers_decision": 3,
+        "referentiel_version": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "execution_cloture": {
+          "execution_id": "1100",
+          "workflow_id": "wfCloture0001",
+          "statut": "success",
+          "terminee_le": "2026-10-20T08:10:00.500Z"
+        },
+        "revoque_le": "2026-10-20T08:09:59.000Z",
+        "levees": [],
+        "incidents_connus": [],
+        "cloture_le": "2026-10-20T08:17:00.000Z",
+        "badge": {
+          "forme": "relue_par",
+          "nom_affiche": "un professeur"
+        },
+        "cle_id": "cle-test-2026"
+      }
+    },
+    {
+      "id": "refus-attestation-null-non-nullable",
+      "description": "null là où une chaîne est exigée (revoque_le jamais null)",
+      "refus": true,
+      "contrat": "attestation-cloture/v1",
+      "entree": {
+        "schema": "attestation-cloture/v1",
+        "set_id": "set_fonda_proportionnalite_nI_02",
+        "notion_id": "maths.proportionnalite",
+        "palier": "nI",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "empreinte_publiee": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "abababababababababababababababababababababababababababababababab",
+        "code_confirmation": "abababababababab",
+        "confirmation": {
+          "mode": "auto",
+          "par": "eric",
+          "recue_par": "eric",
+          "le": "2026-10-20T08:15:30.125Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-20T08:16:00.000Z"
+        },
+        "relecteur_attribue": "eric",
+        "relecteur_egal_cloturer": true,
+        "provenances": [
+          {
+            "execution_id": "1042",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T17:02:11.004Z"
+          },
+          {
+            "execution_id": "1043",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T17:02:11.004Z"
+          },
+          {
+            "execution_id": "998",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T18:00:00.000Z"
+          }
+        ],
+        "nb_fichiers_decision": 3,
+        "referentiel_version": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "execution_cloture": {
+          "execution_id": "1100",
+          "workflow_id": "wfCloture0001",
+          "statut": "success",
+          "terminee_le": "2026-10-20T08:10:00.500Z"
+        },
+        "revoque_le": null,
+        "levees": [],
+        "incidents_connus": [],
+        "cloture_le": "2026-10-20T08:17:00.000Z",
+        "badge": {
+          "forme": "relue_par",
+          "nom_affiche": "Éric Duchateau",
+          "id": "eric"
+        },
+        "cle_id": "cle-test-2026"
+      }
+    },
+    {
+      "id": "refus-attestation-provenance-extra",
+      "description": "provenance avec un champ supplémentaire (stoppedAt)",
+      "refus": true,
+      "contrat": "attestation-cloture/v1",
+      "entree": {
+        "schema": "attestation-cloture/v1",
+        "set_id": "set_fonda_proportionnalite_nI_02",
+        "notion_id": "maths.proportionnalite",
+        "palier": "nI",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "empreinte_publiee": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "abababababababababababababababababababababababababababababababab",
+        "code_confirmation": "abababababababab",
+        "confirmation": {
+          "mode": "auto",
+          "par": "eric",
+          "recue_par": "eric",
+          "le": "2026-10-20T08:15:30.125Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-20T08:16:00.000Z"
+        },
+        "relecteur_attribue": "eric",
+        "relecteur_egal_cloturer": true,
+        "provenances": [
+          {
+            "execution_id": "1042",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T17:02:11.004Z",
+            "stoppedAt": "x"
+          }
+        ],
+        "nb_fichiers_decision": 3,
+        "referentiel_version": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "execution_cloture": {
+          "execution_id": "1100",
+          "workflow_id": "wfCloture0001",
+          "statut": "success",
+          "terminee_le": "2026-10-20T08:10:00.500Z"
+        },
+        "revoque_le": "2026-10-20T08:09:59.000Z",
+        "levees": [],
+        "incidents_connus": [],
+        "cloture_le": "2026-10-20T08:17:00.000Z",
+        "badge": {
+          "forme": "relue_par",
+          "nom_affiche": "Éric Duchateau",
+          "id": "eric"
+        },
+        "cle_id": "cle-test-2026"
+      }
+    },
+    {
+      "id": "refus-attestation-booleen",
+      "description": "relecteur_egal_cloturer en chaîne",
+      "refus": true,
+      "contrat": "attestation-cloture/v1",
+      "entree": {
+        "schema": "attestation-cloture/v1",
+        "set_id": "set_fonda_proportionnalite_nI_02",
+        "notion_id": "maths.proportionnalite",
+        "palier": "nI",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "empreinte_publiee": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "abababababababababababababababababababababababababababababababab",
+        "code_confirmation": "abababababababab",
+        "confirmation": {
+          "mode": "auto",
+          "par": "eric",
+          "recue_par": "eric",
+          "le": "2026-10-20T08:15:30.125Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-20T08:16:00.000Z"
+        },
+        "relecteur_attribue": "eric",
+        "relecteur_egal_cloturer": "true",
+        "provenances": [
+          {
+            "execution_id": "1042",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T17:02:11.004Z"
+          },
+          {
+            "execution_id": "1043",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T17:02:11.004Z"
+          },
+          {
+            "execution_id": "998",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T18:00:00.000Z"
+          }
+        ],
+        "nb_fichiers_decision": 3,
+        "referentiel_version": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "execution_cloture": {
+          "execution_id": "1100",
+          "workflow_id": "wfCloture0001",
+          "statut": "success",
+          "terminee_le": "2026-10-20T08:10:00.500Z"
+        },
+        "revoque_le": "2026-10-20T08:09:59.000Z",
+        "levees": [],
+        "incidents_connus": [],
+        "cloture_le": "2026-10-20T08:17:00.000Z",
+        "badge": {
+          "forme": "relue_par",
+          "nom_affiche": "Éric Duchateau",
+          "id": "eric"
+        },
+        "cle_id": "cle-test-2026"
+      }
+    },
+    {
+      "id": "refus-attestation-periode-manquante",
+      "description": "incident sans periode.fin",
+      "refus": true,
+      "contrat": "attestation-cloture/v1",
+      "entree": {
+        "schema": "attestation-cloture/v1",
+        "set_id": "set_fonda_lexique_nF_02",
+        "notion_id": "fr.lexique",
+        "palier": "nF",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "empreinte_publiee": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "abababababababababababababababababababababababababababababababab",
+        "code_confirmation": "abababababababab",
+        "confirmation": {
+          "mode": "reponse_message",
+          "par": "relectrice-test",
+          "recue_par": "eric",
+          "le": "2026-10-21T19:00:00.000Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-20T08:16:00.000Z"
+        },
+        "relecteur_attribue": "relectrice-test",
+        "relecteur_egal_cloturer": false,
+        "provenances": [
+          {
+            "execution_id": "1042",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T17:02:11.004Z"
+          },
+          {
+            "execution_id": "1043",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T17:02:11.004Z"
+          },
+          {
+            "execution_id": "998",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T18:00:00.000Z"
+          }
+        ],
+        "nb_fichiers_decision": 3,
+        "referentiel_version": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "execution_cloture": {
+          "execution_id": "1100",
+          "workflow_id": "wfCloture0001",
+          "statut": "success",
+          "terminee_le": "2026-10-20T08:10:00.500Z"
+        },
+        "revoque_le": "2026-10-20T08:09:59.000Z",
+        "levees": [
+          {
+            "type": "recherche_incomplete",
+            "constat": "incompleteSearch=true persistant après 3 essais"
+          },
+          {
+            "type": "historique_incomplet",
+            "constat": "historique d'exécutions possiblement purgé avant le 2026-10-01"
+          }
+        ],
+        "incidents_connus": [
+          {
+            "id": "inc-2026-10-02",
+            "nature": "execution_non_terminee",
+            "detecte_le": "2026-10-02T10:00:00.000Z",
+            "statut": "resolu",
+            "resolu_le": "2026-10-02T11:30:00.000Z",
+            "preuve_resolution": "exécution 991 terminée success, rapprochée sans anomalie",
+            "periode": {
+              "debut": null
+            }
+          }
+        ],
+        "cloture_le": "2026-10-20T08:17:00.000Z",
+        "badge": {
+          "forme": "relue_et_validee",
+          "nom_affiche": "Relectrice de test",
+          "id": "relectrice-test"
+        },
+        "cle_id": "cle-test-2026"
+      }
+    },
+    {
+      "id": "refus-recap-reponse-booleen",
+      "description": "réponse acceptée booléenne (ni chaîne ni nombre)",
+      "refus": true,
+      "contrat": "recapitulatif-fonda/v1",
+      "entree": {
+        "schema": "recapitulatif-fonda/v1",
+        "set_id": "set_fonda_proportionnalite_nI_02",
+        "notion_id": "maths.proportionnalite",
+        "palier": "nI",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "empreinte_relue": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "empreinte_publiee": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "cartes_gardees": [
+          {
+            "item_id": "it01",
+            "question": "3 cahiers coûtent 6 €. Combien coûtent 5 cahiers ?",
+            "reponse": "10 €",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              true
+            ],
+            "unite": "€",
+            "arrondi": null,
+            "seconde_chance": true
+          }
+        ],
+        "cartes_ecartees": [
+          {
+            "item_id": "it02",
+            "question": "Question écartée."
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-recap-reponse-null",
+      "description": "réponse acceptée null (non nullable)",
+      "refus": true,
+      "contrat": "recapitulatif-fonda/v1",
+      "entree": {
+        "schema": "recapitulatif-fonda/v1",
+        "set_id": "set_fonda_proportionnalite_nI_02",
+        "notion_id": "maths.proportionnalite",
+        "palier": "nI",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "empreinte_relue": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "empreinte_publiee": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "cartes_gardees": [
+          {
+            "item_id": "it01",
+            "question": "3 cahiers coûtent 6 €. Combien coûtent 5 cahiers ?",
+            "reponse": "10 €",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              null
+            ],
+            "unite": "€",
+            "arrondi": null,
+            "seconde_chance": true
+          }
+        ],
+        "cartes_ecartees": [
+          {
+            "item_id": "it02",
+            "question": "Question écartée."
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-recap-champ-absent",
+      "description": "carte sans seconde_chance (absent ≠ null)",
+      "refus": true,
+      "contrat": "recapitulatif-fonda/v1",
+      "entree": {
+        "schema": "recapitulatif-fonda/v1",
+        "set_id": "set_fonda_proportionnalite_nI_02",
+        "notion_id": "maths.proportionnalite",
+        "palier": "nI",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "empreinte_relue": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "empreinte_publiee": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "cartes_gardees": [
+          {
+            "item_id": "it01",
+            "question": "3 cahiers coûtent 6 €. Combien coûtent 5 cahiers ?",
+            "reponse": "10 €",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "10 €",
+              10
+            ],
+            "unite": "€",
+            "arrondi": null
+          }
+        ],
+        "cartes_ecartees": [
+          {
+            "item_id": "it02",
+            "question": "Question écartée."
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-recap-ecartee-extra",
+      "description": "carte écartée avec reponse (forme { item_id, question } exacte)",
+      "refus": true,
+      "contrat": "recapitulatif-fonda/v1",
+      "entree": {
+        "schema": "recapitulatif-fonda/v1",
+        "set_id": "set_fonda_proportionnalite_nI_02",
+        "notion_id": "maths.proportionnalite",
+        "palier": "nI",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "empreinte_relue": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "empreinte_publiee": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "cartes_gardees": [
+          {
+            "item_id": "it01",
+            "question": "3 cahiers coûtent 6 €. Combien coûtent 5 cahiers ?",
+            "reponse": "10 €",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "10 €",
+              10
+            ],
+            "unite": "€",
+            "arrondi": null,
+            "seconde_chance": true
+          },
+          {
+            "item_id": "it03",
+            "question": "Arrondir 1/3 au centième.",
+            "reponse": "0,33",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "1/3"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": false
+          }
+        ],
+        "cartes_ecartees": [
+          {
+            "item_id": "it02",
+            "question": "Q",
+            "reponse": "x"
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-schema-nullable-imbrique",
+      "description": "schéma : nullable imbriqué interdit",
+      "refus": true,
+      "schema": {
+        "type": "nullable",
+        "de": {
+          "type": "nullable",
+          "de": "chaine"
+        }
+      },
+      "entree": null
+    },
+    {
+      "id": "refus-schema-nullable-cle-extra",
+      "description": "schéma : nullable avec clé supplémentaire",
+      "refus": true,
+      "schema": {
+        "type": "nullable",
+        "de": "chaine",
+        "defaut": "x"
+      },
+      "entree": null
     }
   ]
 }
