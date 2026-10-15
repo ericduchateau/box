@@ -239,6 +239,8 @@ describe('mutations de copie détectées par le banc partagé', () => {
     ['champs en double non vérifiés', (s) => s.replace('if (vus[nom]) throw', 'if (false) throw')],
     ['chaîne ou nombre : booléen accepté', (s) => s.replace("throw erreur(chemin, 'chaîne ou nombre fini attendu');", 'return valeur;')],
     ['nullable imbriqué non refusé', (s) => s.replace("if (de && de.type === 'nullable') throw", 'if (false) throw')],
+    ['tableaux triés (tri par défaut : chaînes par unité de code)', (s) => s.replace('      return sortie;\n    }\n    // objet', '      return sortie.sort();\n    }\n    // objet')],
+    ['tableaux triés numériquement quand c\'est possible', (s) => s.replace('      return sortie;\n    }\n    // objet', '      return sortie.sort(function (x, y) { return (+x.execution_id || 0) - (+y.execution_id || 0) || 0; });\n    }\n    // objet')],
     ['charge : ordre de deux champs inversé', (s) => s.replace("['relecteur_attribue', 'chaine'], ['relecteur_egal_cloturer', 'booleen'],", "['relecteur_egal_cloturer', 'booleen'], ['relecteur_attribue', 'chaine'],")],
   ];
   for (const [nom, muter] of mutations) {
