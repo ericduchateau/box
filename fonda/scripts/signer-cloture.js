@@ -454,8 +454,10 @@ async function main() {
 
 // Adaptateur disque de production pour `existe` : seule l'absence AVÉRÉE (ENOENT)
 // vaut false ; toute autre erreur est levée (jamais assimilée à une absence).
+// lstat (et non stat) : un LIEN SYMBOLIQUE, même cassé, est une entrée existante —
+// l'écriture exclusive le refuserait après signature.
 function existeSurDisque(p) {
-  try { fs.statSync(p); return true; } catch (e) { if (e && e.code === 'ENOENT') return false; throw e; }
+  try { fs.lstatSync(p); return true; } catch (e) { if (e && e.code === 'ENOENT') return false; throw e; }
 }
 
 module.exports = { existeSurDisque, cloturer, Refus, normaliserDate, projeterRecapitulatif, rendreRecapitulatif, decisionConforme, lotPublie, choisirBadge, verifierDossierLocal, observer };
