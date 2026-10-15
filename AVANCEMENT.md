@@ -5,7 +5,7 @@
 ## Objectif
 Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correction par profil, mesure par groupe, fiches générées puis relues par un humain), sans casser BOX. Dépôt AAP CARDIE-SEPIA, échéance **21/10/2026**. Source de vérité : `docs/PRD-Box-FONDA.md` ; règles : `AGENTS.md`.
 
-## État actuel (design = `1b6b0ea`, main intact `7ea4f28`)
+## État actuel (design = `4ebbb90`, main intact `7ea4f28`)
 - **BOX prod** : 9 workflows n8n actifs, Google Form + Tally, relecture carte par carte (`/box-select`), front `https://ericduchateau.github.io/box/` (`main`).
 - **FONDA sur `design`** : thème sombre, correction par profil, index `?fonda=1&page=entrainement` ; **chaîne séparée (bloc 1, PR #6/#7 mergées)** : `catalogue-fonda.json` + `fonda/data/lots/` (8 lots relus, empreintes figées `HISTORIQUES_FIGES`), CI `tests (node --test)` obligatoire sur `design`/`main`.
 - **CDC relecture v8.1** : `docs/CDC-fonda-relecture.md` (branche `feat/box-fonda-relecture`, non mergée). Preuve C8 faite (SRI/CORS/export OK ; CSP en `<meta>`).
@@ -22,8 +22,8 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 
 ## Prochaines étapes
 1. **Étape 3 terminée** (canonique, journal + M2, immuabilité + CODEOWNERS, nettoyage CI) ; `immuabilite` requis sur `design` et `main`.
-2. **En cours — chantier 4.0** : CDC v8.2 §11 bis validé par Éric (formes de la charge signée et du récapitulatif ; rapprochement exécution n8n ↔ lot HORS périmètre figé, clôture signée interdite tant qu'il n'est pas défini). Code : `feat/box-fonda-canonique-attestation` → `design` : `canonique.js` étendu (`nullable`, `chaine_ou_nombre`), schémas `recapitulatif-fonda/v1` et `attestation-cloture/v1` (récapitulatif NON imbriqué dans la charge : §11), vecteurs 51 -> 71 (anciens inchangés). `decision-fonda/v1` et `instantane-fonda/v1` toujours refusés.
-3. Puis 4a : `publier-lot.js` accepte et vérifie le Type 2 (clés éphémères de test) ; 4b : `signer-cloture.js` + vraie clé RSA d'Éric sur le Mac.
+2. **Chantier 4.0 mergé** (PR #14) : CDC v8.2 §11 bis + `canonique.js` (null, chaîne ou nombre, schémas `recapitulatif-fonda/v1` et `attestation-cloture/v1`, 71 vecteurs).
+3. **En cours — 4a** : `feat/box-fonda-publication-signee` → `design`. `fonda/scripts/attestation-signee.js` (clés `cles.json` : PEM intègre, RSA ≥ 3072, recevabilité, révocation ; signature RSA-SHA256 PKCS#1 v1.5 base64 sur les octets canoniques ; invariants de valeur et de dépôt) ; `publier-lot.js` accepte le Type 2 `cloture-signee` (remplace le type réservé `n8n-relecture`) ; `catalogue.js` : forme et cohérence Type 2 (sans crypto) ; CI re-vérifie chaque signature. `cles.json` vide : aucune publication Type 2 réelle avant 4b. Puis 4b : `signer-cloture.js` + vraie clé RSA d'Éric sur le Mac.
 4. Réglages à confirmer (Éric) : « Allow rebase merging » décoché ; « Do not allow bypassing » ; CODEOWNERS sur `main`.
 5. Bloc 3 (prod, feu vert) : orpheline `box_7e7tcooh`. `feat/box-delete-hardening` ; Moteur A + dette `defi_id` ; collecte `/box-fonda-events` ; recette `canonique.js` en vrai nœud n8n.
 

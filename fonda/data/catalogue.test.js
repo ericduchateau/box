@@ -90,9 +90,21 @@ describe('chaîne publiée FONDA — cohérence complète', () => {
     }
   });
 
-  test('aucune attestation « n8n-relecture » tant que sa source de confiance n\'est pas spécifiée (bloc 2)', () => {
-    assert.equal(CATALOGUE.lots.filter((e) => e.attestation.type === 'n8n-relecture').length, 0);
+  // Type 2 (CDC §11, §14) : chaque clôture signée est RE-VÉRIFIÉE en CI avec les clés du
+  // dépôt (signature, recevabilité, invariants de valeur et de dépôt). Une clé révoquée
+  // rend ses attestations irrecevables : la CI échoue jusqu'au retrait ou à la reclôture.
+  test('clés du dépôt : cles.json conforme (vide avant la cérémonie 4b)', () => {
+    const { clesDuDepot } = require('../scripts/publier-lot.js');
+    assert.ok(Array.isArray(clesDuDepot().ids));
   });
+  for (const e of CATALOGUE.lots.filter((x) => x.attestation.type === 'cloture-signee')) {
+    test(`${e.set_id} : clôture signée vérifiée (signature, clé, invariants)`, () => {
+      const { clesDuDepot } = require('../scripts/publier-lot.js');
+      const S = require('../scripts/attestation-signee.js');
+      const registre = require('../engine/moteurs.json');
+      assert.deepEqual(S.verifierAttestationSignee(e.attestation, { entree: e, registre, referentiel: REFERENTIEL, cles: clesDuDepot() }), []);
+    });
+  }
 
   test('calendrier : tout set_id programmé est publié au catalogue', () => {
     const publies = new Set(CATALOGUE.lots.map((e) => e.set_id));

@@ -32,7 +32,7 @@ const SET_ID_PATTERN = /^set_fonda_[a-z0-9-]+_n[IF]_\d{2}$/;
 const ITEM_ID_PATTERN = /^it\d{2}$/;
 const EMPREINTE_PATTERN = /^sha256:[0-9a-f]{64}$/;
 const PALIERS = ['nI', 'nF'];
-const TYPES_ATTESTATION = ['manuelle-historique', 'n8n-relecture'];
+const TYPES_ATTESTATION = ['manuelle-historique', 'cloture-signee'];
 
 // Listes BLANCHES (contrat lot-fonda/v1) : tout autre champ est refusé, notamment
 // id (box_…), prof_email, prof_nom, code_suppression, review_key, review_token.
@@ -191,13 +191,30 @@ function validerLot(lot) {
 // Attestation (forme). Deux types distincts, jamais confondus :
 //  - manuelle-historique : UNIQUEMENT les 8 lots du lot de validation du 11/10,
 //    attestation déclarative d'Éric (pas une preuve technique) ;
-//  - n8n-relecture : produite par la relecture FONDA (bloc 2) — forme réservée ;
-//    sa signature/source de confiance n'est PAS encore spécifiée.
+//  - cloture-signee (Type 2, CDC §11) : enveloppe { type, charge, signature } ; ici,
+//    seulement la FORME et la cohérence charge <-> entrée (pas de cryptographie : ce
+//    fichier est aussi chargé par le front). La SIGNATURE et les invariants de valeur
+//    sont vérifiés en Node (fonda/scripts/attestation-signee.js : publication et CI).
 // ---------------------------------------------------------------------------
 function validerAttestation(att, entree) {
   const erreurs = [];
   if (!att || typeof att !== 'object') return ['attestation absente'];
   if (!TYPES_ATTESTATION.includes(att.type)) return [`type d'attestation inconnu : ${att.type}`];
+  if (att.type === 'cloture-signee') {
+    const ch = att.charge;
+    if (Object.keys(att).sort().join() !== 'charge,signature,type' || !ch || typeof ch !== 'object' || !estTexte(att.signature)) {
+      return ['cloture-signee : enveloppe { type, charge, signature } attendue'];
+    }
+    const meme = (a, b) => JSON.stringify(a) === JSON.stringify(b); // tableaux ordonnés
+    const memeMoteur = (a, b) => !!a && !!b && a.version === b.version && a.sha256 === b.sha256;
+    const memeBadge = (a, b) => !!a && !!b && a.forme === b.forme && a.nom_affiche === b.nom_affiche && a.id === b.id;
+    if (ch.set_id !== entree.set_id || ch.notion_id !== entree.notion_id || ch.palier !== entree.palier) erreurs.push('cloture-signee : identité de la charge ≠ entrée');
+    if (!ch.coeur || ch.coeur.empreinte_publiee !== entree.empreinte) erreurs.push('cloture-signee : coeur.empreinte_publiee ≠ empreinte de l\'entrée');
+    if (!ch.coeur || !meme(ch.coeur.selection, entree.item_ids)) erreurs.push('cloture-signee : coeur.selection ≠ item_ids de l\'entrée');
+    if (!memeMoteur(ch.moteur, entree.moteur) || !ch.coeur || !memeMoteur(ch.coeur.moteur, entree.moteur)) erreurs.push('cloture-signee : moteur de la charge ≠ moteur de l\'entrée');
+    if (!memeBadge(ch.badge, entree.relecteur)) erreurs.push('cloture-signee : badge ≠ relecteur de l\'entrée');
+    return erreurs;
+  }
   if (att.empreinte_attestee !== entree.empreinte) erreurs.push('empreinte_attestee ≠ empreinte de l\'entrée');
   if (att.type === 'manuelle-historique') {
     if (!Object.prototype.hasOwnProperty.call(HISTORIQUES_FIGES, entree.set_id)) {
@@ -274,6 +291,10 @@ function validerCatalogue(catalogue, referentiel) {
       if (n && e.attestation && e.attestation.relecture_declaree
         && e.attestation.relecture_declaree.relecteur_attribue !== n.relecteur) {
         erreurs.push(`${p} : relecteur_attribue ≠ relecteur du référentiel (${n.relecteur})`);
+      }
+      if (n && e.attestation && e.attestation.type === 'cloture-signee' && e.attestation.charge
+        && e.attestation.charge.relecteur_attribue !== n.relecteur) {
+        erreurs.push(`${p} : relecteur_attribue de la charge ≠ relecteur du référentiel (${n.relecteur})`);
       }
     }
   });
