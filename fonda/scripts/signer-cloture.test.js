@@ -76,6 +76,7 @@ async function scenario(x = {}) {
     fs: {
       ecrireExclusif(p, t) { if (etat.ecrits.has(p)) throw new Error('existe déjà'); etat.ecrits.set(p, Buffer.from(t, 'utf8')); },
       lire(p) { if (!etat.ecrits.has(p)) throw new Error('absent'); return etat.ecrits.get(p); },
+      existe(p) { return etat.ecrits.has(p); },
     },
     signer: (octets) => { etat.signatures += 1; return crypto.sign('sha256', octets, { key: privateKey, padding: crypto.constants.RSA_PKCS1_PADDING }); },
     cles: CLES, registre: REGISTRE,
@@ -233,7 +234,9 @@ describe('correctifs de relecture : refus AVANT signature, conformité, dates, d
     ['incident détecté après sa résolution', { modifier: ({ deps }) => { deps.incidents = async () => [inc({ detecte_le: '2026-10-19T00:00:00.000Z' })]; } }, /détecté après sa résolution/],
     ['sous-dossier final lien vers le dépôt', { modifier: ({ deps }) => { deps.fs.realpath = (p) => (/set_fonda_/.test(p) ? path.join(__dirname, 'x') : p); } }, /DANS le dépôt/],
     ['exécution d\'un AUTRE lot sans dates', { modifier: ({ execs }) => { execs.wfConf[2].startedAt = null; execs.wfConf[2].stoppedAt = null; } }, /sans startedAt\/stoppedAt/],
-    ['attestation.json déjà présent dans le dossier du lot', { modifier: ({ deps }) => { const l = deps.fs.lire; deps.fs.lire = (p) => (p.endsWith('attestation.json') ? Buffer.from('{}') : l(p)); } }, /existe déjà/],
+    ['attestation.json déjà présent dans le dossier du lot', { modifier: ({ deps }) => { const e = deps.fs.existe; deps.fs.existe = (p) => (p.endsWith('attestation.json') ? true : e(p)); } }, /existe déjà/],
+    ['attestation.json présent mais INACCESSIBLE (EACCES)', { modifier: ({ deps }) => { const e = deps.fs.existe; deps.fs.existe = (p) => { if (p.endsWith('attestation.json')) { const x = new Error('accès refusé'); x.code = 'EACCES'; throw x; } return e(p); }; } }, /inaccessible/],
+    ['existe() renvoyant un état indéterminé', { modifier: ({ deps }) => { const e = deps.fs.existe; deps.fs.existe = (p) => (p.endsWith('attestation.json') ? undefined : e(p)); } }, /indéterminé/],
     ['exécution terminée avant son démarrage', { modifier: ({ execs }) => { execs.wfConf[0].stoppedAt = '2026-10-19T16:59:59.000Z'; } }, /avant d'avoir démarré/],
   ]) {
     test(`refus SANS appel au signataire : ${libelle}`, async () => {
@@ -265,6 +268,14 @@ describe('correctifs de relecture : refus AVANT signature, conformité, dates, d
     const txt = [...etat.ecrits.entries()].find(([p]) => p.endsWith('.txt'))[1].toString('utf8');
     assert.ok(txt.includes(premiere.question));
     assert.match(txt.trim().split('\n').pop(), /^[0-9a-f]{64}$/, 'sha256_instantane en dernière ligne');
+  });
+  test('existeSurDisque : seule l\'absence avérée (ENOENT) vaut false', () => {
+    const { existeSurDisque } = require('./signer-cloture.js');
+    const tmp = fsN.mkdtempSync(path.join(require('os').tmpdir(), 'cloture-existe-'));
+    assert.equal(existeSurDisque(path.join(tmp, 'absent.json')), false);
+    fsN.writeFileSync(path.join(tmp, 'la.json'), '{}');
+    assert.equal(existeSurDisque(path.join(tmp, 'la.json')), true);
+    assert.throws(() => existeSurDisque(path.join(tmp, 'la.json', 'sous')), (e) => e.code === 'ENOTDIR');
   });
   test('dossier de clôture via un LIEN SYMBOLIQUE vers le dépôt : refusé', () => {
     const { verifierDossierLocal } = require('./signer-cloture.js');

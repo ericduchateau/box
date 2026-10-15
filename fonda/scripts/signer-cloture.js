@@ -221,7 +221,7 @@ function choisirBadge(mode, relecteur, tableRelecteurs) {
  *   incidents(),             // [{ id, nature, detecte_le, statut, resolu_le, preuve_resolution, periode }]
  *   referentielArchive(version) -> octets de referentiel.json à cette version (SHA-256 vérifié ici)
  *   tableRelecteurs,         // { id: nom affichable } — version au moment de la clôture
- *   fs,                      // { ecrireExclusif(p, texte), lire(p) -> Buffer }
+ *   fs,                      // { ecrireExclusif(p, texte), lire(p) -> Buffer, existe(p) -> booléen (lève si inaccessible), realpath? }
  *   signer(octets) -> Buffer // clé privée détenue par l'appelant, jamais exposée ici
  *   cles,                    // clés PUBLIQUES (attestation-signee.chargerCles) pour la revérification
  *   registre,                // moteurs.json
@@ -419,14 +419,18 @@ async function cloturer(setId, deps) {
   const avant = [...S.invariantsValeur(charge), ...S.invariantsDepot(charge, { entree, registre: deps.registre, referentiel })];
   if (avant.length) refuser(`charge refusée avant signature : ${avant.join(' ; ')}`);
   // Signature, puis REVÉRIFICATION IMMÉDIATE complète (même chemin que la publication).
-  // Destination de l'attestation libre AVANT signature (collision = refus sans appel au
-  // signataire). Une panne d'E/S APRÈS signature reste possible : l'enveloppe n'est
-  // alors pas enregistrée, rien n'est publié, la signature est simplement perdue
-  // (relancer la clôture) — aucune conséquence de confiance.
+  // Destination de l'attestation vérifiée AVANT signature : `existe(p)` renvoie true
+  // (occupée) ou false (absence AVÉRÉE) et LÈVE sur toute autre erreur (accès refusé…)
+  // — occupée ou inaccessible = refus sans appel au signataire.
+  // Une panne d'E/S APRÈS signature reste possible : l'enveloppe n'est alors pas
+  // enregistrée, rien n'est publié, la signature est perdue — aucune conséquence de
+  // confiance. Reprise : ARCHIVER (déplacer) le dossier <set_id>-<code> du lot, puis
+  // relancer (l'instantané y est écrit une seule fois : une relance dans le même
+  // dossier est refusée, c'est voulu).
   const cheminAttestation = path.join(dossierLot, 'attestation.json');
-  let dejaLa = true;
-  try { deps.fs.lire(cheminAttestation); } catch { dejaLa = false; }
-  if (dejaLa) refuser(`${cheminAttestation} existe déjà : refus d'écraser`);
+  let occupee;
+  try { occupee = deps.fs.existe(cheminAttestation); } catch (e) { refuser(`${cheminAttestation} inaccessible (${e.code || e.message}) : refus`); }
+  if (occupee !== false) refuser(`${cheminAttestation} existe déjà (ou état indéterminé) : refus d'écraser`);
   // La revérification utilise la clé publique DÉJÀ validée (jamais relue) : aucun refus
   // possible après signature, hors échec de la vérification cryptographique elle-même.
   const cleFigee = Object.freeze({ obtenir: (id) => (id === charge.cle_id ? k : { ok: false, raison: `clé « ${id} » non figée` }) });
@@ -448,6 +452,12 @@ async function main() {
   }
 }
 
-module.exports = { cloturer, Refus, normaliserDate, projeterRecapitulatif, rendreRecapitulatif, decisionConforme, lotPublie, choisirBadge, verifierDossierLocal, observer };
+// Adaptateur disque de production pour `existe` : seule l'absence AVÉRÉE (ENOENT)
+// vaut false ; toute autre erreur est levée (jamais assimilée à une absence).
+function existeSurDisque(p) {
+  try { fs.statSync(p); return true; } catch (e) { if (e && e.code === 'ENOENT') return false; throw e; }
+}
+
+module.exports = { existeSurDisque, cloturer, Refus, normaliserDate, projeterRecapitulatif, rendreRecapitulatif, decisionConforme, lotPublie, choisirBadge, verifierDossierLocal, observer };
 
 if (require.main === module) main();
