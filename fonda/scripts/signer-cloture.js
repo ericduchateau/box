@@ -38,6 +38,15 @@
 //     (même chemin que la publication) ; enveloppe { type: "cloture-signee", charge,
 //     signature } écrite dans le dossier local.
 //
+// PROVISOIRE (dépend du contrat de rattachement, chantier 5) — choix à confirmer ou
+// remplacer avec les workflows, JAMAIS considérés comme des contrats validés :
+//   - rapprochement décision <-> exécution par `nonce` ;
+//   - forme et sens de `lot_relu` (recopié brut dans l'instantané : à revoir avec son
+//     schéma, notamment l'absence de données sensibles) ;
+//   - repère « instant du listing » : approché ici par la fin de l'exécution de clôture
+//     retenue ; une écriture entre cette fin et le listing réel n'est pas détectée tant
+//     que le workflow ne fournit pas ce repère.
+//
 // SECRETS : la clé privée et le jeton d'API n8n (lecture seule, droits minimaux) vivent
 // HORS dépôt et HORS Dropbox ; ils ne sont jamais écrits, journalisés ni affichés.
 
@@ -74,11 +83,28 @@ function normaliserDate(v) {
 }
 
 // Le dossier local de clôture ne doit être ni dans le dépôt ni dans Dropbox.
-function verifierDossierLocal(dossier) {
+// Contrôle sur le chemin TEXTUEL puis sur le chemin PHYSIQUE (liens symboliques
+// résolus sur le plus proche parent existant) : `realpath` injectable (tests).
+function verifierDossierLocal(dossier, realpath = (p) => fs.realpathSync.native(p)) {
   if (typeof dossier !== 'string' || !path.isAbsolute(dossier)) refuser('dossier de clôture : chemin absolu requis');
+  const interdit = (abs) => {
+    const depot = (() => { try { return realpath(RACINE_DEPOT); } catch { return RACINE_DEPOT; } })();
+    for (const r of new Set([RACINE_DEPOT, depot])) if (abs === r || abs.startsWith(r + path.sep)) refuser('dossier de clôture DANS le dépôt : interdit');
+    if (/dropbox/i.test(abs)) refuser('dossier de clôture dans Dropbox : interdit');
+  };
   const abs = path.resolve(dossier);
-  if (abs === RACINE_DEPOT || abs.startsWith(RACINE_DEPOT + path.sep)) refuser('dossier de clôture DANS le dépôt : interdit');
-  if (/dropbox/i.test(abs)) refuser('dossier de clôture dans Dropbox : interdit');
+  interdit(abs);
+  let parent = abs;
+  const reste = [];
+  for (;;) {
+    let reel = null;
+    try { reel = realpath(parent); } catch { /* inexistant : on remonte */ }
+    if (reel) { interdit(path.join(reel, ...reste.reverse())); return; }
+    const p = path.dirname(parent);
+    if (p === parent) return;
+    reste.push(path.basename(parent));
+    parent = p;
+  }
 }
 
 // --- 1-2. Observations n8n (lecture seule) ---------------------------------------------
@@ -89,7 +115,8 @@ async function observer(api, workflowId) {
   const vues = new Map();
   const ajouter = (lot, source) => {
     for (const x of lot || []) {
-      const id = String(x && x.id);
+      if (!x || !((typeof x.id === 'string' && x.id.trim() !== '') || (typeof x.id === 'number' && Number.isSafeInteger(x.id)))) refuser(`exécution sans identifiant exploitable (${source})`);
+      const id = String(x.id);
       const n = { id, workflowId: x.workflowId, status: x.status, startedAt: x.startedAt == null ? null : normaliserDate(x.startedAt), stoppedAt: x.stoppedAt == null ? null : normaliserDate(x.stoppedAt), brut: x };
       if (x.startedAt != null && n.startedAt === null) refuser(`exécution ${id} : startedAt hors grammaire (${source})`);
       if (x.stoppedAt != null && n.stoppedAt === null) refuser(`exécution ${id} : stoppedAt hors grammaire (${source})`);
@@ -127,6 +154,39 @@ function projeterRecapitulatif(candidatLot, coeur, moteur) {
     })),
     cartes_ecartees: candidatLot.cartes.filter((c) => ecarte.has(c.item_id)).map((c) => ({ item_id: c.item_id, question: c.question })),
   };
+}
+
+// Rendu HUMAIN du récapitulatif (§3.3, §11 bis) : affiché pour la confirmation et
+// exporté tel quel pour la transmission ; comportements par défaut explicités.
+function rendreRecapitulatif(r) {
+  const val = (v, defaut) => (v === null ? defaut : String(v));
+  const lignes = [
+    `Récapitulatif de relecture — ${r.set_id} (${r.notion_id}, palier ${r.palier})`,
+    `Moteur de correction : ${r.moteur.version} (${r.moteur.sha256})`,
+    `Empreinte relue : ${r.empreinte_relue}`, `Empreinte publiée : ${r.empreinte_publiee}`, '',
+    `CARTES GARDÉES (${r.cartes_gardees.length}) :`,
+  ];
+  r.cartes_gardees.forEach((c, i) => {
+    lignes.push(`${i + 1}. [${c.item_id}] ${c.question}`,
+      `   Réponse attendue : ${val(c.reponse, '(non renseignée)')}`,
+      `   Règle de correction : profil ${c.profil_correction}`,
+      `   Réponses acceptées : ${c.reponses_acceptees.map((x) => JSON.stringify(x)).join(' | ')}`,
+      `   Unité : ${val(c.unite, 'aucune (par défaut)')} ; arrondi : ${val(c.arrondi, 'aucun (par défaut)')} ; seconde chance : ${c.seconde_chance === null ? 'non (par défaut)' : (c.seconde_chance ? 'oui' : 'non')}`);
+  });
+  lignes.push('', `CARTES ÉCARTÉES (${r.cartes_ecartees.length}) :`);
+  r.cartes_ecartees.forEach((c) => lignes.push(`- [${c.item_id}] ${c.question}`));
+  return lignes.join('\n');
+}
+
+// Décision conforme (PROVISOIRE : forme decision-fonda/v1 du §1 ; lot_relu non défini).
+function decisionConforme(d) {
+  if (!d || typeof d !== 'object' || Array.isArray(d)) return false;
+  const cles = ['schema', 'set_id', 'generation', 'nonce', 'recu_le', 'coeur', 'lot_relu', 'hash_formulaire'];
+  if (Object.keys(d).length !== cles.length || !cles.every((k) => Object.prototype.hasOwnProperty.call(d, k))) return false;
+  if (d.schema !== 'decision-fonda/v1' || !C.SET_ID_PATTERN.test(d.set_id || '') || !Number.isSafeInteger(d.generation)
+    || typeof d.nonce !== 'string' || !d.nonce || !normaliserDate(d.recu_le) || typeof d.hash_formulaire !== 'string' || d.lot_relu === undefined) return false;
+  try { Canonique.octetsContrat('coeur-decision-fonda/v1', d.coeur); } catch { return false; }
+  return true;
 }
 
 // Lot publié = candidat filtré sur la sélection, dans l'ordre du candidat.
@@ -169,7 +229,7 @@ async function cloturer(setId, deps) {
   if (typeof deps.rattachement !== 'function') refuser('contrat de rattachement exécution n8n <-> lot NON DÉFINI (§11 bis) : signature refusée');
   const { config, api, drive, rattachement } = deps;
   if (!C.SET_ID_PATTERN.test(setId || '')) refuser('set_id invalide');
-  verifierDossierLocal(config.dossier);
+  verifierDossierLocal(config.dossier, deps.fs && deps.fs.realpath);
   const levees = deps.levees || [];
 
   // ── Candidat ──
@@ -178,16 +238,18 @@ async function cloturer(setId, deps) {
   const rel = candidat.relecture;
   if (rel.statut !== 'clos') refuser(`candidat au statut « ${rel.statut} » (clôture technique requise)`);
   const revoqueLe = normaliserDate(rel.clos_le);
-  if (!revoqueLe || revoqueLe !== rel.clos_le) refuser('relecture.clos_le absent ou mal formé');
+  if (!revoqueLe) refuser('relecture.clos_le absent ou mal formé');
   const creeLe = normaliserDate(rel.cree_le);
   if (!creeLe) refuser('relecture.cree_le mal formé');
+  if (creeLe > revoqueLe) refuser('fenêtre de candidature inversée (cree_le > clos_le)');
   if (candidat.lot.set_id !== setId) refuser('set_id du candidat ≠ set_id demandé');
 
   // ── 1. Provenance : exécution de clôture ──
   const clotures = (await observer(api, config.workflowCloture))
     .filter((x) => { const r = rattachement(x.brut); return r && r.set_id === setId && r.type === 'cloture'; });
   if (clotures.some((x) => !STATUTS_TERMINAUX.includes(x.status))) refuser('une clôture technique de ce lot est encore en cours');
-  const reussies = clotures.filter((x) => x.status === 'success' && x.stoppedAt);
+  for (const x of clotures) if (x.status === 'success' && (!x.stoppedAt || !x.startedAt)) refuser(`clôture ${x.id} : startedAt/stoppedAt manquants pour une exécution terminée`);
+  const reussies = clotures.filter((x) => x.status === 'success');
   if (!reussies.length) refuser('aucune clôture technique réussie rattachée à ce lot');
   reussies.sort((a, b) => (a.stoppedAt < b.stoppedAt ? -1 : a.stoppedAt > b.stoppedAt ? 1 : 0));
   const derniere = reussies[reussies.length - 1];
@@ -207,7 +269,7 @@ async function cloturer(setId, deps) {
     if (r.type === 'conflit') refuser(`sortie « conflit » (exécution ${x.id}) : blocage dur, abandon + nouveau candidat`);
     if (x.status !== 'success') refuser(`exécution de confirmation ${x.id} du lot au statut ${x.status} : blocage dur`);
     if (r.type !== 'decision' || typeof r.nonce !== 'string' || !r.nonce) refuser(`exécution ${x.id} : rattachement de décision incomplet`);
-    if (!x.startedAt) refuser(`exécution ${x.id} : startedAt manquant`);
+    if (!x.startedAt || !x.stoppedAt) refuser(`exécution ${x.id} : startedAt/stoppedAt manquants pour une exécution terminée`);
     duLot.push({ x, nonce: r.nonce });
   }
   const liste = await drive.listerDecisions(setId);
@@ -217,6 +279,9 @@ async function cloturer(setId, deps) {
   for (const f of liste.fichiers) {
     if (!f || f.contenu == null) refuser(`fichier de decisions/ illisible (${f && f.nom}) : incident de chaîne`);
     const d = f.contenu;
+    // Conformité vérifiée AVANT de l'attribuer à un autre lot (§10 B) : un fichier non
+    // conforme est un incident de chaîne, jamais ignoré.
+    if (!decisionConforme(d)) refuser(`fichier de decisions/ non conforme (${f.nom}) : incident de chaîne`);
     if (d.set_id !== setId) continue;
     const modifie = normaliserDate(f.modifie_le);
     if (!modifie) refuser(`${f.nom} : date de modification illisible`);
@@ -227,12 +292,21 @@ async function cloturer(setId, deps) {
   for (const e of duLot) if (!decisions.some((d) => d.nonce === e.nonce)) refuser(`décision de l'exécution ${e.x.id} absente de Drive : blocage dur`);
   if (!decisions.length) refuser('aucune décision pour ce lot');
   // Incidents (§10 B)
-  const incidents = await deps.incidents();
-  for (const i of incidents) {
+  const incidents = [];
+  for (const i of await deps.incidents()) {
+    if (!i || typeof i.id !== 'string' || !i.id || typeof i.nature !== 'string' || !i.periode) refuser('incident illisible : incident de chaîne');
     if (i.statut !== 'resolu') refuser(`incident ${i.id} ouvert : toute clôture signée est suspendue`);
-    const debut = i.periode.debut;
-    const fin = i.periode.fin;
+    const detecte = normaliserDate(i.detecte_le);
+    const resolu = normaliserDate(i.resolu_le);
+    const debut = i.periode.debut === null ? null : normaliserDate(i.periode.debut);
+    const fin = normaliserDate(i.periode.fin);
+    if (!detecte || !resolu || !fin || (i.periode.debut !== null && !debut)) refuser(`incident ${i.id} : dates mal formées`);
+    if (fin !== resolu) refuser(`incident ${i.id} : periode.fin ≠ resolu_le`);
+    if (debut !== null && debut > fin) refuser(`incident ${i.id} : période inversée`);
+    if (typeof i.preuve_resolution !== 'string' || !i.preuve_resolution.trim()) refuser(`incident ${i.id} : preuve de résolution absente`);
+    // Fenêtre [cree_le, clos_le] ∩ période [debut|−∞, fin] ≠ ∅ (bornes incluses).
     if ((debut === null || debut <= revoqueLe) && fin >= creeLe) refuser(`incident ${i.id} : sa période recouvre la fenêtre de candidature — abandon et nouveau candidat créé après ${fin}`);
+    incidents.push({ id: i.id, nature: i.nature, detecte_le: detecte, statut: 'resolu', resolu_le: resolu, preuve_resolution: i.preuve_resolution, periode: { debut, fin } });
   }
 
   // ── 3. Unicité du cœur ──
@@ -284,12 +358,13 @@ async function cloturer(setId, deps) {
   const dossierLot = path.join(config.dossier, `${setId}-${code}`);
   deps.fs.ecrireExclusif(path.join(dossierLot, 'instantane.json'), texteInstantane);
   deps.fs.ecrireExclusif(path.join(dossierLot, 'export.json'), `${JSON.stringify({ sha256_instantane: shaInstantane, sha256_recapitulatif: shaRecap, exporte_le: deps.horloge().toISOString() }, null, 2)}\n`);
-  deps.fs.ecrireExclusif(path.join(dossierLot, `recapitulatif-${setId}-${code}.txt`), `${JSON.stringify(recapitulatif, null, 2)}\n${shaInstantane}\n`);
-  deps.afficher(`Lot ${setId} — gardées : ${coeur.selection.join(', ')} ; écartées : ${coeur.ecartees.join(', ') || '(aucune)'} ; moteur ${moteur.version}\nCODE DE CONFIRMATION : ${code}`);
+  const rendu = rendreRecapitulatif(recapitulatif);
+  deps.fs.ecrireExclusif(path.join(dossierLot, `recapitulatif-${setId}-${code}.txt`), `${rendu}\n\n${shaInstantane}\n`);
+  deps.afficher(`${rendu}\n\nCODE DE CONFIRMATION : ${code}`);
 
   const auto = rel.relecteur_attribue === 'eric';
   const mode = auto ? 'auto' : (await deps.saisir('Mode de confirmation (vive_voix | reponse_message) : ')).trim();
-  if (!['vive_voix', 'reponse_message', 'auto'].includes(mode)) refuser('mode de confirmation invalide');
+  if (auto ? mode !== 'auto' : !['vive_voix', 'reponse_message'].includes(mode)) refuser('mode de confirmation invalide (auto réservé au relecteur Éric ; tiers : vive_voix ou reponse_message)');
   const codeSaisi = (await deps.saisir('Code confirmé (16 hex) : ')).trim();
   if (codeSaisi !== code) refuser('code de confirmation saisi ≠ code de l\'instantané');
   const confirmationLe = deps.horloge().toISOString();
@@ -322,9 +397,19 @@ async function cloturer(setId, deps) {
     revoque_le: revoqueLe, levees, incidents_connus: [...incidents].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     cloture_le: deps.horloge().toISOString(), badge, cle_id: config.cleId,
   };
-  const octets = Buffer.from(Canonique.octetsContrat('attestation-cloture/v1', charge));
-  const enveloppe = { type: S.TYPE, charge, signature: deps.signer(octets).toString('base64') };
+  // AVANT toute signature : forme canonique, clé déclarée et recevable, invariants de
+  // valeur et de dépôt — tout refus ici => le signataire n'est jamais appelé.
+  let octets;
+  try { octets = Buffer.from(Canonique.octetsContrat('attestation-cloture/v1', charge)); } catch (e) { refuser(`charge non conforme : ${e.message}`); }
+  const k = deps.cles.obtenir(charge.cle_id);
+  if (!k.ok) refuser(k.raison);
+  const irrecevable = S.recevabilite(k.declaration, charge.cloture_le);
+  if (irrecevable) refuser(irrecevable);
   const entree = { set_id: setId, notion_id: charge.notion_id, palier: charge.palier, item_ids: [...inst.coeur.selection], empreinte: inst.coeur.empreinte_publiee, moteur: { ...inst.moteur }, relecteur: badge };
+  const avant = [...S.invariantsValeur(charge), ...S.invariantsDepot(charge, { entree, registre: deps.registre, referentiel })];
+  if (avant.length) refuser(`charge refusée avant signature : ${avant.join(' ; ')}`);
+  // Signature, puis REVÉRIFICATION IMMÉDIATE complète (même chemin que la publication).
+  const enveloppe = { type: S.TYPE, charge, signature: deps.signer(octets).toString('base64') };
   const erreurs = S.verifierAttestationSignee(enveloppe, { entree, registre: deps.registre, referentiel, cles: deps.cles });
   if (erreurs.length) refuser(`revérification immédiate en échec : ${erreurs.join(' ; ')}`);
   deps.fs.ecrireExclusif(path.join(dossierLot, 'attestation.json'), `${JSON.stringify(enveloppe, null, 2)}\n`);
@@ -342,6 +427,6 @@ async function main() {
   }
 }
 
-module.exports = { cloturer, Refus, normaliserDate, projeterRecapitulatif, lotPublie, choisirBadge, verifierDossierLocal, observer };
+module.exports = { cloturer, Refus, normaliserDate, projeterRecapitulatif, rendreRecapitulatif, decisionConforme, lotPublie, choisirBadge, verifierDossierLocal, observer };
 
 if (require.main === module) main();

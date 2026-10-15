@@ -197,6 +197,64 @@ describe('chaque refus -> ZÉRO signature', () => {
   }
 });
 
+describe('correctifs de relecture : refus AVANT signature, conformité, dates, dossier, rendu', () => {
+  const inc = (o) => ({ id: 'i1', nature: 'x', detecte_le: '2026-10-01T00:00:00.000Z', statut: 'resolu', resolu_le: '2026-10-02T00:00:00.000Z', preuve_resolution: 'ok', periode: { debut: null, fin: '2026-10-02T00:00:00.000Z' }, ...o });
+  const refusSansSignature = [
+    ['tiers choisissant « auto »', { mode: 'auto' }, /mode de confirmation invalide/],
+    ['cle_id non déclaré', { modifier: ({ deps }) => { deps.config.cleId = 'cle-inconnue'; } }, /non déclarée/],
+    ['clé révoquée', { modifier: ({ deps }) => { deps.cles = S.chargerCles([{ cle_id: 'cle-test', fichier: 'cles/cle-test.pem', sha256_pem: crypto.createHash('sha256').update(PEM).digest('hex'), algorithme: 'RSA-SHA256-PKCS1v15', valide_du: '2026-01-01T00:00:00.000Z', valide_au: '2027-12-31T00:00:00.000Z', revoquee_le: '2026-12-01T00:00:00.000Z' }], () => PEM); } }, /révoquée/],
+    ['levée à constat vide', { modifier: ({ deps }) => { deps.levees = [{ type: 'recherche_incomplete', constat: ' ' }]; } }, /avant signature/],
+    ['fichier lisible mais non conforme (sans set_id)', { modifier: ({ fichiers }) => { fichiers.push({ nom: 'bizarre.json', modifie_le: '2026-10-19T10:00:00.000Z', contenu: { schema: 'inconnu' } }); } }, /non conforme/],
+    ['décisions du lot amputées (schema, generation, recu_le, hash)', { modifier: ({ fichiers }) => { for (const f of fichiers) { delete f.contenu.schema; delete f.contenu.generation; delete f.contenu.recu_le; delete f.contenu.hash_formulaire; } } }, /non conforme/],
+    ['fenêtre de candidature inversée', { modifier: ({ candidat, deps }) => { candidat.relecture.cree_le = '2026-10-21T00:00:00.000Z'; deps.drive.lireCandidat = async () => copie(candidat); } }, /inversée/],
+    ['exécution du lot « success » sans stoppedAt', { modifier: ({ execs }) => { execs.wfConf[0].stoppedAt = null; } }, /stoppedAt manquants/],
+    ['exécution sans identifiant', { modifier: ({ execs }) => { execs.wfConf.push({ workflowId: 'wfConf', status: 'success', startedAt: '2026-10-19T10:00:00.000Z', stoppedAt: '2026-10-19T10:00:01.000Z' }); } }, /identifiant/],
+    ['incident : début connu touchant la fenêtre (contact à cree_le)', { modifier: ({ deps }) => { deps.incidents = async () => [inc({ resolu_le: '2026-10-18T08:00:00.000Z', periode: { debut: '2026-10-17T00:00:00.000Z', fin: '2026-10-18T08:00:00.000Z' } })]; } }, /recouvre/],
+    ['incident : début inconnu, fin après cree_le', { modifier: ({ deps }) => { deps.incidents = async () => [inc({ resolu_le: '2026-10-18T09:00:00.000Z', periode: { debut: null, fin: '2026-10-18T09:00:00.000Z' } })]; } }, /recouvre/],
+    ['incident : début = clos_le (contact)', { modifier: ({ deps }) => { deps.incidents = async () => [inc({ resolu_le: '2026-10-20T09:00:00.000Z', detecte_le: '2026-10-20T07:59:00.000Z', periode: { debut: '2026-10-20T07:59:00.000Z', fin: '2026-10-20T09:00:00.000Z' } })]; } }, /recouvre/],
+    ['incident : fin ≠ résolution', { modifier: ({ deps }) => { deps.incidents = async () => [inc({ periode: { debut: null, fin: '2026-10-03T00:00:00.000Z' } })]; } }, /periode.fin/],
+  ];
+  for (const [libelle, x, motif] of refusSansSignature) {
+    test(`refus SANS appel au signataire : ${libelle}`, async () => {
+      const { deps, etat, setId } = await scenario(x);
+      await assert.rejects(cloturer(setId, deps), motif);
+      assert.equal(etat.signatures, 0);
+    });
+  }
+  test('incidents hors fenêtre (entièrement avant, avec décalage horaire ; entièrement après) : acceptés, dates normalisées dans la charge', async () => {
+    const avant = inc({ detecte_le: '2026-10-01T02:00:00+02:00', resolu_le: '2026-10-02T02:00:00+02:00', periode: { debut: null, fin: '2026-10-02T02:00:00+02:00' } });
+    const apres = inc({ id: 'i2', detecte_le: '2026-10-20T08:00:00.000Z', resolu_le: '2026-10-20T08:30:00.000Z', periode: { debut: '2026-10-20T07:59:00.001Z', fin: '2026-10-20T08:30:00.000Z' } });
+    const { deps, setId } = await scenario({ modifier: ({ deps: d }) => { d.incidents = async () => [apres, avant]; } });
+    const { enveloppe } = await cloturer(setId, deps);
+    assert.deepEqual(enveloppe.charge.incidents_connus.map((i) => i.id), ['i1', 'i2']);
+    assert.equal(enveloppe.charge.incidents_connus[0].resolu_le, '2026-10-02T00:00:00.000Z');
+  });
+  test('clos_le avec décalage horaire : normalisé (revoque_le en UTC)', async () => {
+    const { deps, setId } = await scenario({ modifier: ({ candidat, deps: d }) => { candidat.relecture.clos_le = '2026-10-20T09:59:00+02:00'; d.drive.lireCandidat = async () => copie(candidat); } });
+    const { enveloppe } = await cloturer(setId, deps);
+    assert.equal(enveloppe.charge.revoque_le, '2026-10-20T07:59:00.000Z');
+  });
+  test('rendu HUMAIN affiché et exporté : questions, réponses, règles, comportements par défaut', async () => {
+    const { deps, etat, setId } = await scenario({ maths: true });
+    await cloturer(setId, deps);
+    const premiere = require('../data/lots/set_fonda_grandeurs-mesures_nI_01.json').cartes[0];
+    assert.ok(etat.affiche.includes(premiere.question), 'question affichée');
+    assert.match(etat.affiche, /Réponse attendue/);
+    assert.match(etat.affiche, /seconde chance : non \(par défaut\)/);
+    const txt = [...etat.ecrits.entries()].find(([p]) => p.endsWith('.txt'))[1].toString('utf8');
+    assert.ok(txt.includes(premiere.question));
+    assert.match(txt.trim().split('\n').pop(), /^[0-9a-f]{64}$/, 'sha256_instantane en dernière ligne');
+  });
+  test('dossier de clôture via un LIEN SYMBOLIQUE vers le dépôt : refusé', () => {
+    const { verifierDossierLocal } = require('./signer-cloture.js');
+    const tmp = fsN.mkdtempSync(path.join(require('os').tmpdir(), 'cloture-lien-'));
+    const lien = path.join(tmp, 'clotures');
+    fsN.symlinkSync(__dirname, lien);
+    assert.throws(() => verifierDossierLocal(path.join(lien, 'lot')), /DANS le dépôt/);
+    assert.doesNotThrow(() => verifierDossierLocal(path.join(tmp, 'vrai-dossier', 'lot')));
+  });
+});
+
 describe('dates de source (§11 bis)', () => {
   test('grammaire stricte et date calendaire réelle', () => {
     assert.equal(normaliserDate('2026-10-19T19:00:00+02:00'), '2026-10-19T17:00:00.000Z');
