@@ -93,7 +93,7 @@ describe('chaîne publiée FONDA — cohérence complète', () => {
   // Type 2 (CDC §11, §14) : chaque clôture signée est RE-VÉRIFIÉE en CI avec les clés du
   // dépôt (signature, recevabilité, invariants de valeur et de dépôt). Une clé révoquée
   // rend ses attestations irrecevables : la CI échoue jusqu'au retrait ou à la reclôture.
-  test('clés du dépôt : cles.json conforme (vide avant la cérémonie 4b)', () => {
+  test('clés du dépôt : cles.json conforme (clé publique eric-2026)', () => {
     const { clesDuDepot } = require('../scripts/publier-lot.js');
     assert.ok(Array.isArray(clesDuDepot().ids));
   });

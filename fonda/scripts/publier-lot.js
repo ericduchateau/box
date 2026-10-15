@@ -12,8 +12,9 @@
 //   - le set_id n'est pas déjà publié et son fichier n'existe pas (anti-écrasement) ;
 //   - le catalogue résultant reste valide contre le référentiel.
 // « manuelle-historique » (Type 1) reste réservée aux 8 lots de la migration : jamais
-// pour un nouveau lot. Tant que cles.json est vide (avant l'étape 4b), AUCUNE
-// publication Type 2 réelle n'est possible : c'est voulu (fail-closed).
+// pour un nouveau lot. cles.json déclare la clé publique eric-2026 ; aucune signature
+// réelle n'existe tant que signer-cloture.js est bloqué par sa garde maîtresse
+// (contrat de rattachement n8n <-> lot, chantier 5) : c'est voulu (fail-closed).
 //
 // FRONTIÈRE : ce script vérifie ce qui est vérifiable depuis la charge, le lot publié,
 // l'entrée et la clé publique. Les invariants LOCAUX — sha256_instantane égal à
