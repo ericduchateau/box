@@ -5,10 +5,10 @@
 ## Objectif
 Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correction par profil, mesure par groupe, fiches générées puis relues par un humain), sans casser BOX. Dépôt AAP CARDIE-SEPIA, échéance **21/10/2026**. Source de vérité : `docs/PRD-Box-FONDA.md` ; règles : `AGENTS.md`.
 
-## État actuel (design = `e54677b`, main intact `7ea4f28`)
+## État actuel (design = `ea8860e`, main intact `7ea4f28`)
 - **BOX prod** : 9 workflows n8n actifs, Google Form + Tally, relecture carte par carte (`/box-select`), front `https://ericduchateau.github.io/box/` (`main`).
 - **FONDA sur `design`** : thème sombre, correction par profil, index `?fonda=1&page=entrainement` ; **chaîne séparée (bloc 1, PR #6/#7 mergées)** : `catalogue-fonda.json` + `fonda/data/lots/` (8 lots relus, empreintes figées `HISTORIQUES_FIGES`), CI `tests (node --test)` obligatoire sur `design`/`main`.
-- **CDC relecture v8.1** : `docs/CDC-fonda-relecture.md` (branche `feat/box-fonda-relecture`, non mergée). Preuve C8 faite (SRI/CORS/export OK ; CSP en `<meta>`).
+- **CDC relecture v8.3 VALIDÉE** (§20 r5, `9b567ee`, branche `feat/box-fonda-relecture`, non mergée) : brique 1 additive (génération, projection complète, lot_relu, décision, charge v2, properties Drive, Sonnet épinglé, purge → refus). Preuve C8 faite.
 
 ## Étape 2 : moteur de correction élève (M1) — **mergée** (PR #8, `1a1af9f`, 2026-10-14)
 - `fonda/engine/moteur-correction-v1.js` : corps du correcteur = **octets bruts** de a418881 (test sans normalisation) + couche moteur (`creerMoteur()` : valider, preparerCarte, demarrer, soumettre, echec → résultat pédagogique complet, outils). Registre global `FondaMoteurs` non réassignable. `correction.js` = façade Node.
@@ -21,9 +21,9 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - Changement visible voulu (CDC §12) : badge « Fiche relue par Éric Duchateau » (avant : « Fiche relue et validée par … avant publication. »).
 
 ## Prochaines étapes
-1. **Mergés** : étape 3 (canonique, journal + M2, immuabilité + CODEOWNERS ; `immuabilite` requis sur `design`/`main`) ; 4.0 (CDC v8.2 §11 bis + schémas canoniques, PR #14).
-2. **Mergés** : 4a (PR #15, publication Type 2 vérifiée) ; 4b-code (PR #16, `signer-cloture.js`, garde maîtresse).
-3. **En cours — cérémonie de clé** : `feat/box-fonda-cle-eric-2026` → `design`. Clé **publique** `eric-2026` (RSA 3072, e = 65537) publiée dans `fonda/data/cles/` ; `cles.json` = 1 entrée (valide du 2026-10-15 au 2030-10-15). Clé privée **chiffrée** sur le Mac d'Éric (`~/.fonda-cles/`), hors dépôt et hors Dropbox, jamais lue par les agents. **Première signature réelle toujours bloquée** tant que le contrat de rattachement n8n ↔ lot (chantier 5) n'existe pas. Éric relit le diff et merge lui-même.
+1. **Mergés** : étape 3 (canonique, journal + M2, immuabilité + CODEOWNERS ; `immuabilite` requis sur `design`/`main`) ; 4.0 (CDC v8.2 §11 bis + schémas canoniques, PR #14) ; 4a (PR #15, publication Type 2 vérifiée) ; 4b-code (PR #16, `signer-cloture.js`, garde maîtresse).
+2. **Mergé** : cérémonie de clé `eric-2026` (publique dans `fonda/data/cles/`, privée chiffrée hors dépôt, jamais lue par les agents).
+3. **Brique 1 démarrée (ordre §20.14)** — étape 1 en cours : `feat/box-fonda-canonique-brique1` (schémas generation, lot-complet, lot_relu, decision, attestation v2 ; v1 intacte ; +18 vecteurs figés, 89 au total). Puis 2 publier-lot (`publie` + `--reprendre`) + référentiel archivé ; 3 signer-cloture + attestation-signee v2 ; 4 workflow n8n inactif + réglages instance ; **5 levée de la garde = point de non-retour**, seulement après 1-4 au vert ET réglages vérifiés (purge coupée, Sonnet à version exacte figée, properties Drive). Une PR par étape, relue par Codex ET Claude.
 4. Réglages à confirmer (Éric) : « Allow rebase merging » décoché ; « Do not allow bypassing » ; CODEOWNERS sur `main`.
 5. Bloc 3 (prod, feu vert) : orpheline `box_7e7tcooh`. `feat/box-delete-hardening` ; Moteur A + dette `defi_id` ; collecte `/box-fonda-events` ; recette `canonique.js` en vrai nœud n8n.
 
@@ -57,4 +57,4 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - Moteur publié **immuable** : toute retouche de `moteur-correction-v1.js` change son SHA-256 → interdit après merge ; nouveau comportement = `v2` + nouveaux `set_id`.
 - Le classificateur auto-mode bloque les commandes contenant la clé API : Éric lance lui-même les générations.
 
-_Dernière mise à jour : 2026-10-15 — Claude Code (Opus 5.5)._
+_Dernière mise à jour : 2026-10-16 — Claude Code (Opus 5.5)._

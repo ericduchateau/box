@@ -185,10 +185,12 @@ for (const [nomCopie, C] of Object.entries(COPIES)) describe(`étape 4.0 (${nomC
     assert.throws(() => C.texte(null, { type: 'nullable', de: { type: 'nullable', de: 'chaine' } }), /nullable imbriqué/);
     assert.throws(() => C.texte(null, { type: 'nullable', de: 'inconnu' }), /schéma invalide/);
   });
-  test('contrats acceptés : moteur, cœur, récapitulatif, charge signée ; decision et instantané REFUSÉS (lot_relu non défini)', () => {
-    assert.deepEqual([...C.contrats()].sort(), ['attestation-cloture/v1', 'coeur-decision-fonda/v1', 'moteur-fonda/v1', 'recapitulatif-fonda/v1']);
-    assert.deepEqual([...C.contratsIncomplets()].sort(), ['decision-fonda/v1', 'instantane-fonda/v1']);
-    for (const n of ['decision-fonda/v1', 'instantane-fonda/v1']) assert.throws(() => C.hexContrat(n, {}), /forme incomplète/);
+  test('contrats acceptés : v1 + brique 1 (§20) ; seul l\'instantané reste REFUSÉ (octets bruts, sans forme canonique)', () => {
+    assert.deepEqual([...C.contrats()].sort(), ['attestation-cloture/v1', 'attestation-cloture/v2', 'coeur-decision-fonda/v1', 'decision-fonda/v1',
+      'generation-fonda/v1', 'lot-complet-fonda/v1', 'lot_relu-fonda/v1', 'moteur-fonda/v1', 'recapitulatif-fonda/v1']);
+    assert.deepEqual([...C.contratsIncomplets()], ['instantane-fonda/v1']);
+    assert.throws(() => C.hexContrat('instantane-fonda/v1', {}), /forme incomplète/);
+    assert.throws(() => C.hexContrat('decision-fonda/v1', {}), /champ manquant/);
   });
   test('charge : jamais de champ signature ; ordre de sortie = ordre du §11 quel que soit l\'ordre reçu', () => {
     const x = V.vecteurs.find((v) => v.id === 'attestation-auto-nominale');
@@ -199,6 +201,26 @@ for (const [nomCopie, C] of Object.entries(COPIES)) describe(`étape 4.0 (${nomC
     assert.deepEqual(cles, ['schema', 'set_id', 'notion_id', 'palier', 'coeur', 'sha256_instantane', 'code_confirmation', 'confirmation',
       'fidelite_transmission', 'relecteur_attribue', 'relecteur_egal_cloturer', 'provenances', 'nb_fichiers_decision', 'referentiel_version',
       'moteur', 'execution_cloture', 'revoque_le', 'levees', 'incidents_connus', 'cloture_le', 'badge', 'cle_id']);
+  });
+  test('charge v2 : ordre exact du §20.9 ; jamais de signature ; v1 et v2 non interchangeables', () => {
+    for (const id of ['attestation-v2-saisie-locale', 'attestation-v2-page-relecture']) {
+      const x = V.vecteurs.find((v) => v.id === id);
+      assert.equal(C.hexContrat('attestation-cloture/v2', Object.fromEntries(Object.entries(x.entree).reverse())), x.hex);
+      assert.throws(() => C.hexContrat('attestation-cloture/v2', { ...x.entree, signature: 's' }), /signature : champ inconnu/);
+      assert.throws(() => C.hexContrat('attestation-cloture/v1', x.entree), /canonique : /);
+    }
+    const x = V.vecteurs.find((v) => v.id === 'attestation-v2-saisie-locale');
+    assert.deepEqual(Object.keys(JSON.parse(C.texteContrat('attestation-cloture/v2', x.entree))), ['schema', 'set_id', 'notion_id', 'palier', 'coeur',
+      'sha256_instantane', 'code_confirmation', 'confirmation', 'fidelite_transmission', 'relecteur_attribue', 'relecteur_egal_cloturer',
+      'provenances', 'nb_fichiers_decision', 'referentiel_version', 'moteur', 'execution_cloture', 'source_decisions', 'generation',
+      'fin_saisie_le', 'revoque_le', 'levees', 'incidents_connus', 'cloture_le', 'badge', 'cle_id']);
+  });
+  test('projection complète : chaque champ optionnel de carte est null EXPLICITE, jamais absent', () => {
+    const x = V.vecteurs.find((v) => v.id === 'lot-complet-nominal');
+    for (const k of ['numero', 'reponse', 'difficulte', 'unite', 'arrondi', 'seconde_chance', 'contexte']) {
+      const cartes = x.entree.cartes.map((c) => { const d = { ...c }; delete d[k]; return d; });
+      assert.throws(() => C.hexContrat('lot-complet-fonda/v1', { ...x.entree, cartes }), /champ manquant/, k);
+    }
   });
 });
 
@@ -242,6 +264,13 @@ describe('mutations de copie détectées par le banc partagé', () => {
     ['tableaux triés (tri par défaut : chaînes par unité de code)', (s) => s.replace('      return sortie;\n    }\n    // objet', '      return sortie.sort();\n    }\n    // objet')],
     ['tableaux triés numériquement quand c\'est possible', (s) => s.replace('      return sortie;\n    }\n    // objet', '      return sortie.sort(function (x, y) { return (+x.execution_id || 0) - (+y.execution_id || 0) || 0; });\n    }\n    // objet')],
     ['charge : ordre de deux champs inversé', (s) => s.replace("['relecteur_attribue', 'chaine'], ['relecteur_egal_cloturer', 'booleen'],", "['relecteur_egal_cloturer', 'booleen'], ['relecteur_attribue', 'chaine'],")],
+    ['charge v2 : execution_cloture non nullable', (s) => s.replace("['execution_cloture', nul(EXECUTION_CLOTURE)],\n    ['source_decisions'", "['execution_cloture', EXECUTION_CLOTURE],\n    ['source_decisions'")],
+    ['charge v2 : source_decisions et generation inversés', (s) => s.replace("['source_decisions', 'chaine'], ['generation', GENERATION_CHARGE],", "['generation', GENERATION_CHARGE], ['source_decisions', 'chaine'],")],
+    ['charge v2 : revoque_le non nullable', (s) => s.replace("['fin_saisie_le', nul('chaine')],\n    ['revoque_le', nul('chaine')]", "['fin_saisie_le', nul('chaine')],\n    ['revoque_le', 'chaine']")],
+    ['projection : contexte retiré', (s) => s.replace("['seconde_chance', nul('booleen')], ['contexte', nul('chaine')],", "['seconde_chance', nul('booleen')],")],
+    ['lot_relu : choix en booléen', (s) => s.replace("['choix', 'chaine']", "['choix', 'booleen']")],
+    ['génération : empreinte_complete retirée', (s) => s.replace("['empreinte_pedagogique', 'chaine'], ['empreinte_complete', 'chaine'], ['candidat_fichier_id'", "['empreinte_pedagogique', 'chaine'], ['candidat_fichier_id'")],
+    ['décision : lot_relu retiré', (s) => s.replace("['coeur', COEUR], ['lot_relu', LOT_RELU], ['hash_formulaire', 'chaine'],", "['coeur', COEUR], ['hash_formulaire', 'chaine'],")],
   ];
   for (const [nom, muter] of mutations) {
     test(nom, () => {

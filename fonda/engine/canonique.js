@@ -1,5 +1,6 @@
-// Octets canoniques FONDA (CDC relecture §1, §11, §11 bis) — étape 3, chantier 1 ;
-// étendu à l'étape 4.0 (null, « chaîne ou nombre », récapitulatif, charge signée).
+// Octets canoniques FONDA (CDC relecture §1, §11, §11 bis, §20) — étape 3, chantier 1 ;
+// étendu à l'étape 4.0 (null, « chaîne ou nombre », récapitulatif, charge signée) puis à
+// la brique 1 (v8.3 §20 : génération, lot complet, lot relu, décision, charge v2).
 //
 // Règle (CDC §1) : JSON.stringify d'ECMAScript sur une valeur construite dans l'ORDRE
 // DE CLÉS DU CONTRAT ; UTF-8 sans BOM, sans espace ni saut de ligne ; nombres finis,
@@ -95,14 +96,66 @@ var FondaCanonique = (function () {
     ['cloture_le', 'chaine'], ['badge', BADGE], ['cle_id', 'chaine'],
   ]);
 
+  // --- CDC v8.3 §20 (brique 1, ADDITIF) : v1 ci-dessus INCHANGÉE --------------------
+  // Sortie métier du workflow de génération (§20.3).
+  var GENERATION = objet([
+    ['schema', 'chaine'], ['set_id', 'chaine'], ['ref', 'chaine'], ['notion_id', 'chaine'], ['palier', 'chaine'],
+    ['moteur', MOTEUR], ['referentiel_version', 'chaine'], ['journal_commit', 'chaine'], ['modele', 'chaine'],
+    ['empreinte_pedagogique', 'chaine'], ['empreinte_complete', 'chaine'], ['candidat_fichier_id', 'chaine'],
+  ]);
+  // Projection complète du lot source (§20.4), utilisée UNIQUEMENT pour empreinte_complete.
+  var CARTE_COMPLETE = objet([
+    ['item_id', 'chaine'], ['numero', nul('nombre')], ['question', 'chaine'], ['reponse', nul('chaine')],
+    ['difficulte', nul('chaine')], ['palier', 'chaine'], ['profil_correction', 'chaine'],
+    ['reponses_acceptees', tableau('chaine_ou_nombre')], ['unite', nul('chaine')], ['arrondi', nul('nombre')],
+    ['seconde_chance', nul('booleen')], ['contexte', nul('chaine')], ['set_id', 'chaine'], ['notion_id', 'chaine'],
+  ]);
+  var LOT_COMPLET = objet([
+    ['schema', 'chaine'], ['set_id', 'chaine'], ['notion_id', 'chaine'], ['palier', 'chaine'],
+    ['matiere', nul('chaine')], ['notion', nul('chaine')], ['niveau', nul('chaine')],
+    ['revue_carte_par_carte', 'booleen'], ['nb_cartes', 'nombre'], ['date_creation', nul('chaine')],
+    ['cartes', tableau(CARTE_COMPLETE)],
+  ]);
+  // État relu (§20.5) et décision (§1, désormais définie).
+  var LOT_RELU = objet([
+    ['set_id', 'chaine'], ['empreinte_complete', 'chaine'],
+    ['cartes', tableau(objet([['item_id', 'chaine'], ['choix', 'chaine']]))],
+  ]);
+  var DECISION = objet([
+    ['schema', 'chaine'], ['set_id', 'chaine'], ['generation', 'nombre'], ['nonce', 'chaine'], ['recu_le', 'chaine'],
+    ['coeur', COEUR], ['lot_relu', LOT_RELU], ['hash_formulaire', 'chaine'],
+  ]);
+  // Charge v2 (§20.9) : v1 + execution_cloture nullable, source_decisions, generation,
+  // fin_saisie_le, revoque_le nullable. Ordre EXACT du §20.9.
+  var GENERATION_CHARGE = objet([
+    ['execution_id', 'chaine'], ['workflow_id', 'chaine'], ['statut', 'chaine'], ['demarree_le', 'chaine'],
+    ['terminee_le', 'chaine'], ['modele', 'chaine'], ['empreinte_complete', 'chaine'], ['journal_commit', 'chaine'],
+    ['listing_debut_le', 'chaine'], ['listing_fin_le', 'chaine'],
+  ]);
+  var ATTESTATION_V2 = objet([
+    ['schema', 'chaine'], ['set_id', 'chaine'], ['notion_id', 'chaine'], ['palier', 'chaine'],
+    ['coeur', COEUR], ['sha256_instantane', 'chaine'], ['code_confirmation', 'chaine'],
+    ['confirmation', CONFIRMATION], ['fidelite_transmission', FIDELITE],
+    ['relecteur_attribue', 'chaine'], ['relecteur_egal_cloturer', 'booleen'],
+    ['provenances', tableau(PROVENANCE)], ['nb_fichiers_decision', 'nombre'],
+    ['referentiel_version', 'chaine'], ['moteur', MOTEUR], ['execution_cloture', nul(EXECUTION_CLOTURE)],
+    ['source_decisions', 'chaine'], ['generation', GENERATION_CHARGE], ['fin_saisie_le', nul('chaine')],
+    ['revoque_le', nul('chaine')], ['levees', tableau(LEVEE)], ['incidents_connus', tableau(INCIDENT)],
+    ['cloture_le', 'chaine'], ['badge', BADGE], ['cle_id', 'chaine'],
+  ]);
+
   var CONTRATS = {
     'moteur-fonda/v1': MOTEUR,
     'coeur-decision-fonda/v1': COEUR,
     'recapitulatif-fonda/v1': RECAPITULATIF,
     'attestation-cloture/v1': ATTESTATION,
-    // lot_relu (forme exacte du lot relu) non fixée au CDC (§11 bis : défini avec le
-    // workflow de relecture) -> decision et instantané restent REFUSÉS.
-    'decision-fonda/v1': null,
+    'generation-fonda/v1': GENERATION,
+    'lot-complet-fonda/v1': LOT_COMPLET,
+    'lot_relu-fonda/v1': LOT_RELU,
+    'decision-fonda/v1': DECISION,
+    'attestation-cloture/v2': ATTESTATION_V2,
+    // Instantané : JAMAIS reconstruit, vérifié en octets bruts (§3.2, §20.5) -> aucune
+    // forme canonique, refusé ici.
     'instantane-fonda/v1': null,
   };
 
