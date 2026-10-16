@@ -1,6 +1,6 @@
-# Cahier des charges — Relecture FONDA `/fonda-select` (Bloc 2, étape 7) — **v8.2**
+# Cahier des charges — Relecture FONDA `/fonda-select` (Bloc 2, étape 7) — **v8.3**
 
-> Statut : **v8.2 (2026-10-15) : formes exactes des sous-objets de la charge et du récapitulatif (§11 bis)** ; v8 rédigée le 2026-10-13 (correctifs bornés de la relecture v7 : B1–B4 et points listés ; preuve C8 faite), modèle **« l'humain garantit, la technique est un filet »** (option B). À valider par Éric, puis relecture Codex ciblée. **Aucun workflow** avant validation ; workflows en JSON **inactifs**, activation sur feu vert explicite. **Annexe A : rien n'est appliqué sur GitHub sans relecture d'Éric.** **Séquencement du build : §18.** Décisions d'Éric : §19.
+> Statut : **v8.3 (2026-10-16) : amendement ADDITIF brique 1 — génération n8n et liaison de génération (§20)** ; v8.2 (2026-10-15) : formes exactes des sous-objets de la charge et du récapitulatif (§11 bis) ; v8 rédigée le 2026-10-13 (correctifs bornés de la relecture v7 : B1–B4 et points listés ; preuve C8 faite), modèle **« l'humain garantit, la technique est un filet »** (option B). À valider par Éric, puis relecture Codex ciblée. **Aucun workflow** avant validation ; workflows en JSON **inactifs**, activation sur feu vert explicite. **Annexe A : rien n'est appliqué sur GitHub sans relecture d'Éric.** **Séquencement du build : §18.** Décisions d'Éric : §19.
 
 ## 0. Garantie, filet, limites
 
@@ -265,3 +265,88 @@ Script `fonda/scripts/verifier-immuabilite.js` + job **`immuabilite`**.
 ## 19. Décisions d'Éric (2026-10-13)
 
 1. Clé 14 j. 2. « Essayer une réponse » en v1. 3. Clôture manuelle obligatoire. 4. Signature locale. 5. Historique n8n conservé partout. 6. CI de vérification publique. 7. Option B : l'humain garantit, la technique est un filet non probant. 8. Auto-confirmation déclarée, badge « relue par ». 9. Instantané figé unique, transmission sans retouche attestée. 10. **Moteur de correction élève versionné de bout en bout** (correcteur + adaptation + seconde chance + tentative comptée), injecté explicitement, identique relecture/élève. 11. **Moteur figé par lot publié** ; tout changement de comportement ⇒ nouveau `set_id` + nouvelle relecture. 12. Levées limitées à deux cas ; blocages durs propres au lot ⇒ abandon ; incidents de chaîne suspendent tout. 13. Mainteneur unique ; ~~marqueur `pull_request_target` sur `main`~~ (**remplacé par 19**). 14. **Séquencement : C8 prouvé d'abord ; moteur = chantier/PR isolé avant la signature/clôture ; point d'étape avec Éric avant l'étape 2.** 15. Alertes : Éric seul. 16. **Le moteur produit le résultat pédagogique complet** ; le composant n'affiche que ce résultat. 17. **Incidents `ouvert`/`resolu`** : un incident ouvert suspend tout. 18. **Journal des identifiants** en transitions, `design` fait autorité ; promotion autorisée, réutilisation interdite. 19. **Marqueur remplacé par CODEOWNERS** (signal, pas barrière ; aucun contournement de `pull_request_target`), présent sur `design` et `main` ; un agent sous le compte d'Éric est Éric : relecture des fichiers de confiance = geste humain non délégable. 20. **Registre global des moteurs non réassignable** ; empreinte vérifiée avant tout chargement. 21. **Table des issues** du moteur : `carte_invalide` comptée (échec), `erreur` non comptée — inchangé par défaut, à confirmer par Éric. 22. **Immuabilité par tuple** `(empreinte, moteur)` : transit et promotion autorisés, tout changement et toute réutilisation refusés. 23. **Écarts volontaires inventoriés** (E1–E4). 24. **`frame-ancestors` non porteur** de la garantie (confirmation hors bande + clôture).
+
+## 20. Amendement v8.3 — Brique 1 : génération n8n d'un lot et liaison de génération (ADDITIF, 2026-10-16)
+
+**Nature** : amendement **additif**. Rien de v8.2 n'est réinterprété : `execution_cloture` (clôture technique, §9), `provenances` (exécutions de **confirmation**, §11 bis) et `empreinte_relue` (empreinte **pédagogique du candidat**) gardent leur sens. La liaison de génération est **ajoutée en champs distincts**. `attestation-cloture/v1` et ses vecteurs restent **intacts** ; les ajouts vont dans **`attestation-cloture/v2`** (§20.9). Rédigé après les critiques croisées Claude / Codex du 2026-10-16 (10 blocages).
+
+### 20.0 Promesse (option B)
+La brique 1 **ne garantit pas techniquement** qu'une fiche « n'est ni fabriquée ni intervertie » : n8n, Drive et leurs administrateurs peuvent produire des données cohérentes entre elles (§0). Elle promet un **rapprochement vérifié** des observations disponibles — `set_id` gravé = `set_id` d'entrée réservé, empreintes du candidat recalculées = empreintes gravées, sortie d'une exécution réelle du workflow épinglé, modèle autorisé, partition des décisions — **complété par la déclaration humaine signée** d'Éric (choix carte par carte, code de l'instantané, fidélité). **La technique détecte et élève la confiance ; l'humain garantit.**
+
+### 20.1 Premier lot
+- Notion : **`maths.nombres-fractions-relatifs`** (libellé du référentiel courant : « Maîtriser nombres, fractions et relatifs » ; aucune notion « Nombres relatifs : addition et soustraction » n'existe au référentiel — choix de Claude, à confirmer) ; palier **`nI`** ; relecteur attribué **`eric`** (référentiel) ; **aucune réattribution**.
+- `set_id` : **`set_fonda_nombres-fractions-relatifs_nI_02`** (le `_01` est un lot de calibration réservé, promouvable mais **jamais régénérable**).
+- Confirmation : **`auto`** = **auto-confirmation humaine** (§5) : choix carte par carte par Éric, code de l'instantané et attestation de fidélité **maintenus** ; jamais une validation automatique.
+- Décisions : **saisie manuelle locale par Éric** (§20.6). La page §7 reste le **parcours cible** de l'usage courant (brique 2).
+
+### 20.2 Réservation, réessais, concurrence, abandon
+- **Réservation** : ligne `reserve` (avec `ref` unique) fusionnée sur `design` (§6), **avant** toute génération. Entrée du workflow : **`{ set_id, ref }` seulement** (motifs stricts : `SET_ID_PATTERN`, `ref` du journal).
+- **Contrôle avant appel modèle** (dans le workflow) : le journal de `design` (lecture à un commit fixé, consigné dans la sortie) contient `reserve` pour ce `set_id` **avec cette `ref`**, état courant `reserve` ; aucun candidat n'existe déjà pour ce `set_id` dans `FONDA-Lots/candidats/` ; sinon **arrêt sans appel modèle**.
+- **Un seul candidat par `set_id`** : fichier Drive `FONDA-Lots/candidats/<set_id>.json`, créé une fois, **jamais écrasé** (le workflow s'arrête si le fichier existe). Une génération **en erreur sans dépôt** est une tentative ratée (tolérée, listée) ; une génération ayant **déposé** puis échoué, **deux** exécutions réussies, ou **deux** fichiers candidats pour un même `set_id` → **abandon** (transition `abandonne`, nouveau `set_id`, nouvelle réservation).
+- **Concurrence** : deux exécutions simultanées d'un même `set_id` → au plus une peut créer le fichier ; à la clôture, plus d'une exécution réussie ou plus d'un fichier → abandon.
+
+### 20.3 Sortie métier n8n (contrat de rattachement de la génération)
+- Le workflow de génération épinglé (`workflow_id` fixé dans la configuration locale du signataire) se termine par un nœud nommé exactement **`FONDA Sortie generation`**, qui émet **un seul item** de forme **`generation-fonda/v1`** = `{ schema, set_id, ref, notion_id, palier, moteur: { version, sha256 }, referentiel_version, journal_commit, modele, empreinte_pedagogique, empreinte_complete, candidat_fichier_id, demarree_le }`.
+- **Extraction** (signataire, API en lecture seule, données d'exécution complètes) : `runData` de ce nœud, dernière exécution du nœud, **exactement un item** ; nœud absent, plusieurs items, champs manquants ou en trop → **inexploitable**.
+- **Égalités exigées** : `set_id` de la sortie = `set_id` reçu par le déclencheur (lu dans les données du nœud déclencheur) = `set_id` demandé ; `notion_id`/`palier` = ceux encodés dans `set_id` ; `moteur` = registre (`moteurs.json`) ; `ref` = ref de réservation du journal de `design`.
+- **Exécution de test exclue** : toute exécution dont le workflow porte des données épinglées (`pinData`) ou dont le mode n'est pas le déclenchement prévu → **inexploitable**.
+- Ces métadonnées et la sortie disent **ce qu'n8n déclare** ; elles ne prouvent pas l'origine (§20.0).
+
+### 20.4 Empreintes du candidat
+- **`empreinte_pedagogique`** = `empreinte-fonda/v1` existante (`catalogue.js::texteEmpreinte`) : ce que l'élève voit et ce qui le note. Inchangée.
+- **`empreinte_complete`** (nouvelle) = `"sha256:" + SHA-256` des **octets canoniques** (`canonique.js`) du candidat entier sous la forme **`lot-complet-fonda/v1`** : tous les champs de `lot-fonda/v1` (`CHAMPS_LOT`, puis chaque carte avec **tous** les `CHAMPS_CARTE` : `item_id, numero, question, reponse, difficulte, palier, profil_correction, reponses_acceptees, unite, arrondi, seconde_chance, contexte, set_id, notion_id`), dans cet ordre, **champ absent → `null`**. Elle couvre notamment `contexte`, `difficulte`, `numero` et les libellés, que l'empreinte pédagogique exclut volontairement.
+- Le candidat Drive est un `lot-fonda/v1` passé par la **liste blanche** (`validerLot`) **avant** dépôt ; à la clôture, les deux empreintes sont **recalculées** et doivent égaler les empreintes gravées.
+
+### 20.5 `lot_relu`, décision et réconciliation (ferme le trou de `signer-cloture.js`)
+- **`lot_relu-fonda/v1`** = `{ set_id, empreinte_complete, cartes: [{ item_id, choix }] }`, `choix ∈ {"garder","ecarter"}`, **chaque carte du candidat exactement une fois, dans l'ordre du candidat**.
+- **`decision-fonda/v1`** devient définie (§1) : `lot_relu` = la forme ci-dessus.
+- **Réconciliation exigée** (avant toute signature ; remplace le contrôle « `lot_relu` identiques entre eux », jugé insuffisant) : `lot_relu.set_id` = `set_id` ; `lot_relu.empreinte_complete` = empreinte complète recalculée du candidat ; `item_id` de `lot_relu.cartes` = `item_id` du candidat (même ordre, aucun manquant, aucun doublon, aucun inconnu) ; `coeur.selection` = les `garder` (ordre du candidat) ; `coeur.ecartees` = les `ecarter` ; `coeur.empreinte_relue` = empreinte **pédagogique** du candidat (sens v8.2) ; `coeur.empreinte_publiee` = empreinte du lot filtré ; `action = "accepter"` ⇒ au moins une carte gardée.
+- **`instantane-fonda/v1`** devient définie : `candidat_lot` sous forme `lot-complet-fonda/v1`, `lot_relu` sous forme `lot_relu-fonda/v1` ; il reste écrit **une fois** et vérifié en **octets bruts** (§3.2).
+- La **garde maîtresse** de `signer-cloture.js` n'est levée qu'une fois cette réconciliation implémentée et testée.
+
+### 20.6 Saisie manuelle des décisions (premier lot)
+- Réservée au cas **`relecteur_attribue = "eric"`** (mode `auto`) : Éric ne saisit **jamais** les décisions d'un autre relecteur.
+- Le script local présente **chaque carte** du candidat (rendu humain : question, réponse attendue, règle de correction, réponses acceptées, comportements par défaut) ; Éric choisit `garder` / `ecarter` **carte par carte** ; le script produit **une** décision `decision-fonda/v1` locale (`nonce` aléatoire, `recu_le` = instant de la saisie, `generation` = 0, `hash_formulaire = "saisie-locale"`), **hors dépôt et hors Dropbox**.
+- **Ensuite seulement** : instantané (§3), récapitulatif, **code calculé après les décisions**, saisie du code, attestation de fidélité (§3.4).
+- Sans workflow de relecture, **pas de clôture technique n8n** : `revoque_le` = instant de la **fin de la saisie** des décisions (fin de la fenêtre de candidature), et la charge v2 déclare `source_decisions = "saisie_locale"` (§20.9).
+
+### 20.7 Listing n8n : un intervalle
+- Le listing paginé de l'API couvre un **intervalle** `[listing_debut_le, listing_fin_le]` : début = juste avant la première requête, fin = juste après la dernière page (requêtes `status=running` et `status=waiting` comprises, §10).
+- **Règles** : (a) le candidat Drive est lu **avant et après** le listing ; ses empreintes et sa date de modification doivent être **identiques** aux deux lectures, sinon refus (modification concurrente) ; (b) la date de modification du candidat est ≤ `terminee_le` de l'exécution de génération retenue (écrit pendant l'exécution, jamais après) ; (c) pour le parcours page §7, l'écriture d'une décision est comparée à **`listing_debut_le`** (et non plus à la fin de la clôture), ce qui corrige la limite signalée en tête de `signer-cloture.js`.
+- Les deux bornes sont **signées** (v2) ; elles **documentent** le listing, elles ne le rendent pas rejouable après purge.
+
+### 20.8 G3 et G5 : contrats d'entrée
+- **G3** : le prompt de génération est construit **uniquement** depuis `referentiel.json` à la version `referentiel_version` (notion, palier, objectifs) et les règles de génération du dépôt ; **aucun champ libre** n'entre dans le workflow hors `{ set_id, ref }` (motifs stricts). Aucun cours, aucun mail, aucune donnée d'élève ou de classe n'est transmis au modèle. La liste blanche en sortie reste un filet supplémentaire, pas la garantie.
+- **G5** : modèle **Sonnet** fixé **explicitement** dans la configuration du nœud (identifiant épinglé, ex. `claude-sonnet-5-5`), **sans repli** sur un autre modèle ; `modele` gravé = champ `model` de la **réponse** de l'API ; à la clôture, `modele` ∉ liste autorisée (épinglée dans la configuration du signataire) → **abandon**.
+
+### 20.9 Charge `attestation-cloture/v2`
+- Clés, dans cet ordre : celles de v1 **jusqu'à `provenances`** ; `nb_fichiers_decision` ; `referentiel_version` ; `moteur` ; `execution_cloture` (**`… | null`**) ; **`source_decisions`** (chaîne ∈ `{"page_relecture","saisie_locale"}`) ; **`generation`** = `{ execution_id, workflow_id, statut, demarree_le, terminee_le, modele, empreinte_complete, journal_commit, listing_debut_le, listing_fin_le }` ; puis `revoque_le`, `levees`, `incidents_connus`, `cloture_le`, `badge`, `cle_id`.
+- **Invariants** : `source_decisions = "page_relecture"` ⇒ invariants v1 inchangés (`provenances` ≥ 1, `execution_cloture` non nul) ; `"saisie_locale"` ⇒ `provenances = []`, `execution_cloture = null`, `nb_fichiers_decision = 1`, `relecteur_attribue = "eric"`, `confirmation.mode = "auto"` ; `generation.statut = "success"` ; dates ISO UTC milliseconde ; `listing_debut_le ≤ listing_fin_le`.
+- `type` d'attestation inchangé (`"cloture-signee"`) : la version de **charge** se lit dans `charge.schema`. `attestation-signee.js`, `publier-lot.js` et la CI acceptent **v1 et v2** ; v1 et ses vecteurs restent intacts ; v2 a ses propres vecteurs figés.
+
+### 20.10 Exécution purgée, réglages de l'instance
+- Pour la brique 1 : exécution de génération **introuvable, purgée ou sans données** → **refus** (abandon si elle ne reviendra pas). `historique_incomplet` (§10 C) ne vaut **que** pour l'incertitude d'**exhaustivité** du listing, **jamais** pour masquer une source obligatoire absente ni une anomalie constatée.
+- **Condition d'activation** (s'ajoute au §13) : sur l'instance, sauvegarde des données des exécutions **réussies et en erreur** activée, **purge automatique désactivée** (historique conservé — décision d'Éric), vérifiées et consignées avant la première génération réelle.
+
+### 20.11 Publication et promotion
+- **`publier-lot.js` écrit, dans la même opération, le lot, l'entrée du catalogue ET la transition `publie` du journal** (aujourd'hui seuls les deux premiers : défaut confirmé par Codex, que `verifier-immuabilite.js` détecte).
+- **Promotion d'un lot de calibration** (son `set_id` a un fichier dans `lots-fonda-calibration/`) : le fichier de calibration est **retiré dans la même PR** que la publication (jamais présent à la fois en calibration et au catalogue) ; `publier-lot.js` le signale et exige une option explicite (`--promouvoir`) — la suppression reste un **geste validé par Éric**. Sans objet pour le premier lot (`_02`, nouveau).
+
+### 20.12 Référentiel archivé, jamais courant
+- Le relecteur attribué d'une attestation est vérifié contre le **référentiel archivé** à `referentiel_version` (SHA-256 des octets de `referentiel.json`), retrouvé dans l'historique de confiance (premier parent de `design`) — par le signataire, **la publication et la CI**. Une **réattribution ultérieure** au référentiel courant **n'invalide jamais** une attestation passée. Version introuvable dans l'historique de confiance → refus.
+
+### 20.13 Matrice des issues (brique 1)
+| Issue | Cas |
+|---|---|
+| **Refus temporaire** (relancer plus tard, rien d'autre) | API n8n injoignable ou accès insuffisant ; exécution du workflow `new`/`running`/`waiting` ; pagination interrompue ; candidat modifié pendant le listing ; réservation non encore fusionnée ; clé irrecevable ou absente |
+| **Abandon obligatoire** (transition `abandonne`, nouveau `set_id`) | deux exécutions réussies ou deux candidats pour un `set_id` ; génération en erreur après dépôt ; candidat altéré (empreinte ≠ gravée) ; sortie inexploitable, exécution de test (`pinData`) ; `set_id` gravé ≠ entrée ; `ref` ≠ réservation ; modèle non autorisé ; moteur ≠ registre ; candidat hors liste blanche ou refusé par le moteur ; exécution purgée sans retour possible ; blocages durs du §10 A |
+| **Levée autorisée** (§10 C, signée, non probante) | `historique_incomplet`, `recherche_incomplete` : **uniquement** l'incertitude d'exhaustivité |
+| **Arrêt local, reprise possible** | code saisi ≠ code ; fidélité non attestée ; partition / `lot_relu` non réconciliés (corriger la saisie et recommencer, nouvel instantané) |
+| **Jamais levable** | toute anomalie **constatée** (conflit, décision orpheline, contradiction d'observations, incident ouvert ou recouvrant la fenêtre) |
+
+### 20.14 Ordre de mise en œuvre (aucun code avant validation de ce §20)
+1. `canonique.js` : schémas `lot-complet-fonda/v1`, `lot_relu-fonda/v1`, `decision-fonda/v1`, `instantane-fonda/v1`, `generation-fonda/v1`, `attestation-cloture/v2` + vecteurs figés (v1 intacts).
+2. `publier-lot.js` : transition `publie` + promotion ; référentiel archivé (signataire, publication, CI).
+3. `signer-cloture.js` : liaison de génération, réconciliation `lot_relu`, saisie manuelle, listing en intervalle ; `attestation-signee.js` : v2.
+4. Workflow n8n de génération **inactif** (JSON importé), testé sur copie ; réglages de l'instance vérifiés (§20.10).
+5. Levée de la garde maîtresse **après** 1 à 4, revue Codex et lecture d'Éric ; première génération et signature réelles sur le lot du §20.1.
