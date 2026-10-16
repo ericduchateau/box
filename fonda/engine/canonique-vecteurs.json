@@ -2092,7 +2092,7 @@
     },
     {
       "id": "lot-relu-nominal",
-      "description": "état relu (§20.5) : chaque carte une fois, ordre du lot source, garder/ecarter",
+      "description": "état relu (§20.5) : chaque carte une fois, ordre du lot source, garder/ecarter — fixture de SÉRIALISATION, pas un scénario de réconciliation §20.5 (empreintes synthétiques, cartes ≠ lot-complet-nominal)",
       "contrat": "lot_relu-fonda/v1",
       "entree": {
         "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
@@ -2117,7 +2117,7 @@
     },
     {
       "id": "decision-saisie-locale",
-      "description": "décision figée par saisie locale (§20.6) : generation 0, hash_formulaire « saisie-locale », lot_relu imbriqué",
+      "description": "décision figée par saisie locale (§20.6) : generation 0, hash_formulaire « saisie-locale », lot_relu imbriqué — fixture de SÉRIALISATION, pas un scénario de réconciliation §20.5 (empreintes synthétiques, cartes ≠ lot-complet-nominal)",
       "contrat": "decision-fonda/v1",
       "entree": {
         "schema": "decision-fonda/v1",
@@ -2892,6 +2892,944 @@
         "empreinte_pedagogique": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
         "empreinte_complete": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
         "candidat_fichier_id": "1AbCdEfGhIjKlMnOpQrStUvWxYz"
+      }
+    },
+    {
+      "id": "lot-complet-nullables-inverses",
+      "description": "projection : l'autre branche de chaque nullable (matiere/notion/date_creation null, niveau chaîne ; unite chaîne ; carte 2 entièrement renseignée)",
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": null,
+        "notion": null,
+        "niveau": "5e",
+        "revue_carte_par_carte": true,
+        "nb_cartes": 2,
+        "date_creation": null,
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": 1,
+            "question": "Calculer 7 − (−5).",
+            "reponse": "12",
+            "difficulte": "facile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": "cm",
+            "arrondi": null,
+            "seconde_chance": false,
+            "contexte": "calcul-relatifs",
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": 2,
+            "question": "Écrire 3/4 en décimal.",
+            "reponse": "0,75",
+            "difficulte": "difficile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75"
+            ],
+            "unite": "m",
+            "arrondi": 0,
+            "seconde_chance": true,
+            "contexte": "fractions",
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      },
+      "texte": "{\"schema\":\"lot-complet-fonda/v1\",\"set_id\":\"set_fonda_nombres-fractions-relatifs_nI_02\",\"notion_id\":\"maths.nombres-fractions-relatifs\",\"palier\":\"nI\",\"matiere\":null,\"notion\":null,\"niveau\":\"5e\",\"revue_carte_par_carte\":true,\"nb_cartes\":2,\"date_creation\":null,\"cartes\":[{\"item_id\":\"it01\",\"numero\":1,\"question\":\"Calculer 7 − (−5).\",\"reponse\":\"12\",\"difficulte\":\"facile\",\"palier\":\"nI\",\"profil_correction\":\"numerique\",\"reponses_acceptees\":[\"12\",12],\"unite\":\"cm\",\"arrondi\":null,\"seconde_chance\":false,\"contexte\":\"calcul-relatifs\",\"set_id\":\"set_fonda_nombres-fractions-relatifs_nI_02\",\"notion_id\":\"maths.nombres-fractions-relatifs\"},{\"item_id\":\"it02\",\"numero\":2,\"question\":\"Écrire 3/4 en décimal.\",\"reponse\":\"0,75\",\"difficulte\":\"difficile\",\"palier\":\"nI\",\"profil_correction\":\"numerique\",\"reponses_acceptees\":[\"0,75\"],\"unite\":\"m\",\"arrondi\":0,\"seconde_chance\":true,\"contexte\":\"fractions\",\"set_id\":\"set_fonda_nombres-fractions-relatifs_nI_02\",\"notion_id\":\"maths.nombres-fractions-relatifs\"}]}",
+      "hex": "7b22736368656d61223a226c6f742d636f6d706c65742d666f6e64612f7631222c227365745f6964223a227365745f666f6e64615f6e6f6d627265732d6672616374696f6e732d72656c61746966735f6e495f3032222c226e6f74696f6e5f6964223a226d617468732e6e6f6d627265732d6672616374696f6e732d72656c6174696673222c2270616c696572223a226e49222c226d617469657265223a6e756c6c2c226e6f74696f6e223a6e756c6c2c226e6976656175223a223565222c2272657675655f63617274655f7061725f6361727465223a747275652c226e625f636172746573223a322c22646174655f6372656174696f6e223a6e756c6c2c22636172746573223a5b7b226974656d5f6964223a2269743031222c226e756d65726f223a312c227175657374696f6e223a2243616c63756c6572203720e288922028e2889235292e222c227265706f6e7365223a223132222c22646966666963756c7465223a22666163696c65222c2270616c696572223a226e49222c2270726f66696c5f636f7272656374696f6e223a226e756d657269717565222c227265706f6e7365735f616363657074656573223a5b223132222c31325d2c22756e697465223a22636d222c226172726f6e6469223a6e756c6c2c227365636f6e64655f6368616e6365223a66616c73652c22636f6e7465787465223a2263616c63756c2d72656c6174696673222c227365745f6964223a227365745f666f6e64615f6e6f6d627265732d6672616374696f6e732d72656c61746966735f6e495f3032222c226e6f74696f6e5f6964223a226d617468732e6e6f6d627265732d6672616374696f6e732d72656c6174696673227d2c7b226974656d5f6964223a2269743032222c226e756d65726f223a322c227175657374696f6e223a22c389637269726520332f3420656e2064c3a963696d616c2e222c227265706f6e7365223a22302c3735222c22646966666963756c7465223a22646966666963696c65222c2270616c696572223a226e49222c2270726f66696c5f636f7272656374696f6e223a226e756d657269717565222c227265706f6e7365735f616363657074656573223a5b22302c3735225d2c22756e697465223a226d222c226172726f6e6469223a302c227365636f6e64655f6368616e6365223a747275652c22636f6e7465787465223a226672616374696f6e73222c227365745f6964223a227365745f666f6e64615f6e6f6d627265732d6672616374696f6e732d72656c61746966735f6e495f3032222c226e6f74696f6e5f6964223a226d617468732e6e6f6d627265732d6672616374696f6e732d72656c6174696673227d5d7d"
+    },
+    {
+      "id": "refus-lot-complet-matiere-type",
+      "description": "projection : matiere de mauvais type (1)",
+      "refus": true,
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": 1,
+        "notion": "Maîtriser nombres, fractions et relatifs",
+        "niveau": null,
+        "revue_carte_par_carte": false,
+        "nb_cartes": 2,
+        "date_creation": "2026-10-16T09:00:00.000Z",
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": 1,
+            "question": "Calculer 7 − (−5).",
+            "reponse": "12",
+            "difficulte": "facile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": null,
+            "arrondi": null,
+            "seconde_chance": false,
+            "contexte": "calcul-relatifs",
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": null,
+            "question": "Écrire 3/4 en décimal.",
+            "reponse": null,
+            "difficulte": null,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": null,
+            "contexte": null,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-lot-complet-notion-type",
+      "description": "projection : notion de mauvais type (true)",
+      "refus": true,
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": "Mathématiques",
+        "notion": true,
+        "niveau": null,
+        "revue_carte_par_carte": false,
+        "nb_cartes": 2,
+        "date_creation": "2026-10-16T09:00:00.000Z",
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": 1,
+            "question": "Calculer 7 − (−5).",
+            "reponse": "12",
+            "difficulte": "facile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": null,
+            "arrondi": null,
+            "seconde_chance": false,
+            "contexte": "calcul-relatifs",
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": null,
+            "question": "Écrire 3/4 en décimal.",
+            "reponse": null,
+            "difficulte": null,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": null,
+            "contexte": null,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-lot-complet-niveau-type",
+      "description": "projection : niveau de mauvais type (5)",
+      "refus": true,
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": "Mathématiques",
+        "notion": "Maîtriser nombres, fractions et relatifs",
+        "niveau": 5,
+        "revue_carte_par_carte": false,
+        "nb_cartes": 2,
+        "date_creation": "2026-10-16T09:00:00.000Z",
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": 1,
+            "question": "Calculer 7 − (−5).",
+            "reponse": "12",
+            "difficulte": "facile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": null,
+            "arrondi": null,
+            "seconde_chance": false,
+            "contexte": "calcul-relatifs",
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": null,
+            "question": "Écrire 3/4 en décimal.",
+            "reponse": null,
+            "difficulte": null,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": null,
+            "contexte": null,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-lot-complet-date-creation-type",
+      "description": "projection : date_creation de mauvais type (0)",
+      "refus": true,
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": "Mathématiques",
+        "notion": "Maîtriser nombres, fractions et relatifs",
+        "niveau": null,
+        "revue_carte_par_carte": false,
+        "nb_cartes": 2,
+        "date_creation": 0,
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": 1,
+            "question": "Calculer 7 − (−5).",
+            "reponse": "12",
+            "difficulte": "facile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": null,
+            "arrondi": null,
+            "seconde_chance": false,
+            "contexte": "calcul-relatifs",
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": null,
+            "question": "Écrire 3/4 en décimal.",
+            "reponse": null,
+            "difficulte": null,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": null,
+            "contexte": null,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-lot-complet-carte-numero-type",
+      "description": "projection : carte.numero de mauvais type (\"1\")",
+      "refus": true,
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": "Mathématiques",
+        "notion": "Maîtriser nombres, fractions et relatifs",
+        "niveau": null,
+        "revue_carte_par_carte": false,
+        "nb_cartes": 2,
+        "date_creation": "2026-10-16T09:00:00.000Z",
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": "1",
+            "question": "Calculer 7 − (−5).",
+            "reponse": "12",
+            "difficulte": "facile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": null,
+            "arrondi": null,
+            "seconde_chance": false,
+            "contexte": "calcul-relatifs",
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": null,
+            "question": "Écrire 3/4 en décimal.",
+            "reponse": null,
+            "difficulte": null,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": null,
+            "contexte": null,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-lot-complet-carte-reponse-type",
+      "description": "projection : carte.reponse de mauvais type (12)",
+      "refus": true,
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": "Mathématiques",
+        "notion": "Maîtriser nombres, fractions et relatifs",
+        "niveau": null,
+        "revue_carte_par_carte": false,
+        "nb_cartes": 2,
+        "date_creation": "2026-10-16T09:00:00.000Z",
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": 1,
+            "question": "Calculer 7 − (−5).",
+            "reponse": 12,
+            "difficulte": "facile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": null,
+            "arrondi": null,
+            "seconde_chance": false,
+            "contexte": "calcul-relatifs",
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": null,
+            "question": "Écrire 3/4 en décimal.",
+            "reponse": null,
+            "difficulte": null,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": null,
+            "contexte": null,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-lot-complet-carte-difficulte-type",
+      "description": "projection : carte.difficulte de mauvais type (1)",
+      "refus": true,
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": "Mathématiques",
+        "notion": "Maîtriser nombres, fractions et relatifs",
+        "niveau": null,
+        "revue_carte_par_carte": false,
+        "nb_cartes": 2,
+        "date_creation": "2026-10-16T09:00:00.000Z",
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": 1,
+            "question": "Calculer 7 − (−5).",
+            "reponse": "12",
+            "difficulte": 1,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": null,
+            "arrondi": null,
+            "seconde_chance": false,
+            "contexte": "calcul-relatifs",
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": null,
+            "question": "Écrire 3/4 en décimal.",
+            "reponse": null,
+            "difficulte": null,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": null,
+            "contexte": null,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-lot-complet-carte-unite-type",
+      "description": "projection : carte.unite de mauvais type (3)",
+      "refus": true,
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": "Mathématiques",
+        "notion": "Maîtriser nombres, fractions et relatifs",
+        "niveau": null,
+        "revue_carte_par_carte": false,
+        "nb_cartes": 2,
+        "date_creation": "2026-10-16T09:00:00.000Z",
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": 1,
+            "question": "Calculer 7 − (−5).",
+            "reponse": "12",
+            "difficulte": "facile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": 3,
+            "arrondi": null,
+            "seconde_chance": false,
+            "contexte": "calcul-relatifs",
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": null,
+            "question": "Écrire 3/4 en décimal.",
+            "reponse": null,
+            "difficulte": null,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": null,
+            "contexte": null,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-lot-complet-carte-arrondi-type",
+      "description": "projection : carte.arrondi de mauvais type (\"2\")",
+      "refus": true,
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": "Mathématiques",
+        "notion": "Maîtriser nombres, fractions et relatifs",
+        "niveau": null,
+        "revue_carte_par_carte": false,
+        "nb_cartes": 2,
+        "date_creation": "2026-10-16T09:00:00.000Z",
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": 1,
+            "question": "Calculer 7 − (−5).",
+            "reponse": "12",
+            "difficulte": "facile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": null,
+            "arrondi": "2",
+            "seconde_chance": false,
+            "contexte": "calcul-relatifs",
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": null,
+            "question": "Écrire 3/4 en décimal.",
+            "reponse": null,
+            "difficulte": null,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": null,
+            "contexte": null,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-lot-complet-carte-seconde-chance-type",
+      "description": "projection : carte.seconde_chance de mauvais type (\"non\")",
+      "refus": true,
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": "Mathématiques",
+        "notion": "Maîtriser nombres, fractions et relatifs",
+        "niveau": null,
+        "revue_carte_par_carte": false,
+        "nb_cartes": 2,
+        "date_creation": "2026-10-16T09:00:00.000Z",
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": 1,
+            "question": "Calculer 7 − (−5).",
+            "reponse": "12",
+            "difficulte": "facile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": null,
+            "arrondi": null,
+            "seconde_chance": "non",
+            "contexte": "calcul-relatifs",
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": null,
+            "question": "Écrire 3/4 en décimal.",
+            "reponse": null,
+            "difficulte": null,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": null,
+            "contexte": null,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-lot-complet-carte-contexte-type",
+      "description": "projection : carte.contexte de mauvais type (1)",
+      "refus": true,
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": "Mathématiques",
+        "notion": "Maîtriser nombres, fractions et relatifs",
+        "niveau": null,
+        "revue_carte_par_carte": false,
+        "nb_cartes": 2,
+        "date_creation": "2026-10-16T09:00:00.000Z",
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": 1,
+            "question": "Calculer 7 − (−5).",
+            "reponse": "12",
+            "difficulte": "facile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": null,
+            "arrondi": null,
+            "seconde_chance": false,
+            "contexte": 1,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": null,
+            "question": "Écrire 3/4 en décimal.",
+            "reponse": null,
+            "difficulte": null,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": null,
+            "contexte": null,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-v2-execution-cloture-chaine",
+      "description": "charge v2 : execution_cloture chaîne (objet ou null)",
+      "refus": true,
+      "contrat": "attestation-cloture/v2",
+      "entree": {
+        "schema": "attestation-cloture/v2",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "empreinte_publiee": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "code_confirmation": "cdcdcdcdcdcdcdcd",
+        "confirmation": {
+          "mode": "auto",
+          "par": "eric",
+          "recue_par": "eric",
+          "le": "2026-10-16T10:25:00.000Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-16T10:25:30.000Z"
+        },
+        "relecteur_attribue": "eric",
+        "relecteur_egal_cloturer": true,
+        "provenances": [
+          {
+            "execution_id": "10",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-16T09:30:00.000Z"
+          },
+          {
+            "execution_id": "2",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-16T09:30:00.000Z"
+          }
+        ],
+        "nb_fichiers_decision": 2,
+        "referentiel_version": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "execution_cloture": "600",
+        "source_decisions": "page_relecture",
+        "generation": {
+          "execution_id": "501",
+          "workflow_id": "wfGenerationFonda",
+          "statut": "success",
+          "demarree_le": "2026-10-16T09:00:00.000Z",
+          "terminee_le": "2026-10-16T09:01:30.250Z",
+          "modele": "claude-sonnet-x-y",
+          "empreinte_complete": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "journal_commit": "ea8860e000000000000000000000000000000000",
+          "listing_debut_le": "2026-10-16T10:20:00.000Z",
+          "listing_fin_le": "2026-10-16T10:20:04.500Z"
+        },
+        "fin_saisie_le": null,
+        "revoque_le": "2026-10-16T10:09:00.000Z",
+        "levees": [],
+        "incidents_connus": [],
+        "cloture_le": "2026-10-16T10:26:00.000Z",
+        "badge": {
+          "forme": "relue_par",
+          "nom_affiche": "Éric Duchateau",
+          "id": "eric"
+        },
+        "cle_id": "eric-2026"
+      }
+    },
+    {
+      "id": "refus-v2-fin-saisie-nombre",
+      "description": "charge v2 : fin_saisie_le numérique",
+      "refus": true,
+      "contrat": "attestation-cloture/v2",
+      "entree": {
+        "schema": "attestation-cloture/v2",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "empreinte_publiee": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "code_confirmation": "cdcdcdcdcdcdcdcd",
+        "confirmation": {
+          "mode": "auto",
+          "par": "eric",
+          "recue_par": "eric",
+          "le": "2026-10-16T10:25:00.000Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-16T10:25:30.000Z"
+        },
+        "relecteur_attribue": "eric",
+        "relecteur_egal_cloturer": true,
+        "provenances": [],
+        "nb_fichiers_decision": 1,
+        "referentiel_version": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "execution_cloture": null,
+        "source_decisions": "saisie_locale",
+        "generation": {
+          "execution_id": "501",
+          "workflow_id": "wfGenerationFonda",
+          "statut": "success",
+          "demarree_le": "2026-10-16T09:00:00.000Z",
+          "terminee_le": "2026-10-16T09:01:30.250Z",
+          "modele": "claude-sonnet-x-y",
+          "empreinte_complete": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "journal_commit": "ea8860e000000000000000000000000000000000",
+          "listing_debut_le": "2026-10-16T10:20:00.000Z",
+          "listing_fin_le": "2026-10-16T10:20:04.500Z"
+        },
+        "fin_saisie_le": 0,
+        "revoque_le": null,
+        "levees": [],
+        "incidents_connus": [],
+        "cloture_le": "2026-10-16T10:26:00.000Z",
+        "badge": {
+          "forme": "relue_par",
+          "nom_affiche": "Éric Duchateau",
+          "id": "eric"
+        },
+        "cle_id": "eric-2026"
+      }
+    },
+    {
+      "id": "refus-v2-revoque-nombre",
+      "description": "charge v2 : revoque_le numérique",
+      "refus": true,
+      "contrat": "attestation-cloture/v2",
+      "entree": {
+        "schema": "attestation-cloture/v2",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "empreinte_publiee": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "code_confirmation": "cdcdcdcdcdcdcdcd",
+        "confirmation": {
+          "mode": "auto",
+          "par": "eric",
+          "recue_par": "eric",
+          "le": "2026-10-16T10:25:00.000Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-16T10:25:30.000Z"
+        },
+        "relecteur_attribue": "eric",
+        "relecteur_egal_cloturer": true,
+        "provenances": [
+          {
+            "execution_id": "10",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-16T09:30:00.000Z"
+          },
+          {
+            "execution_id": "2",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-16T09:30:00.000Z"
+          }
+        ],
+        "nb_fichiers_decision": 2,
+        "referentiel_version": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "execution_cloture": {
+          "execution_id": "600",
+          "workflow_id": "wfCloture0001",
+          "statut": "success",
+          "terminee_le": "2026-10-16T10:10:00.000Z"
+        },
+        "source_decisions": "page_relecture",
+        "generation": {
+          "execution_id": "501",
+          "workflow_id": "wfGenerationFonda",
+          "statut": "success",
+          "demarree_le": "2026-10-16T09:00:00.000Z",
+          "terminee_le": "2026-10-16T09:01:30.250Z",
+          "modele": "claude-sonnet-x-y",
+          "empreinte_complete": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "journal_commit": "ea8860e000000000000000000000000000000000",
+          "listing_debut_le": "2026-10-16T10:20:00.000Z",
+          "listing_fin_le": "2026-10-16T10:20:04.500Z"
+        },
+        "fin_saisie_le": null,
+        "revoque_le": 0,
+        "levees": [],
+        "incidents_connus": [],
+        "cloture_le": "2026-10-16T10:26:00.000Z",
+        "badge": {
+          "forme": "relue_par",
+          "nom_affiche": "Éric Duchateau",
+          "id": "eric"
+        },
+        "cle_id": "eric-2026"
       }
     }
   ]
