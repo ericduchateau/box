@@ -106,6 +106,16 @@ describe('garde maîtresse', () => {
   });
 });
 
+// Publication (§20.11, §20.12) : journal de HEAD + réservation du set_id ; référentiel
+// ARCHIVÉ résolu par la version de la charge (mêmes octets que ceux du signataire).
+const JOURNAL = require('../data/set_ids-journal.json');
+async function publication(publie, enveloppe) {
+  const journal = { schema: JOURNAL.schema, lignes: [...copie(JOURNAL.lignes), { set_id: publie.set_id, transition: 'reserve', le: '2026-10-17', ref: `test-2026-10-17:${publie.set_id}` }] };
+  const referentielArchive = async (v) => (v === enveloppe.charge.referentiel_version && v === `sha256:${require('crypto').createHash('sha256').update(OCTETS_REF).digest('hex')}`
+    ? { ok: true, referentiel: JSON.parse(Buffer.from(OCTETS_REF).toString('utf8')) } : { ok: false, raison: 'introuvable' });
+  return preparerPublication({ lot: publie, attestation: enveloppe, catalogue: copie(CATALOGUE), referentiel: REFERENTIEL, referentielArchive, journal, le: '2026-10-21T09:00:00.000Z', sha256Hex: sha, cles: CLES });
+}
+
 describe('aller-retour : signer -> attestation-signee vérifie -> publier-lot publie', () => {
   test('tiers (réponse au message) : enveloppe signée, vérifiée, publiable', async () => {
     const { deps, etat, setId, publie } = await scenario();
@@ -116,7 +126,7 @@ describe('aller-retour : signer -> attestation-signee vérifie -> publier-lot pu
     assert.equal(enveloppe.charge.execution_cloture.execution_id, '20');
     assert.equal(enveloppe.charge.revoque_le, '2026-10-20T07:59:00.000Z');
     assert.deepEqual(enveloppe.charge.badge, { forme: 'relue_et_validee', nom_affiche: 'Relectrice de test', id: 'justine' });
-    const r = await preparerPublication({ lot: publie, attestation: enveloppe, catalogue: copie(CATALOGUE), referentiel: REFERENTIEL, sha256Hex: sha, cles: CLES });
+    const r = await publication(publie, enveloppe);
     assert.equal(r.ok, true, JSON.stringify(r.erreurs));
     assert.ok([...etat.ecrits.keys()].some((p) => p.endsWith('instantane.json')));
     assert.ok([...etat.ecrits.keys()].some((p) => p.endsWith('attestation.json')));
@@ -126,7 +136,7 @@ describe('aller-retour : signer -> attestation-signee vérifie -> publier-lot pu
     const { enveloppe } = await cloturer(setId, deps);
     assert.equal(enveloppe.charge.confirmation.mode, 'auto');
     assert.equal(enveloppe.charge.relecteur_egal_cloturer, true);
-    const r = await preparerPublication({ lot: publie, attestation: enveloppe, catalogue: copie(CATALOGUE), referentiel: REFERENTIEL, sha256Hex: sha, cles: CLES });
+    const r = await publication(publie, enveloppe);
     assert.equal(r.ok, true, JSON.stringify(r.erreurs));
   });
   test('relecteur sans nom dans la table : badge « sans nom »', async () => {

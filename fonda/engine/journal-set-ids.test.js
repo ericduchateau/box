@@ -62,6 +62,15 @@ describe('validation et dérivation de l\'état', () => {
 });
 
 describe('réservation et vérification avant création du candidat', () => {
+  test('ref de réservation : au plus 120 caractères (§20.11) ; « <ref>:publie » reste valide ; ligneReservation refuse au-delà', () => {
+    const r120 = 'r' + 'x'.repeat(119), r121 = 'r' + 'x'.repeat(120);
+    assert.deepEqual(J.validerJournal(journal(ligne(A, 'reserve', r120), ligne(A, 'publie', r120 + J.SUFFIXE_PUBLIE))).erreurs, []);
+    assert.match(J.validerJournal(journal(ligne(A, 'reserve', r121))).erreurs.join(), /121 caractères \(au plus 120/);
+    // La limite ne vise que la réservation (une transition peut atteindre 128).
+    assert.deepEqual(J.validerJournal(journal(ligne(A, 'reserve', 'ma-ref-1234'), ligne(A, 'abandonne', 'a' + 'y'.repeat(127)))).erreurs, []);
+    assert.throws(() => J.ligneReservation(journal(), A, '2026-10-17', r121), /au plus 120/);
+    assert.equal(J.REF_RESERVE_MAX + J.SUFFIXE_PUBLIE.length <= 128, true);
+  });
   test('verifierReservation : ok seulement si reserve courante portant EXACTEMENT la ref', () => {
     const j = journal(ligne(A, 'reserve', 'ma-ref-1234'));
     assert.deepEqual(J.verifierReservation(j, A, 'ma-ref-1234'), { ok: true });
