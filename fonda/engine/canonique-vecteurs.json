@@ -568,7 +568,7 @@
     },
     {
       "id": "refus-contrat-incomplet-decision",
-      "description": "contrat à forme incomplète",
+      "description": "décision vide : refusée (champs manquants ; contrat défini depuis la v8.3 §20)",
       "refus": true,
       "contrat": "decision-fonda/v1",
       "entree": {}
@@ -1925,6 +1925,2820 @@
         "defaut": "x"
       },
       "entree": null
+    },
+    {
+      "id": "generation-nominale",
+      "description": "sortie métier de génération (§20.3) : toutes les clés, moteur imbriqué",
+      "contrat": "generation-fonda/v1",
+      "entree": {
+        "schema": "generation-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "ref": "2026-10-16-a1b2c3d4e5f6",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "referentiel_version": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "journal_commit": "ea8860e000000000000000000000000000000000",
+        "modele": "claude-sonnet-x-y",
+        "empreinte_pedagogique": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "empreinte_complete": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+        "candidat_fichier_id": "1AbCdEfGhIjKlMnOpQrStUvWxYz"
+      },
+      "texte": "{\"schema\":\"generation-fonda/v1\",\"set_id\":\"set_fonda_nombres-fractions-relatifs_nI_02\",\"ref\":\"2026-10-16-a1b2c3d4e5f6\",\"notion_id\":\"maths.nombres-fractions-relatifs\",\"palier\":\"nI\",\"moteur\":{\"version\":\"v1\",\"sha256\":\"ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753\"},\"referentiel_version\":\"sha256:4444444444444444444444444444444444444444444444444444444444444444\",\"journal_commit\":\"ea8860e000000000000000000000000000000000\",\"modele\":\"claude-sonnet-x-y\",\"empreinte_pedagogique\":\"sha256:5555555555555555555555555555555555555555555555555555555555555555\",\"empreinte_complete\":\"sha256:6666666666666666666666666666666666666666666666666666666666666666\",\"candidat_fichier_id\":\"1AbCdEfGhIjKlMnOpQrStUvWxYz\"}",
+      "hex": "7b22736368656d61223a2267656e65726174696f6e2d666f6e64612f7631222c227365745f6964223a227365745f666f6e64615f6e6f6d627265732d6672616374696f6e732d72656c61746966735f6e495f3032222c22726566223a22323032362d31302d31362d613162326333643465356636222c226e6f74696f6e5f6964223a226d617468732e6e6f6d627265732d6672616374696f6e732d72656c6174696673222c2270616c696572223a226e49222c226d6f74657572223a7b2276657273696f6e223a227631222c22736861323536223a2263653134633365343937393439393133613337666438646166366335376432663061393633303665303866303634626639323331363030353732616431373533227d2c227265666572656e7469656c5f76657273696f6e223a227368613235363a34343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434222c226a6f75726e616c5f636f6d6d6974223a2265613838363065303030303030303030303030303030303030303030303030303030303030303030222c226d6f64656c65223a22636c617564652d736f6e6e65742d782d79222c22656d707265696e74655f70656461676f6769717565223a227368613235363a35353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535222c22656d707265696e74655f636f6d706c657465223a227368613235363a36363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636222c2263616e64696461745f666963686965725f6964223a22314162436445664768496a4b6c4d6e4f705172537455765778597a227d"
+    },
+    {
+      "id": "generation-ordre-entree",
+      "description": "sortie de génération reçue dans le désordre : mêmes octets que generation-nominale",
+      "contrat": "generation-fonda/v1",
+      "entree": {
+        "candidat_fichier_id": "1AbCdEfGhIjKlMnOpQrStUvWxYz",
+        "empreinte_complete": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+        "empreinte_pedagogique": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "modele": "claude-sonnet-x-y",
+        "journal_commit": "ea8860e000000000000000000000000000000000",
+        "referentiel_version": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "palier": "nI",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "ref": "2026-10-16-a1b2c3d4e5f6",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "schema": "generation-fonda/v1"
+      },
+      "texte": "{\"schema\":\"generation-fonda/v1\",\"set_id\":\"set_fonda_nombres-fractions-relatifs_nI_02\",\"ref\":\"2026-10-16-a1b2c3d4e5f6\",\"notion_id\":\"maths.nombres-fractions-relatifs\",\"palier\":\"nI\",\"moteur\":{\"version\":\"v1\",\"sha256\":\"ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753\"},\"referentiel_version\":\"sha256:4444444444444444444444444444444444444444444444444444444444444444\",\"journal_commit\":\"ea8860e000000000000000000000000000000000\",\"modele\":\"claude-sonnet-x-y\",\"empreinte_pedagogique\":\"sha256:5555555555555555555555555555555555555555555555555555555555555555\",\"empreinte_complete\":\"sha256:6666666666666666666666666666666666666666666666666666666666666666\",\"candidat_fichier_id\":\"1AbCdEfGhIjKlMnOpQrStUvWxYz\"}",
+      "hex": "7b22736368656d61223a2267656e65726174696f6e2d666f6e64612f7631222c227365745f6964223a227365745f666f6e64615f6e6f6d627265732d6672616374696f6e732d72656c61746966735f6e495f3032222c22726566223a22323032362d31302d31362d613162326333643465356636222c226e6f74696f6e5f6964223a226d617468732e6e6f6d627265732d6672616374696f6e732d72656c6174696673222c2270616c696572223a226e49222c226d6f74657572223a7b2276657273696f6e223a227631222c22736861323536223a2263653134633365343937393439393133613337666438646166366335376432663061393633303665303866303634626639323331363030353732616431373533227d2c227265666572656e7469656c5f76657273696f6e223a227368613235363a34343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434222c226a6f75726e616c5f636f6d6d6974223a2265613838363065303030303030303030303030303030303030303030303030303030303030303030222c226d6f64656c65223a22636c617564652d736f6e6e65742d782d79222c22656d707265696e74655f70656461676f6769717565223a227368613235363a35353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535222c22656d707265696e74655f636f6d706c657465223a227368613235363a36363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636222c2263616e64696461745f666963686965725f6964223a22314162436445664768496a4b6c4d6e4f705172537455765778597a227d"
+    },
+    {
+      "id": "lot-complet-nominal",
+      "description": "projection complète (§20.4) : carte renseignée et carte aux champs optionnels absents -> null (numero, reponse, difficulte, seconde_chance, contexte) ; niveau null ; contexte couvert",
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": "Mathématiques",
+        "notion": "Maîtriser nombres, fractions et relatifs",
+        "niveau": null,
+        "revue_carte_par_carte": false,
+        "nb_cartes": 2,
+        "date_creation": "2026-10-16T09:00:00.000Z",
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": 1,
+            "question": "Calculer 7 − (−5).",
+            "reponse": "12",
+            "difficulte": "facile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": null,
+            "arrondi": null,
+            "seconde_chance": false,
+            "contexte": "calcul-relatifs",
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": null,
+            "question": "Écrire 3/4 en décimal.",
+            "reponse": null,
+            "difficulte": null,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": null,
+            "contexte": null,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      },
+      "texte": "{\"schema\":\"lot-complet-fonda/v1\",\"set_id\":\"set_fonda_nombres-fractions-relatifs_nI_02\",\"notion_id\":\"maths.nombres-fractions-relatifs\",\"palier\":\"nI\",\"matiere\":\"Mathématiques\",\"notion\":\"Maîtriser nombres, fractions et relatifs\",\"niveau\":null,\"revue_carte_par_carte\":false,\"nb_cartes\":2,\"date_creation\":\"2026-10-16T09:00:00.000Z\",\"cartes\":[{\"item_id\":\"it01\",\"numero\":1,\"question\":\"Calculer 7 − (−5).\",\"reponse\":\"12\",\"difficulte\":\"facile\",\"palier\":\"nI\",\"profil_correction\":\"numerique\",\"reponses_acceptees\":[\"12\",12],\"unite\":null,\"arrondi\":null,\"seconde_chance\":false,\"contexte\":\"calcul-relatifs\",\"set_id\":\"set_fonda_nombres-fractions-relatifs_nI_02\",\"notion_id\":\"maths.nombres-fractions-relatifs\"},{\"item_id\":\"it02\",\"numero\":null,\"question\":\"Écrire 3/4 en décimal.\",\"reponse\":null,\"difficulte\":null,\"palier\":\"nI\",\"profil_correction\":\"numerique\",\"reponses_acceptees\":[\"0,75\"],\"unite\":null,\"arrondi\":2,\"seconde_chance\":null,\"contexte\":null,\"set_id\":\"set_fonda_nombres-fractions-relatifs_nI_02\",\"notion_id\":\"maths.nombres-fractions-relatifs\"}]}",
+      "hex": "7b22736368656d61223a226c6f742d636f6d706c65742d666f6e64612f7631222c227365745f6964223a227365745f666f6e64615f6e6f6d627265732d6672616374696f6e732d72656c61746966735f6e495f3032222c226e6f74696f6e5f6964223a226d617468732e6e6f6d627265732d6672616374696f6e732d72656c6174696673222c2270616c696572223a226e49222c226d617469657265223a224d617468c3a96d61746971756573222c226e6f74696f6e223a224d61c3ae747269736572206e6f6d627265732c206672616374696f6e732065742072656c6174696673222c226e6976656175223a6e756c6c2c2272657675655f63617274655f7061725f6361727465223a66616c73652c226e625f636172746573223a322c22646174655f6372656174696f6e223a22323032362d31302d31365430393a30303a30302e3030305a222c22636172746573223a5b7b226974656d5f6964223a2269743031222c226e756d65726f223a312c227175657374696f6e223a2243616c63756c6572203720e288922028e2889235292e222c227265706f6e7365223a223132222c22646966666963756c7465223a22666163696c65222c2270616c696572223a226e49222c2270726f66696c5f636f7272656374696f6e223a226e756d657269717565222c227265706f6e7365735f616363657074656573223a5b223132222c31325d2c22756e697465223a6e756c6c2c226172726f6e6469223a6e756c6c2c227365636f6e64655f6368616e6365223a66616c73652c22636f6e7465787465223a2263616c63756c2d72656c6174696673222c227365745f6964223a227365745f666f6e64615f6e6f6d627265732d6672616374696f6e732d72656c61746966735f6e495f3032222c226e6f74696f6e5f6964223a226d617468732e6e6f6d627265732d6672616374696f6e732d72656c6174696673227d2c7b226974656d5f6964223a2269743032222c226e756d65726f223a6e756c6c2c227175657374696f6e223a22c389637269726520332f3420656e2064c3a963696d616c2e222c227265706f6e7365223a6e756c6c2c22646966666963756c7465223a6e756c6c2c2270616c696572223a226e49222c2270726f66696c5f636f7272656374696f6e223a226e756d657269717565222c227265706f6e7365735f616363657074656573223a5b22302c3735225d2c22756e697465223a6e756c6c2c226172726f6e6469223a322c227365636f6e64655f6368616e6365223a6e756c6c2c22636f6e7465787465223a6e756c6c2c227365745f6964223a227365745f666f6e64615f6e6f6d627265732d6672616374696f6e732d72656c61746966735f6e495f3032222c226e6f74696f6e5f6964223a226d617468732e6e6f6d627265732d6672616374696f6e732d72656c6174696673227d5d7d"
+    },
+    {
+      "id": "lot-complet-contexte-modifie",
+      "description": "projection : seul contexte change -> octets différents (l'empreinte pédagogique, elle, ne le couvre pas)",
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": "Mathématiques",
+        "notion": "Maîtriser nombres, fractions et relatifs",
+        "niveau": null,
+        "revue_carte_par_carte": false,
+        "nb_cartes": 2,
+        "date_creation": "2026-10-16T09:00:00.000Z",
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": 1,
+            "question": "Calculer 7 − (−5).",
+            "reponse": "12",
+            "difficulte": "facile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": null,
+            "arrondi": null,
+            "seconde_chance": false,
+            "contexte": "autre-contexte",
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": null,
+            "question": "Écrire 3/4 en décimal.",
+            "reponse": null,
+            "difficulte": null,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": null,
+            "contexte": null,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      },
+      "texte": "{\"schema\":\"lot-complet-fonda/v1\",\"set_id\":\"set_fonda_nombres-fractions-relatifs_nI_02\",\"notion_id\":\"maths.nombres-fractions-relatifs\",\"palier\":\"nI\",\"matiere\":\"Mathématiques\",\"notion\":\"Maîtriser nombres, fractions et relatifs\",\"niveau\":null,\"revue_carte_par_carte\":false,\"nb_cartes\":2,\"date_creation\":\"2026-10-16T09:00:00.000Z\",\"cartes\":[{\"item_id\":\"it01\",\"numero\":1,\"question\":\"Calculer 7 − (−5).\",\"reponse\":\"12\",\"difficulte\":\"facile\",\"palier\":\"nI\",\"profil_correction\":\"numerique\",\"reponses_acceptees\":[\"12\",12],\"unite\":null,\"arrondi\":null,\"seconde_chance\":false,\"contexte\":\"autre-contexte\",\"set_id\":\"set_fonda_nombres-fractions-relatifs_nI_02\",\"notion_id\":\"maths.nombres-fractions-relatifs\"},{\"item_id\":\"it02\",\"numero\":null,\"question\":\"Écrire 3/4 en décimal.\",\"reponse\":null,\"difficulte\":null,\"palier\":\"nI\",\"profil_correction\":\"numerique\",\"reponses_acceptees\":[\"0,75\"],\"unite\":null,\"arrondi\":2,\"seconde_chance\":null,\"contexte\":null,\"set_id\":\"set_fonda_nombres-fractions-relatifs_nI_02\",\"notion_id\":\"maths.nombres-fractions-relatifs\"}]}",
+      "hex": "7b22736368656d61223a226c6f742d636f6d706c65742d666f6e64612f7631222c227365745f6964223a227365745f666f6e64615f6e6f6d627265732d6672616374696f6e732d72656c61746966735f6e495f3032222c226e6f74696f6e5f6964223a226d617468732e6e6f6d627265732d6672616374696f6e732d72656c6174696673222c2270616c696572223a226e49222c226d617469657265223a224d617468c3a96d61746971756573222c226e6f74696f6e223a224d61c3ae747269736572206e6f6d627265732c206672616374696f6e732065742072656c6174696673222c226e6976656175223a6e756c6c2c2272657675655f63617274655f7061725f6361727465223a66616c73652c226e625f636172746573223a322c22646174655f6372656174696f6e223a22323032362d31302d31365430393a30303a30302e3030305a222c22636172746573223a5b7b226974656d5f6964223a2269743031222c226e756d65726f223a312c227175657374696f6e223a2243616c63756c6572203720e288922028e2889235292e222c227265706f6e7365223a223132222c22646966666963756c7465223a22666163696c65222c2270616c696572223a226e49222c2270726f66696c5f636f7272656374696f6e223a226e756d657269717565222c227265706f6e7365735f616363657074656573223a5b223132222c31325d2c22756e697465223a6e756c6c2c226172726f6e6469223a6e756c6c2c227365636f6e64655f6368616e6365223a66616c73652c22636f6e7465787465223a2261757472652d636f6e7465787465222c227365745f6964223a227365745f666f6e64615f6e6f6d627265732d6672616374696f6e732d72656c61746966735f6e495f3032222c226e6f74696f6e5f6964223a226d617468732e6e6f6d627265732d6672616374696f6e732d72656c6174696673227d2c7b226974656d5f6964223a2269743032222c226e756d65726f223a6e756c6c2c227175657374696f6e223a22c389637269726520332f3420656e2064c3a963696d616c2e222c227265706f6e7365223a6e756c6c2c22646966666963756c7465223a6e756c6c2c2270616c696572223a226e49222c2270726f66696c5f636f7272656374696f6e223a226e756d657269717565222c227265706f6e7365735f616363657074656573223a5b22302c3735225d2c22756e697465223a6e756c6c2c226172726f6e6469223a322c227365636f6e64655f6368616e6365223a6e756c6c2c22636f6e7465787465223a6e756c6c2c227365745f6964223a227365745f666f6e64615f6e6f6d627265732d6672616374696f6e732d72656c61746966735f6e495f3032222c226e6f74696f6e5f6964223a226d617468732e6e6f6d627265732d6672616374696f6e732d72656c6174696673227d5d7d"
+    },
+    {
+      "id": "lot-relu-nominal",
+      "description": "état relu (§20.5) : chaque carte une fois, ordre du lot source, garder/ecarter — fixture de SÉRIALISATION, pas un scénario de réconciliation §20.5 (empreintes synthétiques, cartes ≠ lot-complet-nominal)",
+      "contrat": "lot_relu-fonda/v1",
+      "entree": {
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "empreinte_complete": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+        "cartes": [
+          {
+            "item_id": "it01",
+            "choix": "garder"
+          },
+          {
+            "item_id": "it02",
+            "choix": "ecarter"
+          },
+          {
+            "item_id": "it03",
+            "choix": "garder"
+          }
+        ]
+      },
+      "texte": "{\"set_id\":\"set_fonda_nombres-fractions-relatifs_nI_02\",\"empreinte_complete\":\"sha256:6666666666666666666666666666666666666666666666666666666666666666\",\"cartes\":[{\"item_id\":\"it01\",\"choix\":\"garder\"},{\"item_id\":\"it02\",\"choix\":\"ecarter\"},{\"item_id\":\"it03\",\"choix\":\"garder\"}]}",
+      "hex": "7b227365745f6964223a227365745f666f6e64615f6e6f6d627265732d6672616374696f6e732d72656c61746966735f6e495f3032222c22656d707265696e74655f636f6d706c657465223a227368613235363a36363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636222c22636172746573223a5b7b226974656d5f6964223a2269743031222c2263686f6978223a22676172646572227d2c7b226974656d5f6964223a2269743032222c2263686f6978223a2265636172746572227d2c7b226974656d5f6964223a2269743033222c2263686f6978223a22676172646572227d5d7d"
+    },
+    {
+      "id": "decision-saisie-locale",
+      "description": "décision figée par saisie locale (§20.6) : generation 0, hash_formulaire « saisie-locale », lot_relu imbriqué — fixture de SÉRIALISATION, pas un scénario de réconciliation §20.5 (empreintes synthétiques, cartes ≠ lot-complet-nominal)",
+      "contrat": "decision-fonda/v1",
+      "entree": {
+        "schema": "decision-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "generation": 0,
+        "nonce": "f3a9c0d1e2b4a5c6",
+        "recu_le": "2026-10-16T10:15:00.000Z",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "empreinte_publiee": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "lot_relu": {
+          "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+          "empreinte_complete": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "cartes": [
+            {
+              "item_id": "it01",
+              "choix": "garder"
+            },
+            {
+              "item_id": "it02",
+              "choix": "ecarter"
+            },
+            {
+              "item_id": "it03",
+              "choix": "garder"
+            }
+          ]
+        },
+        "hash_formulaire": "saisie-locale"
+      },
+      "texte": "{\"schema\":\"decision-fonda/v1\",\"set_id\":\"set_fonda_nombres-fractions-relatifs_nI_02\",\"generation\":0,\"nonce\":\"f3a9c0d1e2b4a5c6\",\"recu_le\":\"2026-10-16T10:15:00.000Z\",\"coeur\":{\"action\":\"accepter\",\"selection\":[\"it01\",\"it03\"],\"ecartees\":[\"it02\"],\"empreinte_relue\":\"sha256:5555555555555555555555555555555555555555555555555555555555555555\",\"empreinte_publiee\":\"sha256:7777777777777777777777777777777777777777777777777777777777777777\",\"moteur\":{\"version\":\"v1\",\"sha256\":\"ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753\"}},\"lot_relu\":{\"set_id\":\"set_fonda_nombres-fractions-relatifs_nI_02\",\"empreinte_complete\":\"sha256:6666666666666666666666666666666666666666666666666666666666666666\",\"cartes\":[{\"item_id\":\"it01\",\"choix\":\"garder\"},{\"item_id\":\"it02\",\"choix\":\"ecarter\"},{\"item_id\":\"it03\",\"choix\":\"garder\"}]},\"hash_formulaire\":\"saisie-locale\"}",
+      "hex": "7b22736368656d61223a226465636973696f6e2d666f6e64612f7631222c227365745f6964223a227365745f666f6e64615f6e6f6d627265732d6672616374696f6e732d72656c61746966735f6e495f3032222c2267656e65726174696f6e223a302c226e6f6e6365223a2266336139633064316532623461356336222c22726563755f6c65223a22323032362d31302d31365431303a31353a30302e3030305a222c22636f657572223a7b22616374696f6e223a226163636570746572222c2273656c656374696f6e223a5b2269743031222c2269743033225d2c226563617274656573223a5b2269743032225d2c22656d707265696e74655f72656c7565223a227368613235363a35353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535222c22656d707265696e74655f7075626c696565223a227368613235363a37373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737222c226d6f74657572223a7b2276657273696f6e223a227631222c22736861323536223a2263653134633365343937393439393133613337666438646166366335376432663061393633303665303866303634626639323331363030353732616431373533227d7d2c226c6f745f72656c75223a7b227365745f6964223a227365745f666f6e64615f6e6f6d627265732d6672616374696f6e732d72656c61746966735f6e495f3032222c22656d707265696e74655f636f6d706c657465223a227368613235363a36363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636222c22636172746573223a5b7b226974656d5f6964223a2269743031222c2263686f6978223a22676172646572227d2c7b226974656d5f6964223a2269743032222c2263686f6978223a2265636172746572227d2c7b226974656d5f6964223a2269743033222c2263686f6978223a22676172646572227d5d7d2c22686173685f666f726d756c61697265223a227361697369652d6c6f63616c65227d"
+    },
+    {
+      "id": "attestation-v2-saisie-locale",
+      "description": "charge v2, saisie locale (§20.9) : provenances vides, execution_cloture null, revoque_le null, fin_saisie_le renseignée, generation complète",
+      "contrat": "attestation-cloture/v2",
+      "entree": {
+        "schema": "attestation-cloture/v2",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "empreinte_publiee": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "code_confirmation": "cdcdcdcdcdcdcdcd",
+        "confirmation": {
+          "mode": "auto",
+          "par": "eric",
+          "recue_par": "eric",
+          "le": "2026-10-16T10:25:00.000Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-16T10:25:30.000Z"
+        },
+        "relecteur_attribue": "eric",
+        "relecteur_egal_cloturer": true,
+        "provenances": [],
+        "nb_fichiers_decision": 1,
+        "referentiel_version": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "execution_cloture": null,
+        "source_decisions": "saisie_locale",
+        "generation": {
+          "execution_id": "501",
+          "workflow_id": "wfGenerationFonda",
+          "statut": "success",
+          "demarree_le": "2026-10-16T09:00:00.000Z",
+          "terminee_le": "2026-10-16T09:01:30.250Z",
+          "modele": "claude-sonnet-x-y",
+          "empreinte_complete": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "journal_commit": "ea8860e000000000000000000000000000000000",
+          "listing_debut_le": "2026-10-16T10:20:00.000Z",
+          "listing_fin_le": "2026-10-16T10:20:04.500Z"
+        },
+        "fin_saisie_le": "2026-10-16T10:15:00.000Z",
+        "revoque_le": null,
+        "levees": [],
+        "incidents_connus": [],
+        "cloture_le": "2026-10-16T10:26:00.000Z",
+        "badge": {
+          "forme": "relue_par",
+          "nom_affiche": "Éric Duchateau",
+          "id": "eric"
+        },
+        "cle_id": "eric-2026"
+      },
+      "texte": "{\"schema\":\"attestation-cloture/v2\",\"set_id\":\"set_fonda_nombres-fractions-relatifs_nI_02\",\"notion_id\":\"maths.nombres-fractions-relatifs\",\"palier\":\"nI\",\"coeur\":{\"action\":\"accepter\",\"selection\":[\"it01\",\"it03\"],\"ecartees\":[\"it02\"],\"empreinte_relue\":\"sha256:5555555555555555555555555555555555555555555555555555555555555555\",\"empreinte_publiee\":\"sha256:7777777777777777777777777777777777777777777777777777777777777777\",\"moteur\":{\"version\":\"v1\",\"sha256\":\"ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753\"}},\"sha256_instantane\":\"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\",\"code_confirmation\":\"cdcdcdcdcdcdcdcd\",\"confirmation\":{\"mode\":\"auto\",\"par\":\"eric\",\"recue_par\":\"eric\",\"le\":\"2026-10-16T10:25:00.000Z\"},\"fidelite_transmission\":{\"atteste_par\":\"eric\",\"le\":\"2026-10-16T10:25:30.000Z\"},\"relecteur_attribue\":\"eric\",\"relecteur_egal_cloturer\":true,\"provenances\":[],\"nb_fichiers_decision\":1,\"referentiel_version\":\"sha256:4444444444444444444444444444444444444444444444444444444444444444\",\"moteur\":{\"version\":\"v1\",\"sha256\":\"ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753\"},\"execution_cloture\":null,\"source_decisions\":\"saisie_locale\",\"generation\":{\"execution_id\":\"501\",\"workflow_id\":\"wfGenerationFonda\",\"statut\":\"success\",\"demarree_le\":\"2026-10-16T09:00:00.000Z\",\"terminee_le\":\"2026-10-16T09:01:30.250Z\",\"modele\":\"claude-sonnet-x-y\",\"empreinte_complete\":\"sha256:6666666666666666666666666666666666666666666666666666666666666666\",\"journal_commit\":\"ea8860e000000000000000000000000000000000\",\"listing_debut_le\":\"2026-10-16T10:20:00.000Z\",\"listing_fin_le\":\"2026-10-16T10:20:04.500Z\"},\"fin_saisie_le\":\"2026-10-16T10:15:00.000Z\",\"revoque_le\":null,\"levees\":[],\"incidents_connus\":[],\"cloture_le\":\"2026-10-16T10:26:00.000Z\",\"badge\":{\"forme\":\"relue_par\",\"nom_affiche\":\"Éric Duchateau\",\"id\":\"eric\"},\"cle_id\":\"eric-2026\"}",
+      "hex": "7b22736368656d61223a226174746573746174696f6e2d636c6f747572652f7632222c227365745f6964223a227365745f666f6e64615f6e6f6d627265732d6672616374696f6e732d72656c61746966735f6e495f3032222c226e6f74696f6e5f6964223a226d617468732e6e6f6d627265732d6672616374696f6e732d72656c6174696673222c2270616c696572223a226e49222c22636f657572223a7b22616374696f6e223a226163636570746572222c2273656c656374696f6e223a5b2269743031222c2269743033225d2c226563617274656573223a5b2269743032225d2c22656d707265696e74655f72656c7565223a227368613235363a35353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535222c22656d707265696e74655f7075626c696565223a227368613235363a37373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737222c226d6f74657572223a7b2276657273696f6e223a227631222c22736861323536223a2263653134633365343937393439393133613337666438646166366335376432663061393633303665303866303634626639323331363030353732616431373533227d7d2c227368613235365f696e7374616e74616e65223a2263646364636463646364636463646364636463646364636463646364636463646364636463646364636463646364636463646364636463646364636463646364222c22636f64655f636f6e6669726d6174696f6e223a2263646364636463646364636463646364222c22636f6e6669726d6174696f6e223a7b226d6f6465223a226175746f222c22706172223a2265726963222c2272656375655f706172223a2265726963222c226c65223a22323032362d31302d31365431303a32353a30302e3030305a227d2c22666964656c6974655f7472616e736d697373696f6e223a7b22617474657374655f706172223a2265726963222c226c65223a22323032362d31302d31365431303a32353a33302e3030305a227d2c2272656c6563746575725f6174747269627565223a2265726963222c2272656c6563746575725f6567616c5f636c6f7475726572223a747275652c2270726f76656e616e636573223a5b5d2c226e625f66696368696572735f6465636973696f6e223a312c227265666572656e7469656c5f76657273696f6e223a227368613235363a34343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434222c226d6f74657572223a7b2276657273696f6e223a227631222c22736861323536223a2263653134633365343937393439393133613337666438646166366335376432663061393633303665303866303634626639323331363030353732616431373533227d2c22657865637574696f6e5f636c6f74757265223a6e756c6c2c22736f757263655f6465636973696f6e73223a227361697369655f6c6f63616c65222c2267656e65726174696f6e223a7b22657865637574696f6e5f6964223a22353031222c22776f726b666c6f775f6964223a22776647656e65726174696f6e466f6e6461222c22737461747574223a2273756363657373222c2264656d61727265655f6c65223a22323032362d31302d31365430393a30303a30302e3030305a222c227465726d696e65655f6c65223a22323032362d31302d31365430393a30313a33302e3235305a222c226d6f64656c65223a22636c617564652d736f6e6e65742d782d79222c22656d707265696e74655f636f6d706c657465223a227368613235363a36363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636222c226a6f75726e616c5f636f6d6d6974223a2265613838363065303030303030303030303030303030303030303030303030303030303030303030222c226c697374696e675f64656275745f6c65223a22323032362d31302d31365431303a32303a30302e3030305a222c226c697374696e675f66696e5f6c65223a22323032362d31302d31365431303a32303a30342e3530305a227d2c2266696e5f7361697369655f6c65223a22323032362d31302d31365431303a31353a30302e3030305a222c227265766f7175655f6c65223a6e756c6c2c226c6576656573223a5b5d2c22696e636964656e74735f636f6e6e7573223a5b5d2c22636c6f747572655f6c65223a22323032362d31302d31365431303a32363a30302e3030305a222c226261646765223a7b22666f726d65223a2272656c75655f706172222c226e6f6d5f61666669636865223a22c38972696320447563686174656175222c226964223a2265726963227d2c22636c655f6964223a22657269632d32303236227d"
+    },
+    {
+      "id": "attestation-v2-page-relecture",
+      "description": "charge v2, parcours page (§20.9) : provenances « 10 » avant « 2 », execution_cloture et revoque_le renseignés, fin_saisie_le null",
+      "contrat": "attestation-cloture/v2",
+      "entree": {
+        "schema": "attestation-cloture/v2",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "empreinte_publiee": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "code_confirmation": "cdcdcdcdcdcdcdcd",
+        "confirmation": {
+          "mode": "auto",
+          "par": "eric",
+          "recue_par": "eric",
+          "le": "2026-10-16T10:25:00.000Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-16T10:25:30.000Z"
+        },
+        "relecteur_attribue": "eric",
+        "relecteur_egal_cloturer": true,
+        "provenances": [
+          {
+            "execution_id": "10",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-16T09:30:00.000Z"
+          },
+          {
+            "execution_id": "2",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-16T09:30:00.000Z"
+          }
+        ],
+        "nb_fichiers_decision": 2,
+        "referentiel_version": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "execution_cloture": {
+          "execution_id": "600",
+          "workflow_id": "wfCloture0001",
+          "statut": "success",
+          "terminee_le": "2026-10-16T10:10:00.000Z"
+        },
+        "source_decisions": "page_relecture",
+        "generation": {
+          "execution_id": "501",
+          "workflow_id": "wfGenerationFonda",
+          "statut": "success",
+          "demarree_le": "2026-10-16T09:00:00.000Z",
+          "terminee_le": "2026-10-16T09:01:30.250Z",
+          "modele": "claude-sonnet-x-y",
+          "empreinte_complete": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "journal_commit": "ea8860e000000000000000000000000000000000",
+          "listing_debut_le": "2026-10-16T10:20:00.000Z",
+          "listing_fin_le": "2026-10-16T10:20:04.500Z"
+        },
+        "fin_saisie_le": null,
+        "revoque_le": "2026-10-16T10:09:00.000Z",
+        "levees": [],
+        "incidents_connus": [],
+        "cloture_le": "2026-10-16T10:26:00.000Z",
+        "badge": {
+          "forme": "relue_par",
+          "nom_affiche": "Éric Duchateau",
+          "id": "eric"
+        },
+        "cle_id": "eric-2026"
+      },
+      "texte": "{\"schema\":\"attestation-cloture/v2\",\"set_id\":\"set_fonda_nombres-fractions-relatifs_nI_02\",\"notion_id\":\"maths.nombres-fractions-relatifs\",\"palier\":\"nI\",\"coeur\":{\"action\":\"accepter\",\"selection\":[\"it01\",\"it03\"],\"ecartees\":[\"it02\"],\"empreinte_relue\":\"sha256:5555555555555555555555555555555555555555555555555555555555555555\",\"empreinte_publiee\":\"sha256:7777777777777777777777777777777777777777777777777777777777777777\",\"moteur\":{\"version\":\"v1\",\"sha256\":\"ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753\"}},\"sha256_instantane\":\"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\",\"code_confirmation\":\"cdcdcdcdcdcdcdcd\",\"confirmation\":{\"mode\":\"auto\",\"par\":\"eric\",\"recue_par\":\"eric\",\"le\":\"2026-10-16T10:25:00.000Z\"},\"fidelite_transmission\":{\"atteste_par\":\"eric\",\"le\":\"2026-10-16T10:25:30.000Z\"},\"relecteur_attribue\":\"eric\",\"relecteur_egal_cloturer\":true,\"provenances\":[{\"execution_id\":\"10\",\"workflow_id\":\"wfConfirmation01\",\"statut\":\"success\",\"demarree_le\":\"2026-10-16T09:30:00.000Z\"},{\"execution_id\":\"2\",\"workflow_id\":\"wfConfirmation01\",\"statut\":\"success\",\"demarree_le\":\"2026-10-16T09:30:00.000Z\"}],\"nb_fichiers_decision\":2,\"referentiel_version\":\"sha256:4444444444444444444444444444444444444444444444444444444444444444\",\"moteur\":{\"version\":\"v1\",\"sha256\":\"ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753\"},\"execution_cloture\":{\"execution_id\":\"600\",\"workflow_id\":\"wfCloture0001\",\"statut\":\"success\",\"terminee_le\":\"2026-10-16T10:10:00.000Z\"},\"source_decisions\":\"page_relecture\",\"generation\":{\"execution_id\":\"501\",\"workflow_id\":\"wfGenerationFonda\",\"statut\":\"success\",\"demarree_le\":\"2026-10-16T09:00:00.000Z\",\"terminee_le\":\"2026-10-16T09:01:30.250Z\",\"modele\":\"claude-sonnet-x-y\",\"empreinte_complete\":\"sha256:6666666666666666666666666666666666666666666666666666666666666666\",\"journal_commit\":\"ea8860e000000000000000000000000000000000\",\"listing_debut_le\":\"2026-10-16T10:20:00.000Z\",\"listing_fin_le\":\"2026-10-16T10:20:04.500Z\"},\"fin_saisie_le\":null,\"revoque_le\":\"2026-10-16T10:09:00.000Z\",\"levees\":[],\"incidents_connus\":[],\"cloture_le\":\"2026-10-16T10:26:00.000Z\",\"badge\":{\"forme\":\"relue_par\",\"nom_affiche\":\"Éric Duchateau\",\"id\":\"eric\"},\"cle_id\":\"eric-2026\"}",
+      "hex": "7b22736368656d61223a226174746573746174696f6e2d636c6f747572652f7632222c227365745f6964223a227365745f666f6e64615f6e6f6d627265732d6672616374696f6e732d72656c61746966735f6e495f3032222c226e6f74696f6e5f6964223a226d617468732e6e6f6d627265732d6672616374696f6e732d72656c6174696673222c2270616c696572223a226e49222c22636f657572223a7b22616374696f6e223a226163636570746572222c2273656c656374696f6e223a5b2269743031222c2269743033225d2c226563617274656573223a5b2269743032225d2c22656d707265696e74655f72656c7565223a227368613235363a35353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535222c22656d707265696e74655f7075626c696565223a227368613235363a37373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737222c226d6f74657572223a7b2276657273696f6e223a227631222c22736861323536223a2263653134633365343937393439393133613337666438646166366335376432663061393633303665303866303634626639323331363030353732616431373533227d7d2c227368613235365f696e7374616e74616e65223a2263646364636463646364636463646364636463646364636463646364636463646364636463646364636463646364636463646364636463646364636463646364222c22636f64655f636f6e6669726d6174696f6e223a2263646364636463646364636463646364222c22636f6e6669726d6174696f6e223a7b226d6f6465223a226175746f222c22706172223a2265726963222c2272656375655f706172223a2265726963222c226c65223a22323032362d31302d31365431303a32353a30302e3030305a227d2c22666964656c6974655f7472616e736d697373696f6e223a7b22617474657374655f706172223a2265726963222c226c65223a22323032362d31302d31365431303a32353a33302e3030305a227d2c2272656c6563746575725f6174747269627565223a2265726963222c2272656c6563746575725f6567616c5f636c6f7475726572223a747275652c2270726f76656e616e636573223a5b7b22657865637574696f6e5f6964223a223130222c22776f726b666c6f775f6964223a227766436f6e6669726d6174696f6e3031222c22737461747574223a2273756363657373222c2264656d61727265655f6c65223a22323032362d31302d31365430393a33303a30302e3030305a227d2c7b22657865637574696f6e5f6964223a2232222c22776f726b666c6f775f6964223a227766436f6e6669726d6174696f6e3031222c22737461747574223a2273756363657373222c2264656d61727265655f6c65223a22323032362d31302d31365430393a33303a30302e3030305a227d5d2c226e625f66696368696572735f6465636973696f6e223a322c227265666572656e7469656c5f76657273696f6e223a227368613235363a34343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434222c226d6f74657572223a7b2276657273696f6e223a227631222c22736861323536223a2263653134633365343937393439393133613337666438646166366335376432663061393633303665303866303634626639323331363030353732616431373533227d2c22657865637574696f6e5f636c6f74757265223a7b22657865637574696f6e5f6964223a22363030222c22776f726b666c6f775f6964223a227766436c6f7475726530303031222c22737461747574223a2273756363657373222c227465726d696e65655f6c65223a22323032362d31302d31365431303a31303a30302e3030305a227d2c22736f757263655f6465636973696f6e73223a22706167655f72656c656374757265222c2267656e65726174696f6e223a7b22657865637574696f6e5f6964223a22353031222c22776f726b666c6f775f6964223a22776647656e65726174696f6e466f6e6461222c22737461747574223a2273756363657373222c2264656d61727265655f6c65223a22323032362d31302d31365430393a30303a30302e3030305a222c227465726d696e65655f6c65223a22323032362d31302d31365430393a30313a33302e3235305a222c226d6f64656c65223a22636c617564652d736f6e6e65742d782d79222c22656d707265696e74655f636f6d706c657465223a227368613235363a36363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636222c226a6f75726e616c5f636f6d6d6974223a2265613838363065303030303030303030303030303030303030303030303030303030303030303030222c226c697374696e675f64656275745f6c65223a22323032362d31302d31365431303a32303a30302e3030305a222c226c697374696e675f66696e5f6c65223a22323032362d31302d31365431303a32303a30342e3530305a227d2c2266696e5f7361697369655f6c65223a6e756c6c2c227265766f7175655f6c65223a22323032362d31302d31365431303a30393a30302e3030305a222c226c6576656573223a5b5d2c22696e636964656e74735f636f6e6e7573223a5b5d2c22636c6f747572655f6c65223a22323032362d31302d31365431303a32363a30302e3030305a222c226261646765223a7b22666f726d65223a2272656c75655f706172222c226e6f6d5f61666669636865223a22c38972696320447563686174656175222c226964223a2265726963227d2c22636c655f6964223a22657269632d32303236227d"
+    },
+    {
+      "id": "refus-v2-execution-cloture-absente",
+      "description": "charge v2 sans clé execution_cloture (null exigé, jamais absence)",
+      "refus": true,
+      "contrat": "attestation-cloture/v2",
+      "entree": {
+        "schema": "attestation-cloture/v2",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "empreinte_publiee": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "code_confirmation": "cdcdcdcdcdcdcdcd",
+        "confirmation": {
+          "mode": "auto",
+          "par": "eric",
+          "recue_par": "eric",
+          "le": "2026-10-16T10:25:00.000Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-16T10:25:30.000Z"
+        },
+        "relecteur_attribue": "eric",
+        "relecteur_egal_cloturer": true,
+        "provenances": [],
+        "nb_fichiers_decision": 1,
+        "referentiel_version": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "source_decisions": "saisie_locale",
+        "generation": {
+          "execution_id": "501",
+          "workflow_id": "wfGenerationFonda",
+          "statut": "success",
+          "demarree_le": "2026-10-16T09:00:00.000Z",
+          "terminee_le": "2026-10-16T09:01:30.250Z",
+          "modele": "claude-sonnet-x-y",
+          "empreinte_complete": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "journal_commit": "ea8860e000000000000000000000000000000000",
+          "listing_debut_le": "2026-10-16T10:20:00.000Z",
+          "listing_fin_le": "2026-10-16T10:20:04.500Z"
+        },
+        "fin_saisie_le": "2026-10-16T10:15:00.000Z",
+        "revoque_le": null,
+        "levees": [],
+        "incidents_connus": [],
+        "cloture_le": "2026-10-16T10:26:00.000Z",
+        "badge": {
+          "forme": "relue_par",
+          "nom_affiche": "Éric Duchateau",
+          "id": "eric"
+        },
+        "cle_id": "eric-2026"
+      }
+    },
+    {
+      "id": "refus-v2-generation-champ-extra",
+      "description": "generation avec un champ supplémentaire",
+      "refus": true,
+      "contrat": "attestation-cloture/v2",
+      "entree": {
+        "schema": "attestation-cloture/v2",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "empreinte_publiee": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "code_confirmation": "cdcdcdcdcdcdcdcd",
+        "confirmation": {
+          "mode": "auto",
+          "par": "eric",
+          "recue_par": "eric",
+          "le": "2026-10-16T10:25:00.000Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-16T10:25:30.000Z"
+        },
+        "relecteur_attribue": "eric",
+        "relecteur_egal_cloturer": true,
+        "provenances": [],
+        "nb_fichiers_decision": 1,
+        "referentiel_version": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "execution_cloture": null,
+        "source_decisions": "saisie_locale",
+        "generation": {
+          "execution_id": "501",
+          "workflow_id": "wfGenerationFonda",
+          "statut": "success",
+          "demarree_le": "2026-10-16T09:00:00.000Z",
+          "terminee_le": "2026-10-16T09:01:30.250Z",
+          "modele": "claude-sonnet-x-y",
+          "empreinte_complete": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "journal_commit": "ea8860e000000000000000000000000000000000",
+          "listing_debut_le": "2026-10-16T10:20:00.000Z",
+          "listing_fin_le": "2026-10-16T10:20:04.500Z",
+          "mode": "webhook"
+        },
+        "fin_saisie_le": "2026-10-16T10:15:00.000Z",
+        "revoque_le": null,
+        "levees": [],
+        "incidents_connus": [],
+        "cloture_le": "2026-10-16T10:26:00.000Z",
+        "badge": {
+          "forme": "relue_par",
+          "nom_affiche": "Éric Duchateau",
+          "id": "eric"
+        },
+        "cle_id": "eric-2026"
+      }
+    },
+    {
+      "id": "refus-v2-source-nombre",
+      "description": "source_decisions numérique",
+      "refus": true,
+      "contrat": "attestation-cloture/v2",
+      "entree": {
+        "schema": "attestation-cloture/v2",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "empreinte_publiee": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "code_confirmation": "cdcdcdcdcdcdcdcd",
+        "confirmation": {
+          "mode": "auto",
+          "par": "eric",
+          "recue_par": "eric",
+          "le": "2026-10-16T10:25:00.000Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-16T10:25:30.000Z"
+        },
+        "relecteur_attribue": "eric",
+        "relecteur_egal_cloturer": true,
+        "provenances": [],
+        "nb_fichiers_decision": 1,
+        "referentiel_version": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "execution_cloture": null,
+        "source_decisions": 1,
+        "generation": {
+          "execution_id": "501",
+          "workflow_id": "wfGenerationFonda",
+          "statut": "success",
+          "demarree_le": "2026-10-16T09:00:00.000Z",
+          "terminee_le": "2026-10-16T09:01:30.250Z",
+          "modele": "claude-sonnet-x-y",
+          "empreinte_complete": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "journal_commit": "ea8860e000000000000000000000000000000000",
+          "listing_debut_le": "2026-10-16T10:20:00.000Z",
+          "listing_fin_le": "2026-10-16T10:20:04.500Z"
+        },
+        "fin_saisie_le": "2026-10-16T10:15:00.000Z",
+        "revoque_le": null,
+        "levees": [],
+        "incidents_connus": [],
+        "cloture_le": "2026-10-16T10:26:00.000Z",
+        "badge": {
+          "forme": "relue_par",
+          "nom_affiche": "Éric Duchateau",
+          "id": "eric"
+        },
+        "cle_id": "eric-2026"
+      }
+    },
+    {
+      "id": "refus-v2-charge-v1",
+      "description": "charge v1 présentée au contrat v2 (champs v2 manquants)",
+      "refus": true,
+      "contrat": "attestation-cloture/v2",
+      "entree": {
+        "schema": "attestation-cloture/v1",
+        "set_id": "set_fonda_proportionnalite_nI_02",
+        "notion_id": "maths.proportionnalite",
+        "palier": "nI",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it03",
+            "it01"
+          ],
+          "ecartees": [
+            "it04",
+            "it02"
+          ],
+          "empreinte_relue": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "empreinte_publiee": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "abababababababababababababababababababababababababababababababab",
+        "code_confirmation": "abababababababab",
+        "confirmation": {
+          "mode": "auto",
+          "par": "eric",
+          "recue_par": "eric",
+          "le": "2026-10-20T08:15:30.125Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-20T08:16:00.000Z"
+        },
+        "relecteur_attribue": "eric",
+        "relecteur_egal_cloturer": true,
+        "provenances": [
+          {
+            "execution_id": "10",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T17:02:11.004Z"
+          },
+          {
+            "execution_id": "2",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T17:02:11.004Z"
+          },
+          {
+            "execution_id": "1",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-19T18:00:00.000Z"
+          }
+        ],
+        "nb_fichiers_decision": 3,
+        "referentiel_version": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "execution_cloture": {
+          "execution_id": "1100",
+          "workflow_id": "wfCloture0001",
+          "statut": "success",
+          "terminee_le": "2026-10-20T08:10:00.500Z"
+        },
+        "revoque_le": "2026-10-20T08:09:59.000Z",
+        "levees": [],
+        "incidents_connus": [],
+        "cloture_le": "2026-10-20T08:17:00.000Z",
+        "badge": {
+          "forme": "relue_par",
+          "nom_affiche": "Éric Duchateau",
+          "id": "eric"
+        },
+        "cle_id": "cle-test-2026"
+      }
+    },
+    {
+      "id": "refus-v1-charge-v2",
+      "description": "charge v2 présentée au contrat v1 (champs inconnus) : v1 INCHANGÉE",
+      "refus": true,
+      "contrat": "attestation-cloture/v1",
+      "entree": {
+        "schema": "attestation-cloture/v2",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "empreinte_publiee": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "code_confirmation": "cdcdcdcdcdcdcdcd",
+        "confirmation": {
+          "mode": "auto",
+          "par": "eric",
+          "recue_par": "eric",
+          "le": "2026-10-16T10:25:00.000Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-16T10:25:30.000Z"
+        },
+        "relecteur_attribue": "eric",
+        "relecteur_egal_cloturer": true,
+        "provenances": [],
+        "nb_fichiers_decision": 1,
+        "referentiel_version": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "execution_cloture": null,
+        "source_decisions": "saisie_locale",
+        "generation": {
+          "execution_id": "501",
+          "workflow_id": "wfGenerationFonda",
+          "statut": "success",
+          "demarree_le": "2026-10-16T09:00:00.000Z",
+          "terminee_le": "2026-10-16T09:01:30.250Z",
+          "modele": "claude-sonnet-x-y",
+          "empreinte_complete": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "journal_commit": "ea8860e000000000000000000000000000000000",
+          "listing_debut_le": "2026-10-16T10:20:00.000Z",
+          "listing_fin_le": "2026-10-16T10:20:04.500Z"
+        },
+        "fin_saisie_le": "2026-10-16T10:15:00.000Z",
+        "revoque_le": null,
+        "levees": [],
+        "incidents_connus": [],
+        "cloture_le": "2026-10-16T10:26:00.000Z",
+        "badge": {
+          "forme": "relue_par",
+          "nom_affiche": "Éric Duchateau",
+          "id": "eric"
+        },
+        "cle_id": "eric-2026"
+      }
+    },
+    {
+      "id": "refus-lot-complet-champ-absent",
+      "description": "projection : carte sans clé contexte (null exigé)",
+      "refus": true,
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": "Mathématiques",
+        "notion": "Maîtriser nombres, fractions et relatifs",
+        "niveau": null,
+        "revue_carte_par_carte": false,
+        "nb_cartes": 2,
+        "date_creation": "2026-10-16T09:00:00.000Z",
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": 1,
+            "question": "Calculer 7 − (−5).",
+            "reponse": "12",
+            "difficulte": "facile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": null,
+            "arrondi": null,
+            "seconde_chance": false,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": null,
+            "question": "Écrire 3/4 en décimal.",
+            "reponse": null,
+            "difficulte": null,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": null,
+            "contexte": null,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-lot-complet-null-non-nullable",
+      "description": "projection : question null",
+      "refus": true,
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": "Mathématiques",
+        "notion": "Maîtriser nombres, fractions et relatifs",
+        "niveau": null,
+        "revue_carte_par_carte": false,
+        "nb_cartes": 2,
+        "date_creation": "2026-10-16T09:00:00.000Z",
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": 1,
+            "question": null,
+            "reponse": "12",
+            "difficulte": "facile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": null,
+            "arrondi": null,
+            "seconde_chance": false,
+            "contexte": "calcul-relatifs",
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": null,
+            "question": "Écrire 3/4 en décimal.",
+            "reponse": null,
+            "difficulte": null,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": null,
+            "contexte": null,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-lot-relu-choix-booleen",
+      "description": "lot_relu : choix booléen",
+      "refus": true,
+      "contrat": "lot_relu-fonda/v1",
+      "entree": {
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "empreinte_complete": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+        "cartes": [
+          {
+            "item_id": "it01",
+            "choix": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-decision-lot-relu-absent",
+      "description": "décision sans lot_relu",
+      "refus": true,
+      "contrat": "decision-fonda/v1",
+      "entree": {
+        "schema": "decision-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "generation": 0,
+        "nonce": "f3a9c0d1e2b4a5c6",
+        "recu_le": "2026-10-16T10:15:00.000Z",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "empreinte_publiee": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "hash_formulaire": "saisie-locale"
+      }
+    },
+    {
+      "id": "refus-generation-schema-absent",
+      "description": "sortie de génération sans schema",
+      "refus": true,
+      "contrat": "generation-fonda/v1",
+      "entree": {
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "ref": "2026-10-16-a1b2c3d4e5f6",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "referentiel_version": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "journal_commit": "ea8860e000000000000000000000000000000000",
+        "modele": "claude-sonnet-x-y",
+        "empreinte_pedagogique": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "empreinte_complete": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+        "candidat_fichier_id": "1AbCdEfGhIjKlMnOpQrStUvWxYz"
+      }
+    },
+    {
+      "id": "lot-complet-nullables-inverses",
+      "description": "projection : l'autre branche de chaque nullable (matiere/notion/date_creation null, niveau chaîne ; unite chaîne ; carte 2 entièrement renseignée)",
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": null,
+        "notion": null,
+        "niveau": "5e",
+        "revue_carte_par_carte": true,
+        "nb_cartes": 2,
+        "date_creation": null,
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": 1,
+            "question": "La température passe de −5 °C à 7 °C. De combien augmente-t-elle ?",
+            "reponse": "12",
+            "difficulte": "facile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": "°C",
+            "arrondi": null,
+            "seconde_chance": false,
+            "contexte": "calcul-relatifs",
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": 2,
+            "question": "Une baguette mesure 3/4 m. Donner sa longueur en mètres, arrondie au centième.",
+            "reponse": "0,75",
+            "difficulte": "difficile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75",
+              0.75
+            ],
+            "unite": "m",
+            "arrondi": 2,
+            "seconde_chance": true,
+            "contexte": "fractions",
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      },
+      "texte": "{\"schema\":\"lot-complet-fonda/v1\",\"set_id\":\"set_fonda_nombres-fractions-relatifs_nI_02\",\"notion_id\":\"maths.nombres-fractions-relatifs\",\"palier\":\"nI\",\"matiere\":null,\"notion\":null,\"niveau\":\"5e\",\"revue_carte_par_carte\":true,\"nb_cartes\":2,\"date_creation\":null,\"cartes\":[{\"item_id\":\"it01\",\"numero\":1,\"question\":\"La température passe de −5 °C à 7 °C. De combien augmente-t-elle ?\",\"reponse\":\"12\",\"difficulte\":\"facile\",\"palier\":\"nI\",\"profil_correction\":\"numerique\",\"reponses_acceptees\":[\"12\",12],\"unite\":\"°C\",\"arrondi\":null,\"seconde_chance\":false,\"contexte\":\"calcul-relatifs\",\"set_id\":\"set_fonda_nombres-fractions-relatifs_nI_02\",\"notion_id\":\"maths.nombres-fractions-relatifs\"},{\"item_id\":\"it02\",\"numero\":2,\"question\":\"Une baguette mesure 3/4 m. Donner sa longueur en mètres, arrondie au centième.\",\"reponse\":\"0,75\",\"difficulte\":\"difficile\",\"palier\":\"nI\",\"profil_correction\":\"numerique\",\"reponses_acceptees\":[\"0,75\",0.75],\"unite\":\"m\",\"arrondi\":2,\"seconde_chance\":true,\"contexte\":\"fractions\",\"set_id\":\"set_fonda_nombres-fractions-relatifs_nI_02\",\"notion_id\":\"maths.nombres-fractions-relatifs\"}]}",
+      "hex": "7b22736368656d61223a226c6f742d636f6d706c65742d666f6e64612f7631222c227365745f6964223a227365745f666f6e64615f6e6f6d627265732d6672616374696f6e732d72656c61746966735f6e495f3032222c226e6f74696f6e5f6964223a226d617468732e6e6f6d627265732d6672616374696f6e732d72656c6174696673222c2270616c696572223a226e49222c226d617469657265223a6e756c6c2c226e6f74696f6e223a6e756c6c2c226e6976656175223a223565222c2272657675655f63617274655f7061725f6361727465223a747275652c226e625f636172746573223a322c22646174655f6372656174696f6e223a6e756c6c2c22636172746573223a5b7b226974656d5f6964223a2269743031222c226e756d65726f223a312c227175657374696f6e223a224c612074656d70c3a972617475726520706173736520646520e288923520c2b04320c3a0203720c2b0432e20446520636f6d6269656e206175676d656e74652d742d656c6c65203f222c227265706f6e7365223a223132222c22646966666963756c7465223a22666163696c65222c2270616c696572223a226e49222c2270726f66696c5f636f7272656374696f6e223a226e756d657269717565222c227265706f6e7365735f616363657074656573223a5b223132222c31325d2c22756e697465223a22c2b043222c226172726f6e6469223a6e756c6c2c227365636f6e64655f6368616e6365223a66616c73652c22636f6e7465787465223a2263616c63756c2d72656c6174696673222c227365745f6964223a227365745f666f6e64615f6e6f6d627265732d6672616374696f6e732d72656c61746966735f6e495f3032222c226e6f74696f6e5f6964223a226d617468732e6e6f6d627265732d6672616374696f6e732d72656c6174696673227d2c7b226974656d5f6964223a2269743032222c226e756d65726f223a322c227175657374696f6e223a22556e65206261677565747465206d657375726520332f34206d2e20446f6e6e6572207361206c6f6e677565757220656e206dc3a8747265732c206172726f6e6469652061752063656e7469c3a86d652e222c227265706f6e7365223a22302c3735222c22646966666963756c7465223a22646966666963696c65222c2270616c696572223a226e49222c2270726f66696c5f636f7272656374696f6e223a226e756d657269717565222c227265706f6e7365735f616363657074656573223a5b22302c3735222c302e37355d2c22756e697465223a226d222c226172726f6e6469223a322c227365636f6e64655f6368616e6365223a747275652c22636f6e7465787465223a226672616374696f6e73222c227365745f6964223a227365745f666f6e64615f6e6f6d627265732d6672616374696f6e732d72656c61746966735f6e495f3032222c226e6f74696f6e5f6964223a226d617468732e6e6f6d627265732d6672616374696f6e732d72656c6174696673227d5d7d"
+    },
+    {
+      "id": "refus-lot-complet-matiere-type",
+      "description": "projection : matiere de mauvais type (1)",
+      "refus": true,
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": 1,
+        "notion": "Maîtriser nombres, fractions et relatifs",
+        "niveau": null,
+        "revue_carte_par_carte": false,
+        "nb_cartes": 2,
+        "date_creation": "2026-10-16T09:00:00.000Z",
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": 1,
+            "question": "Calculer 7 − (−5).",
+            "reponse": "12",
+            "difficulte": "facile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": null,
+            "arrondi": null,
+            "seconde_chance": false,
+            "contexte": "calcul-relatifs",
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": null,
+            "question": "Écrire 3/4 en décimal.",
+            "reponse": null,
+            "difficulte": null,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": null,
+            "contexte": null,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-lot-complet-notion-type",
+      "description": "projection : notion de mauvais type (true)",
+      "refus": true,
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": "Mathématiques",
+        "notion": true,
+        "niveau": null,
+        "revue_carte_par_carte": false,
+        "nb_cartes": 2,
+        "date_creation": "2026-10-16T09:00:00.000Z",
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": 1,
+            "question": "Calculer 7 − (−5).",
+            "reponse": "12",
+            "difficulte": "facile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": null,
+            "arrondi": null,
+            "seconde_chance": false,
+            "contexte": "calcul-relatifs",
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": null,
+            "question": "Écrire 3/4 en décimal.",
+            "reponse": null,
+            "difficulte": null,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": null,
+            "contexte": null,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-lot-complet-niveau-type",
+      "description": "projection : niveau de mauvais type (5)",
+      "refus": true,
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": "Mathématiques",
+        "notion": "Maîtriser nombres, fractions et relatifs",
+        "niveau": 5,
+        "revue_carte_par_carte": false,
+        "nb_cartes": 2,
+        "date_creation": "2026-10-16T09:00:00.000Z",
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": 1,
+            "question": "Calculer 7 − (−5).",
+            "reponse": "12",
+            "difficulte": "facile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": null,
+            "arrondi": null,
+            "seconde_chance": false,
+            "contexte": "calcul-relatifs",
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": null,
+            "question": "Écrire 3/4 en décimal.",
+            "reponse": null,
+            "difficulte": null,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": null,
+            "contexte": null,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-lot-complet-date-creation-type",
+      "description": "projection : date_creation de mauvais type (0)",
+      "refus": true,
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": "Mathématiques",
+        "notion": "Maîtriser nombres, fractions et relatifs",
+        "niveau": null,
+        "revue_carte_par_carte": false,
+        "nb_cartes": 2,
+        "date_creation": 0,
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": 1,
+            "question": "Calculer 7 − (−5).",
+            "reponse": "12",
+            "difficulte": "facile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": null,
+            "arrondi": null,
+            "seconde_chance": false,
+            "contexte": "calcul-relatifs",
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": null,
+            "question": "Écrire 3/4 en décimal.",
+            "reponse": null,
+            "difficulte": null,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": null,
+            "contexte": null,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-lot-complet-carte-numero-type",
+      "description": "projection : carte.numero de mauvais type (\"1\")",
+      "refus": true,
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": "Mathématiques",
+        "notion": "Maîtriser nombres, fractions et relatifs",
+        "niveau": null,
+        "revue_carte_par_carte": false,
+        "nb_cartes": 2,
+        "date_creation": "2026-10-16T09:00:00.000Z",
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": "1",
+            "question": "Calculer 7 − (−5).",
+            "reponse": "12",
+            "difficulte": "facile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": null,
+            "arrondi": null,
+            "seconde_chance": false,
+            "contexte": "calcul-relatifs",
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": null,
+            "question": "Écrire 3/4 en décimal.",
+            "reponse": null,
+            "difficulte": null,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": null,
+            "contexte": null,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-lot-complet-carte-reponse-type",
+      "description": "projection : carte.reponse de mauvais type (12)",
+      "refus": true,
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": "Mathématiques",
+        "notion": "Maîtriser nombres, fractions et relatifs",
+        "niveau": null,
+        "revue_carte_par_carte": false,
+        "nb_cartes": 2,
+        "date_creation": "2026-10-16T09:00:00.000Z",
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": 1,
+            "question": "Calculer 7 − (−5).",
+            "reponse": 12,
+            "difficulte": "facile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": null,
+            "arrondi": null,
+            "seconde_chance": false,
+            "contexte": "calcul-relatifs",
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": null,
+            "question": "Écrire 3/4 en décimal.",
+            "reponse": null,
+            "difficulte": null,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": null,
+            "contexte": null,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-lot-complet-carte-difficulte-type",
+      "description": "projection : carte.difficulte de mauvais type (1)",
+      "refus": true,
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": "Mathématiques",
+        "notion": "Maîtriser nombres, fractions et relatifs",
+        "niveau": null,
+        "revue_carte_par_carte": false,
+        "nb_cartes": 2,
+        "date_creation": "2026-10-16T09:00:00.000Z",
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": 1,
+            "question": "Calculer 7 − (−5).",
+            "reponse": "12",
+            "difficulte": 1,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": null,
+            "arrondi": null,
+            "seconde_chance": false,
+            "contexte": "calcul-relatifs",
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": null,
+            "question": "Écrire 3/4 en décimal.",
+            "reponse": null,
+            "difficulte": null,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": null,
+            "contexte": null,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-lot-complet-carte-unite-type",
+      "description": "projection : carte.unite de mauvais type (3)",
+      "refus": true,
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": "Mathématiques",
+        "notion": "Maîtriser nombres, fractions et relatifs",
+        "niveau": null,
+        "revue_carte_par_carte": false,
+        "nb_cartes": 2,
+        "date_creation": "2026-10-16T09:00:00.000Z",
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": 1,
+            "question": "Calculer 7 − (−5).",
+            "reponse": "12",
+            "difficulte": "facile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": 3,
+            "arrondi": null,
+            "seconde_chance": false,
+            "contexte": "calcul-relatifs",
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": null,
+            "question": "Écrire 3/4 en décimal.",
+            "reponse": null,
+            "difficulte": null,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": null,
+            "contexte": null,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-lot-complet-carte-arrondi-type",
+      "description": "projection : carte.arrondi de mauvais type (\"2\")",
+      "refus": true,
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": "Mathématiques",
+        "notion": "Maîtriser nombres, fractions et relatifs",
+        "niveau": null,
+        "revue_carte_par_carte": false,
+        "nb_cartes": 2,
+        "date_creation": "2026-10-16T09:00:00.000Z",
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": 1,
+            "question": "Calculer 7 − (−5).",
+            "reponse": "12",
+            "difficulte": "facile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": null,
+            "arrondi": "2",
+            "seconde_chance": false,
+            "contexte": "calcul-relatifs",
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": null,
+            "question": "Écrire 3/4 en décimal.",
+            "reponse": null,
+            "difficulte": null,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": null,
+            "contexte": null,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-lot-complet-carte-seconde-chance-type",
+      "description": "projection : carte.seconde_chance de mauvais type (\"non\")",
+      "refus": true,
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": "Mathématiques",
+        "notion": "Maîtriser nombres, fractions et relatifs",
+        "niveau": null,
+        "revue_carte_par_carte": false,
+        "nb_cartes": 2,
+        "date_creation": "2026-10-16T09:00:00.000Z",
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": 1,
+            "question": "Calculer 7 − (−5).",
+            "reponse": "12",
+            "difficulte": "facile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": null,
+            "arrondi": null,
+            "seconde_chance": "non",
+            "contexte": "calcul-relatifs",
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": null,
+            "question": "Écrire 3/4 en décimal.",
+            "reponse": null,
+            "difficulte": null,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": null,
+            "contexte": null,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-lot-complet-carte-contexte-type",
+      "description": "projection : carte.contexte de mauvais type (1)",
+      "refus": true,
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": "Mathématiques",
+        "notion": "Maîtriser nombres, fractions et relatifs",
+        "niveau": null,
+        "revue_carte_par_carte": false,
+        "nb_cartes": 2,
+        "date_creation": "2026-10-16T09:00:00.000Z",
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": 1,
+            "question": "Calculer 7 − (−5).",
+            "reponse": "12",
+            "difficulte": "facile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": null,
+            "arrondi": null,
+            "seconde_chance": false,
+            "contexte": 1,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": null,
+            "question": "Écrire 3/4 en décimal.",
+            "reponse": null,
+            "difficulte": null,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": null,
+            "contexte": null,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-v2-execution-cloture-chaine",
+      "description": "charge v2 : execution_cloture chaîne (objet ou null)",
+      "refus": true,
+      "contrat": "attestation-cloture/v2",
+      "entree": {
+        "schema": "attestation-cloture/v2",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "empreinte_publiee": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "code_confirmation": "cdcdcdcdcdcdcdcd",
+        "confirmation": {
+          "mode": "auto",
+          "par": "eric",
+          "recue_par": "eric",
+          "le": "2026-10-16T10:25:00.000Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-16T10:25:30.000Z"
+        },
+        "relecteur_attribue": "eric",
+        "relecteur_egal_cloturer": true,
+        "provenances": [
+          {
+            "execution_id": "10",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-16T09:30:00.000Z"
+          },
+          {
+            "execution_id": "2",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-16T09:30:00.000Z"
+          }
+        ],
+        "nb_fichiers_decision": 2,
+        "referentiel_version": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "execution_cloture": "600",
+        "source_decisions": "page_relecture",
+        "generation": {
+          "execution_id": "501",
+          "workflow_id": "wfGenerationFonda",
+          "statut": "success",
+          "demarree_le": "2026-10-16T09:00:00.000Z",
+          "terminee_le": "2026-10-16T09:01:30.250Z",
+          "modele": "claude-sonnet-x-y",
+          "empreinte_complete": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "journal_commit": "ea8860e000000000000000000000000000000000",
+          "listing_debut_le": "2026-10-16T10:20:00.000Z",
+          "listing_fin_le": "2026-10-16T10:20:04.500Z"
+        },
+        "fin_saisie_le": null,
+        "revoque_le": "2026-10-16T10:09:00.000Z",
+        "levees": [],
+        "incidents_connus": [],
+        "cloture_le": "2026-10-16T10:26:00.000Z",
+        "badge": {
+          "forme": "relue_par",
+          "nom_affiche": "Éric Duchateau",
+          "id": "eric"
+        },
+        "cle_id": "eric-2026"
+      }
+    },
+    {
+      "id": "refus-v2-fin-saisie-nombre",
+      "description": "charge v2 : fin_saisie_le numérique",
+      "refus": true,
+      "contrat": "attestation-cloture/v2",
+      "entree": {
+        "schema": "attestation-cloture/v2",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "empreinte_publiee": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "code_confirmation": "cdcdcdcdcdcdcdcd",
+        "confirmation": {
+          "mode": "auto",
+          "par": "eric",
+          "recue_par": "eric",
+          "le": "2026-10-16T10:25:00.000Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-16T10:25:30.000Z"
+        },
+        "relecteur_attribue": "eric",
+        "relecteur_egal_cloturer": true,
+        "provenances": [],
+        "nb_fichiers_decision": 1,
+        "referentiel_version": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "execution_cloture": null,
+        "source_decisions": "saisie_locale",
+        "generation": {
+          "execution_id": "501",
+          "workflow_id": "wfGenerationFonda",
+          "statut": "success",
+          "demarree_le": "2026-10-16T09:00:00.000Z",
+          "terminee_le": "2026-10-16T09:01:30.250Z",
+          "modele": "claude-sonnet-x-y",
+          "empreinte_complete": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "journal_commit": "ea8860e000000000000000000000000000000000",
+          "listing_debut_le": "2026-10-16T10:20:00.000Z",
+          "listing_fin_le": "2026-10-16T10:20:04.500Z"
+        },
+        "fin_saisie_le": 0,
+        "revoque_le": null,
+        "levees": [],
+        "incidents_connus": [],
+        "cloture_le": "2026-10-16T10:26:00.000Z",
+        "badge": {
+          "forme": "relue_par",
+          "nom_affiche": "Éric Duchateau",
+          "id": "eric"
+        },
+        "cle_id": "eric-2026"
+      }
+    },
+    {
+      "id": "refus-v2-revoque-nombre",
+      "description": "charge v2 : revoque_le numérique",
+      "refus": true,
+      "contrat": "attestation-cloture/v2",
+      "entree": {
+        "schema": "attestation-cloture/v2",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "empreinte_publiee": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "code_confirmation": "cdcdcdcdcdcdcdcd",
+        "confirmation": {
+          "mode": "auto",
+          "par": "eric",
+          "recue_par": "eric",
+          "le": "2026-10-16T10:25:00.000Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-16T10:25:30.000Z"
+        },
+        "relecteur_attribue": "eric",
+        "relecteur_egal_cloturer": true,
+        "provenances": [
+          {
+            "execution_id": "10",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-16T09:30:00.000Z"
+          },
+          {
+            "execution_id": "2",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-16T09:30:00.000Z"
+          }
+        ],
+        "nb_fichiers_decision": 2,
+        "referentiel_version": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "execution_cloture": {
+          "execution_id": "600",
+          "workflow_id": "wfCloture0001",
+          "statut": "success",
+          "terminee_le": "2026-10-16T10:10:00.000Z"
+        },
+        "source_decisions": "page_relecture",
+        "generation": {
+          "execution_id": "501",
+          "workflow_id": "wfGenerationFonda",
+          "statut": "success",
+          "demarree_le": "2026-10-16T09:00:00.000Z",
+          "terminee_le": "2026-10-16T09:01:30.250Z",
+          "modele": "claude-sonnet-x-y",
+          "empreinte_complete": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "journal_commit": "ea8860e000000000000000000000000000000000",
+          "listing_debut_le": "2026-10-16T10:20:00.000Z",
+          "listing_fin_le": "2026-10-16T10:20:04.500Z"
+        },
+        "fin_saisie_le": null,
+        "revoque_le": 0,
+        "levees": [],
+        "incidents_connus": [],
+        "cloture_le": "2026-10-16T10:26:00.000Z",
+        "badge": {
+          "forme": "relue_par",
+          "nom_affiche": "Éric Duchateau",
+          "id": "eric"
+        },
+        "cle_id": "eric-2026"
+      }
+    },
+    {
+      "id": "attestation-v2-incidents-badge-nul",
+      "description": "charge v2 : levée, incident résolu (nullables renseignés) et incident ouvert (nullables null) ; badge.id null",
+      "contrat": "attestation-cloture/v2",
+      "entree": {
+        "schema": "attestation-cloture/v2",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "empreinte_publiee": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "code_confirmation": "cdcdcdcdcdcdcdcd",
+        "confirmation": {
+          "mode": "auto",
+          "par": "eric",
+          "recue_par": "eric",
+          "le": "2026-10-16T10:25:00.000Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-16T10:25:30.000Z"
+        },
+        "relecteur_attribue": "eric",
+        "relecteur_egal_cloturer": true,
+        "provenances": [
+          {
+            "execution_id": "10",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-16T09:30:00.000Z"
+          },
+          {
+            "execution_id": "2",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-16T09:30:00.000Z"
+          }
+        ],
+        "nb_fichiers_decision": 2,
+        "referentiel_version": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "execution_cloture": {
+          "execution_id": "600",
+          "workflow_id": "wfCloture0001",
+          "statut": "success",
+          "terminee_le": "2026-10-16T10:10:00.000Z"
+        },
+        "source_decisions": "page_relecture",
+        "generation": {
+          "execution_id": "501",
+          "workflow_id": "wfGenerationFonda",
+          "statut": "success",
+          "demarree_le": "2026-10-16T09:00:00.000Z",
+          "terminee_le": "2026-10-16T09:01:30.250Z",
+          "modele": "claude-sonnet-x-y",
+          "empreinte_complete": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "journal_commit": "ea8860e000000000000000000000000000000000",
+          "listing_debut_le": "2026-10-16T10:20:00.000Z",
+          "listing_fin_le": "2026-10-16T10:20:04.500Z"
+        },
+        "fin_saisie_le": null,
+        "revoque_le": "2026-10-16T10:09:00.000Z",
+        "levees": [
+          {
+            "type": "incident-connu",
+            "constat": "sans effet sur le lot"
+          }
+        ],
+        "incidents_connus": [
+          {
+            "id": "inc-01",
+            "nature": "drive-indisponible",
+            "detecte_le": "2026-10-16T08:00:00.000Z",
+            "statut": "resolu",
+            "resolu_le": "2026-10-16T08:30:00.000Z",
+            "preuve_resolution": "journal-n8n",
+            "periode": {
+              "debut": "2026-10-16T07:50:00.000Z",
+              "fin": "2026-10-16T08:20:00.000Z"
+            }
+          },
+          {
+            "id": "inc-02",
+            "nature": "purge-suspectee",
+            "detecte_le": "2026-10-16T09:10:00.000Z",
+            "statut": "ouvert",
+            "resolu_le": null,
+            "preuve_resolution": null,
+            "periode": {
+              "debut": null,
+              "fin": null
+            }
+          }
+        ],
+        "cloture_le": "2026-10-16T10:26:00.000Z",
+        "badge": {
+          "forme": "relue_par",
+          "nom_affiche": "Éric Duchateau",
+          "id": null
+        },
+        "cle_id": "eric-2026"
+      },
+      "texte": "{\"schema\":\"attestation-cloture/v2\",\"set_id\":\"set_fonda_nombres-fractions-relatifs_nI_02\",\"notion_id\":\"maths.nombres-fractions-relatifs\",\"palier\":\"nI\",\"coeur\":{\"action\":\"accepter\",\"selection\":[\"it01\",\"it03\"],\"ecartees\":[\"it02\"],\"empreinte_relue\":\"sha256:5555555555555555555555555555555555555555555555555555555555555555\",\"empreinte_publiee\":\"sha256:7777777777777777777777777777777777777777777777777777777777777777\",\"moteur\":{\"version\":\"v1\",\"sha256\":\"ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753\"}},\"sha256_instantane\":\"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\",\"code_confirmation\":\"cdcdcdcdcdcdcdcd\",\"confirmation\":{\"mode\":\"auto\",\"par\":\"eric\",\"recue_par\":\"eric\",\"le\":\"2026-10-16T10:25:00.000Z\"},\"fidelite_transmission\":{\"atteste_par\":\"eric\",\"le\":\"2026-10-16T10:25:30.000Z\"},\"relecteur_attribue\":\"eric\",\"relecteur_egal_cloturer\":true,\"provenances\":[{\"execution_id\":\"10\",\"workflow_id\":\"wfConfirmation01\",\"statut\":\"success\",\"demarree_le\":\"2026-10-16T09:30:00.000Z\"},{\"execution_id\":\"2\",\"workflow_id\":\"wfConfirmation01\",\"statut\":\"success\",\"demarree_le\":\"2026-10-16T09:30:00.000Z\"}],\"nb_fichiers_decision\":2,\"referentiel_version\":\"sha256:4444444444444444444444444444444444444444444444444444444444444444\",\"moteur\":{\"version\":\"v1\",\"sha256\":\"ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753\"},\"execution_cloture\":{\"execution_id\":\"600\",\"workflow_id\":\"wfCloture0001\",\"statut\":\"success\",\"terminee_le\":\"2026-10-16T10:10:00.000Z\"},\"source_decisions\":\"page_relecture\",\"generation\":{\"execution_id\":\"501\",\"workflow_id\":\"wfGenerationFonda\",\"statut\":\"success\",\"demarree_le\":\"2026-10-16T09:00:00.000Z\",\"terminee_le\":\"2026-10-16T09:01:30.250Z\",\"modele\":\"claude-sonnet-x-y\",\"empreinte_complete\":\"sha256:6666666666666666666666666666666666666666666666666666666666666666\",\"journal_commit\":\"ea8860e000000000000000000000000000000000\",\"listing_debut_le\":\"2026-10-16T10:20:00.000Z\",\"listing_fin_le\":\"2026-10-16T10:20:04.500Z\"},\"fin_saisie_le\":null,\"revoque_le\":\"2026-10-16T10:09:00.000Z\",\"levees\":[{\"type\":\"incident-connu\",\"constat\":\"sans effet sur le lot\"}],\"incidents_connus\":[{\"id\":\"inc-01\",\"nature\":\"drive-indisponible\",\"detecte_le\":\"2026-10-16T08:00:00.000Z\",\"statut\":\"resolu\",\"resolu_le\":\"2026-10-16T08:30:00.000Z\",\"preuve_resolution\":\"journal-n8n\",\"periode\":{\"debut\":\"2026-10-16T07:50:00.000Z\",\"fin\":\"2026-10-16T08:20:00.000Z\"}},{\"id\":\"inc-02\",\"nature\":\"purge-suspectee\",\"detecte_le\":\"2026-10-16T09:10:00.000Z\",\"statut\":\"ouvert\",\"resolu_le\":null,\"preuve_resolution\":null,\"periode\":{\"debut\":null,\"fin\":null}}],\"cloture_le\":\"2026-10-16T10:26:00.000Z\",\"badge\":{\"forme\":\"relue_par\",\"nom_affiche\":\"Éric Duchateau\",\"id\":null},\"cle_id\":\"eric-2026\"}",
+      "hex": "7b22736368656d61223a226174746573746174696f6e2d636c6f747572652f7632222c227365745f6964223a227365745f666f6e64615f6e6f6d627265732d6672616374696f6e732d72656c61746966735f6e495f3032222c226e6f74696f6e5f6964223a226d617468732e6e6f6d627265732d6672616374696f6e732d72656c6174696673222c2270616c696572223a226e49222c22636f657572223a7b22616374696f6e223a226163636570746572222c2273656c656374696f6e223a5b2269743031222c2269743033225d2c226563617274656573223a5b2269743032225d2c22656d707265696e74655f72656c7565223a227368613235363a35353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535222c22656d707265696e74655f7075626c696565223a227368613235363a37373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737222c226d6f74657572223a7b2276657273696f6e223a227631222c22736861323536223a2263653134633365343937393439393133613337666438646166366335376432663061393633303665303866303634626639323331363030353732616431373533227d7d2c227368613235365f696e7374616e74616e65223a2263646364636463646364636463646364636463646364636463646364636463646364636463646364636463646364636463646364636463646364636463646364222c22636f64655f636f6e6669726d6174696f6e223a2263646364636463646364636463646364222c22636f6e6669726d6174696f6e223a7b226d6f6465223a226175746f222c22706172223a2265726963222c2272656375655f706172223a2265726963222c226c65223a22323032362d31302d31365431303a32353a30302e3030305a227d2c22666964656c6974655f7472616e736d697373696f6e223a7b22617474657374655f706172223a2265726963222c226c65223a22323032362d31302d31365431303a32353a33302e3030305a227d2c2272656c6563746575725f6174747269627565223a2265726963222c2272656c6563746575725f6567616c5f636c6f7475726572223a747275652c2270726f76656e616e636573223a5b7b22657865637574696f6e5f6964223a223130222c22776f726b666c6f775f6964223a227766436f6e6669726d6174696f6e3031222c22737461747574223a2273756363657373222c2264656d61727265655f6c65223a22323032362d31302d31365430393a33303a30302e3030305a227d2c7b22657865637574696f6e5f6964223a2232222c22776f726b666c6f775f6964223a227766436f6e6669726d6174696f6e3031222c22737461747574223a2273756363657373222c2264656d61727265655f6c65223a22323032362d31302d31365430393a33303a30302e3030305a227d5d2c226e625f66696368696572735f6465636973696f6e223a322c227265666572656e7469656c5f76657273696f6e223a227368613235363a34343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434222c226d6f74657572223a7b2276657273696f6e223a227631222c22736861323536223a2263653134633365343937393439393133613337666438646166366335376432663061393633303665303866303634626639323331363030353732616431373533227d2c22657865637574696f6e5f636c6f74757265223a7b22657865637574696f6e5f6964223a22363030222c22776f726b666c6f775f6964223a227766436c6f7475726530303031222c22737461747574223a2273756363657373222c227465726d696e65655f6c65223a22323032362d31302d31365431303a31303a30302e3030305a227d2c22736f757263655f6465636973696f6e73223a22706167655f72656c656374757265222c2267656e65726174696f6e223a7b22657865637574696f6e5f6964223a22353031222c22776f726b666c6f775f6964223a22776647656e65726174696f6e466f6e6461222c22737461747574223a2273756363657373222c2264656d61727265655f6c65223a22323032362d31302d31365430393a30303a30302e3030305a222c227465726d696e65655f6c65223a22323032362d31302d31365430393a30313a33302e3235305a222c226d6f64656c65223a22636c617564652d736f6e6e65742d782d79222c22656d707265696e74655f636f6d706c657465223a227368613235363a36363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636222c226a6f75726e616c5f636f6d6d6974223a2265613838363065303030303030303030303030303030303030303030303030303030303030303030222c226c697374696e675f64656275745f6c65223a22323032362d31302d31365431303a32303a30302e3030305a222c226c697374696e675f66696e5f6c65223a22323032362d31302d31365431303a32303a30342e3530305a227d2c2266696e5f7361697369655f6c65223a6e756c6c2c227265766f7175655f6c65223a22323032362d31302d31365431303a30393a30302e3030305a222c226c6576656573223a5b7b2274797065223a22696e636964656e742d636f6e6e75222c22636f6e73746174223a2273616e7320656666657420737572206c65206c6f74227d5d2c22696e636964656e74735f636f6e6e7573223a5b7b226964223a22696e632d3031222c226e6174757265223a2264726976652d696e646973706f6e69626c65222c22646574656374655f6c65223a22323032362d31302d31365430383a30303a30302e3030305a222c22737461747574223a227265736f6c75222c227265736f6c755f6c65223a22323032362d31302d31365430383a33303a30302e3030305a222c227072657576655f7265736f6c7574696f6e223a226a6f75726e616c2d6e386e222c22706572696f6465223a7b226465627574223a22323032362d31302d31365430373a35303a30302e3030305a222c2266696e223a22323032362d31302d31365430383a32303a30302e3030305a227d7d2c7b226964223a22696e632d3032222c226e6174757265223a2270757267652d737573706563746565222c22646574656374655f6c65223a22323032362d31302d31365430393a31303a30302e3030305a222c22737461747574223a226f7576657274222c227265736f6c755f6c65223a6e756c6c2c227072657576655f7265736f6c7574696f6e223a6e756c6c2c22706572696f6465223a7b226465627574223a6e756c6c2c2266696e223a6e756c6c7d7d5d2c22636c6f747572655f6c65223a22323032362d31302d31365431303a32363a30302e3030305a222c226261646765223a7b22666f726d65223a2272656c75655f706172222c226e6f6d5f61666669636865223a22c38972696320447563686174656175222c226964223a6e756c6c7d2c22636c655f6964223a22657269632d32303236227d"
+    },
+    {
+      "id": "refus-lot-complet-notion-nombre",
+      "description": "projection : notion numérique",
+      "refus": true,
+      "contrat": "lot-complet-fonda/v1",
+      "entree": {
+        "schema": "lot-complet-fonda/v1",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "matiere": "Mathématiques",
+        "notion": 3,
+        "niveau": null,
+        "revue_carte_par_carte": false,
+        "nb_cartes": 2,
+        "date_creation": "2026-10-16T09:00:00.000Z",
+        "cartes": [
+          {
+            "item_id": "it01",
+            "numero": 1,
+            "question": "Calculer 7 − (−5).",
+            "reponse": "12",
+            "difficulte": "facile",
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "12",
+              12
+            ],
+            "unite": null,
+            "arrondi": null,
+            "seconde_chance": false,
+            "contexte": "calcul-relatifs",
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          },
+          {
+            "item_id": "it02",
+            "numero": null,
+            "question": "Écrire 3/4 en décimal.",
+            "reponse": null,
+            "difficulte": null,
+            "palier": "nI",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "0,75"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": null,
+            "contexte": null,
+            "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+            "notion_id": "maths.nombres-fractions-relatifs"
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-v2-incident-resolu-le-nombre",
+      "description": "charge v2 : incident.resolu_le numérique",
+      "refus": true,
+      "contrat": "attestation-cloture/v2",
+      "entree": {
+        "schema": "attestation-cloture/v2",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "empreinte_publiee": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "code_confirmation": "cdcdcdcdcdcdcdcd",
+        "confirmation": {
+          "mode": "auto",
+          "par": "eric",
+          "recue_par": "eric",
+          "le": "2026-10-16T10:25:00.000Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-16T10:25:30.000Z"
+        },
+        "relecteur_attribue": "eric",
+        "relecteur_egal_cloturer": true,
+        "provenances": [
+          {
+            "execution_id": "10",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-16T09:30:00.000Z"
+          },
+          {
+            "execution_id": "2",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-16T09:30:00.000Z"
+          }
+        ],
+        "nb_fichiers_decision": 2,
+        "referentiel_version": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "execution_cloture": {
+          "execution_id": "600",
+          "workflow_id": "wfCloture0001",
+          "statut": "success",
+          "terminee_le": "2026-10-16T10:10:00.000Z"
+        },
+        "source_decisions": "page_relecture",
+        "generation": {
+          "execution_id": "501",
+          "workflow_id": "wfGenerationFonda",
+          "statut": "success",
+          "demarree_le": "2026-10-16T09:00:00.000Z",
+          "terminee_le": "2026-10-16T09:01:30.250Z",
+          "modele": "claude-sonnet-x-y",
+          "empreinte_complete": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "journal_commit": "ea8860e000000000000000000000000000000000",
+          "listing_debut_le": "2026-10-16T10:20:00.000Z",
+          "listing_fin_le": "2026-10-16T10:20:04.500Z"
+        },
+        "fin_saisie_le": null,
+        "revoque_le": "2026-10-16T10:09:00.000Z",
+        "levees": [
+          {
+            "type": "incident-connu",
+            "constat": "sans effet sur le lot"
+          }
+        ],
+        "incidents_connus": [
+          {
+            "id": "inc-01",
+            "nature": "drive-indisponible",
+            "detecte_le": "2026-10-16T08:00:00.000Z",
+            "statut": "resolu",
+            "resolu_le": 1,
+            "preuve_resolution": "journal-n8n",
+            "periode": {
+              "debut": "2026-10-16T07:50:00.000Z",
+              "fin": "2026-10-16T08:20:00.000Z"
+            }
+          }
+        ],
+        "cloture_le": "2026-10-16T10:26:00.000Z",
+        "badge": {
+          "forme": "relue_par",
+          "nom_affiche": "Éric Duchateau",
+          "id": null
+        },
+        "cle_id": "eric-2026"
+      }
+    },
+    {
+      "id": "refus-v2-incident-preuve-nombre",
+      "description": "charge v2 : incident.preuve_resolution numérique",
+      "refus": true,
+      "contrat": "attestation-cloture/v2",
+      "entree": {
+        "schema": "attestation-cloture/v2",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "empreinte_publiee": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "code_confirmation": "cdcdcdcdcdcdcdcd",
+        "confirmation": {
+          "mode": "auto",
+          "par": "eric",
+          "recue_par": "eric",
+          "le": "2026-10-16T10:25:00.000Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-16T10:25:30.000Z"
+        },
+        "relecteur_attribue": "eric",
+        "relecteur_egal_cloturer": true,
+        "provenances": [
+          {
+            "execution_id": "10",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-16T09:30:00.000Z"
+          },
+          {
+            "execution_id": "2",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-16T09:30:00.000Z"
+          }
+        ],
+        "nb_fichiers_decision": 2,
+        "referentiel_version": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "execution_cloture": {
+          "execution_id": "600",
+          "workflow_id": "wfCloture0001",
+          "statut": "success",
+          "terminee_le": "2026-10-16T10:10:00.000Z"
+        },
+        "source_decisions": "page_relecture",
+        "generation": {
+          "execution_id": "501",
+          "workflow_id": "wfGenerationFonda",
+          "statut": "success",
+          "demarree_le": "2026-10-16T09:00:00.000Z",
+          "terminee_le": "2026-10-16T09:01:30.250Z",
+          "modele": "claude-sonnet-x-y",
+          "empreinte_complete": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "journal_commit": "ea8860e000000000000000000000000000000000",
+          "listing_debut_le": "2026-10-16T10:20:00.000Z",
+          "listing_fin_le": "2026-10-16T10:20:04.500Z"
+        },
+        "fin_saisie_le": null,
+        "revoque_le": "2026-10-16T10:09:00.000Z",
+        "levees": [
+          {
+            "type": "incident-connu",
+            "constat": "sans effet sur le lot"
+          }
+        ],
+        "incidents_connus": [
+          {
+            "id": "inc-01",
+            "nature": "drive-indisponible",
+            "detecte_le": "2026-10-16T08:00:00.000Z",
+            "statut": "resolu",
+            "resolu_le": "2026-10-16T08:30:00.000Z",
+            "preuve_resolution": 1,
+            "periode": {
+              "debut": "2026-10-16T07:50:00.000Z",
+              "fin": "2026-10-16T08:20:00.000Z"
+            }
+          }
+        ],
+        "cloture_le": "2026-10-16T10:26:00.000Z",
+        "badge": {
+          "forme": "relue_par",
+          "nom_affiche": "Éric Duchateau",
+          "id": null
+        },
+        "cle_id": "eric-2026"
+      }
+    },
+    {
+      "id": "refus-v2-incident-periode-debut-nombre",
+      "description": "charge v2 : incident.periode.debut numérique",
+      "refus": true,
+      "contrat": "attestation-cloture/v2",
+      "entree": {
+        "schema": "attestation-cloture/v2",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "empreinte_publiee": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "code_confirmation": "cdcdcdcdcdcdcdcd",
+        "confirmation": {
+          "mode": "auto",
+          "par": "eric",
+          "recue_par": "eric",
+          "le": "2026-10-16T10:25:00.000Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-16T10:25:30.000Z"
+        },
+        "relecteur_attribue": "eric",
+        "relecteur_egal_cloturer": true,
+        "provenances": [
+          {
+            "execution_id": "10",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-16T09:30:00.000Z"
+          },
+          {
+            "execution_id": "2",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-16T09:30:00.000Z"
+          }
+        ],
+        "nb_fichiers_decision": 2,
+        "referentiel_version": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "execution_cloture": {
+          "execution_id": "600",
+          "workflow_id": "wfCloture0001",
+          "statut": "success",
+          "terminee_le": "2026-10-16T10:10:00.000Z"
+        },
+        "source_decisions": "page_relecture",
+        "generation": {
+          "execution_id": "501",
+          "workflow_id": "wfGenerationFonda",
+          "statut": "success",
+          "demarree_le": "2026-10-16T09:00:00.000Z",
+          "terminee_le": "2026-10-16T09:01:30.250Z",
+          "modele": "claude-sonnet-x-y",
+          "empreinte_complete": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "journal_commit": "ea8860e000000000000000000000000000000000",
+          "listing_debut_le": "2026-10-16T10:20:00.000Z",
+          "listing_fin_le": "2026-10-16T10:20:04.500Z"
+        },
+        "fin_saisie_le": null,
+        "revoque_le": "2026-10-16T10:09:00.000Z",
+        "levees": [
+          {
+            "type": "incident-connu",
+            "constat": "sans effet sur le lot"
+          }
+        ],
+        "incidents_connus": [
+          {
+            "id": "inc-01",
+            "nature": "drive-indisponible",
+            "detecte_le": "2026-10-16T08:00:00.000Z",
+            "statut": "resolu",
+            "resolu_le": "2026-10-16T08:30:00.000Z",
+            "preuve_resolution": "journal-n8n",
+            "periode": {
+              "debut": 1,
+              "fin": null
+            }
+          }
+        ],
+        "cloture_le": "2026-10-16T10:26:00.000Z",
+        "badge": {
+          "forme": "relue_par",
+          "nom_affiche": "Éric Duchateau",
+          "id": null
+        },
+        "cle_id": "eric-2026"
+      }
+    },
+    {
+      "id": "refus-v2-incident-periode-fin-nombre",
+      "description": "charge v2 : incident.periode.fin numérique",
+      "refus": true,
+      "contrat": "attestation-cloture/v2",
+      "entree": {
+        "schema": "attestation-cloture/v2",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "empreinte_publiee": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "code_confirmation": "cdcdcdcdcdcdcdcd",
+        "confirmation": {
+          "mode": "auto",
+          "par": "eric",
+          "recue_par": "eric",
+          "le": "2026-10-16T10:25:00.000Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-16T10:25:30.000Z"
+        },
+        "relecteur_attribue": "eric",
+        "relecteur_egal_cloturer": true,
+        "provenances": [
+          {
+            "execution_id": "10",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-16T09:30:00.000Z"
+          },
+          {
+            "execution_id": "2",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-16T09:30:00.000Z"
+          }
+        ],
+        "nb_fichiers_decision": 2,
+        "referentiel_version": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "execution_cloture": {
+          "execution_id": "600",
+          "workflow_id": "wfCloture0001",
+          "statut": "success",
+          "terminee_le": "2026-10-16T10:10:00.000Z"
+        },
+        "source_decisions": "page_relecture",
+        "generation": {
+          "execution_id": "501",
+          "workflow_id": "wfGenerationFonda",
+          "statut": "success",
+          "demarree_le": "2026-10-16T09:00:00.000Z",
+          "terminee_le": "2026-10-16T09:01:30.250Z",
+          "modele": "claude-sonnet-x-y",
+          "empreinte_complete": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "journal_commit": "ea8860e000000000000000000000000000000000",
+          "listing_debut_le": "2026-10-16T10:20:00.000Z",
+          "listing_fin_le": "2026-10-16T10:20:04.500Z"
+        },
+        "fin_saisie_le": null,
+        "revoque_le": "2026-10-16T10:09:00.000Z",
+        "levees": [
+          {
+            "type": "incident-connu",
+            "constat": "sans effet sur le lot"
+          }
+        ],
+        "incidents_connus": [
+          {
+            "id": "inc-01",
+            "nature": "drive-indisponible",
+            "detecte_le": "2026-10-16T08:00:00.000Z",
+            "statut": "resolu",
+            "resolu_le": "2026-10-16T08:30:00.000Z",
+            "preuve_resolution": "journal-n8n",
+            "periode": {
+              "debut": null,
+              "fin": 1
+            }
+          }
+        ],
+        "cloture_le": "2026-10-16T10:26:00.000Z",
+        "badge": {
+          "forme": "relue_par",
+          "nom_affiche": "Éric Duchateau",
+          "id": null
+        },
+        "cle_id": "eric-2026"
+      }
+    },
+    {
+      "id": "refus-v2-badge-id-nombre",
+      "description": "charge v2 : badge.id numérique",
+      "refus": true,
+      "contrat": "attestation-cloture/v2",
+      "entree": {
+        "schema": "attestation-cloture/v2",
+        "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+        "notion_id": "maths.nombres-fractions-relatifs",
+        "palier": "nI",
+        "coeur": {
+          "action": "accepter",
+          "selection": [
+            "it01",
+            "it03"
+          ],
+          "ecartees": [
+            "it02"
+          ],
+          "empreinte_relue": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "empreinte_publiee": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          }
+        },
+        "sha256_instantane": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "code_confirmation": "cdcdcdcdcdcdcdcd",
+        "confirmation": {
+          "mode": "auto",
+          "par": "eric",
+          "recue_par": "eric",
+          "le": "2026-10-16T10:25:00.000Z"
+        },
+        "fidelite_transmission": {
+          "atteste_par": "eric",
+          "le": "2026-10-16T10:25:30.000Z"
+        },
+        "relecteur_attribue": "eric",
+        "relecteur_egal_cloturer": true,
+        "provenances": [
+          {
+            "execution_id": "10",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-16T09:30:00.000Z"
+          },
+          {
+            "execution_id": "2",
+            "workflow_id": "wfConfirmation01",
+            "statut": "success",
+            "demarree_le": "2026-10-16T09:30:00.000Z"
+          }
+        ],
+        "nb_fichiers_decision": 2,
+        "referentiel_version": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "execution_cloture": {
+          "execution_id": "600",
+          "workflow_id": "wfCloture0001",
+          "statut": "success",
+          "terminee_le": "2026-10-16T10:10:00.000Z"
+        },
+        "source_decisions": "page_relecture",
+        "generation": {
+          "execution_id": "501",
+          "workflow_id": "wfGenerationFonda",
+          "statut": "success",
+          "demarree_le": "2026-10-16T09:00:00.000Z",
+          "terminee_le": "2026-10-16T09:01:30.250Z",
+          "modele": "claude-sonnet-x-y",
+          "empreinte_complete": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "journal_commit": "ea8860e000000000000000000000000000000000",
+          "listing_debut_le": "2026-10-16T10:20:00.000Z",
+          "listing_fin_le": "2026-10-16T10:20:04.500Z"
+        },
+        "fin_saisie_le": null,
+        "revoque_le": "2026-10-16T10:09:00.000Z",
+        "levees": [
+          {
+            "type": "incident-connu",
+            "constat": "sans effet sur le lot"
+          }
+        ],
+        "incidents_connus": [
+          {
+            "id": "inc-01",
+            "nature": "drive-indisponible",
+            "detecte_le": "2026-10-16T08:00:00.000Z",
+            "statut": "resolu",
+            "resolu_le": "2026-10-16T08:30:00.000Z",
+            "preuve_resolution": "journal-n8n",
+            "periode": {
+              "debut": "2026-10-16T07:50:00.000Z",
+              "fin": "2026-10-16T08:20:00.000Z"
+            }
+          },
+          {
+            "id": "inc-02",
+            "nature": "purge-suspectee",
+            "detecte_le": "2026-10-16T09:10:00.000Z",
+            "statut": "ouvert",
+            "resolu_le": null,
+            "preuve_resolution": null,
+            "periode": {
+              "debut": null,
+              "fin": null
+            }
+          }
+        ],
+        "cloture_le": "2026-10-16T10:26:00.000Z",
+        "badge": {
+          "forme": "relue_par",
+          "nom_affiche": "Éric Duchateau",
+          "id": 7
+        },
+        "cle_id": "eric-2026"
+      }
+    },
+    {
+      "id": "refus-recap-reponse-type",
+      "description": "récapitulatif : carte.reponse de mauvais type (12) — couverture ajoutée en brique 1",
+      "refus": true,
+      "contrat": "recapitulatif-fonda/v1",
+      "entree": {
+        "schema": "recapitulatif-fonda/v1",
+        "set_id": "set_fonda_proportionnalite_nI_02",
+        "notion_id": "maths.proportionnalite",
+        "palier": "nI",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "empreinte_relue": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "empreinte_publiee": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "cartes_gardees": [
+          {
+            "item_id": "it03",
+            "question": "Arrondir 1/3 au centième.",
+            "reponse": 12,
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "1/3"
+            ],
+            "unite": null,
+            "arrondi": 2,
+            "seconde_chance": false
+          },
+          {
+            "item_id": "it01",
+            "question": "3 cahiers coûtent 6 €. Combien coûtent 5 cahiers ?",
+            "reponse": "10 €",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "10 €",
+              10
+            ],
+            "unite": "€",
+            "arrondi": null,
+            "seconde_chance": true
+          }
+        ],
+        "cartes_ecartees": [
+          {
+            "item_id": "it04",
+            "question": "Question écartée A."
+          },
+          {
+            "item_id": "it02",
+            "question": "Question écartée B."
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-recap-unite-type",
+      "description": "récapitulatif : carte.unite de mauvais type (3) — couverture ajoutée en brique 1",
+      "refus": true,
+      "contrat": "recapitulatif-fonda/v1",
+      "entree": {
+        "schema": "recapitulatif-fonda/v1",
+        "set_id": "set_fonda_proportionnalite_nI_02",
+        "notion_id": "maths.proportionnalite",
+        "palier": "nI",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "empreinte_relue": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "empreinte_publiee": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "cartes_gardees": [
+          {
+            "item_id": "it03",
+            "question": "Arrondir 1/3 au centième.",
+            "reponse": "0,33",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "1/3"
+            ],
+            "unite": 3,
+            "arrondi": 2,
+            "seconde_chance": false
+          },
+          {
+            "item_id": "it01",
+            "question": "3 cahiers coûtent 6 €. Combien coûtent 5 cahiers ?",
+            "reponse": "10 €",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "10 €",
+              10
+            ],
+            "unite": "€",
+            "arrondi": null,
+            "seconde_chance": true
+          }
+        ],
+        "cartes_ecartees": [
+          {
+            "item_id": "it04",
+            "question": "Question écartée A."
+          },
+          {
+            "item_id": "it02",
+            "question": "Question écartée B."
+          }
+        ]
+      }
+    },
+    {
+      "id": "refus-recap-arrondi-type",
+      "description": "récapitulatif : carte.arrondi de mauvais type (\"2\") — couverture ajoutée en brique 1",
+      "refus": true,
+      "contrat": "recapitulatif-fonda/v1",
+      "entree": {
+        "schema": "recapitulatif-fonda/v1",
+        "set_id": "set_fonda_proportionnalite_nI_02",
+        "notion_id": "maths.proportionnalite",
+        "palier": "nI",
+        "moteur": {
+          "version": "v1",
+          "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+        },
+        "empreinte_relue": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "empreinte_publiee": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "cartes_gardees": [
+          {
+            "item_id": "it03",
+            "question": "Arrondir 1/3 au centième.",
+            "reponse": "0,33",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "1/3"
+            ],
+            "unite": null,
+            "arrondi": "2",
+            "seconde_chance": false
+          },
+          {
+            "item_id": "it01",
+            "question": "3 cahiers coûtent 6 €. Combien coûtent 5 cahiers ?",
+            "reponse": "10 €",
+            "profil_correction": "numerique",
+            "reponses_acceptees": [
+              "10 €",
+              10
+            ],
+            "unite": "€",
+            "arrondi": null,
+            "seconde_chance": true
+          }
+        ],
+        "cartes_ecartees": [
+          {
+            "item_id": "it04",
+            "question": "Question écartée A."
+          },
+          {
+            "item_id": "it02",
+            "question": "Question écartée B."
+          }
+        ]
+      }
     }
   ]
 }
