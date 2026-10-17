@@ -26,7 +26,7 @@ const vm = require('vm');
 const RACINE = path.join(__dirname, '..', '..');
 const PRIMITIFS = ['chaine', 'nombre', 'booleen', 'chaine_ou_nombre'];
 
-const charger = (source) => vm.runInNewContext(`${source}\n;FondaCanonique`, Object.create(null));
+const charger = (source, contexte = Object.create(null)) => vm.runInNewContext(`${source}\n;FondaCanonique`, contexte);
 const entreeDe = (x) => (x.entree_json !== undefined ? JSON.parse(x.entree_json) : x.entree);
 
 // Vecteurs dont le résultat diffère de l'attendu figé (vide = banc passé).
@@ -100,20 +100,42 @@ function decouvrir(source, etendu) {
   return mutations;
 }
 
-// Instrumentation EN MÉMOIRE (canonique.js n'expose pas ses schémas) : une ancre
-// unique reçoit un accesseur __schemas ; ancre absente ou multiple -> exception.
+// Instrumentation EN MÉMOIRE (canonique.js n'expose pas ses schémas), dans une instance
+// réservée à l'extraction : à l'ancre (unique), l'objet CONTRATS est remis à un rappel du
+// contexte vm — hors de l'objet exporté, donc non écrasable par lui. Exigences : un seul
+// appel du rappel ; mêmes noms que contrats()/contratsIncomplets() ; et PREUVE D'IDENTITÉ
+// pour chaque contrat : mettre l'entrée capturée à null fait répondre « forme incomplète »
+// à hexContrat (c'est bien l'objet que le code consulte).
 const ANCRE = 'contrats: function () {';
 function schemasDe(source) {
   if (source.split(ANCRE).length !== 2) throw new Error('ancre d\'instrumentation absente ou multiple');
-  const C = charger(source.replace(ANCRE, '__schemas: function () { return CONTRATS; }, ' + ANCRE));
-  return C.__schemas();
+  const captures = [];
+  const contexte = Object.create(null);
+  contexte.__captureFonda = (c) => { captures.push(c); return 0; };
+  const C = charger(source.replace(ANCRE, '__captureFonda__: __captureFonda(CONTRATS), ' + ANCRE), contexte);
+  if (captures.length !== 1 || !captures[0] || typeof captures[0] !== 'object') throw new Error('capture des schémas : un appel unique attendu');
+  const contrats = captures[0];
+  const noms = Object.keys(contrats);
+  const attendus = [...C.contrats(), ...C.contratsIncomplets()];
+  if (noms.length !== attendus.length || attendus.some((n) => !noms.includes(n))) throw new Error('capture des schémas : noms ≠ contrats()');
+  for (const n of C.contrats()) {
+    const sch = contrats[n];
+    contrats[n] = null;
+    let preuve = false;
+    try { C.hexContrat(n, {}); } catch (err) { preuve = /forme incomplète/.test(err.message); }
+    contrats[n] = sch;
+    if (!preuve) throw new Error('capture des schémas : objet capturé non consulté par hexContrat (' + n + ')');
+  }
+  return contrats;
 }
-// Chemins des nœuds nullables ATTEIGNABLES depuis les contrats (ex. « lot-complet-fonda/v1.cartes[].unite »).
+// Chemins STRUCTURELS des nœuds nullables atteignables depuis les contrats (ex.
+// « lot-complet-fonda/v1.cartes[].unite ») : indépendants de la nullabilité des parents,
+// pour que retirer celle d'un parent ne fasse pas « disparaître » ses enfants.
 function cheminsNullables(contrats) {
   const chemins = new Set();
   const parcourir = (sch, p) => {
     if (typeof sch === 'string' || sch === null || typeof sch !== 'object') return;
-    if (sch.type === 'nullable') { chemins.add(p); parcourir(sch.de, p + '?'); }
+    if (sch.type === 'nullable') { chemins.add(p); parcourir(sch.de, p); }
     else if (sch.type === 'objet') for (const [nom, c] of sch.champs) parcourir(c, p + '.' + nom);
     else if (sch.type === 'tableau') parcourir(sch.elements, p + '[]');
   };
@@ -154,7 +176,9 @@ function rejouer({ source, vecteurs, etendu = false, supplementaires = [] }) {
     try { n = echecs(C, vecteurs).length; } catch (err) { invalide.push(`mutant inexploitable : ${mu.nom} (${err.message})`); continue; }
     if (n === 0) survivantes.push(mu.nom);
   }
-  return { total: mutations.length, survivantes, invalide, chemins: cheminsBase.size };
+  const familles = {};
+  for (const mu of mutations) familles[mu.famille] = (familles[mu.famille] || 0) + 1;
+  return { total: mutations.length, survivantes, invalide, chemins: cheminsBase.size, familles };
 }
 
 module.exports = { rejouer, decouvrir, echecs, neutraliserCommentaires, cheminsNullables, schemasDe };

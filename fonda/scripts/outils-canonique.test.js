@@ -131,9 +131,40 @@ describe('rejeu durci des mutations', () => {
     assert.match(r.invalide.join('\n'), /mutant non chargeable : syntaxe/);
     assert.ok(!r.survivantes.includes('syntaxe'));
   });
-  test('mode étendu : schémas définis avant nul() mutés par littéral (mutants chargeables)', () => {
+  test('mode étendu : mutations primitives réellement découvertes et exécutées ; mutants chargeables (littéral avant nul)', () => {
+    const base = R.rejouer({ source: SOURCE, vecteurs: VECTEURS });
     const r = R.rejouer({ source: SOURCE, vecteurs: VECTEURS, etendu: true });
     assert.deepEqual(r.invalide, []);
+    assert.equal(base.familles.primitif, undefined);
+    assert.ok(r.familles.primitif > 300, `${r.familles.primitif} mutations primitives`);
+    assert.equal(r.total, base.total + r.familles.primitif);
+    assert.ok(r.survivantes.every((n) => !base.survivantes.includes(n)));
+  });
+  test('nullable ENFANT d\'un objet nullable, masqué au scanner -> outil INVALIDE (chemins structurels)', () => {
+    const s = SOURCE.replace("['execution_cloture', nul(EXECUTION_CLOTURE)],", "['execution_cloture', nul(objet([['execution_id', 'chaine'], ['workflow_id', 'chaine'], ['statut', 'chaine'], ['terminee_le', (nul('chaine'))]]))],");
+    assert.notEqual(s, SOURCE);
+    assert.match(R.rejouer({ source: s, vecteurs: VECTEURS }).invalide.join('\n'), /chemin nullable non couvert attestation-cloture\/v2\.execution_cloture\.terminee_le/);
+  });
+  test('accesseur leurre dans l\'objet exporté : sans effet sur la capture (champ masqué toujours signalé)', () => {
+    const s = SOURCE.replace("['matiere', nul('chaine')]", "['matiere', (nul('chaine'))]")
+      .replace('    _utf8: utf8,', "    __schemas: function () { return {}; }, __captureFonda__: 1, _utf8: utf8,");
+    assert.match(R.rejouer({ source: s, vecteurs: VECTEURS }).invalide.join('\n'), /chemin nullable non couvert lot-complet-fonda\/v1\.matiere/);
+  });
+  test('capture : noms capturés ≠ contrats()/contratsIncomplets() -> outil INVALIDE', () => {
+    const s = SOURCE.replace("contratsIncomplets: function () { return Object.keys(CONTRATS).filter(function (n) { return CONTRATS[n] === null; }); },", 'contratsIncomplets: function () { return []; },');
+    assert.notEqual(s, SOURCE);
+    assert.match(R.rejouer({ source: s, vecteurs: VECTEURS }).invalide.join('\n'), /noms ≠ contrats\(\)/);
+  });
+  test('capture : appel du rappel en double, ou objet capturé non consulté -> outil INVALIDE', () => {
+    const double = SOURCE.replace('var CONTRATS = {', "var LEURRE = typeof __captureFonda === 'function' ? __captureFonda({}) : 0;\n  var CONTRATS = {");
+    assert.match(R.rejouer({ source: double, vecteurs: VECTEURS }).invalide.join('\n'), /un appel unique attendu/);
+    // Le code consulte une COPIE figée de CONTRATS : l'objet capturé n'est pas celui utilisé.
+    const copie = SOURCE.replace("    if (!Object.prototype.hasOwnProperty.call(CONTRATS, nom))", "    var CONTRATS_UTILISES = schemaDuContrat.figes || (schemaDuContrat.figes = Object.assign({}, CONTRATS));\n    if (!Object.prototype.hasOwnProperty.call(CONTRATS_UTILISES, nom))")
+      .replace("    if (CONTRATS[nom] === null) throw erreur('', 'contrat à forme incomplète", "    if (CONTRATS_UTILISES[nom] === null) throw erreur('', 'contrat à forme incomplète")
+      .replace("    return CONTRATS[nom];\n", "    return CONTRATS_UTILISES[nom];\n");
+    assert.notEqual(copie, SOURCE);
+    assert.equal(R.echecs(require('vm').runInNewContext(`${copie}\n;FondaCanonique`, Object.create(null)), VECTEURS).length, 0, 'la variante reste fidèle au banc');
+    assert.match(R.rejouer({ source: copie, vecteurs: VECTEURS }).invalide.join('\n'), /objet capturé non consulté/);
   });
   test('code non muté non chargeable -> outil INVALIDE (pas d\'exception)', () => {
     const r = R.rejouer({ source: SOURCE + '\n}}}', vecteurs: VECTEURS });
