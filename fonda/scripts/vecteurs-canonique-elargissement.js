@@ -5,9 +5,12 @@
 // Source de la LISTE : fonda/scripts/champs-canonique.js, tenue à la main contre le CDC
 // (jamais dérivée de canonique.js). Pour chaque contrat, une BASE = l'entrée d'un
 // vecteur POSITIF déjà figé (validité prouvée par ses octets attendus), dont tous les
-// tableaux ont au moins un élément ; puis, pour chaque chemin :
-//   - champ NON nullable (primitif, objet, tableau, élément de tableau) -> valeur null ;
-//   - chaîne seule -> nombre (1) ; nombre seul -> chaîne ("1").
+// tableaux ont au moins un élément ; puis, pour CHAQUE chemin (primitif, objet,
+// tableau, élément de tableau, champ d'un objet nullable), un refus par TYPE INTERDIT
+// au CDC parmi : null, nombre (1), chaîne ("1"), booléen (true), objet ({}), tableau
+// ([]). Types admis : la classe du chemin (chaîne ou nombre : les deux), plus null s'il
+// est nullable. Aucun type interdit n'est laissé sans vecteur, même quand un
+// sous-schéma est partagé entre contrats (garantie champ par champ, contrat par contrat).
 // Ces vecteurs n'ont pas d'octets attendus. La vérité reste canonique-vecteurs.json :
 // cet outil ne l'écrit jamais ; il reconstruit les vecteurs et les compare au fichier
 // figé (index 114 et suivants, après les 71 v8.2 et les 43 de la brique 1).
@@ -60,6 +63,15 @@ function remplacer(entree, chemin, valeur) {
   return copie;
 }
 
+// Valeurs d'essai par type ; types admis par classe (d'après la liste du CDC).
+const ESSAIS = Object.freeze([['null', null], ['nombre', 1], ['chaine', '1'], ['booleen', true], ['objet', {}], ['tableau', []]]);
+const ADMIS = Object.freeze({ chaine: ['chaine'], nombre: ['nombre'], booleen: ['booleen'], chaine_ou_nombre: ['chaine', 'nombre'], objet: ['objet'], tableau: ['tableau'] });
+function typesInterdits(classe, nullable) {
+  const admis = ADMIS[classe];
+  if (!admis) throw new Error(`classe inconnue : ${classe}`);
+  return ESSAIS.filter(([t]) => !admis.includes(t) && !(nullable && t === 'null'));
+}
+
 function construire(figes) {
   const sortie = [];
   for (const [contrat, forme] of Object.entries(H.CONTRATS)) {
@@ -68,14 +80,10 @@ function construire(figes) {
     const base = vb.entree;
     const court = contrat.replace(/-fonda\/v1$|\/v/g, (m) => (m === '/v' ? '-v' : ''));
     for (const { chemin, classe, nullable } of H.chemins(forme)) {
-      if (nullable) continue;
-      const cas = [['null', null]];
-      if (classe === 'chaine') cas.push(['nombre', 1]);
-      if (classe === 'nombre') cas.push(['chaine', '1']);
-      for (const [suffixe, valeur] of cas) {
+      for (const [suffixe, valeur] of typesInterdits(classe, nullable)) {
         sortie.push({
           id: `refus-larg-${court}-${chemin}-${suffixe}`,
-          description: `élargissement : ${contrat} ${chemin} = ${JSON.stringify(valeur)} (${classe} non nullable au CDC)`,
+          description: `élargissement : ${contrat} ${chemin} = ${JSON.stringify(valeur)} (${classe}${nullable ? ' | null' : ''} au CDC)`,
           refus: true,
           contrat,
           entree: remplacer(base, chemin, valeur),
@@ -98,7 +106,7 @@ function auditer(vecteurs) {
   return ecarts;
 }
 
-module.exports = { construire, auditer, remplacer, BASES, NB_AVANT };
+module.exports = { construire, auditer, remplacer, typesInterdits, BASES, NB_AVANT };
 
 if (require.main === module) {
   const vecteurs = JSON.parse(fs.readFileSync(FICHIER, 'utf8')).vecteurs;

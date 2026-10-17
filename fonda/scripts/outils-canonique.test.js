@@ -264,19 +264,51 @@ describe('vecteurs d\'élargissement : liste tenue à la main contre le CDC, jam
     assert.deepEqual(Object.keys(H.CONTRATS).sort(), charges);
     for (const n of charges) assert.deepEqual(cheminsDuSchema(schemas[n]), H.chemins(H.CONTRATS[n]), n);
   });
-  test('couverture : un refus null par champ non nullable ; nombre pour chaque chaîne seule ; chaîne pour chaque nombre seul', () => {
+  test('couverture : un refus par TYPE INTERDIT, pour chaque chemin de chaque contrat (table propre au test)', () => {
+    // Table indépendante du générateur : types admis par classe du CDC (+ null si nullable).
+    const ADMIS = { chaine: ['chaine'], nombre: ['nombre'], booleen: ['booleen'], chaine_ou_nombre: ['chaine', 'nombre'], objet: ['objet'], tableau: ['tableau'] };
+    const TYPES = ['null', 'nombre', 'chaine', 'booleen', 'objet', 'tableau'];
     const ids = new Set(VECTEURS.slice(E.NB_AVANT).map((x) => x.id));
     let n = 0;
     for (const [contrat, f] of Object.entries(H.CONTRATS)) {
       const court = contrat.replace(/-fonda\/v1$|\/v/g, (m) => (m === '/v' ? '-v' : ''));
       for (const x of H.chemins(f)) {
-        if (x.nullable) { assert.ok(!ids.has(`refus-larg-${court}-${x.chemin}-null`), x.chemin); continue; }
-        assert.ok(ids.has(`refus-larg-${court}-${x.chemin}-null`), `${contrat} ${x.chemin} null`); n += 1;
-        if (x.classe === 'chaine') { assert.ok(ids.has(`refus-larg-${court}-${x.chemin}-nombre`)); n += 1; }
-        if (x.classe === 'nombre') { assert.ok(ids.has(`refus-larg-${court}-${x.chemin}-chaine`)); n += 1; }
+        for (const t of TYPES) {
+          const admis = ADMIS[x.classe].includes(t) || (x.nullable && t === 'null');
+          assert.equal(ids.has(`refus-larg-${court}-${x.chemin}-${t}`), !admis, `${contrat} ${x.chemin} ${t}`);
+          if (!admis) n += 1;
+        }
       }
     }
     assert.equal(n, ids.size);
+  });
+  test('chaque refus d\'élargissement porte sur le champ modifié (le message canonique cite ce chemin)', () => {
+    const C = require('../engine/canonique.js');
+    for (const x of VECTEURS.slice(E.NB_AVANT)) {
+      const court = x.contrat.replace(/-fonda\/v1$|\/v/g, (m) => (m === '/v' ? '-v' : ''));
+      const type = x.id.slice(x.id.lastIndexOf('-') + 1);
+      const chemin = x.id.slice(`refus-larg-${court}-`.length, -(type.length + 1));
+      let message = '';
+      try { C.hexContrat(x.contrat, x.entree); } catch (e) { message = e.message; }
+      assert.ok(message.startsWith(`canonique : ${chemin.replace(/\[\]/g, '[0]')} : `), `${x.id} -> ${message}`);
+    }
+  });
+  test('contre-épreuves : élargissements de COMPORTEMENT (invisibles aux descripteurs) détectés par le banc', () => {
+    const muter = [
+      ['booléen accepte un nombre', "if (typeof valeur !== 'boolean') throw", "if (typeof valeur !== 'boolean' && typeof valeur !== 'number') throw"],
+      ['booléen accepte une chaîne', "if (typeof valeur !== 'boolean') throw", "if (typeof valeur !== 'boolean' && typeof valeur !== 'string') throw"],
+      ['chaîne ou nombre accepte un tableau', "    if (schema === 'chaine_ou_nombre') {\n", "    if (schema === 'chaine_ou_nombre') {\n      if (Array.isArray(valeur)) return valeur;\n"],
+      ['chaîne ou nombre accepte un booléen', "    if (schema === 'chaine_ou_nombre') {\n", "    if (schema === 'chaine_ou_nombre') {\n      if (typeof valeur === 'boolean') return valeur;\n"],
+      ['chaîne ou nombre accepte un objet', "    if (schema === 'chaine_ou_nombre') {\n", "    if (schema === 'chaine_ou_nombre') {\n      if (valeur && typeof valeur === 'object') return valeur;\n"],
+      ['chaîne accepte un booléen', "if (typeof valeur !== 'string') throw erreur(chemin, 'chaîne attendue');", "if (typeof valeur !== 'string' && typeof valeur !== 'boolean') throw erreur(chemin, 'chaîne attendue');"],
+      ['nombre accepte un booléen', "if (typeof valeur !== 'number' || !isFinite(valeur)) throw", "if (typeof valeur !== 'boolean' && (typeof valeur !== 'number' || !isFinite(valeur))) throw"],
+      ['tout nullable accepte aussi undefined->null et 0', "return valeur === null ? null : copier(valeur, schema.de, chemin);", "return valeur === null || valeur === 0 ? null : copier(valeur, schema.de, chemin);"],
+    ];
+    for (const [nom, a, b] of muter) {
+      assert.ok(SOURCE.includes(a), `point de mutation introuvable : ${nom}`);
+      const C = require('vm').runInNewContext(`${SOURCE.replace(a, b)}\n;FondaCanonique`, Object.create(null));
+      assert.ok(R.echecs(C, VECTEURS).length > 0, nom);
+    }
   });
   test('bases : vecteurs POSITIFS figés du bon contrat (validité prouvée par leurs octets), tous les tableaux non vides', () => {
     for (const [contrat, id] of Object.entries(E.BASES)) {
