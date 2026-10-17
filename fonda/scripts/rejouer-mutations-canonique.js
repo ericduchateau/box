@@ -29,17 +29,17 @@ const PRIMITIFS = ['chaine', 'nombre', 'booleen', 'chaine_ou_nombre'];
 const charger = (source, contexte = Object.create(null)) => vm.runInNewContext(`${source}\n;FondaCanonique`, contexte);
 const entreeDe = (x) => (x.entree_json !== undefined ? JSON.parse(x.entree_json) : x.entree);
 
-// Vecteurs dont le résultat diffère de l'attendu figé (vide = banc passé).
-function echecs(C, vecteurs) {
-  return vecteurs.filter((x) => {
-    try {
-      const h = x.contrat ? C.hexContrat(x.contrat, entreeDe(x)) : C.hex(entreeDe(x), x.schema);
-      return x.refus || h !== x.hex;
-    } catch (e) {
-      return !x.refus || !/canonique :/.test(e.message);
-    }
-  });
+// Un vecteur échoue si son résultat diffère de l'attendu figé.
+function echoue(C, x) {
+  try {
+    const h = x.contrat ? C.hexContrat(x.contrat, entreeDe(x)) : C.hex(entreeDe(x), x.schema);
+    return x.refus || h !== x.hex;
+  } catch (e) {
+    return !x.refus || !/canonique :/.test(e.message);
+  }
 }
+// Vecteurs en échec (vide = banc passé) : code non muté, examiné sur TOUT le banc.
+function echecs(C, vecteurs) { return vecteurs.filter((x) => echoue(C, x)); }
 
 function ligneDe(source, index) { return source.slice(0, index).split('\n').length; }
 
@@ -174,7 +174,8 @@ function rejouer({ source, vecteurs, etendu = false, supplementaires = [] }) {
     let C;
     try { C = charger(mutant); } catch (err) { invalide.push(`mutant non chargeable : ${mu.nom} (${err.message})`); continue; }
     let n;
-    try { n = echecs(C, vecteurs).length; } catch (err) { invalide.push(`mutant inexploitable : ${mu.nom} (${err.message})`); continue; }
+    // Mutant : un seul vecteur en échec suffit à le détecter (arrêt au premier).
+    try { n = vecteurs.some((x) => echoue(C, x)) ? 1 : 0; } catch (err) { invalide.push(`mutant inexploitable : ${mu.nom} (${err.message})`); continue; }
     executees[mu.famille] = (executees[mu.famille] || 0) + 1;
     if (n === 0) survivantes.push(mu.nom);
   }

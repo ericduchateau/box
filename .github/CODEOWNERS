@@ -59,3 +59,6 @@
 # Résolveur de référentiel archivé (CDC v8.3 §20.12) : signataire, publication, CI.
 /fonda/scripts/referentiel-archive.js      @ericduchateau
 /fonda/scripts/referentiel-archive.test.js @ericduchateau
+# Liste des champs tenue à la main contre le CDC et vecteurs d'élargissement qui en dérivent.
+/fonda/scripts/champs-canonique.js         @ericduchateau
+/fonda/scripts/vecteurs-canonique-elargissement.js @ericduchateau
