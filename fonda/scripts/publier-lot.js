@@ -37,7 +37,8 @@
 // HYPOTHÈSE EXPLICITE (procédure humaine, option B) : aucun autre écrivain — éditeur,
 // Git, autre outil — ne touche le dépôt pendant une publication ; le verrou n'exclut que
 // ce script. La fenêtre résiduelle est RÉDUITE (catalogue et journal comparés puis écrits
-// sur le même descripteur : une modification tierce n'est pas écrasée) et DÉTECTÉE
+// sur le même descripteur : une modification tierce ANTÉRIEURE à cette lecture n'est
+// pas écrasée ; entre lecture et écriture, une fenêtre d'appel système subsiste) et DÉTECTÉE
 // (contrôle après écriture : chemins réels dans le dépôt, octets attendus, HEAD
 // inchangé ; sinon marqueur conservé et traitement manuel). Node n'offre pas openat :
 // le remplacement d'un dossier parent par un lien pendant l'écriture est détecté
