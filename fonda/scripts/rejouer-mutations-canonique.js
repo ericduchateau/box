@@ -6,8 +6,9 @@
 //   - le code NON muté passe tout le banc (positifs = hex attendu, refus = erreur
 //     « canonique : ») ;
 //   - chaque mutation modifie réellement le code et le mutant se charge ;
-//   - la découverte est complète : chaque appel `nul(...)` du code (commentaires
-//     neutralisés, espaces tolérés) tombe dans un champ nullable découvert.
+//   - la découverte est complète, vérifiée SUR LES SCHÉMAS CHARGÉS (pas sur le texte) :
+//     chaque chemin nullable atteignable depuis un contrat perd sa nullabilité sous au
+//     moins une mutation découverte, et chaque mutation « non nullable » en retire un.
 // Sortie 1 si au moins une mutation SURVIT (banc identique au code non muté) ;
 // toute autre erreur (lecture, JSON, exception) = sortie 2, jamais 1.
 //
@@ -44,8 +45,8 @@ function ligneDe(source, index) { return source.slice(0, index).split('\n').leng
 
 // Copie du source, MÊME LONGUEUR, où commentaires (// et /* */) sont remplacés par
 // des espaces (sauts de ligne conservés) ; chaînes (apostrophe, guillemet, accent grave) respectées. Pas de prise en
-// charge des littéraux d'expression régulière : garde-fou dans rejouer() — la copie
-// neutralisée doit se comporter exactement comme le source sur tout le banc.
+// charge des littéraux d'expression régulière ni des gabarits imbriqués : le scanner ne
+// fait que PROPOSER des candidats ; la complétude est établie sur les schémas (rejouer).
 function neutraliserCommentaires(source) {
   const out = source.split('');
   let i = 0;
@@ -83,7 +84,7 @@ function decouvrir(source, etendu) {
     const variantes = [[`${nom} non nullable`, `['${nom}', ${arg}]`]];
     const autres = prim ? PRIMITIFS.filter((t) => t !== prim) : ['chaine'];
     for (const t of autres) variantes.push([`${nom} -> nul(${t})`, `['${nom}', nul('${t}')]`]);
-    for (const [n, remplacement] of variantes) mutations.push({ famille: 'nullable', nom: `ligne ${ligne} : ${n}`, debut: m.index, fin: m.index + txt.length, remplacement });
+    variantes.forEach(([n, remplacement], k) => mutations.push({ famille: 'nullable', cible: k === 0, nom: `ligne ${ligne} : ${n}`, debut: m.index, fin: m.index + txt.length, remplacement }));
   }
   if (etendu) {
     const rePrim = /\[\s*'([a-z_]+)'\s*,\s*'(chaine|nombre|booleen|chaine_ou_nombre)'\s*\]/g;
@@ -99,42 +100,64 @@ function decouvrir(source, etendu) {
   return mutations;
 }
 
+// Instrumentation EN MÉMOIRE (canonique.js n'expose pas ses schémas) : une ancre
+// unique reçoit un accesseur __schemas ; ancre absente ou multiple -> exception.
+const ANCRE = 'contrats: function () {';
+function schemasDe(source) {
+  if (source.split(ANCRE).length !== 2) throw new Error('ancre d\'instrumentation absente ou multiple');
+  const C = charger(source.replace(ANCRE, '__schemas: function () { return CONTRATS; }, ' + ANCRE));
+  return C.__schemas();
+}
+// Chemins des nœuds nullables ATTEIGNABLES depuis les contrats (ex. « lot-complet-fonda/v1.cartes[].unite »).
+function cheminsNullables(contrats) {
+  const chemins = new Set();
+  const parcourir = (sch, p) => {
+    if (typeof sch === 'string' || sch === null || typeof sch !== 'object') return;
+    if (sch.type === 'nullable') { chemins.add(p); parcourir(sch.de, p + '?'); }
+    else if (sch.type === 'objet') for (const [nom, c] of sch.champs) parcourir(c, p + '.' + nom);
+    else if (sch.type === 'tableau') parcourir(sch.elements, p + '[]');
+  };
+  for (const nom of Object.keys(contrats)) parcourir(contrats[nom], nom);
+  return chemins;
+}
+
 // `supplementaires` : mutations injectées (tests des garde-fous uniquement).
 function rejouer({ source, vecteurs, etendu = false, supplementaires = [] }) {
   const invalide = [];
-  let base;
-  try { base = echecs(charger(source), vecteurs); } catch (e) {
-    return { total: 0, survivantes: [], invalide: [`code non muté non chargeable : ${e.message}`] };
+  let base, cheminsBase;
+  try { base = echecs(charger(source), vecteurs); cheminsBase = cheminsNullables(schemasDe(source)); } catch (e) {
+    return { total: 0, survivantes: [], invalide: [`code non muté non chargeable ou non instrumentable : ${e.message}`] };
   }
   if (base.length) invalide.push(`code non muté : ${base.length} vecteur(s) en échec (${base.slice(0, 3).map((x) => x.id).join(', ')})`);
-  const code = neutraliserCommentaires(source);
-  // Garde-fou du scanner : la copie neutralisée doit passer le banc comme le source.
-  let neutre;
-  try { neutre = echecs(charger(code), vecteurs).length; } catch (e) { neutre = -1; }
-  if (neutre !== base.length) invalide.push('neutralisation des commentaires infidèle (le scanner a altéré du code)');
   const mutations = decouvrir(source, etendu).concat(supplementaires);
-  // Complétude : CHAQUE appel nul(...) du code (espaces tolérés) doit tomber dans un
-  // champ nullable découvert ; positions comparées, pas seulement des effectifs.
-  const couverts = mutations.filter((x) => x.famille === 'nullable');
-  const reAppel = /\bnul\s*\(/g; let a;
-  while ((a = reAppel.exec(code))) {
-    if (!couverts.some((x) => x.debut <= a.index && a.index < x.fin)) invalide.push(`découverte incomplète : appel nul() non couvert ligne ${ligneDe(source, a.index)}`);
-  }
   if (mutations.length === 0) invalide.push('aucune mutation découverte');
+  // Complétude SÉMANTIQUE (indépendante du scanner) : chaque chemin nullable atteignable
+  // doit perdre sa nullabilité sous au moins une mutation « non nullable » découverte,
+  // et chacune de ces mutations doit en retirer au moins un (sinon : cible fantôme,
+  // p. ex. texte dans une chaîne ou un commentaire mal reconnu).
+  const retires = new Set();
+  for (const mu of mutations.filter((x) => x.cible)) {
+    let apres;
+    try { apres = cheminsNullables(schemasDe(source.slice(0, mu.debut) + mu.remplacement + source.slice(mu.fin))); } catch (err) { continue; } // signalé ci-dessous
+    const moins = [...cheminsBase].filter((p) => !apres.has(p));
+    if (moins.length === 0) invalide.push(`mutation sans cible dans les schémas : ${mu.nom}`);
+    for (const p of moins) retires.add(p);
+  }
+  for (const p of cheminsBase) if (!retires.has(p)) invalide.push(`découverte incomplète : chemin nullable non couvert ${p}`);
   const survivantes = [];
   for (const mu of mutations) {
     const mutant = source.slice(0, mu.debut) + mu.remplacement + source.slice(mu.fin);
     if (mutant === source) { invalide.push(`mutation sans effet : ${mu.nom}`); continue; }
     let C;
-    try { C = charger(mutant); } catch (e) { invalide.push(`mutant non chargeable : ${mu.nom} (${e.message})`); continue; }
+    try { C = charger(mutant); } catch (err) { invalide.push(`mutant non chargeable : ${mu.nom} (${err.message})`); continue; }
     let n;
-    try { n = echecs(C, vecteurs).length; } catch (e) { invalide.push(`mutant inexploitable : ${mu.nom} (${e.message})`); continue; }
+    try { n = echecs(C, vecteurs).length; } catch (err) { invalide.push(`mutant inexploitable : ${mu.nom} (${err.message})`); continue; }
     if (n === 0) survivantes.push(mu.nom);
   }
-  return { total: mutations.length, survivantes, invalide };
+  return { total: mutations.length, survivantes, invalide, chemins: cheminsBase.size };
 }
 
-module.exports = { rejouer, decouvrir, echecs, neutraliserCommentaires };
+module.exports = { rejouer, decouvrir, echecs, neutraliserCommentaires, cheminsNullables, schemasDe };
 
 // Codes de sortie : 0 = toutes détectées ; 1 = au moins une survivante ;
 // 2 = outil invalide OU erreur quelconque (lecture, JSON, exception) — jamais 1.

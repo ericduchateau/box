@@ -17,7 +17,6 @@ const REJEU = path.join(__dirname, 'rejouer-mutations-canonique.js');
 const A = require(AUDIT);
 const R = require(REJEU);
 const copie = () => JSON.parse(JSON.stringify(VECTEURS));
-const R_charger = (src) => require('vm').runInNewContext(`${src}\n;FondaCanonique`, Object.create(null));
 
 describe('audit des vecteurs brique 1 (reconstruction sans canonique.js)', () => {
   test('les 43 vecteurs figés sont reconstruits à l\'identique', () => {
@@ -74,18 +73,51 @@ describe('rejeu durci des mutations', () => {
     assert.notEqual(s, SOURCE);
     assert.match(R.rejouer({ source: s, vecteurs: VECTEURS }).invalide.join('\n'), /découverte incomplète/);
   });
-  test('commentaires : un exemple commenté n\'est ni découvert ni compté', () => {
-    const s = SOURCE.replace('var CONTRATS = {', "// exemple : ['x', nul('chaine')] /* ['y', nul(Z)] */\n  var CONTRATS = {");
+  test('complétude sémantique : 28 chemins nullables atteignables, tous couverts', () => {
+    const r = R.rejouer({ source: SOURCE, vecteurs: VECTEURS });
+    assert.equal(r.chemins, 28);
+    assert.deepEqual(r.invalide, []);
+  });
+  test('commentaires (ligne et bloc indépendant) : exemples ni découverts ni comptés', () => {
+    const s = SOURCE.replace('var CONTRATS = {', "// exemple : ['x', nul('chaine')]\n  /* ['y', nul(Z)] */\n  var CONTRATS = {");
     assert.notEqual(s, SOURCE);
     const r = R.rejouer({ source: s, vecteurs: VECTEURS });
     assert.deepEqual(r.invalide, []);
     assert.equal(r.total, R.rejouer({ source: SOURCE, vecteurs: VECTEURS }).total);
   });
-  test('scanner trompé (littéral d\'expression régulière contenant //) -> outil INVALIDE', () => {
-    const s = SOURCE.replace('var CONTRATS = {', 'var Q = /a\\//g;\n  var CONTRATS = {');
-    assert.notEqual(s, SOURCE);
-    assert.equal(R.echecs(R_charger(s), VECTEURS).length, 0, 'le source modifié reste valide');
-    assert.match(R.rejouer({ source: s, vecteurs: VECTEURS }).invalide.join('\n'), /neutralisation des commentaires infidèle/);
+  test('scanner trompé (expression régulière, gabarit) : un champ réel masqué -> outil INVALIDE', () => {
+    for (const masque of ["['matiere', /[/*]/ && nul('chaine')]", "['matiere', `${'/*'}` && nul('chaine')]"]) {
+      const s = SOURCE.replace("['matiere', nul('chaine')]", masque);
+      assert.notEqual(s, SOURCE);
+      assert.match(R.rejouer({ source: s, vecteurs: VECTEURS }).invalide.join('\n'), /chemin nullable non couvert lot-complet-fonda\/v1\.matiere/, masque);
+    }
+  });
+  test('appel nul() orphelin (hors contrat, même masqué au scanner) : sans effet sur les schémas, outil valide', () => {
+    for (const ajout of ["var Q = /[/*]/; nul('chaine'); var Z = /[*/]/;", "var Q = `${`/*`} ${nul('chaine')} ${`*/`}`;", "nul('chaine');"]) {
+      const s = SOURCE.replace('var CONTRATS = {', ajout + '\n  var CONTRATS = {');
+      assert.deepEqual(R.rejouer({ source: s, vecteurs: VECTEURS }).invalide, [], ajout);
+    }
+  });
+  test('texte nul() dans une chaîne : ni compté ni faux rejet ; texte en forme de champ -> cible fantôme signalée', () => {
+    const ok = SOURCE.replace('var CONTRATS = {', 'var Q = "nul(\'chaine\')";\n  var CONTRATS = {');
+    assert.deepEqual(R.rejouer({ source: ok, vecteurs: VECTEURS }).invalide, []);
+    const fantome = SOURCE.replace('var CONTRATS = {', 'var Q = "[\'x\', nul(\'chaine\')]";\n  var CONTRATS = {');
+    assert.match(R.rejouer({ source: fantome, vecteurs: VECTEURS }).invalide.join('\n'), /mutation sans cible dans les schémas : .* x non nullable/);
+  });
+  test('ancre d\'instrumentation absente ou en double -> outil INVALIDE (diagnostic exact)', () => {
+    const absente = SOURCE.replace('contrats: function () {', 'contrats: function() {');
+    const double = SOURCE.replace('var CONTRATS = {', '// leurre : contrats: function () {\n  var CONTRATS = {');
+    for (const s of [absente, double]) {
+      assert.notEqual(s, SOURCE);
+      assert.match(R.rejouer({ source: s, vecteurs: VECTEURS }).invalide.join('\n'), /ancre d'instrumentation absente ou multiple/);
+    }
+  });
+  test('chaînes contenant /* et */ : le code entre elles reste analysé (aucun faux rejet)', () => {
+    const s = SOURCE.replace('  var LOT_COMPLET = objet([', "  var OUVRE = '/*';\n  var LOT_COMPLET = objet([").replace('  // État relu (§20.5)', "  var FERME = '*/';\n  // État relu (§20.5)");
+    assert.equal(s.split("'/*'").length, 2); assert.equal(s.split("'*/'").length, 2);
+    const r = R.rejouer({ source: s, vecteurs: VECTEURS });
+    assert.deepEqual(r.invalide, []);
+    assert.equal(r.total, R.rejouer({ source: SOURCE, vecteurs: VECTEURS }).total);
   });
   test('mutation sans effet -> outil INVALIDE', () => {
     const i = SOURCE.indexOf("['matiere', nul('chaine')]");
