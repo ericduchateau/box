@@ -21,6 +21,7 @@ const path = require('path');
 const RACINE = path.join(__dirname, '..', '..');
 const FICHIER = path.join(RACINE, 'fonda/engine/canonique-vecteurs.json');
 const NB_V82 = 71;
+const NB_BRIQUE1 = 43; // index 71 à 113 ; les vecteurs d'élargissement suivent (vecteurs-canonique-elargissement.js)
 
 function construire(figes, shaMoteurV1) {
   const sortie = [];
@@ -187,7 +188,7 @@ function construire(figes, shaMoteurV1) {
 // Compare la reconstruction au fichier figé ; renvoie la liste des écarts (vide = identiques).
 function auditer(vecteurs, shaMoteurV1) {
   const ecarts = [];
-  const figes = vecteurs.slice(NB_V82);
+  const figes = vecteurs.slice(NB_V82, NB_V82 + NB_BRIQUE1);
   const construits = construire(vecteurs.slice(0, NB_V82), shaMoteurV1);
   if (figes.length !== construits.length) ecarts.push(`nombre : figé ${figes.length}, reconstruit ${construits.length}`);
   for (let i = 0; i < Math.max(figes.length, construits.length); i += 1) {
@@ -197,7 +198,7 @@ function auditer(vecteurs, shaMoteurV1) {
   return ecarts;
 }
 
-module.exports = { construire, auditer, NB_V82 };
+module.exports = { construire, auditer, NB_V82, NB_BRIQUE1 };
 
 if (require.main === module) {
   const vecteurs = JSON.parse(fs.readFileSync(FICHIER, 'utf8')).vecteurs;
@@ -207,5 +208,5 @@ if (require.main === module) {
     for (const e of ecarts) console.error('✗ ' + e);
     process.exit(1);
   }
-  console.log(`✓ vecteurs brique 1 : ${vecteurs.length - NB_V82} reconstruits sans canonique.js, identiques au fichier figé`);
+  console.log(`✓ vecteurs brique 1 : ${NB_BRIQUE1} reconstruits sans canonique.js, identiques au fichier figé`);
 }

@@ -20,7 +20,8 @@ const copie = () => JSON.parse(JSON.stringify(VECTEURS));
 
 describe('audit des vecteurs brique 1 (reconstruction sans canonique.js)', () => {
   test('les 43 vecteurs figés sont reconstruits à l\'identique', () => {
-    assert.equal(VECTEURS.length - A.NB_V82, 43);
+    assert.equal(A.NB_BRIQUE1, 43);
+    assert.ok(VECTEURS.length >= A.NB_V82 + A.NB_BRIQUE1);
     assert.deepEqual(A.auditer(VECTEURS, SHA_V1), []);
   });
   test('indépendance : l\'outil ne charge pas canonique.js (ni à la lecture du code, ni à l\'exécution)', () => {
@@ -37,13 +38,15 @@ describe('audit des vecteurs brique 1 (reconstruction sans canonique.js)', () =>
     ].join('\n');
     const charges = JSON.parse(execFileSync(process.execPath, ['-e', script], { encoding: 'utf8' }));
     assert.ok(charges.length > 0);
-    for (const c of charges) assert.doesNotMatch(c, /canonique(\.js)?$|^(node:)?vm$/, c);
+    for (const c of charges) assert.doesNotMatch(c, /(^|\/)canonique(\.js)?$|^(node:)?vm$/, c);
   });
   test('détecte un attendu altéré, un vecteur retiré et un vecteur ajouté', () => {
     const v = copie(); v[A.NB_V82].hex = v[A.NB_V82].hex.replace(/^7b/, '7c');
     assert.match(A.auditer(v, SHA_V1).join('\n'), /generation-nominale/);
-    assert.notDeepEqual(A.auditer(copie().slice(0, -1), SHA_V1), []);
-    assert.notDeepEqual(A.auditer([...copie(), { id: 'en-trop' }], SHA_V1), []);
+    const retire = copie(); retire.splice(80, 1);
+    assert.notDeepEqual(A.auditer(retire, SHA_V1), []);
+    const insere = copie(); insere.splice(100, 0, { id: 'en-trop' });
+    assert.notDeepEqual(A.auditer(insere, SHA_V1), []);
   });
   test('ligne de commande : sortie 0 sur le fichier figé', () => {
     assert.equal(spawnSync(process.execPath, [AUDIT]).status, 0);
@@ -141,15 +144,20 @@ describe('rejeu durci des mutations', () => {
     // Chaque mutation découverte a été CHARGÉE ET CONFRONTÉE au banc (pas seulement comptée).
     assert.deepEqual(r.executees, r.familles);
     assert.deepEqual(base.executees, base.familles);
+    // Dette --etendu FERMÉE : aucun élargissement de type ne survit au banc.
+    assert.deepEqual(r.survivantes, []);
   });
   test('nullable ENFANT d\'un objet nullable, masqué au scanner -> outil INVALIDE (chemins structurels)', () => {
+    // Banc d'AVANT les vecteurs d'élargissement : ce test isole la complétude sémantique
+    // (sur le banc complet, la variante est en outre refusée par un vecteur d'élargissement).
+    const BANC = VECTEURS.slice(0, 114);
     // Parent DÉCOUVRABLE (nul(EXECUTION_TEST)), seul l'enfant est masqué au scanner : avec des
     // chemins marqués par la nullabilité du parent, retirer celle-ci « couvrirait » l'enfant.
     const s = SOURCE.replace('  var ATTESTATION_V2 = objet([', "  var EXECUTION_TEST = objet([['execution_id', 'chaine'], ['workflow_id', 'chaine'], ['statut', 'chaine'], ['terminee_le', (nul('chaine'))]]);\n  var ATTESTATION_V2 = objet([")
       .replace("['execution_cloture', nul(EXECUTION_CLOTURE)],\n    ['source_decisions'", "['execution_cloture', nul(EXECUTION_TEST)],\n    ['source_decisions'");
     assert.equal(s.split('nul(EXECUTION_TEST)').length, 2);
-    assert.equal(R.echecs(require('vm').runInNewContext(`${s}\n;FondaCanonique`, Object.create(null)), VECTEURS).length, 0, 'variante fidèle au banc');
-    assert.match(R.rejouer({ source: s, vecteurs: VECTEURS }).invalide.join('\n'), /chemin nullable non couvert attestation-cloture\/v2\.execution_cloture\.terminee_le/);
+    assert.equal(R.echecs(require('vm').runInNewContext(`${s}\n;FondaCanonique`, Object.create(null)), BANC).length, 0, 'variante fidèle au banc');
+    assert.match(R.rejouer({ source: s, vecteurs: BANC }).invalide.join('\n'), /chemin nullable non couvert attestation-cloture\/v2\.execution_cloture\.terminee_le/);
   });
   test('accesseur leurre dans l\'objet exporté : sans effet sur la capture (champ masqué toujours signalé)', () => {
     const s = SOURCE.replace("['matiere', nul('chaine')]", "['matiere', (nul('chaine'))]")
@@ -204,5 +212,119 @@ describe('rejeu durci des mutations', () => {
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
+  });
+});
+
+describe('vecteurs d\'élargissement : liste tenue à la main contre le CDC, jamais dérivée de canonique.js', () => {
+  const H = require('./champs-canonique.js');
+  const E = require('./vecteurs-canonique-elargissement.js');
+  const OUTILS = [path.join(__dirname, 'champs-canonique.js'), path.join(__dirname, 'vecteurs-canonique-elargissement.js')];
+  // Chemins d'un schéma CHARGÉ (descripteurs de canonique.js), même format que H.chemins.
+  const cheminsDuSchema = (sch) => {
+    const out = [];
+    const p = (x, c, nul) => {
+      if (typeof x === 'string') { out.push({ chemin: c, classe: x, nullable: nul }); return; }
+      if (x.type === 'nullable') { p(x.de, c, true); return; }
+      if (x.type === 'objet') { if (c) out.push({ chemin: c, classe: 'objet', nullable: nul }); for (const [k, v] of x.champs) p(v, c ? `${c}.${k}` : k, false); return; }
+      if (x.type === 'tableau') { out.push({ chemin: c, classe: 'tableau', nullable: nul }); p(x.elements, `${c}[]`, false); return; }
+      throw new Error('descripteur inconnu');
+    };
+    p(sch, '', false);
+    return out;
+  };
+
+  test('les vecteurs figés (index 114 et suivants) sont reconstruits à l\'identique depuis la liste du CDC', () => {
+    assert.deepEqual(E.auditer(VECTEURS), []);
+    assert.equal(E.NB_AVANT, A.NB_V82 + A.NB_BRIQUE1);
+  });
+  test('indépendance : liste et générateur ne chargent pas canonique.js (lecture du code et exécution)', () => {
+    for (const f of OUTILS) {
+      const code = fs.readFileSync(f, 'utf8').split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
+      assert.doesNotMatch(code, /require\([^)]*\/canonique(\.js)?['"]\)|FondaCanonique|\bvm\b|engine\/canonique\.js/, f);
+    }
+    const script = [
+      "const Module = require('module'); const vus = []; const orig = Module._load;",
+      "Module._load = function (req, ...r) { vus.push(req); return orig.call(this, req, ...r); };",
+      `const E = require(${JSON.stringify(OUTILS[1])});`,
+      `const V = JSON.parse(require('fs').readFileSync(${JSON.stringify(path.join(RACINE, 'fonda/engine/canonique-vecteurs.json'))}, 'utf8')).vecteurs;`,
+      "if (E.auditer(V).length) throw new Error('écarts');",
+      "process.stdout.write(JSON.stringify(vus.concat(Object.keys(require.cache))));",
+    ].join('\n');
+    for (const c of JSON.parse(execFileSync(process.execPath, ['-e', script], { encoding: 'utf8' }))) assert.doesNotMatch(c, /(^|\/)canonique(\.js)?$|^(node:)?vm$/, c);
+  });
+  test('classification : 28 nullables légitimes ; « chaîne ou nombre » = seulement reponses_acceptees[] (récapitulatif, projection)', () => {
+    const tous = Object.entries(H.CONTRATS).flatMap(([c, f]) => H.chemins(f).map((x) => ({ ...x, contrat: c })));
+    assert.equal(tous.filter((x) => x.nullable).length, 28);
+    assert.deepEqual(tous.filter((x) => x.classe === 'chaine_ou_nombre').map((x) => `${x.contrat}:${x.chemin}`).sort(),
+      ['lot-complet-fonda/v1:cartes[].reponses_acceptees[]', 'recapitulatif-fonda/v1:cartes_gardees[].reponses_acceptees[]']);
+  });
+  test('confrontation aux schémas CHARGÉS : mêmes contrats, chemins, classes et nullabilité (tout écart = échec)', () => {
+    const schemas = R.schemasDe(SOURCE);
+    const charges = Object.keys(schemas).filter((n) => schemas[n] !== null).sort();
+    assert.deepEqual(Object.keys(H.CONTRATS).sort(), charges);
+    for (const n of charges) assert.deepEqual(cheminsDuSchema(schemas[n]), H.chemins(H.CONTRATS[n]), n);
+  });
+  test('couverture : un refus par TYPE INTERDIT, pour chaque chemin de chaque contrat (table propre au test)', () => {
+    // Table indépendante du générateur : types admis par classe du CDC (+ null si nullable).
+    const ADMIS = { chaine: ['chaine'], nombre: ['nombre'], booleen: ['booleen'], chaine_ou_nombre: ['chaine', 'nombre'], objet: ['objet'], tableau: ['tableau'] };
+    const TYPES = ['null', 'nombre', 'chaine', 'booleen', 'objet', 'tableau'];
+    const ids = new Set(VECTEURS.slice(E.NB_AVANT).map((x) => x.id));
+    let n = 0;
+    for (const [contrat, f] of Object.entries(H.CONTRATS)) {
+      const court = contrat.replace(/-fonda\/v1$|\/v/g, (m) => (m === '/v' ? '-v' : ''));
+      for (const x of H.chemins(f)) {
+        for (const t of TYPES) {
+          const admis = ADMIS[x.classe].includes(t) || (x.nullable && t === 'null');
+          assert.equal(ids.has(`refus-larg-${court}-${x.chemin}-${t}`), !admis, `${contrat} ${x.chemin} ${t}`);
+          if (!admis) n += 1;
+        }
+      }
+    }
+    assert.equal(n, ids.size);
+  });
+  test('chaque refus d\'élargissement porte sur le champ modifié (le message canonique cite ce chemin)', () => {
+    const C = require('../engine/canonique.js');
+    for (const x of VECTEURS.slice(E.NB_AVANT)) {
+      const court = x.contrat.replace(/-fonda\/v1$|\/v/g, (m) => (m === '/v' ? '-v' : ''));
+      const type = x.id.slice(x.id.lastIndexOf('-') + 1);
+      const chemin = x.id.slice(`refus-larg-${court}-`.length, -(type.length + 1));
+      let message = '';
+      try { C.hexContrat(x.contrat, x.entree); } catch (e) { message = e.message; }
+      assert.ok(message.startsWith(`canonique : ${chemin.replace(/\[\]/g, '[0]')} : `), `${x.id} -> ${message}`);
+    }
+  });
+  test('contre-épreuves : élargissements de COMPORTEMENT (invisibles aux descripteurs) détectés par le banc', () => {
+    const muter = [
+      ['booléen accepte un nombre', "if (typeof valeur !== 'boolean') throw", "if (typeof valeur !== 'boolean' && typeof valeur !== 'number') throw"],
+      ['booléen accepte une chaîne', "if (typeof valeur !== 'boolean') throw", "if (typeof valeur !== 'boolean' && typeof valeur !== 'string') throw"],
+      ['chaîne ou nombre accepte un tableau', "    if (schema === 'chaine_ou_nombre') {\n", "    if (schema === 'chaine_ou_nombre') {\n      if (Array.isArray(valeur)) return valeur;\n"],
+      ['chaîne ou nombre accepte un booléen', "    if (schema === 'chaine_ou_nombre') {\n", "    if (schema === 'chaine_ou_nombre') {\n      if (typeof valeur === 'boolean') return valeur;\n"],
+      ['chaîne ou nombre accepte un objet', "    if (schema === 'chaine_ou_nombre') {\n", "    if (schema === 'chaine_ou_nombre') {\n      if (valeur && typeof valeur === 'object') return valeur;\n"],
+      ['chaîne accepte un booléen', "if (typeof valeur !== 'string') throw erreur(chemin, 'chaîne attendue');", "if (typeof valeur !== 'string' && typeof valeur !== 'boolean') throw erreur(chemin, 'chaîne attendue');"],
+      ['nombre accepte un booléen', "if (typeof valeur !== 'number' || !isFinite(valeur)) throw", "if (typeof valeur !== 'boolean' && (typeof valeur !== 'number' || !isFinite(valeur))) throw"],
+      ['tout nullable accepte aussi undefined->null et 0', "return valeur === null ? null : copier(valeur, schema.de, chemin);", "return valeur === null || valeur === 0 ? null : copier(valeur, schema.de, chemin);"],
+    ];
+    for (const [nom, a, b] of muter) {
+      assert.ok(SOURCE.includes(a), `point de mutation introuvable : ${nom}`);
+      const C = require('vm').runInNewContext(`${SOURCE.replace(a, b)}\n;FondaCanonique`, Object.create(null));
+      assert.ok(R.echecs(C, VECTEURS).length > 0, nom);
+    }
+  });
+  test('bases : vecteurs POSITIFS figés du bon contrat (validité prouvée par leurs octets), tous les tableaux non vides', () => {
+    for (const [contrat, id] of Object.entries(E.BASES)) {
+      const v = VECTEURS.find((x) => x.id === id);
+      assert.ok(v && !v.refus && v.contrat === contrat && typeof v.hex === 'string', id);
+    }
+    assert.throws(() => E.remplacer({ a: [] }, 'a[]', null), /vide/);
+    assert.throws(() => E.remplacer({ a: null }, 'a.b', null), /introuvable/);
+    assert.deepEqual(E.remplacer({ a: [{ b: 1 }, { b: 2 }] }, 'a[].b', null), { a: [{ b: null }, { b: 2 }] });
+  });
+  test('un élargissement de canonique.js est détecté par le banc ET par la confrontation (champ requis -> nullable)', () => {
+    const mutant = SOURCE.replace("['cle_id', 'chaine'],\n  ]);\n\n  var CONTRATS", "['cle_id', { type: 'nullable', de: 'chaine' }],\n  ]);\n\n  var CONTRATS");
+    assert.notEqual(mutant, SOURCE);
+    const C = require('vm').runInNewContext(`${mutant}\n;FondaCanonique`, Object.create(null));
+    assert.ok(R.echecs(C, VECTEURS).some((x) => x.id === 'refus-larg-attestation-cloture-v2-cle_id-null'));
+    const schemas = R.schemasDe(mutant);
+    assert.notDeepEqual(cheminsDuSchema(schemas['attestation-cloture/v2']), H.chemins(H.CONTRATS['attestation-cloture/v2']));
   });
 });
