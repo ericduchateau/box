@@ -167,6 +167,7 @@ function rejouer({ source, vecteurs, etendu = false, supplementaires = [] }) {
   }
   for (const p of cheminsBase) if (!retires.has(p)) invalide.push(`découverte incomplète : chemin nullable non couvert ${p}`);
   const survivantes = [];
+  const executees = {};
   for (const mu of mutations) {
     const mutant = source.slice(0, mu.debut) + mu.remplacement + source.slice(mu.fin);
     if (mutant === source) { invalide.push(`mutation sans effet : ${mu.nom}`); continue; }
@@ -174,11 +175,12 @@ function rejouer({ source, vecteurs, etendu = false, supplementaires = [] }) {
     try { C = charger(mutant); } catch (err) { invalide.push(`mutant non chargeable : ${mu.nom} (${err.message})`); continue; }
     let n;
     try { n = echecs(C, vecteurs).length; } catch (err) { invalide.push(`mutant inexploitable : ${mu.nom} (${err.message})`); continue; }
+    executees[mu.famille] = (executees[mu.famille] || 0) + 1;
     if (n === 0) survivantes.push(mu.nom);
   }
   const familles = {};
   for (const mu of mutations) familles[mu.famille] = (familles[mu.famille] || 0) + 1;
-  return { total: mutations.length, survivantes, invalide, chemins: cheminsBase.size, familles };
+  return { total: mutations.length, survivantes, invalide, chemins: cheminsBase.size, familles, executees };
 }
 
 module.exports = { rejouer, decouvrir, echecs, neutraliserCommentaires, cheminsNullables, schemasDe };

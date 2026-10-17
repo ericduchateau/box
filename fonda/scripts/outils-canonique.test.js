@@ -138,11 +138,17 @@ describe('rejeu durci des mutations', () => {
     assert.equal(base.familles.primitif, undefined);
     assert.ok(r.familles.primitif > 300, `${r.familles.primitif} mutations primitives`);
     assert.equal(r.total, base.total + r.familles.primitif);
-    assert.ok(r.survivantes.every((n) => !base.survivantes.includes(n)));
+    // Chaque mutation découverte a été CHARGÉE ET CONFRONTÉE au banc (pas seulement comptée).
+    assert.deepEqual(r.executees, r.familles);
+    assert.deepEqual(base.executees, base.familles);
   });
   test('nullable ENFANT d\'un objet nullable, masqué au scanner -> outil INVALIDE (chemins structurels)', () => {
-    const s = SOURCE.replace("['execution_cloture', nul(EXECUTION_CLOTURE)],", "['execution_cloture', nul(objet([['execution_id', 'chaine'], ['workflow_id', 'chaine'], ['statut', 'chaine'], ['terminee_le', (nul('chaine'))]]))],");
-    assert.notEqual(s, SOURCE);
+    // Parent DÉCOUVRABLE (nul(EXECUTION_TEST)), seul l'enfant est masqué au scanner : avec des
+    // chemins marqués par la nullabilité du parent, retirer celle-ci « couvrirait » l'enfant.
+    const s = SOURCE.replace('  var ATTESTATION_V2 = objet([', "  var EXECUTION_TEST = objet([['execution_id', 'chaine'], ['workflow_id', 'chaine'], ['statut', 'chaine'], ['terminee_le', (nul('chaine'))]]);\n  var ATTESTATION_V2 = objet([")
+      .replace("['execution_cloture', nul(EXECUTION_CLOTURE)],\n    ['source_decisions'", "['execution_cloture', nul(EXECUTION_TEST)],\n    ['source_decisions'");
+    assert.equal(s.split('nul(EXECUTION_TEST)').length, 2);
+    assert.equal(R.echecs(require('vm').runInNewContext(`${s}\n;FondaCanonique`, Object.create(null)), VECTEURS).length, 0, 'variante fidèle au banc');
     assert.match(R.rejouer({ source: s, vecteurs: VECTEURS }).invalide.join('\n'), /chemin nullable non couvert attestation-cloture\/v2\.execution_cloture\.terminee_le/);
   });
   test('accesseur leurre dans l\'objet exporté : sans effet sur la capture (champ masqué toujours signalé)', () => {
