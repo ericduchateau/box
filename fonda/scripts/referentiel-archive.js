@@ -9,7 +9,8 @@
 //   - version trouvée -> { ok, octets, referentiel, commit } ;
 //   - version mal formée, référence nulle/introuvable, historique incomplet, objet
 //     illisible (on ne peut pas exclure qu'il soit la version cherchée), JSON invalide
-//     de la version trouvée, version introuvable -> { ok: false, raison } (REFUS).
+//     ou structure invalide (objet { notions: [...] } attendu) de la version trouvée,
+//     version introuvable -> { ok: false, raison } (REFUS).
 // Le relecteur attribué d'une attestation est vérifié contre CETTE version : une
 // réattribution ultérieure au référentiel courant n'invalide jamais une attestation
 // passée, et une attribution récente ne valide jamais une attestation ancienne.
@@ -36,13 +37,16 @@ function resoudreReferentiel({ version, refs, racine = M.RACINE, git = M.execute
     if (versionDe(octets) !== version) continue;
     let referentiel;
     try { referentiel = JSON.parse(octets.toString('utf8')); } catch { return { ok: false, raison: `${CHEMIN} en ${commit.slice(0, 7)} : JSON invalide — refus` }; }
+    if (!referentiel || typeof referentiel !== 'object' || Array.isArray(referentiel) || !Array.isArray(referentiel.notions)) {
+      return { ok: false, raison: `${CHEMIN} en ${commit.slice(0, 7)} : structure invalide ({ notions: [...] } attendu) — refus` };
+    }
     return { ok: true, octets, referentiel, commit };
   }
   return { ok: false, raison: `référentiel ${version.slice(0, 15)}… introuvable sur l'historique de confiance (${valides.join(', ')})` };
 }
 
-// Adaptateur pour signer-cloture.js (deps.referentielArchive) : octets de la version, ou
-// null si introuvable ; le signataire recalcule lui-même le SHA-256 et refuse.
+// Adaptateur pour signer-cloture.js (deps.referentielArchive) : octets de la version ;
+// erreur explicite si elle est introuvable (le signataire recalcule aussi le SHA-256).
 function referentielArchiveGit({ refs, racine = M.RACINE, git } = {}) {
   return async (version) => {
     const r = resoudreReferentiel({ version, refs, racine, git: git || M.executeurGit(racine) });

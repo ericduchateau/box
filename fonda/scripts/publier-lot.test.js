@@ -604,3 +604,214 @@ describe('publier : préconditions, écritures, marqueur et --reprendre (dépôt
     } finally { d.nettoyer(); }
   });
 });
+
+// --- Critique Codex r1 (étape 2) : verrou, liens, modifications masquées, revérification ---
+describe('publier : verrou commun, liens symboliques, modifications masquées, revérification', () => {
+  const fsN = require('fs');
+  const os = require('os');
+  const pathN = require('path');
+  const { execFileSync } = require('child_process');
+  const { publier, environnement } = require('./publier-lot.js');
+  const texteJson = (o) => `${JSON.stringify(o, null, 2)}\n`;
+  const REL = { cat: 'fonda/data/catalogue-fonda.json', jou: 'fonda/data/set_ids-journal.json', ref: 'fonda/data/referentiel.json' };
+  async function depot() {
+    const dir = fsN.mkdtempSync(pathN.join(os.tmpdir(), 'publier2-'));
+    const git = (...a) => execFileSync('git', a, { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    git('init', '-q', '-b', 'design');
+    git('config', 'user.email', 'test@example.invalid'); git('config', 'user.name', 'test'); git('config', 'commit.gpgsign', 'false');
+    fsN.mkdirSync(pathN.join(dir, 'fonda/data/lots'), { recursive: true });
+    fsN.writeFileSync(pathN.join(dir, 'fonda/data/lots/.gitkeep'), '');
+    fsN.writeFileSync(pathN.join(dir, REL.cat), texteJson(CATALOGUE));
+    fsN.writeFileSync(pathN.join(dir, REL.jou), texteJson(journalTest()));
+    fsN.writeFileSync(pathN.join(dir, REL.ref), texteJson(REFERENTIEL));
+    git('add', '-A'); git('commit', '-q', '-m', 'base');
+    const ext = fsN.mkdtempSync(pathN.join(os.tmpdir(), 'publier2-ext-'));
+    const lot = LOT_FR();
+    const cheminLot = pathN.join(ext, 'lot.json');
+    const cheminAttestation = pathN.join(ext, 'attestation.json');
+    fsN.writeFileSync(cheminLot, texteJson(lot));
+    fsN.writeFileSync(cheminAttestation, texteJson(enveloppe(await chargePour(lot, 'reponse_message'))));
+    const dependances = { horloge: () => new Date('2026-10-21T09:00:00.000Z'), referentielArchive: archive(), sha256Hex, cles: CLES };
+    const p = (rel) => pathN.join(dir, rel);
+    return {
+      dir, ext, git, lot, cheminLot, cheminAttestation, dependances, p,
+      relLot: `fonda/data/lots/${lot.set_id}.json`,
+      marqueur: pathN.join(dir, '.git', `fonda-publication-${lot.set_id}`),
+      verrou: pathN.join(dir, '.git', 'fonda-publication.lock'),
+      lancer: (x = {}) => publier({ cheminLot, cheminAttestation, env: environnement(dir), dependances, ...x }),
+      nettoyer: () => { fsN.rmSync(dir, { recursive: true, force: true }); fsN.rmSync(ext, { recursive: true, force: true }); },
+    };
+  }
+  async function apresPanneJournal(d) {
+    const env = environnement(d.dir);
+    const envPanne = { ...env, ecrire: (q, x) => { if (q.endsWith('set_ids-journal.json')) throw new Error('panne simulée'); return env.ecrire(q, x); } };
+    await assert.rejects(d.lancer({ env: envPanne }), /panne simulée/);
+    assert.equal(fsN.existsSync(d.marqueur), true);
+  }
+
+  test('verrou présent -> publication ET reprise refusées ; verrou étranger jamais supprimé', async () => {
+    const d = await depot();
+    try {
+      fsN.writeFileSync(d.verrou, '999\n');
+      await assert.rejects(d.lancer(), /verrou fonda-publication\.lock présent/);
+      await assert.rejects(d.lancer({ mode: 'reprendre' }), /verrou fonda-publication\.lock présent/);
+      assert.equal(fsN.readFileSync(d.verrou, 'utf8'), '999\n');
+      assert.equal(d.git('status', '--porcelain'), '');
+    } finally { d.nettoyer(); }
+  });
+  test('verrou libéré après succès, après refus et après panne ; dry-run ne le prend pas', async () => {
+    const d = await depot();
+    try {
+      fsN.writeFileSync(d.p(REL.cat), fsN.readFileSync(d.p(REL.cat)) + ' ');
+      await assert.rejects(d.lancer(), /modifications non commitées/);
+      assert.equal(fsN.existsSync(d.verrou), false, 'après refus');
+      d.git('checkout', '--', REL.cat);
+      await apresPanneJournal(d);
+      assert.equal(fsN.existsSync(d.verrou), false, 'après panne');
+      await d.lancer({ mode: 'reprendre' });
+      assert.equal(fsN.existsSync(d.verrou), false, 'après succès');
+      fsN.writeFileSync(d.verrou, '1\n');
+      d.git('add', '-A'); d.git('commit', '-q', '-m', 'publié');
+      // dry-run d'un lot déjà publié : refusé pour ce motif, pas pour le verrou.
+      await assert.rejects(d.lancer({ mode: 'dry-run' }), /existe déjà/);
+    } finally { d.nettoyer(); }
+  });
+  test('deux publications lancées ensemble : une seule passe, l\'autre est refusée par le verrou', async () => {
+    const d = await depot();
+    try {
+      const res = await Promise.allSettled([d.lancer(), d.lancer()]);
+      assert.equal(res.filter((x) => x.status === 'fulfilled').length, 1);
+      assert.match(res.find((x) => x.status === 'rejected').reason.message, /verrou/);
+      const jou = JSON.parse(fsN.readFileSync(d.p(REL.jou)));
+      assert.equal(jou.lignes.filter((l) => l.transition === 'publie' && l.set_id === d.lot.set_id).length, 1);
+    } finally { d.nettoyer(); }
+  });
+
+  test('catalogue remplacé par un lien vers un fichier extérieur aux octets de HEAD -> refus, fichier extérieur intact', async () => {
+    const d = await depot();
+    try {
+      const exterieur = pathN.join(d.ext, 'catalogue-exterieur.json');
+      fsN.writeFileSync(exterieur, fsN.readFileSync(d.p(REL.cat)));
+      fsN.unlinkSync(d.p(REL.cat)); fsN.symlinkSync(exterieur, d.p(REL.cat));
+      d.git('update-index', '--assume-unchanged', REL.cat);
+      await assert.rejects(d.lancer(), /fonda\/data\/catalogue-fonda\.json : fichier ordinaire attendu/);
+      assert.equal(fsN.readFileSync(exterieur, 'utf8'), texteJson(CATALOGUE));
+    } finally { d.nettoyer(); }
+  });
+  test('reprise : catalogue devenu un lien (octets de HEAD) -> refus avant écriture, fichier extérieur intact', async () => {
+    const d = await depot();
+    try {
+      await apresPanneJournal(d);
+      const exterieur = pathN.join(d.ext, 'journal-exterieur.json');
+      fsN.writeFileSync(exterieur, fsN.readFileSync(d.p(REL.jou)));
+      fsN.unlinkSync(d.p(REL.jou)); fsN.symlinkSync(exterieur, d.p(REL.jou));
+      await assert.rejects(d.lancer({ mode: 'reprendre' }), /fichier ordinaire attendu/);
+      assert.equal(fsN.readFileSync(exterieur, 'utf8'), texteJson(journalTest()));
+    } finally { d.nettoyer(); }
+  });
+  test('reprise : lot présent sous forme de lien vers les bons octets -> refus', async () => {
+    const d = await depot();
+    try {
+      await apresPanneJournal(d);
+      fsN.unlinkSync(d.p(d.relLot)); fsN.symlinkSync(d.cheminLot, d.p(d.relLot));
+      await assert.rejects(d.lancer({ mode: 'reprendre' }), /lien — fichier ordinaire ou absence attendus/);
+    } finally { d.nettoyer(); }
+  });
+  test('dossier lots/ remplacé par un lien vers l\'extérieur -> refus, rien écrit dehors', async () => {
+    const d = await depot();
+    try {
+      const dehors = fsN.mkdtempSync(pathN.join(d.ext, 'lots-'));
+      fsN.rmSync(d.p('fonda/data/lots'), { recursive: true }); fsN.symlinkSync(dehors, d.p('fonda/data/lots'));
+      await assert.rejects(d.lancer(), /fonda\/data\/lots : dossier réel du dépôt attendu/);
+      assert.deepEqual(fsN.readdirSync(dehors), []);
+    } finally { d.nettoyer(); }
+  });
+  test('marqueur sous forme de lien -> refus', async () => {
+    const d = await depot();
+    try {
+      fsN.symlinkSync(pathN.join(d.ext, 'nulle-part'), d.marqueur);
+      await assert.rejects(d.lancer(), /marqueur .* : lien/);
+      await assert.rejects(d.lancer({ mode: 'reprendre' }), /marqueur .* : lien/);
+    } finally { d.nettoyer(); }
+  });
+
+  for (const drapeau of ['--assume-unchanged', '--skip-worktree']) {
+    test(`modification masquée à Git (${drapeau}) sur le journal -> refus, modification préservée`, async () => {
+      const d = await depot();
+      try {
+        d.git('update-index', drapeau, REL.jou);
+        const modifie = `${fsN.readFileSync(d.p(REL.jou), 'utf8')} `;
+        fsN.writeFileSync(d.p(REL.jou), modifie);
+        assert.equal(d.git('status', '--porcelain'), '', 'git status ne voit rien');
+        await assert.rejects(d.lancer(), /contenu sur disque ≠ HEAD/);
+        assert.equal(fsN.readFileSync(d.p(REL.jou), 'utf8'), modifie);
+        assert.equal(fsN.existsSync(d.marqueur), false);
+      } finally { d.nettoyer(); }
+    });
+  }
+  for (const [libelle, toucher] of [
+    ['catalogue modifié', (d) => fsN.appendFileSync(d.p(REL.cat), ' ')],
+    ['lot créé par un tiers', (d) => fsN.writeFileSync(d.p(d.relLot), '{}')],
+    ['commit intervenu', (d) => { fsN.writeFileSync(d.p('x.txt'), 'x'); d.git('add', 'x.txt'); d.git('commit', '-q', '-m', 'x'); }],
+  ]) {
+    test(`modification PENDANT les contrôles (${libelle}) -> refus avant toute écriture, modification préservée`, async () => {
+      const d = await depot();
+      try {
+        const dependances = { ...d.dependances, referentielArchive: async () => { toucher(d); return { ok: true, referentiel: REFERENTIEL }; } };
+        const avant = () => [REL.cat, REL.jou].map((rel) => fsN.readFileSync(d.p(rel), 'utf8'));
+        await assert.rejects(d.lancer({ dependances }), /modifié pendant les contrôles/);
+        const apres = avant();
+        assert.equal(fsN.existsSync(d.marqueur), false);
+        assert.equal(JSON.parse(apres[1]).lignes.some((l) => l.transition === 'publie' && l.set_id === d.lot.set_id), false);
+        if (libelle === 'catalogue modifié') assert.ok(apres[0].endsWith(' '));
+      } finally { d.nettoyer(); }
+    });
+  }
+  test('reprise : modification PENDANT les contrôles -> refus avant toute écriture', async () => {
+    const d = await depot();
+    try {
+      await apresPanneJournal(d);
+      const dependances = { ...d.dependances, referentielArchive: async () => { fsN.appendFileSync(d.p(REL.cat), ' '); return { ok: true, referentiel: REFERENTIEL }; } };
+      const journalAvant = fsN.readFileSync(d.p(REL.jou), 'utf8');
+      await assert.rejects(d.lancer({ mode: 'reprendre', dependances }), /modifié pendant les contrôles|ni HEAD ni HEAD/);
+      assert.equal(fsN.readFileSync(d.p(REL.jou), 'utf8'), journalAvant);
+      assert.equal(fsN.existsSync(d.marqueur), true, 'marqueur conservé pour un traitement manuel');
+    } finally { d.nettoyer(); }
+  });
+});
+
+// --- Contrôle CI d'une entrée signée (catalogue.test.js) et référentiel fail-closed ------
+describe('contrôle CI d\'une clôture signée du catalogue : référentiel ARCHIVÉ obligatoire', () => {
+  const { verifierClotureDuCatalogue } = require('./publier-lot.js');
+  async function entreePubliee() {
+    const lot = LOT_FR();
+    const r = await preparerPublication(base({ lot, attestation: enveloppe(await chargePour(lot, 'reponse_message')) }));
+    assert.equal(r.ok, true, JSON.stringify(r.erreurs));
+    return r.entree;
+  }
+  test('nominal : vérifiée contre la version archivée de la charge', async () => {
+    const e = await entreePubliee();
+    const vus = [];
+    assert.deepEqual(verifierClotureDuCatalogue(e, { resoudre: (v) => { vus.push(v); return { ok: true, referentiel: REFERENTIEL }; }, cles: CLES, registre: REGISTRE }), []);
+    assert.deepEqual(vus, [e.attestation.charge.referentiel_version]);
+  });
+  test('version introuvable, réponse invalide, référentiel nul ou mal formé, autre relecteur -> erreur', async () => {
+    const e = await entreePubliee();
+    const autre = { ...copie(REFERENTIEL), notions: REFERENTIEL.notions.map((n) => (n.id === e.notion_id ? { ...n, relecteur: 'eric' } : n)) };
+    for (const [rep, motif] of [
+      [{ ok: false, raison: 'introuvable' }, /référentiel archivé : introuvable/],
+      [null, /référentiel archivé/],
+      [{ ok: true, referentiel: null }, /référentiel archivé/],
+      [{ ok: true, referentiel: {} }, /référentiel absent ou mal formé/],
+      [{ ok: true, referentiel: autre }, /relecteur_attribue ≠ relecteur du référentiel/],
+    ]) {
+      assert.match(verifierClotureDuCatalogue(e, { resoudre: () => rep, cles: CLES, registre: REGISTRE }).join(' | '), motif, JSON.stringify(rep));
+    }
+  });
+  test('attestation-signee : invariants de dépôt SANS référentiel -> erreur (jamais un contrôle sauté)', async () => {
+    const e = await entreePubliee();
+    for (const referentiel of [undefined, null, {}, { notions: 'x' }]) {
+      assert.match(S.verifierAttestationSignee(e.attestation, { entree: e, registre: REGISTRE, referentiel, cles: CLES }).join(), /référentiel absent ou mal formé/);
+    }
+  });
+});

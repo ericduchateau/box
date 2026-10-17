@@ -28,7 +28,12 @@
 // toute écriture. Ce n'est PAS une transaction atomique : juste avant d'écrire, le SHA
 // de HEAD (et la date de la ligne `publie`) est consigné dans un marqueur local non
 // suivi, `.git/fonda-publication-<set_id>` (hors arbre de travail), retiré quand les
-// trois écritures ont abouti.
+// trois écritures ont abouti. Un VERROU commun (.git/fonda-publication.lock, création
+// exclusive) exclut toute publication ou reprise concurrente ; juste avant d'écrire,
+// HEAD, index, octets et type des chemins sont revérifiés (refus si quoi que ce soit a
+// bougé). Aucun lien symbolique n'est suivi : dossiers réels du dépôt, fichiers
+// ordinaires, O_NOFOLLOW. Les octets du disque sont comparés à HEAD indépendamment des
+// indicateurs Git (assume-unchanged, skip-worktree).
 //
 // REPRISE (`--reprendre`, après une panne partielle) : exemptée des préconditions
 // ordinaires, mais exige le marqueur et HEAD = SHA consigné (tout commit intervenu
@@ -147,11 +152,13 @@ async function preparerPublication({ lot, attestation, catalogue, referentiel, r
   return { ok: true, entree, catalogue: nouveau, journal: nouveauJournal, lignePublie, fichier };
 }
 
-// --- Couche Git / disque (préconditions, marqueur, reprise) -----------------------------
+// --- Couche Git / disque (préconditions, verrou, marqueur, reprise) --------------------
 class Refus extends Error {}
 const refuser = (m) => { throw new Refus(m); };
+const O_NOFOLLOW = fs.constants.O_NOFOLLOW || 0;
 
-// Environnement injectable (tests : dépôt Git temporaire).
+// Environnement injectable (tests : dépôt Git temporaire). Écritures et lectures sans
+// suivre de lien symbolique (O_NOFOLLOW) ; la création exclusive (wx) n'en suit jamais.
 function environnement(racine = VM.RACINE) {
   const git = VM.executeurGit(racine);
   const abs = (rel) => path.join(racine, rel);
@@ -165,11 +172,19 @@ function environnement(racine = VM.RACINE) {
     aHeadExiste: (rel) => git(['ls-tree', 'HEAD', '--', rel]).toString().trim() !== '',
     modifie: (rels) => git(['status', '--porcelain', '--', ...rels]).toString().trim() !== '',
     indexDiffere: (rels) => { try { git(['diff', '--cached', '--quiet', 'HEAD', '--', ...rels]); return false; } catch { return true; } },
-    // Seule l'absence AVÉRÉE (ENOENT) vaut « absent » ; lstat : un lien, même cassé, existe.
-    existe: (p) => { try { fs.lstatSync(p); return true; } catch (e) { if (e && e.code === 'ENOENT') return false; throw e; } },
-    lire: (p) => fs.readFileSync(p),
-    ecrireExclusif: (p, d) => fs.writeFileSync(p, d, { flag: 'wx' }),
-    ecrire: (p, d) => fs.writeFileSync(p, d),
+    // Type d'entrée par lstat (un lien, même cassé, est « lien ») ; seule l'absence
+    // AVÉRÉE (ENOENT) vaut « absent », toute autre erreur est levée.
+    type: (p) => {
+      let st;
+      try { st = fs.lstatSync(p); } catch (err) { if (err && err.code === 'ENOENT') return 'absent'; throw err; }
+      if (st.isSymbolicLink()) return 'lien';
+      if (st.isFile()) return 'fichier';
+      return st.isDirectory() ? 'dossier' : 'autre';
+    },
+    reel: (p) => fs.realpathSync(p),
+    lire: (p) => { const fd = fs.openSync(p, fs.constants.O_RDONLY | O_NOFOLLOW); try { return fs.readFileSync(fd); } finally { fs.closeSync(fd); } },
+    ecrireExclusif: (p, x) => fs.writeFileSync(p, x, { flag: 'wx' }),
+    ecrire: (p, x) => { const fd = fs.openSync(p, fs.constants.O_WRONLY | fs.constants.O_TRUNC | O_NOFOLLOW); try { fs.writeFileSync(fd, x); } finally { fs.closeSync(fd); } },
     supprimer: (p) => fs.unlinkSync(p),
     abs,
   };
@@ -185,9 +200,58 @@ function jsonDeHead(env, rel) {
   return { objet: o, octets };
 }
 
+// Chemins de publication RÉELS : dossiers fonda/, fonda/data/, fonda/data/lots/ = vrais
+// dossiers situés dans le dépôt (aucun lien) ; catalogue et journal = fichiers
+// ordinaires ; lot = absent ou fichier ordinaire. Sinon refus (aucune écriture hors dépôt).
+function verifierChemins(env, relLot) {
+  const racineReelle = env.reel(env.racine);
+  for (const rel of ['fonda', 'fonda/data', 'fonda/data/lots']) {
+    if (env.type(env.abs(rel)) !== 'dossier' || env.reel(env.abs(rel)) !== path.join(racineReelle, rel)) refuser(`${rel} : dossier réel du dépôt attendu (lien symbolique ou chemin détourné refusé)`);
+  }
+  for (const rel of [REL_CATALOGUE, REL_JOURNAL]) if (env.type(env.abs(rel)) !== 'fichier') refuser(`${rel} : fichier ordinaire attendu (lien symbolique refusé)`);
+  const t = env.type(env.abs(relLot));
+  if (t !== 'absent' && t !== 'fichier') refuser(`${relLot} : ${t} — fichier ordinaire ou absence attendus`);
+  return t;
+}
+
+// Photographie de l'état des chemins de publication (pour revérifier juste avant d'écrire).
+function photographier(env, relLot) {
+  const tLot = env.type(env.abs(relLot));
+  return JSON.stringify({
+    head: env.head(),
+    index: env.indexDiffere([REL_CATALOGUE, REL_JOURNAL, relLot]),
+    catalogue: env.lire(env.abs(REL_CATALOGUE)).toString('base64'),
+    journal: env.lire(env.abs(REL_JOURNAL)).toString('base64'),
+    lot: tLot === 'fichier' ? env.lire(env.abs(relLot)).toString('base64') : tLot,
+  });
+}
+
 const cheminMarqueur = (env, setId) => path.join(env.gitDir(), `fonda-publication-${setId}`);
+const cheminVerrou = (env) => path.join(env.gitDir(), 'fonda-publication.lock');
 
 async function publier({ cheminLot, cheminAttestation, mode = 'publier', env = environnement(), dependances }) {
+  // Verrou COMMUN (catalogue et journal sont partagés entre set_id) : une seule
+  // publication ou reprise à la fois. Créé de façon exclusive, libéré dans tous les cas
+  // où ce processus l'a pris ; présent au départ -> refus (arrêt brutal antérieur :
+  // vérifier l'état, puis le supprimer à la main).
+  let verrou = null;
+  if (mode !== 'dry-run') {
+    const v = cheminVerrou(env);
+    try { env.ecrireExclusif(v, `${process.pid}
+`); } catch (err) {
+      if (err && err.code === 'EEXIST') refuser(`verrou ${path.basename(v)} présent : une autre publication est en cours ou s'est arrêtée brutalement — vérifier l'état, puis supprimer le verrou à la main`);
+      throw err;
+    }
+    verrou = v;
+  }
+  try {
+    return await publierSousVerrou({ cheminLot, cheminAttestation, mode, env, dependances });
+  } finally {
+    if (verrou) env.supprimer(verrou);
+  }
+}
+
+async function publierSousVerrou({ cheminLot, cheminAttestation, mode, env, dependances }) {
   const texteLot = fs.readFileSync(cheminLot);
   let lot;
   try { lot = JSON.parse(texteLot.toString('utf8')); } catch { refuser(`${cheminLot} : JSON invalide`); }
@@ -198,10 +262,13 @@ async function publier({ cheminLot, cheminAttestation, mode = 'publier', env = e
   const relLot = `fonda/data/lots/${setId}.json`;
   const marqueur = cheminMarqueur(env, setId);
   const head = env.head();
+  const tMarqueur = env.type(marqueur);
+  if (tMarqueur !== 'absent' && tMarqueur !== 'fichier') refuser(`marqueur ${path.basename(marqueur)} : ${tMarqueur} — traitement manuel`);
+  const tLot = verifierChemins(env, relLot);
   let le;
 
   if (mode === 'reprendre') {
-    if (!env.existe(marqueur)) refuser(`--reprendre : aucun marqueur ${path.basename(marqueur)} (aucune publication interrompue de ${setId})`);
+    if (tMarqueur === 'absent') refuser(`--reprendre : aucun marqueur ${path.basename(marqueur)} (aucune publication interrompue de ${setId})`);
     let mq;
     try { mq = JSON.parse(env.lire(marqueur).toString('utf8')); } catch { refuser('--reprendre : marqueur illisible — traitement manuel'); }
     if (!mq || mq.set_id !== setId || typeof mq.le !== 'string' || typeof mq.head !== 'string') refuser('--reprendre : marqueur mal formé — traitement manuel');
@@ -209,11 +276,15 @@ async function publier({ cheminLot, cheminAttestation, mode = 'publier', env = e
     le = mq.le;
   } else {
     // Préconditions ordinaires, AVANT tout calcul.
-    if (env.existe(marqueur)) refuser(`publication interrompue de ${setId} (marqueur présent) : utiliser --reprendre, ou traitement manuel`);
+    if (tMarqueur !== 'absent') refuser(`publication interrompue de ${setId} (marqueur présent) : utiliser --reprendre, ou traitement manuel`);
     if (env.modifie([REL_CATALOGUE, REL_JOURNAL]) || env.indexDiffere([REL_CATALOGUE, REL_JOURNAL])) refuser('modifications non commitées sur catalogue-fonda.json ou set_ids-journal.json : refus (rien n\'est calculé)');
-    if (env.existe(env.abs(relLot)) || env.suivi(relLot) || env.aHeadExiste(relLot)) refuser(`${relLot} existe déjà : refus d'écraser`);
+    // Octets RÉELS du disque = HEAD, indépendamment des indicateurs Git (assume-unchanged,
+    // skip-worktree peuvent masquer une modification à git status).
+    for (const rel of [REL_CATALOGUE, REL_JOURNAL]) if (!env.lire(env.abs(rel)).equals(env.aHead(rel))) refuser(`${rel} : contenu sur disque ≠ HEAD (modification masquée à Git ?) — refus (rien n'est calculé)`);
+    if (tLot !== 'absent' || env.suivi(relLot) || env.aHeadExiste(relLot)) refuser(`${relLot} existe déjà : refus d'écraser`);
     le = dependances.horloge().toISOString();
   }
+  const photo = photographier(env, relLot);
 
   const cat = jsonDeHead(env, REL_CATALOGUE);
   const jou = jsonDeHead(env, REL_JOURNAL);
@@ -229,12 +300,19 @@ async function publier({ cheminLot, cheminAttestation, mode = 'publier', env = e
 
   if (mode === 'dry-run') return { setId, ecrits: [], message: `(dry-run) ${setId} publiable — rien écrit.` };
 
+  // Rien n'a bougé pendant le calcul (HEAD, index, octets, type des chemins) ; sinon
+  // refus AVANT toute écriture — une modification faite entre-temps est préservée.
+  const reverifier = () => {
+    verifierChemins(env, relLot);
+    if (photographier(env, relLot) !== photo) refuser('état du dépôt modifié pendant les contrôles (HEAD, index ou fichiers de publication) — refus, rien écrit');
+  };
+
   if (mode === 'reprendre') {
     // États intermédiaires attendus, tous vérifiés AVANT toute écriture.
     const etat = {};
     if (env.indexDiffere([REL_CATALOGUE, REL_JOURNAL, relLot])) refuser('--reprendre : index ≠ HEAD sur les chemins de publication — traitement manuel');
     if (env.suivi(relLot)) refuser(`--reprendre : ${relLot} est suivi par Git — traitement manuel`);
-    if (env.existe(env.abs(relLot))) {
+    if (tLot === 'fichier') {
       if (!env.lire(env.abs(relLot)).equals(attendu.lot)) refuser(`--reprendre : ${relLot} présent mais ≠ lot à publier — traitement manuel`);
       etat.lot = true;
     } else etat.lot = false;
@@ -244,6 +322,7 @@ async function publier({ cheminLot, cheminAttestation, mode = 'publier', env = e
       else if (disque.equals(attendu[cle])) etat[cle] = true;
       else refuser(`--reprendre : ${rel} n'est ni HEAD ni HEAD + l'ajout attendu — traitement manuel`);
     }
+    reverifier();
     const ecrits = [];
     if (!etat.lot) { env.ecrireExclusif(env.abs(relLot), attendu.lot); ecrits.push(relLot); }
     if (!etat.catalogue) { env.ecrire(env.abs(REL_CATALOGUE), attendu.catalogue); ecrits.push(REL_CATALOGUE); }
@@ -253,12 +332,22 @@ async function publier({ cheminLot, cheminAttestation, mode = 'publier', env = e
   }
 
   // Premier lancement : marqueur (SHA de HEAD + date de la ligne publie), puis écritures.
+  reverifier();
   env.ecrireExclusif(marqueur, texteJson({ set_id: setId, head, le }));
   env.ecrireExclusif(env.abs(relLot), attendu.lot);
   env.ecrire(env.abs(REL_CATALOGUE), attendu.catalogue);
   env.ecrire(env.abs(REL_JOURNAL), attendu.journal);
   env.supprimer(marqueur);
   return { setId, ecrits: [relLot, REL_CATALOGUE, REL_JOURNAL], message: `✓ ${setId} publié (lot, catalogue, journal) — relire le diff, puis commit + PR.` };
+}
+
+// Contrôle CI d'une entrée « cloture-signee » du catalogue (catalogue.test.js) : même
+// vérification que la publication, contre le RÉFÉRENTIEL ARCHIVÉ de la charge (§20.12).
+function verifierClotureDuCatalogue(e, { resoudre, cles, registre }) {
+  const charge = e && e.attestation && e.attestation.charge;
+  const ra = resoudre(charge && charge.referentiel_version);
+  if (!ra || ra.ok !== true || !ra.referentiel) return [`référentiel archivé : ${(ra && ra.raison) || 'introuvable'}`];
+  return S.verifierAttestationSignee(e.attestation, { entree: e, registre, referentiel: ra.referentiel, cles });
 }
 
 async function main() {
@@ -290,6 +379,6 @@ async function main() {
   }
 }
 
-module.exports = { preparerPublication, clesDuDepot, publier, environnement, Refus };
+module.exports = { preparerPublication, clesDuDepot, publier, environnement, verifierClotureDuCatalogue, Refus };
 
 if (require.main === module) main();

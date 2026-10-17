@@ -209,8 +209,12 @@ function invariantsDepot(ch, { entree, registre, referentiel }) {
   if (!egal(ch.coeur.selection, entree.item_ids)) e.push('coeur.selection ≠ item_ids du fichier publié (même ordre)');
   if (ch.coeur.empreinte_publiee !== entree.empreinte) e.push('coeur.empreinte_publiee ≠ empreinte du fichier publié');
   if (!memeBadge(ch.badge, entree.relecteur)) e.push('badge ≠ relecteur de l\'entrée (§12)');
-  if (referentiel) {
-    const n = (referentiel.notions || []).find((x) => x.id === ch.notion_id);
+  // Fail-closed : sans référentiel exploitable, le relecteur n'est pas vérifiable -> erreur
+  // (jamais un contrôle sauté ; le référentiel est l'ARCHIVÉ de la charge, §20.12).
+  if (!referentiel || typeof referentiel !== 'object' || !Array.isArray(referentiel.notions)) {
+    e.push('référentiel absent ou mal formé : relecteur_attribue non vérifiable (§2, §20.12)');
+  } else {
+    const n = referentiel.notions.find((x) => x && x.id === ch.notion_id);
     if (!n || n.relecteur !== ch.relecteur_attribue) e.push('relecteur_attribue ≠ relecteur du référentiel (§2)');
   }
   return e;

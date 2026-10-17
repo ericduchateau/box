@@ -89,3 +89,21 @@ describe('résolveur de référentiel archivé (§20.12)', () => {
     assert.deepEqual(RA.refsDeConfiance({ FONDA_REF_BASE: 'abc123' }), ['abc123', 'design']);
   });
 });
+
+describe('structure et câblage CI', () => {
+  test('version trouvée au JSON valide mais de structure invalide (null, tableau, sans notions) -> refus', () => {
+    for (const texte of ['null\n', '[]\n', '{"schema":"x"}\n', '{"notions":null}\n']) {
+      ecrireRef(texte); commit(`structure ${texte.trim()}`);
+      assert.match(resoudre(texte).raison, /structure invalide/, texte);
+    }
+    ecrireRef(ref('locale'));
+  });
+  test('job tests : FONDA_REF_BASE transmis à node --test, même expression que le job immuabilite', () => {
+    const yml = fs.readFileSync(path.join(__dirname, '../../.github/workflows/tests.yml'), 'utf8');
+    const expr = '${{ github.event.pull_request.base.sha || github.event.before }}';
+    const pas = /- name: node --test\n\s+env:\n\s+FONDA_REF_BASE: (.+)\n\s+run: node --test/.exec(yml);
+    assert.ok(pas, 'étape node --test sans FONDA_REF_BASE');
+    assert.equal(pas[1].trim(), expr);
+    assert.ok(yml.includes(`FONDA_REF_BASE: ${expr}\n        run: node fonda/scripts/verifier-immuabilite.js`));
+  });
+});
