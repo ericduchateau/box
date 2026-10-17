@@ -52,3 +52,7 @@
 /fonda/scripts/verifier-immuabilite.test.js @ericduchateau
 /fonda/scripts/verifier-moteurs.test.js    @ericduchateau
 /fonda/scripts/generer-lot-fonda.test.js   @ericduchateau
+# Outils d'audit du banc canonique (reconstruction des vecteurs, rejeu des mutations).
+/fonda/scripts/vecteurs-canonique-brique1.js @ericduchateau
+/fonda/scripts/rejouer-mutations-canonique.js @ericduchateau
+/fonda/scripts/outils-canonique.test.js    @ericduchateau
