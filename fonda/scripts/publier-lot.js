@@ -1,49 +1,85 @@
 // Publication d'un lot FONDA relu (chaîne séparée de BOX, PRD §2 bis) : « publier =
 // commit ». Ce script prépare le commit — il n'appelle aucun réseau, ne touche ni Drive
-// ni n8n. Il copie un lot RELU dans fonda/data/lots/<set_id>.json et ajoute son entrée
-// à fonda/data/catalogue-fonda.json, SEULEMENT si :
+// ni n8n. Il écrit, dans cet ordre, fonda/data/lots/<set_id>.json (création exclusive),
+// l'entrée de fonda/data/catalogue-fonda.json ET la transition `publie` de
+// fonda/data/set_ids-journal.json (CDC relecture v8.3 §20.11), SEULEMENT si :
 //   - le lot respecte lot-fonda/v1, porte revue_carte_par_carte: true et repasse les
 //     garde-fous du MOTEUR du lot (celui de la charge signée) ;
+//   - le journal (état de HEAD) porte ce set_id à l'état `reserve` : la ligne `publie`
+//     ajoutée a pour ref la ref de réservation + ":publie" ;
 //   - une ATTESTATION « cloture-signee » (Type 2, CDC §11) l'accompagne et passe
 //     fonda/scripts/attestation-signee.js, dans l'ordre fail-closed : forme ; clé
 //     déclarée dans fonda/data/cles/cles.json, PEM intègre, recevable (période de
 //     validité, jamais révoquée — §14) ; SIGNATURE RSA-SHA256 PKCS#1 v1.5 sur les
-//     octets canoniques de la charge ; invariants de valeur ; invariants de dépôt ;
+//     octets canoniques de la charge ; invariants de valeur ; invariants de dépôt —
+//     dont le relecteur attribué, contrôlé contre le RÉFÉRENTIEL ARCHIVÉ de la charge
+//     (referentiel_version, §20.12 : fonda/scripts/referentiel-archive.js), jamais
+//     contre le référentiel courant ;
 //   - le set_id n'est pas déjà publié et son fichier n'existe pas (anti-écrasement) ;
-//   - le catalogue résultant reste valide contre le référentiel.
+//   - le catalogue résultant reste valide contre le référentiel courant.
 // « manuelle-historique » (Type 1) reste réservée aux 8 lots de la migration : jamais
-// pour un nouveau lot. cles.json déclare la clé publique eric-2026 ; aucune signature
-// réelle n'existe tant que signer-cloture.js est bloqué par sa garde maîtresse
-// (contrat de rattachement n8n <-> lot, chantier 5) : c'est voulu (fail-closed).
+// pour un nouveau lot. Aucune signature réelle n'existe tant que signer-cloture.js est
+// bloqué par sa garde maîtresse : c'est voulu (fail-closed).
+//
+// PRÉCONDITIONS (premier lancement, AVANT tout calcul) : aucune modification non
+// commitée (copie de travail ni index) sur catalogue-fonda.json et set_ids-journal.json ;
+// aucun fichier lots/<set_id>.json (sur disque ou suivi) ; aucun marqueur de publication
+// interrompue. Catalogue et journal sont lus À HEAD ; tous les contrôles passent AVANT
+// toute écriture. Ce n'est PAS une transaction atomique : juste avant d'écrire, le SHA
+// de HEAD (et la date de la ligne `publie`) est consigné dans un marqueur local non
+// suivi, `.git/fonda-publication-<set_id>` (hors arbre de travail), retiré quand les
+// trois écritures ont abouti.
+//
+// REPRISE (`--reprendre`, après une panne partielle) : exemptée des préconditions
+// ordinaires, mais exige le marqueur et HEAD = SHA consigné (tout commit intervenu
+// entre-temps -> refus) ; recalcule tout depuis HEAD et n'accepte que des états
+// intermédiaires ATTENDUS :
+//   - lots/<set_id>.json : absent, ou NON SUIVI et identique octet pour octet au lot ;
+//   - catalogue-fonda.json : identique à HEAD, ou à HEAD + exactement l'entrée attendue ;
+//   - set_ids-journal.json : identique à HEAD, ou à HEAD + exactement la ligne attendue ;
+//   - index identique à HEAD sur ces chemins (aucune autre modification).
+// Sinon refus AVANT toute écriture (traitement manuel par Éric) ; si oui, complète les
+// écritures manquantes, rien d'autre. Aucune PR n'est ouverte sur un état partiel.
 //
 // FRONTIÈRE : ce script vérifie ce qui est vérifiable depuis la charge, le lot publié,
-// l'entrée et la clé publique. Les invariants LOCAUX — sha256_instantane égal à
-// l'instantané réel, partition selection/ecartees contre le candidat réel,
-// rapprochement exécution n8n <-> lot — relèvent de signer-cloture.js (4b).
+// l'entrée, le journal, le référentiel archivé et la clé publique. Les invariants
+// LOCAUX — sha256_instantane égal à l'instantané réel, partition selection/ecartees
+// contre le candidat réel, rapprochement exécution n8n <-> lot — relèvent de
+// signer-cloture.js.
 //
-// Usage : node fonda/scripts/publier-lot.js <lot-relu.json> <attestation.json> [--dry-run]
+// Usage : node fonda/scripts/publier-lot.js <lot-relu.json> <attestation.json> [--dry-run | --reprendre]
 // Ensuite : relire le diff, commit, PR (fonda/data/catalogue.test.js revérifie,
-// signatures comprises).
+// signatures comprises ; verifier-immuabilite.js contrôle reserve puis publie).
 
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
 const C = require('../engine/catalogue.js');
+const J = require('../engine/journal-set-ids.js');
 const { chargerMoteurNode, lireRegistre } = require('./moteurs.js');
 const S = require('./attestation-signee.js');
+const RA = require('./referentiel-archive.js');
+const VM = require('./verifier-moteurs.js');
 
 const DATA = path.join(__dirname, '..', 'data');
+const REL_CATALOGUE = 'fonda/data/catalogue-fonda.json';
+const REL_JOURNAL = 'fonda/data/set_ids-journal.json';
+const REL_REFERENTIEL = 'fonda/data/referentiel.json';
+const texteJson = (o) => `${JSON.stringify(o, null, 2)}\n`;
 
 function clesDuDepot() {
   return S.chargerCles(JSON.parse(fs.readFileSync(path.join(DATA, 'cles', 'cles.json'), 'utf8')), (f) => fs.readFileSync(path.join(DATA, f), 'utf8'));
 }
 
 /**
- * Pure (hors SHA-256 et clés injectés). Ne lit ni n'écrit aucun fichier.
- * @returns {Promise<{ok:true, entree, catalogue, fichier}|{ok:false, erreurs:string[]}>}
+ * Pure (hors SHA-256, clés et résolveur de référentiel injectés). Ne lit ni n'écrit aucun fichier.
+ *   referentiel        : référentiel COURANT (validité du catalogue résultant) ;
+ *   referentielArchive : (version) -> { ok, referentiel } | { ok: false, raison } (§20.12) ;
+ *   journal            : journal des set_id (état de HEAD) ; le : date de la ligne `publie`.
+ * @returns {Promise<{ok:true, entree, catalogue, journal, lignePublie, fichier}|{ok:false, erreurs:string[]}>}
  */
-async function preparerPublication({ lot, attestation, catalogue, referentiel, fichierExiste = () => false, sha256Hex, cles, registre = lireRegistre() }) {
+async function preparerPublication({ lot, attestation, catalogue, referentiel, referentielArchive, journal, le, fichierExiste = () => false, sha256Hex, cles, registre = lireRegistre() }) {
   const erreurs = [];
   const v = C.validerLot(lot);
   if (!v.valide) return { ok: false, erreurs: v.erreurs.map((e) => `lot : ${e}`) };
@@ -56,10 +92,27 @@ async function preparerPublication({ lot, attestation, catalogue, referentiel, f
   if (fichierExiste(fichier)) erreurs.push(`${fichier} existe déjà : refus d'écraser`);
   if (erreurs.length) return { ok: false, erreurs };
 
-  // 1. Attestation vérifiée EN ENTIER (forme -> clé -> signature -> valeurs -> dépôt)
+  // 0. Journal (§20.11) : réservation courante, ligne `publie` = ref de réservation + ":publie".
+  const vj = J.validerJournal(journal);
+  if (!vj.valide) return { ok: false, erreurs: vj.erreurs.map((e) => `journal : ${e}`) };
+  if (vj.etats.get(lot.set_id) !== 'reserve') return { ok: false, erreurs: [`journal : ${lot.set_id} à l'état ${vj.etats.get(lot.set_id) || 'absent'} (seul « reserve » est publiable)`] };
+  const reserve = journal.lignes.find((l) => l.set_id === lot.set_id && l.transition === 'reserve');
+  const lignePublie = { set_id: lot.set_id, transition: 'publie', le, ref: `${reserve.ref}${J.SUFFIXE_PUBLIE}` };
+  const nouveauJournal = { schema: journal.schema, lignes: [...journal.lignes, lignePublie] };
+  const vj2 = J.validerJournal(nouveauJournal);
+  if (!vj2.valide) return { ok: false, erreurs: vj2.erreurs.map((e) => `journal après publie : ${e}`) };
+
+  // 1. Référentiel ARCHIVÉ de la charge (§20.12) : le relecteur attribué est vérifié
+  //    contre CETTE version, jamais contre le référentiel courant. Sans résolveur ->
+  //    refus (jamais de contrôle du relecteur sauté).
+  const charge = attestation.charge || {};
+  if (typeof referentielArchive !== 'function') return { ok: false, erreurs: ['résolveur de référentiel archivé absent : refus'] };
+  const ra = await referentielArchive(charge.referentiel_version);
+  if (!ra || ra.ok !== true || !ra.referentiel || typeof ra.referentiel !== 'object') return { ok: false, erreurs: [`référentiel archivé : ${(ra && ra.raison) || 'introuvable'}`] };
+
+  // 2. Attestation vérifiée EN ENTIER (forme -> clé -> signature -> valeurs -> dépôt)
   //    AVANT toute exécution de code pédagogique : le moteur n'est chargé qu'une fois
   //    la charge authentifiée et son moteur rapproché du registre.
-  const charge = attestation.charge || {};
   const empreinte = await C.calculerEmpreinte(lot, sha256Hex);
   const moteurCharge = charge.moteur || {};
   const entree = {
@@ -73,10 +126,10 @@ async function preparerPublication({ lot, attestation, catalogue, referentiel, f
     relecteur: charge.badge,
     attestation,
   };
-  const es = S.verifierAttestationSignee(attestation, { entree, registre, referentiel, cles });
+  const es = S.verifierAttestationSignee(attestation, { entree, registre, referentiel: ra.referentiel, cles });
   if (es.length) return { ok: false, erreurs: es };
 
-  // 2. Garde-fous pédagogiques du MOTEUR DU LOT (celui de la charge authentifiée).
+  // 3. Garde-fous pédagogiques du MOTEUR DU LOT (celui de la charge authentifiée).
   let m;
   try { m = chargerMoteurNode(entree.moteur.version, entree.moteur.sha256); } catch (e) { return { ok: false, erreurs: [`moteur de la charge : ${e.message}`] }; }
   lot.cartes.forEach((c) => {
@@ -91,40 +144,152 @@ async function preparerPublication({ lot, attestation, catalogue, referentiel, f
   const nouveau = { ...catalogue, lots: [...catalogue.lots, entree] };
   const vc = C.validerCatalogue(nouveau, referentiel);
   if (!vc.valide) return { ok: false, erreurs: vc.erreurs };
-  return { ok: true, entree, catalogue: nouveau, fichier };
+  return { ok: true, entree, catalogue: nouveau, journal: nouveauJournal, lignePublie, fichier };
+}
+
+// --- Couche Git / disque (préconditions, marqueur, reprise) -----------------------------
+class Refus extends Error {}
+const refuser = (m) => { throw new Refus(m); };
+
+// Environnement injectable (tests : dépôt Git temporaire).
+function environnement(racine = VM.RACINE) {
+  const git = VM.executeurGit(racine);
+  const abs = (rel) => path.join(racine, rel);
+  return {
+    racine,
+    git,
+    head: () => git(['rev-parse', '--verify', 'HEAD^{commit}']).toString().trim(),
+    gitDir: () => git(['rev-parse', '--absolute-git-dir']).toString().trim(),
+    aHead: (rel) => { try { return git(['show', `HEAD:${rel}`]); } catch { refuser(`${rel} illisible à HEAD`); } return null; },
+    suivi: (rel) => git(['ls-files', '--', rel]).toString().trim() !== '',
+    aHeadExiste: (rel) => git(['ls-tree', 'HEAD', '--', rel]).toString().trim() !== '',
+    modifie: (rels) => git(['status', '--porcelain', '--', ...rels]).toString().trim() !== '',
+    indexDiffere: (rels) => { try { git(['diff', '--cached', '--quiet', 'HEAD', '--', ...rels]); return false; } catch { return true; } },
+    // Seule l'absence AVÉRÉE (ENOENT) vaut « absent » ; lstat : un lien, même cassé, existe.
+    existe: (p) => { try { fs.lstatSync(p); return true; } catch (e) { if (e && e.code === 'ENOENT') return false; throw e; } },
+    lire: (p) => fs.readFileSync(p),
+    ecrireExclusif: (p, d) => fs.writeFileSync(p, d, { flag: 'wx' }),
+    ecrire: (p, d) => fs.writeFileSync(p, d),
+    supprimer: (p) => fs.unlinkSync(p),
+    abs,
+  };
+}
+
+// JSON de HEAD, exigé au format canonique du dépôt (JSON.stringify(_, null, 2) + "\n") :
+// sinon l'écriture changerait plus que l'ajout attendu.
+function jsonDeHead(env, rel) {
+  const octets = env.aHead(rel);
+  let o;
+  try { o = JSON.parse(octets.toString('utf8')); } catch { refuser(`${rel} à HEAD : JSON invalide`); }
+  if (texteJson(o) !== octets.toString('utf8')) refuser(`${rel} à HEAD : format non canonique (JSON.stringify indenté de 2 + saut de ligne attendu)`);
+  return { objet: o, octets };
+}
+
+const cheminMarqueur = (env, setId) => path.join(env.gitDir(), `fonda-publication-${setId}`);
+
+async function publier({ cheminLot, cheminAttestation, mode = 'publier', env = environnement(), dependances }) {
+  const texteLot = fs.readFileSync(cheminLot);
+  let lot;
+  try { lot = JSON.parse(texteLot.toString('utf8')); } catch { refuser(`${cheminLot} : JSON invalide`); }
+  if (!lot || typeof lot.set_id !== 'string' || !C.SET_ID_PATTERN.test(lot.set_id)) refuser('lot : set_id canonique attendu');
+  let attestation;
+  try { attestation = JSON.parse(fs.readFileSync(cheminAttestation, 'utf8')); } catch { refuser(`${cheminAttestation} : JSON invalide`); }
+  const setId = lot.set_id;
+  const relLot = `fonda/data/lots/${setId}.json`;
+  const marqueur = cheminMarqueur(env, setId);
+  const head = env.head();
+  let le;
+
+  if (mode === 'reprendre') {
+    if (!env.existe(marqueur)) refuser(`--reprendre : aucun marqueur ${path.basename(marqueur)} (aucune publication interrompue de ${setId})`);
+    let mq;
+    try { mq = JSON.parse(env.lire(marqueur).toString('utf8')); } catch { refuser('--reprendre : marqueur illisible — traitement manuel'); }
+    if (!mq || mq.set_id !== setId || typeof mq.le !== 'string' || typeof mq.head !== 'string') refuser('--reprendre : marqueur mal formé — traitement manuel');
+    if (mq.head !== head) refuser(`--reprendre : HEAD ${head.slice(0, 7)} ≠ SHA consigné ${mq.head.slice(0, 7)} (commit intervenu entre-temps) — traitement manuel`);
+    le = mq.le;
+  } else {
+    // Préconditions ordinaires, AVANT tout calcul.
+    if (env.existe(marqueur)) refuser(`publication interrompue de ${setId} (marqueur présent) : utiliser --reprendre, ou traitement manuel`);
+    if (env.modifie([REL_CATALOGUE, REL_JOURNAL]) || env.indexDiffere([REL_CATALOGUE, REL_JOURNAL])) refuser('modifications non commitées sur catalogue-fonda.json ou set_ids-journal.json : refus (rien n\'est calculé)');
+    if (env.existe(env.abs(relLot)) || env.suivi(relLot) || env.aHeadExiste(relLot)) refuser(`${relLot} existe déjà : refus d'écraser`);
+    le = dependances.horloge().toISOString();
+  }
+
+  const cat = jsonDeHead(env, REL_CATALOGUE);
+  const jou = jsonDeHead(env, REL_JOURNAL);
+  const r = await preparerPublication({
+    lot, attestation, catalogue: cat.objet, journal: jou.objet, le,
+    referentiel: JSON.parse(env.aHead(REL_REFERENTIEL).toString('utf8')),
+    referentielArchive: dependances.referentielArchive,
+    fichierExiste: (f) => env.aHeadExiste(`fonda/data/${f}`),
+    sha256Hex: dependances.sha256Hex, cles: dependances.cles,
+  });
+  if (!r.ok) refuser(`publication refusée :\n  - ${r.erreurs.join('\n  - ')}`);
+  const attendu = { lot: texteLot, catalogue: Buffer.from(texteJson(r.catalogue)), journal: Buffer.from(texteJson(r.journal)) };
+
+  if (mode === 'dry-run') return { setId, ecrits: [], message: `(dry-run) ${setId} publiable — rien écrit.` };
+
+  if (mode === 'reprendre') {
+    // États intermédiaires attendus, tous vérifiés AVANT toute écriture.
+    const etat = {};
+    if (env.indexDiffere([REL_CATALOGUE, REL_JOURNAL, relLot])) refuser('--reprendre : index ≠ HEAD sur les chemins de publication — traitement manuel');
+    if (env.suivi(relLot)) refuser(`--reprendre : ${relLot} est suivi par Git — traitement manuel`);
+    if (env.existe(env.abs(relLot))) {
+      if (!env.lire(env.abs(relLot)).equals(attendu.lot)) refuser(`--reprendre : ${relLot} présent mais ≠ lot à publier — traitement manuel`);
+      etat.lot = true;
+    } else etat.lot = false;
+    for (const [cle, rel, h] of [['catalogue', REL_CATALOGUE, cat.octets], ['journal', REL_JOURNAL, jou.octets]]) {
+      const disque = env.lire(env.abs(rel));
+      if (disque.equals(h)) etat[cle] = false;
+      else if (disque.equals(attendu[cle])) etat[cle] = true;
+      else refuser(`--reprendre : ${rel} n'est ni HEAD ni HEAD + l'ajout attendu — traitement manuel`);
+    }
+    const ecrits = [];
+    if (!etat.lot) { env.ecrireExclusif(env.abs(relLot), attendu.lot); ecrits.push(relLot); }
+    if (!etat.catalogue) { env.ecrire(env.abs(REL_CATALOGUE), attendu.catalogue); ecrits.push(REL_CATALOGUE); }
+    if (!etat.journal) { env.ecrire(env.abs(REL_JOURNAL), attendu.journal); ecrits.push(REL_JOURNAL); }
+    env.supprimer(marqueur);
+    return { setId, ecrits, message: `✓ reprise de ${setId} : ${ecrits.length ? `complété ${ecrits.join(', ')}` : 'rien à compléter'} — relire le diff, puis commit + PR.` };
+  }
+
+  // Premier lancement : marqueur (SHA de HEAD + date de la ligne publie), puis écritures.
+  env.ecrireExclusif(marqueur, texteJson({ set_id: setId, head, le }));
+  env.ecrireExclusif(env.abs(relLot), attendu.lot);
+  env.ecrire(env.abs(REL_CATALOGUE), attendu.catalogue);
+  env.ecrire(env.abs(REL_JOURNAL), attendu.journal);
+  env.supprimer(marqueur);
+  return { setId, ecrits: [relLot, REL_CATALOGUE, REL_JOURNAL], message: `✓ ${setId} publié (lot, catalogue, journal) — relire le diff, puis commit + PR.` };
 }
 
 async function main() {
-  const [cheminLot, cheminAttestation] = process.argv.slice(2).filter((a) => !a.startsWith('--'));
-  const dryRun = process.argv.includes('--dry-run');
-  if (!cheminLot || !cheminAttestation) {
-    console.error('Usage : node fonda/scripts/publier-lot.js <lot-relu.json> <attestation.json> [--dry-run]');
+  const args = process.argv.slice(2);
+  const [cheminLot, cheminAttestation] = args.filter((a) => !a.startsWith('--'));
+  const dryRun = args.includes('--dry-run');
+  const reprendre = args.includes('--reprendre');
+  if (!cheminLot || !cheminAttestation || (dryRun && reprendre)) {
+    console.error('Usage : node fonda/scripts/publier-lot.js <lot-relu.json> <attestation.json> [--dry-run | --reprendre]');
     process.exitCode = 1;
     return;
   }
-  const lire = (p) => JSON.parse(fs.readFileSync(p, 'utf8'));
-  const catalogue = lire(path.join(DATA, 'catalogue-fonda.json'));
-  const r = await preparerPublication({
-    lot: lire(cheminLot),
-    attestation: lire(cheminAttestation),
-    catalogue,
-    referentiel: lire(path.join(DATA, 'referentiel.json')),
-    fichierExiste: (f) => fs.existsSync(path.join(DATA, f)),
-    sha256Hex: C.sha256WebCrypto(),
-    cles: clesDuDepot(),
-  });
-  if (!r.ok) {
-    console.error('✗ Publication refusée :');
-    r.erreurs.forEach((e) => console.error(`  - ${e}`));
+  const env = environnement();
+  const refs = RA.refsDeConfiance();
+  try {
+    const r = await publier({
+      cheminLot, cheminAttestation, mode: reprendre ? 'reprendre' : (dryRun ? 'dry-run' : 'publier'), env,
+      dependances: {
+        horloge: () => new Date(),
+        referentielArchive: (version) => RA.resoudreReferentiel({ version, refs, racine: env.racine, git: env.git }),
+        sha256Hex: C.sha256WebCrypto(),
+        cles: clesDuDepot(),
+      },
+    });
+    console.log(r.message);
+  } catch (e) {
+    console.error(e instanceof Refus ? `✗ ${e.message}` : `✗ erreur : ${e.message}`);
     process.exitCode = 1;
-    return;
   }
-  if (dryRun) { console.log(`✓ (dry-run) ${r.entree.set_id} publiable — rien écrit.`); return; }
-  fs.writeFileSync(path.join(DATA, r.fichier), fs.readFileSync(cheminLot, 'utf8'), { flag: 'wx' });
-  fs.writeFileSync(path.join(DATA, 'catalogue-fonda.json'), JSON.stringify(r.catalogue, null, 2) + '\n');
-  console.log(`✓ ${r.entree.set_id} ajouté — relire le diff, puis commit + PR.`);
 }
 
-module.exports = { preparerPublication, clesDuDepot };
+module.exports = { preparerPublication, clesDuDepot, publier, environnement, Refus };
 
-if (require.main === module) main().catch((e) => { console.error(e.message); process.exitCode = 1; });
+if (require.main === module) main();

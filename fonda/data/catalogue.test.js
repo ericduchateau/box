@@ -97,12 +97,18 @@ describe('chaîne publiée FONDA — cohérence complète', () => {
     const { clesDuDepot } = require('../scripts/publier-lot.js');
     assert.ok(Array.isArray(clesDuDepot().ids));
   });
+  // Relecteur attribué contrôlé contre le RÉFÉRENTIEL ARCHIVÉ de la charge (CDC v8.3
+  // §20.12), retrouvé sur l'historique de confiance (premier parent de design et de la
+  // référence du contrôle) — jamais contre le référentiel courant.
   for (const e of CATALOGUE.lots.filter((x) => x.attestation.type === 'cloture-signee')) {
-    test(`${e.set_id} : clôture signée vérifiée (signature, clé, invariants)`, () => {
+    test(`${e.set_id} : clôture signée vérifiée (signature, clé, invariants, référentiel archivé)`, () => {
       const { clesDuDepot } = require('../scripts/publier-lot.js');
       const S = require('../scripts/attestation-signee.js');
+      const RA = require('../scripts/referentiel-archive.js');
       const registre = require('../engine/moteurs.json');
-      assert.deepEqual(S.verifierAttestationSignee(e.attestation, { entree: e, registre, referentiel: REFERENTIEL, cles: clesDuDepot() }), []);
+      const ra = RA.resoudreReferentiel({ version: e.attestation.charge && e.attestation.charge.referentiel_version, refs: RA.refsDeConfiance() });
+      assert.equal(ra.ok, true, ra.raison);
+      assert.deepEqual(S.verifierAttestationSignee(e.attestation, { entree: e, registre, referentiel: ra.referentiel, cles: clesDuDepot() }), []);
     });
   }
 

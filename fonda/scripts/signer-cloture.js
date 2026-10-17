@@ -219,7 +219,8 @@ function choisirBadge(mode, relecteur, tableRelecteurs) {
  *   config: { workflowConfirmation, workflowCloture, dossier, cleId },
  *   drive: { lireCandidat(setId), listerDecisions(setId) -> { incompleteSearch, fichiers: [{ nom, modifie_le, contenu|null }] } },
  *   incidents(),             // [{ id, nature, detecte_le, statut, resolu_le, preuve_resolution, periode }]
- *   referentielArchive(version) -> octets de referentiel.json à cette version (SHA-256 vérifié ici)
+ *   referentielArchive(version) -> octets de referentiel.json à cette version (SHA-256 vérifié ici) ;
+ *     adaptateur de production : referentiel-archive.js::referentielArchiveGit (§20.12)
  *   tableRelecteurs,         // { id: nom affichable } — version au moment de la clôture
  *   fs,                      // { ecrireExclusif(p, texte), lire(p) -> Buffer, existe(p) -> booléen (lève si inaccessible), realpath? }
  *   signer(octets) -> Buffer // clé privée détenue par l'appelant, jamais exposée ici

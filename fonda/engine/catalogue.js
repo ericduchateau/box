@@ -292,10 +292,10 @@ function validerCatalogue(catalogue, referentiel) {
         && e.attestation.relecture_declaree.relecteur_attribue !== n.relecteur) {
         erreurs.push(`${p} : relecteur_attribue ≠ relecteur du référentiel (${n.relecteur})`);
       }
-      if (n && e.attestation && e.attestation.type === 'cloture-signee' && e.attestation.charge
-        && e.attestation.charge.relecteur_attribue !== n.relecteur) {
-        erreurs.push(`${p} : relecteur_attribue de la charge ≠ relecteur du référentiel (${n.relecteur})`);
-      }
+      // Clôture signée (Type 2) : le relecteur attribué est vérifié contre le référentiel
+      // ARCHIVÉ de la charge (referentiel_version, CDC v8.3 §20.12), par
+      // attestation-signee.js à la publication et en CI — JAMAIS contre le référentiel
+      // courant ici : une réattribution ultérieure n'invalide pas une attestation passée.
     }
   });
   return { valide: erreurs.length === 0, erreurs };

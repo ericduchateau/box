@@ -29,6 +29,10 @@ const SUIVANTES = Object.freeze({ reserve: ['publie', 'abandonne'], publie: ['re
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?Z)?$/;
 const REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:-]{3,127}$/;
 const CHAMPS_LIGNE = Object.freeze(['set_id', 'transition', 'le', 'ref']);
+// CDC v8.3 §20.11 : une ref de RÉSERVATION fait au plus 120 caractères, pour que la
+// ref de transition « <ref>:publie » reste sous la limite de 128 de REF_PATTERN.
+const REF_RESERVE_MAX = 120;
+const SUFFIXE_PUBLIE = ':publie';
 
 // Lecture fail-closed : texte illisible ou JSON invalide -> exception (jamais un
 // journal vide implicite).
@@ -61,6 +65,7 @@ function validerJournal(journal) {
     if (l.transition === 'reserve') {
       if (avant !== undefined) { erreurs.push(`${p} : double reserve pour ${l.set_id} (jamais de nouvelle reserve pour un set_id déjà présent)`); return; }
       if (refs.has(l.ref)) erreurs.push(`${p} : ref de réservation déjà utilisée (${l.ref})`);
+      if (typeof l.ref === 'string' && l.ref.length > REF_RESERVE_MAX) erreurs.push(`${p} : ref de réservation de ${l.ref.length} caractères (au plus ${REF_RESERVE_MAX}, §20.11)`);
       refs.add(l.ref);
     } else if (avant === undefined) {
       erreurs.push(`${p} : ${l.transition} sans reserve préalable pour ${l.set_id}`); return;
@@ -169,6 +174,6 @@ function classerM2({ observations, catalogueIds, lotsIds, calibrationIds, histor
 }
 
 module.exports = {
-  SCHEMA_JOURNAL, TRANSITIONS, lireJournalTexte, validerJournal, etatCourant, verifierReservation,
+  REF_RESERVE_MAX, SUFFIXE_PUBLIE, SCHEMA_JOURNAL, TRANSITIONS, lireJournalTexte, validerJournal, etatCourant, verifierReservation,
   ligneReservation, coherenceAvecDepot, classerM2, projectionCarte,
 };
