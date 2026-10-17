@@ -535,7 +535,7 @@ describe('publier : préconditions, écritures, marqueur et --reprendre (dépôt
         // Panne sur le PREMIER chemin se terminant par le suffixe, hors marqueur.
         let fait = false;
         const envPanne = { ...env,
-          ecrire: (p, x) => { if (!fait && p.endsWith(panne)) { fait = true; throw new Error('panne simulée'); } return env.ecrire(p, x); },
+          ecrireSiInchange: (p, a, x) => { if (!fait && p.endsWith(panne)) { fait = true; throw new Error('panne simulée'); } return env.ecrireSiInchange(p, a, x); },
           ecrireExclusif: (p, x) => { if (!fait && p.endsWith(panne) && !p.includes('fonda-publication-')) { fait = true; throw new Error('panne simulée'); } return env.ecrireExclusif(p, x); } };
         await assert.rejects(publier({ cheminLot: d.cheminLot, cheminAttestation: d.cheminAttestation, env: envPanne, dependances: d.dependances }), /panne simulée/);
         assert.equal(fsN.existsSync(d.marqueur), true, 'marqueur conservé');
@@ -568,7 +568,7 @@ describe('publier : préconditions, écritures, marqueur et --reprendre (dépôt
   async function apresPanneJournal() {
     const d = await depot();
     const env = environnement(d.dir);
-    const envPanne = { ...env, ecrire: (p, x) => { if (p.endsWith('set_ids-journal.json')) throw new Error('panne simulée'); return env.ecrire(p, x); } };
+    const envPanne = { ...env, ecrireSiInchange: (p, a, x) => { if (p.endsWith('set_ids-journal.json')) throw new Error('panne simulée'); return env.ecrireSiInchange(p, a, x); } };
     await assert.rejects(publier({ cheminLot: d.cheminLot, cheminAttestation: d.cheminAttestation, env: envPanne, dependances: d.dependances }), /panne simulée/);
     return { d, env };
   }
@@ -644,7 +644,7 @@ describe('publier : verrou commun, liens symboliques, modifications masquées, r
   }
   async function apresPanneJournal(d) {
     const env = environnement(d.dir);
-    const envPanne = { ...env, ecrire: (q, x) => { if (q.endsWith('set_ids-journal.json')) throw new Error('panne simulée'); return env.ecrire(q, x); } };
+    const envPanne = { ...env, ecrireSiInchange: (q, a, x) => { if (q.endsWith('set_ids-journal.json')) throw new Error('panne simulée'); return env.ecrireSiInchange(q, a, x); } };
     await assert.rejects(d.lancer({ env: envPanne }), /panne simulée/);
     assert.equal(fsN.existsSync(d.marqueur), true);
   }
@@ -813,5 +813,94 @@ describe('contrôle CI d\'une clôture signée du catalogue : référentiel ARCH
     for (const referentiel of [undefined, null, {}, { notions: 'x' }]) {
       assert.match(S.verifierAttestationSignee(e.attestation, { entree: e, registre: REGISTRE, referentiel, cles: CLES }).join(), /référentiel absent ou mal formé/);
     }
+  });
+});
+
+describe('fenêtre résiduelle contrôle -> écriture : réduite et détectée (écrivain hors verrou)', () => {
+  const fsN = require('fs');
+  const os = require('os');
+  const pathN = require('path');
+  const { execFileSync } = require('child_process');
+  const { publier, environnement } = require('./publier-lot.js');
+  const texteJson = (o) => `${JSON.stringify(o, null, 2)}\n`;
+  const REL = { cat: 'fonda/data/catalogue-fonda.json', jou: 'fonda/data/set_ids-journal.json', ref: 'fonda/data/referentiel.json' };
+  async function depot() {
+    const dir = fsN.mkdtempSync(pathN.join(os.tmpdir(), 'publier3-'));
+    const git = (...a) => execFileSync('git', a, { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    git('init', '-q', '-b', 'design');
+    git('config', 'user.email', 'test@example.invalid'); git('config', 'user.name', 'test'); git('config', 'commit.gpgsign', 'false');
+    fsN.mkdirSync(pathN.join(dir, 'fonda/data/lots'), { recursive: true });
+    fsN.writeFileSync(pathN.join(dir, 'fonda/data/lots/.gitkeep'), '');
+    fsN.writeFileSync(pathN.join(dir, REL.cat), texteJson(CATALOGUE));
+    fsN.writeFileSync(pathN.join(dir, REL.jou), texteJson(journalTest()));
+    fsN.writeFileSync(pathN.join(dir, REL.ref), texteJson(REFERENTIEL));
+    git('add', '-A'); git('commit', '-q', '-m', 'base');
+    const ext = fsN.mkdtempSync(pathN.join(os.tmpdir(), 'publier3-ext-'));
+    const lot = LOT_FR();
+    const cheminLot = pathN.join(ext, 'lot.json');
+    const cheminAttestation = pathN.join(ext, 'attestation.json');
+    fsN.writeFileSync(cheminLot, texteJson(lot));
+    fsN.writeFileSync(cheminAttestation, texteJson(enveloppe(await chargePour(lot, 'reponse_message'))));
+    const dependances = { horloge: () => new Date('2026-10-21T09:00:00.000Z'), referentielArchive: archive(), sha256Hex, cles: CLES };
+    const p = (rel) => pathN.join(dir, rel);
+    return { dir, ext, lot, p, cheminLot, cheminAttestation, dependances,
+      marqueur: pathN.join(dir, '.git', `fonda-publication-${lot.set_id}`),
+      relLot: `fonda/data/lots/${lot.set_id}.json`,
+      nettoyer: () => { fsN.rmSync(dir, { recursive: true, force: true }); fsN.rmSync(ext, { recursive: true, force: true }); } };
+  }
+  // Écrivain tiers déclenché à la création du marqueur (APRÈS la dernière revérification).
+  const avecTiers = (env, action) => ({ ...env, ecrireExclusif: (q, x) => { const r = env.ecrireExclusif(q, x); if (q.includes('fonda-publication-')) action(); return r; } });
+
+  for (const [libelle, rel] of [['catalogue', REL.cat], ['journal', REL.jou]]) {
+    test(`${libelle} modifié par un tiers après la revérification : NON écrasé ; refus ; marqueur conservé`, async () => {
+      const d = await depot();
+      try {
+        const tiers = `${fsN.readFileSync(d.p(rel), 'utf8')} `;
+        const env = avecTiers(environnement(d.dir), () => fsN.writeFileSync(d.p(rel), tiers));
+        await assert.rejects(publier({ cheminLot: d.cheminLot, cheminAttestation: d.cheminAttestation, env, dependances: d.dependances }), /modifié juste avant l'écriture/);
+        assert.equal(fsN.readFileSync(d.p(rel), 'utf8'), tiers, 'modification tierce préservée');
+        assert.equal(fsN.existsSync(d.marqueur), true);
+      } finally { d.nettoyer(); }
+    });
+  }
+  test('modification tierce APRÈS nos écritures : détectée par le contrôle après écriture ; marqueur conservé', async () => {
+    const d = await depot();
+    try {
+      const base = environnement(d.dir);
+      const env = { ...base, ecrireSiInchange: (q, a, x) => { const r = base.ecrireSiInchange(q, a, x); if (q.endsWith('set_ids-journal.json')) fsN.appendFileSync(d.p(REL.cat), ' '); return r; } };
+      await assert.rejects(publier({ cheminLot: d.cheminLot, cheminAttestation: d.cheminAttestation, env, dependances: d.dependances }), /contrôle après écriture : fonda\/data\/catalogue-fonda\.json ≠ contenu attendu/);
+      assert.equal(fsN.existsSync(d.marqueur), true);
+    } finally { d.nettoyer(); }
+  });
+  test('dossier lots/ remplacé par un lien APRÈS la revérification : écriture hors dépôt DÉTECTÉE ; marqueur conservé', async () => {
+    const d = await depot();
+    try {
+      const dehors = fsN.mkdtempSync(pathN.join(d.ext, 'lots-'));
+      const env = avecTiers(environnement(d.dir), () => { fsN.rmSync(d.p('fonda/data/lots'), { recursive: true }); fsN.symlinkSync(dehors, d.p('fonda/data/lots')); });
+      await assert.rejects(publier({ cheminLot: d.cheminLot, cheminAttestation: d.cheminAttestation, env, dependances: d.dependances }), /contrôle après écriture : fonda\/data\/lots : dossier réel du dépôt attendu/);
+      assert.equal(fsN.existsSync(d.marqueur), true);
+    } finally { d.nettoyer(); }
+  });
+  test('commit intervenu pendant les écritures : détecté ; marqueur conservé', async () => {
+    const d = await depot();
+    try {
+      const git = (...a) => execFileSync('git', a, { cwd: d.dir, stdio: 'ignore' });
+      const env = avecTiers(environnement(d.dir), () => { fsN.writeFileSync(d.p('x.txt'), 'x'); git('add', 'x.txt'); git('commit', '-q', '-m', 'x'); });
+      await assert.rejects(publier({ cheminLot: d.cheminLot, cheminAttestation: d.cheminAttestation, env, dependances: d.dependances }), /HEAD a changé/);
+      assert.equal(fsN.existsSync(d.marqueur), true);
+    } finally { d.nettoyer(); }
+  });
+  test('primitive ecrireSiInchange : contenu différent -> exception, fichier intact', () => {
+    const dir = fsN.mkdtempSync(pathN.join(os.tmpdir(), 'cas-'));
+    try {
+      const q = pathN.join(dir, 'f'); fsN.writeFileSync(q, 'actuel');
+      const env = environnement(dir);
+      assert.throws(() => env.ecrireSiInchange(q, Buffer.from('attendu'), Buffer.from('nouveau')), /modifié juste avant/);
+      assert.equal(fsN.readFileSync(q, 'utf8'), 'actuel');
+      env.ecrireSiInchange(q, Buffer.from('actuel'), Buffer.from('nouveau, plus long'));
+      assert.equal(fsN.readFileSync(q, 'utf8'), 'nouveau, plus long');
+      env.ecrireSiInchange(q, Buffer.from('nouveau, plus long'), Buffer.from('court'));
+      assert.equal(fsN.readFileSync(q, 'utf8'), 'court');
+    } finally { fsN.rmSync(dir, { recursive: true, force: true }); }
   });
 });

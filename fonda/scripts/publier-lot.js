@@ -34,6 +34,14 @@
 // bougé). Aucun lien symbolique n'est suivi : dossiers réels du dépôt, fichiers
 // ordinaires, O_NOFOLLOW. Les octets du disque sont comparés à HEAD indépendamment des
 // indicateurs Git (assume-unchanged, skip-worktree).
+// HYPOTHÈSE EXPLICITE (procédure humaine, option B) : aucun autre écrivain — éditeur,
+// Git, autre outil — ne touche le dépôt pendant une publication ; le verrou n'exclut que
+// ce script. La fenêtre résiduelle est RÉDUITE (catalogue et journal comparés puis écrits
+// sur le même descripteur : une modification tierce n'est pas écrasée) et DÉTECTÉE
+// (contrôle après écriture : chemins réels dans le dépôt, octets attendus, HEAD
+// inchangé ; sinon marqueur conservé et traitement manuel). Node n'offre pas openat :
+// le remplacement d'un dossier parent par un lien pendant l'écriture est détecté
+// après coup, pas empêché.
 //
 // REPRISE (`--reprendre`, après une panne partielle) : exemptée des préconditions
 // ordinaires, mais exige le marqueur et HEAD = SHA consigné (tout commit intervenu
@@ -184,7 +192,16 @@ function environnement(racine = VM.RACINE) {
     reel: (p) => fs.realpathSync(p),
     lire: (p) => { const fd = fs.openSync(p, fs.constants.O_RDONLY | O_NOFOLLOW); try { return fs.readFileSync(fd); } finally { fs.closeSync(fd); } },
     ecrireExclusif: (p, x) => fs.writeFileSync(p, x, { flag: 'wx' }),
-    ecrire: (p, x) => { const fd = fs.openSync(p, fs.constants.O_WRONLY | fs.constants.O_TRUNC | O_NOFOLLOW); try { fs.writeFileSync(fd, x); } finally { fs.closeSync(fd); } },
+    // Écrit SEULEMENT si le contenu lu par le même descripteur vaut `avant` (sinon
+    // exception, fichier intact) : réduit la fenêtre contrôle -> écriture à l'appel système.
+    ecrireSiInchange: (p, avant, apres) => {
+      const fd = fs.openSync(p, fs.constants.O_RDWR | O_NOFOLLOW);
+      try {
+        if (!fs.readFileSync(fd).equals(avant)) refuser(`${path.relative(racine, p)} modifié juste avant l'écriture (écrivain concurrent ?) — rien écrit sur ce fichier ; traitement manuel`);
+        fs.ftruncateSync(fd, 0);
+        fs.writeSync(fd, apres, 0, apres.length, 0);
+      } finally { fs.closeSync(fd); }
+    },
     supprimer: (p) => fs.unlinkSync(p),
     abs,
   };
@@ -224,6 +241,17 @@ function photographier(env, relLot) {
     journal: env.lire(env.abs(REL_JOURNAL)).toString('base64'),
     lot: tLot === 'fichier' ? env.lire(env.abs(relLot)).toString('base64') : tLot,
   });
+}
+
+// Contrôle APRÈS écriture (détection, option B) : chemins réels toujours dans le dépôt,
+// octets écrits = attendus, HEAD inchangé. Sinon refus : le marqueur est CONSERVÉ.
+function controlerApres(env, { head, relLot, attendu }) {
+  // Dossiers réels du dépôt et fichiers ordinaires (un parent devenu lien est vu ici).
+  try { verifierChemins(env, relLot); } catch (err) { refuser(`contrôle après écriture : ${err.message} — marqueur conservé, traitement manuel`); }
+  for (const [rel, octets] of [[relLot, attendu.lot], [REL_CATALOGUE, attendu.catalogue], [REL_JOURNAL, attendu.journal]]) {
+    if (!env.lire(env.abs(rel)).equals(octets)) refuser(`contrôle après écriture : ${rel} ≠ contenu attendu (écrivain concurrent ?) — marqueur conservé, traitement manuel`);
+  }
+  if (env.head() !== head) refuser('contrôle après écriture : HEAD a changé pendant la publication — marqueur conservé, traitement manuel');
 }
 
 const cheminMarqueur = (env, setId) => path.join(env.gitDir(), `fonda-publication-${setId}`);
@@ -325,8 +353,9 @@ async function publierSousVerrou({ cheminLot, cheminAttestation, mode, env, depe
     reverifier();
     const ecrits = [];
     if (!etat.lot) { env.ecrireExclusif(env.abs(relLot), attendu.lot); ecrits.push(relLot); }
-    if (!etat.catalogue) { env.ecrire(env.abs(REL_CATALOGUE), attendu.catalogue); ecrits.push(REL_CATALOGUE); }
-    if (!etat.journal) { env.ecrire(env.abs(REL_JOURNAL), attendu.journal); ecrits.push(REL_JOURNAL); }
+    if (!etat.catalogue) { env.ecrireSiInchange(env.abs(REL_CATALOGUE), cat.octets, attendu.catalogue); ecrits.push(REL_CATALOGUE); }
+    if (!etat.journal) { env.ecrireSiInchange(env.abs(REL_JOURNAL), jou.octets, attendu.journal); ecrits.push(REL_JOURNAL); }
+    controlerApres(env, { head, relLot, attendu });
     env.supprimer(marqueur);
     return { setId, ecrits, message: `✓ reprise de ${setId} : ${ecrits.length ? `complété ${ecrits.join(', ')}` : 'rien à compléter'} — relire le diff, puis commit + PR.` };
   }
@@ -335,8 +364,9 @@ async function publierSousVerrou({ cheminLot, cheminAttestation, mode, env, depe
   reverifier();
   env.ecrireExclusif(marqueur, texteJson({ set_id: setId, head, le }));
   env.ecrireExclusif(env.abs(relLot), attendu.lot);
-  env.ecrire(env.abs(REL_CATALOGUE), attendu.catalogue);
-  env.ecrire(env.abs(REL_JOURNAL), attendu.journal);
+  env.ecrireSiInchange(env.abs(REL_CATALOGUE), cat.octets, attendu.catalogue);
+  env.ecrireSiInchange(env.abs(REL_JOURNAL), jou.octets, attendu.journal);
+  controlerApres(env, { head, relLot, attendu });
   env.supprimer(marqueur);
   return { setId, ecrits: [relLot, REL_CATALOGUE, REL_JOURNAL], message: `✓ ${setId} publié (lot, catalogue, journal) — relire le diff, puis commit + PR.` };
 }
