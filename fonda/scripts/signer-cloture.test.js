@@ -809,3 +809,17 @@ describe('critique Codex r7 : dates du listing Drive sans lecture du contenu', (
     await sansSignature(sc, /date de modification illisible/, 'incident');
   });
 });
+
+describe('audit préventif : contrôles sans lot source lu (empreintes de la génération)', () => {
+  test('lot illisible (lectures en panne) : lot_relu à empreinte_complete fausse -> abandon (réconcilié sur la sortie)', async () => {
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ locales, decisionLocale, deps }) => {
+      const d = copie(decisionLocale); d.lot_relu.empreinte_complete = `sha256:${'0'.repeat(64)}`; locales[0].octets = Buffer.from(JSON.stringify(d));
+      deps.drive.lireLotGenere = async () => { throw new Error('Drive 503'); };
+    } });
+    await sansSignature(sc, /lot_relu.empreinte_complete/, 'abandon');
+  });
+  test('page : lot de l\'enveloppe ≠ génération, lectures du lot en panne -> abandon', async () => {
+    const sc = await scenario({ modifier: ({ candidat, deps }) => { candidat.lot.cartes[0].question += ' (modifiée)'; deps.drive.lireLotGenere = async () => { throw new Error('Drive 503'); }; } });
+    await sansSignature(sc, /≠ lot généré/, 'abandon');
+  });
+});

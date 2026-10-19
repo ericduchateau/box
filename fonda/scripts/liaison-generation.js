@@ -267,8 +267,9 @@ function rapprocher({ setId, retenue, fichier, brute, workflowId, journalCommit,
 }
 
 // --- §20.5 Réconciliation de CHAQUE décision, puis unicité ------------------------------------
-// decision : decision-fonda/v1 ; contexte : { setId, lotSource, empreintes: { pedagogique,
-// complete }, empreintePubliee(cartesGardees) -> Promise<string> }. Renvoie les erreurs.
+// decision : decision-fonda/v1 ; contexte : { setId, lotSource (null si non lu), empreintes:
+// { pedagogique, complete } (du lot lu, sinon de la sortie de génération),
+// empreintePubliee(cartesGardees) -> Promise<string> }. Renvoie les erreurs.
 async function reconcilier(decision, { setId, lotSource, empreintes, empreintePubliee }) {
   const e = [];
   try { Canonique.octetsContrat('decision-fonda/v1', decision); } catch (err) { return [`décision non conforme à decision-fonda/v1 : ${err.message}`]; }
@@ -276,9 +277,12 @@ async function reconcilier(decision, { setId, lotSource, empreintes, empreintePu
   const co = decision.coeur;
   if (decision.set_id !== setId || lr.set_id !== setId) e.push('lot_relu.set_id / decision.set_id ≠ set_id');
   if (lr.empreinte_complete !== empreintes.complete) e.push('lot_relu.empreinte_complete ≠ empreinte complète recalculée du lot source');
-  const ordre = lotSource.cartes.map((c) => c.item_id);
   const relus = lr.cartes.map((c) => c.item_id);
-  if (JSON.stringify(relus) !== JSON.stringify(ordre)) e.push('lot_relu.cartes : item_id ≠ ceux du lot source (même ordre, aucun manquant, doublon ni inconnu)');
+  // Sans lot source lu (lecture en panne, déjà constatée), les contrôles qui n'en dépendent
+  // pas restent faits : empreintes de la génération, choix, cohérence interne.
+  if (new Set(relus).size !== relus.length) e.push('lot_relu.cartes : item_id en double');
+  const ordre = lotSource ? lotSource.cartes.map((c) => c.item_id) : null;
+  if (ordre && JSON.stringify(relus) !== JSON.stringify(ordre)) e.push('lot_relu.cartes : item_id ≠ ceux du lot source (même ordre, aucun manquant, doublon ni inconnu)');
   if (lr.cartes.some((c) => c.choix !== 'garder' && c.choix !== 'ecarter')) e.push('lot_relu : choix ∉ { garder, ecarter }');
   const gardees = lr.cartes.filter((c) => c.choix === 'garder').map((c) => c.item_id);
   const ecartees = lr.cartes.filter((c) => c.choix === 'ecarter').map((c) => c.item_id);
@@ -286,7 +290,7 @@ async function reconcilier(decision, { setId, lotSource, empreintes, empreintePu
   if (JSON.stringify(co.ecartees) !== JSON.stringify(ecartees)) e.push('coeur.ecartees ≠ cartes « ecarter » (ordre du lot source)');
   if (co.empreinte_relue !== empreintes.pedagogique) e.push('coeur.empreinte_relue ≠ empreinte pédagogique du lot source');
   if (co.action === 'accepter' && gardees.length === 0) e.push('action « accepter » sans carte gardée');
-  if (co.action === 'accepter' && gardees.length > 0 && co.empreinte_publiee !== await empreintePubliee(gardees)) e.push('coeur.empreinte_publiee ≠ empreinte du lot filtré');
+  if (lotSource && co.action === 'accepter' && gardees.length > 0 && co.empreinte_publiee !== await empreintePubliee(gardees)) e.push('coeur.empreinte_publiee ≠ empreinte du lot filtré');
   return e;
 }
 // Unicité (§10 A) : même cœur ET même lot_relu (octets canoniques).

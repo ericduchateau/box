@@ -537,9 +537,11 @@ async function cloturer(setId, deps) {
   if (decisions.length) {
     // Unicité (§10 A) : indépendante du lot ; réconciliation : exige le lot source.
     for (const err of L.unicite(decisions)) constats.ajouter('abandon', `unicité (§10 A) : ${err}`);
-    if (lotSource) {
+    // Empreintes de référence : celles du lot lu, sinon celles de la sortie de génération.
+    const reference = empreintes || (sortie ? { pedagogique: sortie.empreinte_pedagogique, complete: sortie.empreinte_complete } : null);
+    if (reference) {
       const empreintePubliee = async (gardees) => C.calculerEmpreinte(lotPublie(lotSource, { selection: gardees }), sha);
-      for (const d of decisions) for (const err of await L.reconcilier(d, { setId, lotSource, empreintes, empreintePubliee })) constats.ajouter('abandon', `réconciliation : ${err}`);
+      for (const d of decisions) for (const err of await L.reconcilier(d, { setId, lotSource, empreintes: reference, empreintePubliee })) constats.ajouter('abandon', `réconciliation : ${err}`);
     }
     const co = decisions[0].coeur;
     if (co.action !== 'accepter') constats.ajouter('abandon', `action « ${co.action} » : rien à publier`);
@@ -758,7 +760,8 @@ function evaluerPage({ setId, candidatEnv, clotures, confirmations, listeDecisio
       if (!revoqueLe || !creeLe) constats.ajouter('incident', 'relecture.clos_le / cree_le absent ou mal formé');
       else if (creeLe > revoqueLe) constats.ajouter('incident', 'fenêtre de candidature inversée (cree_le > clos_le)');
       if (c.lot.set_id !== setId) constats.ajouter('abandon', 'set_id du candidat ≠ set_id demandé');
-      try { if (empreintes && L.empreinteComplete(c.lot) !== empreintes.complete) constats.ajouter('abandon', 'lot de l\'enveloppe de relecture ≠ lot généré'); } catch { constats.ajouter('abandon', 'lot de l\'enveloppe de relecture non projetable'); }
+      const completeRef = empreintes ? empreintes.complete : (sortie ? sortie.empreinte_complete : null);
+      try { if (completeRef && L.empreinteComplete(c.lot) !== completeRef) constats.ajouter('abandon', 'lot de l\'enveloppe de relecture ≠ lot généré'); } catch { constats.ajouter('abandon', 'lot de l\'enveloppe de relecture non projetable'); }
       if (sortie && rel.referentiel_version !== sortie.referentiel_version) constats.ajouter('abandon', 'referentiel_version du candidat ≠ génération');
       if (relecteur !== null && rel.relecteur_attribue !== relecteur) constats.ajouter('abandon', 'relecteur attribué du candidat ≠ référentiel archivé');
       if (sortie && (!rel.moteur || rel.moteur.version !== sortie.moteur.version || rel.moteur.sha256 !== sortie.moteur.sha256)) constats.ajouter('abandon', 'moteur du candidat ≠ moteur de la génération');
