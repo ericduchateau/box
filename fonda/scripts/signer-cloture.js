@@ -427,6 +427,9 @@ async function cloturer(setId, deps) {
     fichier = r.fichier;
   }
   const fichierVu = fichier && fichier !== L.INDISPONIBLE ? fichier : null;
+  // Génération OBSERVÉE (retenue, sinon l'unique réussie vue) : sert à TOUS les contrôles
+  // qui n'exigent pas l'exhaustivité ; la signature, elle, exige `retenue` (examen complet).
+  const generationObservee = retenue || candidate;
   // Lot source (§20.4, §20.7)
   let lotSource = null;
   const lotsConformes = []; // contenus conformes DISTINCTS lus (tous comparés à la génération)
@@ -447,7 +450,7 @@ async function cloturer(setId, deps) {
     if (new Set(datesLot).size > 1) constats.ajouter('temporaire', 'lot généré instable pendant le listing (dates de modification différentes entre lectures et listing) : relancer la clôture');
     if (fichierVu && lus.some((x) => x.id !== fichierVu.id)) constats.ajouter('abandon', 'lot généré lu ≠ fichier candidat retenu');
     if (datesLot.some((dt) => dt === null)) constats.ajouter('incident', 'lot généré : date de modification illisible');
-    else if (retenue && retenue.x.stoppedAt && datesLot.some((dt) => dt > retenue.x.stoppedAt)) constats.ajouter('abandon', 'lot généré modifié APRÈS la fin de l\'exécution de génération');
+    else if (generationObservee && generationObservee.x.stoppedAt && datesLot.some((dt) => dt > generationObservee.x.stoppedAt)) constats.ajouter('abandon', 'lot généré modifié APRÈS la fin de l\'exécution de génération');
     // Chaque contenu DISTINCT lu est contrôlé ; le premier conforme sert aux comparaisons.
     const vus = new Set();
     for (const x of lus) {
@@ -468,7 +471,7 @@ async function cloturer(setId, deps) {
   const empreintes = lotSource ? { pedagogique: await C.calculerEmpreinte(lotSource, sha), complete: L.empreinteComplete(lotSource) } : null;
   // §20.3 rapprochement
   let sortie = null;
-  const generationEvaluee = retenue || candidate;
+  const generationEvaluee = generationObservee;
   if (generationEvaluee) {
     const brute = details.get(generationEvaluee.x.id);
     const s0 = brute ? L.itemUnique(brute, L.NOEUD_SORTIE) : { ok: false };
@@ -523,7 +526,7 @@ async function cloturer(setId, deps) {
       }
       if (decisions.length) {
         finSaisie = decisions[0].recu_le;
-        if (retenue && retenue.x.startedAt) fenetre = { debut: retenue.x.startedAt, fin: finSaisie };
+        if (generationObservee && generationObservee.x.startedAt) fenetre = { debut: generationObservee.x.startedAt, fin: finSaisie };
       }
     }
   }

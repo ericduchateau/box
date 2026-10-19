@@ -779,3 +779,20 @@ describe('critique Codex r5 : contenus multiples du lot, examen non exhaustif', 
     await sansSignature(sc, /injoignable/, 'temporaire');
   });
 });
+
+describe('critique Codex r6 : génération observée malgré un examen non exhaustif', () => {
+  const panne498 = (sc) => { const lire = sc.deps.api.lireExecution; sc.deps.api.lireExecution = async (id) => { if (id === '498') throw new Error('503'); return lire(id); }; };
+  const avec498 = ({ execs, gen, fx }) => { execs.wfGen.push({ id: 498, workflowId: 'wfGen', status: 'error', startedAt: fx.erreur_sans_depot.startedAt, stoppedAt: fx.erreur_sans_depot.stoppedAt }); gen[498] = fx.erreur_sans_depot; };
+  for (const source of ['saisie_locale', 'page_relecture']) {
+    test(`${source} : lot modifié après la génération + détail d'une autre exécution en panne -> abandon`, async () => {
+      const sc = await scenario({ source, modifier: (ctx) => { avec498(ctx); ctx.setLotGenere({ modifie_le: '2026-10-18T07:02:00.000Z' }); ctx.candidats[0].modifie_le = '2026-10-18T07:02:00.000Z'; } });
+      panne498(sc);
+      await sansSignature(sc, /modifié APRÈS/, 'abandon');
+    });
+  }
+  test('saisie locale : incident recouvrant la fenêtre + détail d\'une autre exécution en panne -> abandon', async () => {
+    const sc = await scenario({ source: 'saisie_locale', modifier: (ctx) => { avec498(ctx); ctx.deps.incidents = async () => [{ id: 'i1', nature: 'x', detecte_le: '2026-10-19T10:00:00.000Z', statut: 'resolu', resolu_le: '2026-10-19T12:00:00.000Z', preuve_resolution: 'ok', periode: { debut: '2026-10-19T09:00:00.000Z', fin: '2026-10-19T12:00:00.000Z' } }]; } });
+    panne498(sc);
+    await sansSignature(sc, /recouvre/, 'abandon');
+  });
+});
