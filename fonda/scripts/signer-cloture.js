@@ -120,7 +120,9 @@ function verifierDossierLocal(dossier, realpath = (p) => fs.realpathSync.native(
 // api.listerExecutions({ workflowId, status }) -> [{ id, workflowId, status, startedAt, stoppedAt }]
 // (pagination complète à la charge de l'adaptateur). rattachement(execution) ->
 // { set_id, type: 'decision'|'conflit'|'cloture', nonce } | null (null = non rattachable).
-async function observer(api, workflowId) {
+// `suivi` (facultatif) : en cas de panne d'une requête, suivi.vues = observations déjà
+// faites (les exécutions en vol déjà vues restent exploitables par l'appelant).
+async function observer(api, workflowId, suivi = null) {
   const vues = new Map();
   const ajouter = (lot, source) => {
     for (const x of lot || []) {
@@ -143,8 +145,13 @@ async function observer(api, workflowId) {
   };
   // Requêtes « en vol » D'ABORD, liste complète ENSUITE : une exécution vue en cours
   // puis terminée est une évolution normale ; l'inverse est une contradiction.
-  for (const status of ['running', 'waiting']) ajouter(await api.listerExecutions({ workflowId, status }), `status=${status}`);
-  ajouter(await api.listerExecutions({ workflowId }), 'liste');
+  const requete = async (q, source) => {
+    let r;
+    try { r = await api.listerExecutions(q); } catch (e) { if (suivi) suivi.vues = [...vues.values()]; throw e; }
+    ajouter(r, source);
+  };
+  for (const status of ['running', 'waiting']) await requete({ workflowId, status }, `status=${status}`);
+  await requete({ workflowId }, 'liste');
   // Toute exécution TERMINALE observée (quel que soit son lot) doit avoir des dates
   // renseignées et cohérentes ; sinon observation inexploitable -> incident de chaîne.
   for (const v of vues.values()) {
@@ -354,9 +361,12 @@ async function cloturer(setId, deps) {
     try { return { ok: true, v: await f() }; } catch (e) { if (e instanceof Refus) throw e; enEchec(quoi, e); return { ok: false }; }
   };
   const observerSur = async (quoi, workflowId) => {
-    try { return { ok: true, v: await observer(api, workflowId) }; } catch (e) {
+    const suivi = {};
+    try { return { ok: true, v: await observer(api, workflowId, suivi) }; } catch (e) {
       if (e instanceof Refus) constats.ajouter('incident', `${quoi} : observations contradictoires ou inexploitables (${e.message})`);
       else enEchec(`${quoi} (API n8n)`, e);
+      // Exécutions en vol DÉJÀ observées avant la panne : incident (jamais perdu).
+      for (const v of suivi.vues || []) if (!STATUTS_TERMINAUX.includes(v.status)) constats.ajouter('incident', `${quoi} : exécution ${v.id} non terminée ou de statut inconnu (${v.status}), observée avant la panne`);
       return { ok: false };
     }
   };
@@ -401,23 +411,27 @@ async function cloturer(setId, deps) {
   }
   // §20.2 : examen de chaque exécution (fusion détail/listing, incident GLOBAL, déclencheur)
   // dès que le listing est disponible ; classement selon les données observées.
-  let retenue = null; let fichier = L.INDISPONIBLE;
+  // Fichiers candidats/ examinés SEULS dès que leur listing est lu (indépendant de n8n).
+  const vueFichiers = fichiersCandidats ? L.examinerFichiers({ setId, fichiers: fichiersCandidats, constats }) : L.INDISPONIBLE;
+  let retenue = null; let fichier = vueFichiers === L.INDISPONIBLE ? L.INDISPONIBLE : vueFichiers.fichier;
   if (gen.ok) {
     const ex = L.examinerExecutions({ executions: gen.v, details, constats, normaliserDate });
-    const r = L.classerExecutions({ setId, examinees: ex.examinees, complet: ex.complet, fichiers: fichiersCandidats || L.INDISPONIBLE, constats });
+    const r = L.classerExecutions({ setId, examinees: ex.examinees, complet: ex.complet, vueFichiers, constats });
     retenue = r.retenue === L.INDISPONIBLE ? null : r.retenue;
     fichier = r.fichier;
   }
   const fichierVu = fichier && fichier !== L.INDISPONIBLE ? fichier : null;
   // Lot source (§20.4, §20.7)
   let lotSource = null;
-  if (lotAvant.ok && lotApres.ok) {
-    const av = lotAvant.v; const ap = lotApres.v;
-    if (!av || !ap) constats.ajouter('abandon', `lot généré ${setId}.lot.json absent`);
-    else {
-      // Trois observations de la date : lecture avant, listing, lecture après.
-      const datesLot = [av.modifie_le, ap.modifie_le, ...(fichierVu ? [fichierVu.modifie_le] : [])].map((d) => normaliserDate(d));
-      if (av.id !== ap.id || !Buffer.from(av.octets).equals(Buffer.from(ap.octets)) || new Set(datesLot).size !== 1) {
+  // Contenu examiné dès la PREMIÈRE lecture ; stabilité dès que la seconde est lue.
+  const av = lotAvant.ok ? lotAvant.v : undefined;
+  const ap = lotApres.ok ? lotApres.v : undefined;
+  if (av === null || ap === null) constats.ajouter('abandon', `lot généré ${setId}.lot.json absent`);
+  if (av) {
+    {
+      // Observations de la date : lecture avant, listing, lecture après (si lues).
+      const datesLot = [av.modifie_le, ...(ap ? [ap.modifie_le] : []), ...(fichierVu ? [fichierVu.modifie_le] : [])].map((d) => normaliserDate(d));
+      if ((ap && (av.id !== ap.id || !Buffer.from(av.octets).equals(Buffer.from(ap.octets)))) || new Set(datesLot).size !== 1) {
         constats.ajouter('temporaire', 'lot généré instable pendant le listing (identifiant, date ou contenu différents entre lecture avant, listing et lecture après) : relancer la clôture');
       }
       if (fichierVu && av.id !== fichierVu.id) constats.ajouter('abandon', 'lot généré lu ≠ fichier candidat retenu');
@@ -431,7 +445,7 @@ async function cloturer(setId, deps) {
         if (!v.valide) constats.ajouter('abandon', `lot généré non conforme à lot-fonda/v1 : ${v.erreurs.join(' ; ')}`);
         else if (nuls.length) constats.ajouter('abandon', `lot généré : null explicite interdit (${nuls.join(', ')})`);
         else if (lot.set_id !== setId) constats.ajouter('abandon', 'lot généré : set_id ≠ set_id demandé');
-        else lotSource = lot;
+        else if (ap) lotSource = lot; // utilisé seulement si la stabilité a pu être observée
       }
     }
   }
@@ -490,10 +504,13 @@ async function cloturer(setId, deps) {
     }
   }
   // §20.5 réconciliation de CHAQUE décision (tardives comprises), puis unicité
-  if (lotSource && decisions.length) {
-    const empreintePubliee = async (gardees) => C.calculerEmpreinte(lotPublie(lotSource, { selection: gardees }), sha);
-    for (const d of decisions) for (const err of await L.reconcilier(d, { setId, lotSource, empreintes, empreintePubliee })) constats.ajouter('abandon', `réconciliation : ${err}`);
+  if (decisions.length) {
+    // Unicité (§10 A) : indépendante du lot ; réconciliation : exige le lot source.
     for (const err of L.unicite(decisions)) constats.ajouter('abandon', `unicité (§10 A) : ${err}`);
+    if (lotSource) {
+      const empreintePubliee = async (gardees) => C.calculerEmpreinte(lotPublie(lotSource, { selection: gardees }), sha);
+      for (const d of decisions) for (const err of await L.reconcilier(d, { setId, lotSource, empreintes, empreintePubliee })) constats.ajouter('abandon', `réconciliation : ${err}`);
+    }
     const co = decisions[0].coeur;
     if (co.action !== 'accepter') constats.ajouter('abandon', `action « ${co.action} » : rien à publier`);
     if (sortie && (co.moteur.version !== sortie.moteur.version || co.moteur.sha256 !== sortie.moteur.sha256)) constats.ajouter('abandon', 'coeur.moteur ≠ moteur de la génération');
@@ -518,6 +535,24 @@ async function cloturer(setId, deps) {
   const k0 = deps.cles.obtenir(config.cleId);
   if (!k0.ok) constats.ajouter('temporaire', k0.raison);
   else { const irr = S.recevabilite(k0.declaration, new Date(Date.parse(listingFin)).toISOString()); if (irr) constats.ajouter('temporaire', irr); }
+  // Antécédents LOCAUX de ce set_id, AVANT la tranche : marqueur de signature (une
+  // signature a déjà été tentée -> jamais une seconde) ; clôture antérieure dont
+  // l'instantané diffère de celui que ces données produiraient -> abandon.
+  const marqueurSignature = path.join(config.dossier, `${setId}.signature`);
+  let dejaSigne;
+  try { dejaSigne = deps.fs.existe(marqueurSignature); } catch (e) { dejaSigne = undefined; enEchec(`${marqueurSignature}`, e); }
+  if (dejaSigne !== false && dejaSigne !== undefined) constats.ajouter('local', `signature déjà tentée pour ${setId} (${marqueurSignature}) : jamais une seconde — traitement manuel`);
+  let codeAttendu = null;
+  if (lotSource && decisions.length) {
+    const co = decisions[0].coeur;
+    const inst0 = { schema: 'instantane-fonda/v1', set_id: setId, candidat_lot: lotSource, coeur: co, lot_relu: decisions[0].lot_relu, moteur: co.moteur, recapitulatif: projeterRecapitulatif(lotSource, co, co.moteur) };
+    codeAttendu = sha256Hex(Buffer.from(`${JSON.stringify(inst0, null, 2)}\n`, 'utf8')).slice(0, 16);
+  }
+  let entreesDossier = null;
+  try { entreesDossier = deps.fs.lister(config.dossier); } catch (e) { enEchec(`dossier de clôture ${config.dossier}`, e); }
+  for (const nom of entreesDossier || []) {
+    if (nom.startsWith(`${setId}-`) && codeAttendu && nom !== `${setId}-${codeAttendu}`) constats.ajouter('abandon', `clôture antérieure ${nom} : instantané figé sur d'AUTRES données (décision ou lot modifiés) — abandon du set_id`);
+  }
   // Incidents (§10 B) : fenêtre de candidature de la source
   const incidents = [];
   for (const i of (inc.ok ? inc.v : null) || []) {
@@ -657,13 +692,19 @@ async function cloturer(setId, deps) {
   const avant = [...S.invariantsValeur(charge, opts), ...S.invariantsDepot(charge, { entree, registre: deps.registre, referentiel })];
   if (avant.length) refuser(`charge refusée avant signature : ${avant.join(' ; ')}`);
   // Destination vérifiée AVANT signature (occupée ou inaccessible = refus sans signature).
-  // Panne d'E/S APRÈS signature : enveloppe non enregistrée, rien publié ; reprise =
-  // ARCHIVER le dossier <set_id>-<code>, puis relancer.
+  // Panne APRÈS signature (vérification ou écriture) : NE PAS relancer — le marqueur
+  // <set_id>.signature l'interdit. Traitement MANUEL : si attestation.json est complet et
+  // vérifié, il est utilisable ; sinon abandon du set_id (jamais deux attestations).
   const cheminAttestation = path.join(dossierLot, 'attestation.json');
   let occupee;
   try { occupee = deps.fs.existe(cheminAttestation); } catch (e) { refuser(`${cheminAttestation} inaccessible (${e.code || e.message}) : refus`); }
   if (occupee !== false) refuser(`${cheminAttestation} existe déjà (ou état indéterminé) : refus d'écraser`);
   const cleFigee = Object.freeze({ obtenir: (id) => (id === charge.cle_id ? k : { ok: false, raison: `clé « ${id} » non figée` }) });
+  // Marqueur DURABLE, écrit (exclusif) AVANT l'appel au signataire et jamais retiré :
+  // toute nouvelle signature de ce set_id est refusée, même si le dossier est déplacé.
+  try { deps.fs.ecrireExclusif(marqueurSignature, `${JSON.stringify({ set_id: setId, code, dossier: dossierLot, le: deps.horloge().toISOString() }, null, 2)}\n`); } catch (e) {
+    refuser(`${marqueurSignature} : ${e.message} — une signature a peut-être déjà été tentée : traitement manuel`, 'local');
+  }
   const enveloppe = { type: S.TYPE, charge, signature: deps.signer(octets).toString('base64') };
   const erreurs = S.verifierAttestationSignee(enveloppe, { entree, registre: deps.registre, referentiel, cles: cleFigee, ...opts });
   if (erreurs.length) refuser(`revérification immédiate en échec : ${erreurs.join(' ; ')}`);

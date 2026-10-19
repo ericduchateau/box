@@ -15,6 +15,7 @@ const Canonique = require('../engine/canonique.js');
 const NOEUD_ENTREE = 'FONDA Entree generation';
 const NOEUD_SORTIE = 'FONDA Sortie generation';
 const STATUTS_TERMINAUX = ['success', 'error', 'crashed', 'canceled'];
+const STATUTS_EN_VOL = ['new', 'running', 'waiting'];
 const DATE_SIGNEE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const HEX40 = /^[0-9a-f]{40}$/;
 const EMPREINTE = /^sha256:[0-9a-f]{64}$/;
@@ -68,6 +69,9 @@ const INDISPONIBLE = Object.freeze({ indisponible: true });
 function fusionner(x, brute, normaliserDate) {
   if (String(brute.id) !== x.id) return { contradiction: `identifiant du détail ${brute.id} ≠ ${x.id}` };
   if (brute.workflowId !== x.workflowId) return { contradiction: 'workflowId du détail ≠ listing' };
+  // Seuls des états intermédiaires CONNUS évoluent normalement ; un statut inconnu au
+  // listing ou au détail n'est jamais « réparé » par la fusion.
+  for (const [o, st] of [['listing', x.status], ['détail', brute.status]]) if (!STATUTS_TERMINAUX.includes(st) && !STATUTS_EN_VOL.includes(st)) return { contradiction: `statut inconnu au ${o} (${st})` };
   const tx = STATUTS_TERMINAUX.includes(x.status);
   const tb = STATUTS_TERMINAUX.includes(brute.status);
   if (tx && !tb) return { contradiction: `statut terminal au listing (${x.status}), non terminal au détail (${brute.status})` };
@@ -80,6 +84,7 @@ function fusionner(x, brute, normaliserDate) {
     obs[k] = x[k] || b;
   }
   if (STATUTS_TERMINAUX.includes(obs.status) && (!obs.startedAt || !obs.stoppedAt)) return { contradiction: 'exécution terminée sans startedAt/stoppedAt' };
+  if (STATUTS_TERMINAUX.includes(obs.status) && obs.stoppedAt < obs.startedAt) return { contradiction: 'exécution terminée avant d\'avoir démarré (chronologie fusionnée)' };
   return { obs };
 }
 
@@ -114,21 +119,11 @@ function examinerExecutions({ executions, details, constats, normaliserDate }) {
   return { examinees, complet };
 }
 
-// §20.2 Classement des exécutions du set_id. Sur des exécutions examinées ; les
-// conclusions de NOMBRE (« exactement une réussie ») exigent un examen complet ; celles
-// sur les fichiers exigent le listing de candidats/ (fichiers ≠ INDISPONIBLE).
-// Renvoie { retenue, fichier } : null = absent ; INDISPONIBLE = non déterminable.
-function classerExecutions({ setId, examinees, complet, fichiers, constats }) {
+// Fichiers candidats/ examinés SEULS (indépendamment des exécutions) : properties
+// publiques lisibles et bien formées, nom et fonda_set_id concordants, exactement un
+// fichier pour le set_id. Renvoie { parExecution, fichier } (fichier : null si 0 ou >1).
+function examinerFichiers({ setId, fichiers, constats }) {
   const nomAttendu = `${setId}.lot.json`;
-  const concernees = examinees.filter((c) => c.entree.set_id === setId);
-  const reussies = concernees.filter((c) => c.x.status === 'success');
-  let retenue = INDISPONIBLE;
-  if (complet) {
-    if (reussies.length !== 1) constats.ajouter('abandon', `${reussies.length} exécution(s) de génération réussie(s) pour ${setId} (exactement une attendue)`);
-    retenue = reussies.length === 1 ? reussies[0] : null;
-  } else if (reussies.length > 1) constats.ajouter('abandon', `${reussies.length} exécutions de génération réussies pour ${setId} (exactement une attendue)`);
-  if (fichiers === INDISPONIBLE) return { retenue, fichier: INDISPONIBLE };
-  // Fichiers candidats : lien fichier <-> exécution par properties PUBLIQUES (§20.2).
   const parExecution = new Map();
   const duLot = [];
   for (const f of fichiers) {
@@ -148,11 +143,27 @@ function classerExecutions({ setId, examinees, complet, fichiers, constats }) {
       duLot.push(f);
     }
   }
+  if (duLot.length !== 1) constats.ajouter('abandon', `${duLot.length} fichier(s) candidat(s) pour ${setId} (exactement un attendu)`);
+  return { parExecution, fichier: duLot.length === 1 ? duLot[0] : null };
+}
+
+// §20.2 Classement des exécutions du set_id. Sur des exécutions examinées ; les
+// conclusions de NOMBRE (« exactement une réussie ») exigent un examen complet ; celles
+// sur les fichiers exigent le listing de candidats/ (fichiers ≠ INDISPONIBLE).
+// Renvoie { retenue, fichier } : null = absent ; INDISPONIBLE = non déterminable.
+function classerExecutions({ setId, examinees, complet, vueFichiers, constats }) {
+  const concernees = examinees.filter((c) => c.entree.set_id === setId);
+  const reussies = concernees.filter((c) => c.x.status === 'success');
+  let retenue = INDISPONIBLE;
+  if (complet) {
+    if (reussies.length !== 1) constats.ajouter('abandon', `${reussies.length} exécution(s) de génération réussie(s) pour ${setId} (exactement une attendue)`);
+    retenue = reussies.length === 1 ? reussies[0] : null;
+  } else if (reussies.length > 1) constats.ajouter('abandon', `${reussies.length} exécutions de génération réussies pour ${setId} (exactement une attendue)`);
+  if (vueFichiers === INDISPONIBLE) return { retenue, fichier: INDISPONIBLE };
+  const { parExecution, fichier } = vueFichiers;
   for (const c of concernees) {
     if (c.x.status !== 'success' && (parExecution.get(c.x.id) || []).length) constats.ajouter('abandon', `exécution de génération ${c.x.id} en erreur APRÈS dépôt d'un fichier candidat`);
   }
-  if (duLot.length !== 1) constats.ajouter('abandon', `${duLot.length} fichier(s) candidat(s) pour ${setId} (exactement un attendu)`);
-  const fichier = duLot.length === 1 ? duLot[0] : null;
   if (retenue && retenue !== INDISPONIBLE) {
     // Rattachement INVERSE : l'exécution retenue a exactement UN fichier, le lot.
     const lies = parExecution.get(retenue.x.id) || [];
@@ -285,6 +296,6 @@ function unicite(decisions) {
 }
 
 module.exports = {
-  INDISPONIBLE, fusionner, examinerExecutions, NOEUD_ENTREE, NOEUD_SORTIE, PRIORITE, Constats, itemUnique, classerExecutions, nullsExplicites, projectionComplete, empreinteComplete,
+  INDISPONIBLE, STATUTS_EN_VOL, fusionner, examinerExecutions, examinerFichiers, NOEUD_ENTREE, NOEUD_SORTIE, PRIORITE, Constats, itemUnique, classerExecutions, nullsExplicites, projectionComplete, empreinteComplete,
   rapprocher, reconcilier, unicite,
 };

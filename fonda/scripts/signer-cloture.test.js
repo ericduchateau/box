@@ -289,7 +289,7 @@ describe('aller-retour v2 : signer -> attestation-signee vérifie -> publier-lot
     await cloturer(sc.setId, sc.deps);
     sc.etat.affiche = '';
     const err = await cloturer(sc.setId, sc.deps).then(() => null, (e) => e);
-    assert.match(err.message, /déjà signé/);
+    assert.match(err.message, /signature déjà tentée/);
     assert.equal(sc.etat.signatures, 1);
   });
   test('exécution en erreur SANS dépôt : tentative tolérée (fixture « erreur_sans_depot »)', async () => {
@@ -638,5 +638,82 @@ describe('reprise sur l\'instantané EXISTANT (§20.13) et saisie locale (critiq
     await saisirDecisionLocale(sc.setId, { ...sc.deps, moteur: { ...MOTEUR }, referentiel: REFERENTIEL, saisir: async () => reponses.shift() });
     assert.match(sc.etat.affiche, /Unité : .* ; arrondi : .* ; seconde chance : /);
     assert.match(sc.etat.affiche, /Contexte : /);
+  });
+});
+
+describe('critique Codex r3 : double attestation, fusion, observations partielles, antécédents', () => {
+  // Déplacement simulé du dossier du lot (archivage) : ses fichiers quittent le dossier de clôture.
+  const archiver = (sc) => { for (const p of [...sc.etat.ecrits.keys()]) if (/set_fonda_[^/]+-[0-9a-f]{16}\//.test(p)) { sc.etat.ecrits.set(p.replace('/tmp/fonda-cloture-test/', '/tmp/archives/'), sc.etat.ecrits.get(p)); sc.etat.ecrits.delete(p); } };
+  test('signé puis dossier ARCHIVÉ : relance refusée par le marqueur durable (jamais deux attestations)', async () => {
+    const sc = await scenario({ source: 'saisie_locale' });
+    await cloturer(sc.setId, sc.deps);
+    archiver(sc);
+    sc.etat.affiche = '';
+    await assert.rejects(cloturer(sc.setId, sc.deps), /signature déjà tentée/);
+    assert.equal(sc.etat.signatures, 1);
+  });
+  test('panne d\'écriture APRÈS signature puis archivage : relance refusée (traitement manuel)', async () => {
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ deps }) => { const e = deps.fs.ecrireExclusif; deps.fs.ecrireExclusif = (p, t) => { if (p.endsWith('attestation.json')) { e(p, t); throw new Error('EIO'); } return e(p, t); }; } });
+    await assert.rejects(cloturer(sc.setId, sc.deps), /EIO/);
+    archiver(sc);
+    sc.etat.affiche = '';
+    const err = await cloturer(sc.setId, sc.deps).then(() => null, (x) => x);
+    assert.match(err.message, /signature déjà tentée/);
+    assert.equal(sc.etat.signatures, 1);
+  });
+  test('marqueur écrit AVANT l\'appel au signataire', async () => {
+    const sc = await scenario({ source: 'saisie_locale' });
+    let marqueurAvant = null;
+    const signer = sc.deps.signer;
+    sc.deps.signer = (o) => { marqueurAvant = sc.etat.ecrits.has(`/tmp/fonda-cloture-test/${sc.setId}.signature`); return signer(o); };
+    await cloturer(sc.setId, sc.deps);
+    assert.equal(marqueurAvant, true);
+  });
+  for (const [libelle, listing, detail] of [
+    ['statut INCONNU au listing puis success au détail (autre lot)', { status: 'mystere', startedAt: '2026-10-18T05:00:00.000Z', stoppedAt: null }, { status: 'success', startedAt: '2026-10-18T05:00:00.000Z', stoppedAt: '2026-10-18T05:01:00.000Z' }],
+    ['running au listing puis success avec stoppedAt < startedAt (autre lot)', { status: 'running', startedAt: '2026-10-18T05:00:00.000Z', stoppedAt: null }, { status: 'success', startedAt: '2026-10-18T05:00:00.000Z', stoppedAt: '2026-10-18T04:59:00.000Z' }],
+  ]) {
+    test(`fusion : ${libelle} -> incident, zéro signature`, async () => {
+      const sc = await scenario({ source: 'saisie_locale', modifier: ({ execs, gen, fx }) => {
+        execs.wfGen.push({ id: 508, workflowId: 'wfGen', ...listing });
+        gen[508] = copie({ ...fx.erreur_sans_depot, id: 508, ...detail });
+        gen[508].data.resultData.runData['FONDA Entree generation'][0].data.main[0][0].json.set_id = 'set_fonda_lexique_nI_02';
+      } });
+      // La requête status=running ne renvoie que les « running » ; « mystere » n'apparaît qu'à la liste complète.
+      await sansSignature(sc, /statut inconnu|non terminée|avant d'avoir démarré/, 'incident');
+    });
+  }
+  test('« running » observé puis panne de la liste complète -> incident (pas seulement temporaire)', async () => {
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ execs }) => { execs.wfGen.push({ id: 509, workflowId: 'wfGen', status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null }); } });
+    const base = sc.deps.api.listerExecutions;
+    sc.deps.api.listerExecutions = async (q) => { if (q.workflowId === 'wfGen' && !q.status) throw new Error('timeout'); return base(q); };
+    await sansSignature(sc, /observée avant la panne/, 'incident');
+  });
+  test('lot illisible à la première lecture, seconde lecture en panne -> incident', async () => {
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ setLotGenere }) => { setLotGenere({ octets: Buffer.from('{ cassé') }); } });
+    let n = 0; const l = sc.deps.drive.lireLotGenere;
+    sc.deps.drive.lireLotGenere = async (x) => { n += 1; if (n === 2) throw new Error('Drive 503'); return l(x); };
+    await sansSignature(sc, /illisible/, 'incident');
+  });
+  test('deux fichiers candidats, listing de génération en panne -> abandon', async () => {
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ candidats, valeurs }) => { candidats.push({ ...candidats[0], id: 'drv-2', properties: { fonda_set_id: valeurs.SET_ID, fonda_execution_id: '600' } }); } });
+    const base = sc.deps.api.listerExecutions;
+    sc.deps.api.listerExecutions = async (q) => { if (q.workflowId === 'wfGen') throw new Error('timeout'); return base(q); };
+    await sansSignature(sc, /2 fichier\(s\) candidat/, 'abandon');
+  });
+  test('deux cœurs distincts, lecture du lot en panne -> abandon (unicité indépendante du lot)', async () => {
+    const sc = await scenario({ modifier: ({ fichiers }) => { const d = fichiers[1].contenu; d.coeur.selection = d.coeur.selection.slice(1); } });
+    sc.deps.drive.lireLotGenere = async () => { throw new Error('Drive 503'); };
+    await sansSignature(sc, /cœurs distincts/, 'abandon');
+  });
+  test('clôture antérieure sur d\'autres données ET clé absente -> abandon (antécédents évalués avant la tranche)', async () => {
+    const sc = await scenario({ source: 'saisie_locale', code: '0'.repeat(16) });
+    await assert.rejects(cloturer(sc.setId, sc.deps), /code de confirmation/);
+    const d = copie(sc.decisionLocale);
+    d.lot_relu.cartes[0].choix = 'ecarter'; d.coeur.selection = d.coeur.selection.slice(1); d.coeur.ecartees = [d.lot_relu.cartes[0].item_id, ...d.coeur.ecartees];
+    d.coeur.empreinte_publiee = await C.calculerEmpreinte({ ...sc.lot, revue_carte_par_carte: true, nb_cartes: d.coeur.selection.length, cartes: sc.lot.cartes.filter((c) => d.coeur.selection.includes(c.item_id)) }, sha);
+    sc.locales[0].octets = Buffer.from(JSON.stringify(d));
+    sc.deps.config.cleId = 'cle-inconnue';
+    await sansSignature(sc, /clôture antérieure/, 'abandon');
   });
 });
