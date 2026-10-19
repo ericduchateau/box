@@ -80,6 +80,7 @@ const DATA = path.join(__dirname, '..', 'data');
 const REL_CATALOGUE = 'fonda/data/catalogue-fonda.json';
 const REL_JOURNAL = 'fonda/data/set_ids-journal.json';
 const REL_REFERENTIEL = 'fonda/data/referentiel.json';
+const REL_MODELES = 'fonda/data/modeles-autorises.json';
 const texteJson = (o) => `${JSON.stringify(o, null, 2)}\n`;
 
 function clesDuDepot() {
@@ -90,10 +91,11 @@ function clesDuDepot() {
  * Pure (hors SHA-256, clés et résolveur de référentiel injectés). Ne lit ni n'écrit aucun fichier.
  *   referentiel        : référentiel COURANT (validité du catalogue résultant) ;
  *   referentielArchive : (version) -> { ok, referentiel } | { ok: false, raison } (§20.12) ;
- *   journal            : journal des set_id (état de HEAD) ; le : date de la ligne `publie`.
+ *   journal            : journal des set_id (état de HEAD) ; le : date de la ligne `publie` ;
+ *   modelesAutorises   : modèles épinglés (G5) — exigés pour une charge v2 (§20.9).
  * @returns {Promise<{ok:true, entree, catalogue, journal, lignePublie, fichier}|{ok:false, erreurs:string[]}>}
  */
-async function preparerPublication({ lot, attestation, catalogue, referentiel, referentielArchive, journal, le, fichierExiste = () => false, sha256Hex, cles, registre = lireRegistre() }) {
+async function preparerPublication({ lot, attestation, catalogue, referentiel, referentielArchive, journal, le, fichierExiste = () => false, sha256Hex, cles, modelesAutorises, registre = lireRegistre() }) {
   const erreurs = [];
   const v = C.validerLot(lot);
   if (!v.valide) return { ok: false, erreurs: v.erreurs.map((e) => `lot : ${e}`) };
@@ -140,7 +142,7 @@ async function preparerPublication({ lot, attestation, catalogue, referentiel, r
     relecteur: charge.badge,
     attestation,
   };
-  const es = S.verifierAttestationSignee(attestation, { entree, registre, referentiel: ra.referentiel, cles });
+  const es = S.verifierAttestationSignee(attestation, { entree, registre, referentiel: ra.referentiel, cles, modelesAutorises });
   if (es.length) return { ok: false, erreurs: es };
 
   // 3. Garde-fous pédagogiques du MOTEUR DU LOT (celui de la charge authentifiée).
@@ -323,6 +325,7 @@ async function publierSousVerrou({ cheminLot, cheminAttestation, mode, env, depe
     referentielArchive: dependances.referentielArchive,
     fichierExiste: (f) => env.aHeadExiste(`fonda/data/${f}`),
     sha256Hex: dependances.sha256Hex, cles: dependances.cles,
+    modelesAutorises: S.lireModelesAutorises(env.aHead(REL_MODELES).toString('utf8')),
   });
   if (!r.ok) refuser(`publication refusée :\n  - ${r.erreurs.join('\n  - ')}`);
   const attendu = { lot: texteLot, catalogue: Buffer.from(texteJson(r.catalogue)), journal: Buffer.from(texteJson(r.journal)) };
@@ -374,11 +377,11 @@ async function publierSousVerrou({ cheminLot, cheminAttestation, mode, env, depe
 
 // Contrôle CI d'une entrée « cloture-signee » du catalogue (catalogue.test.js) : même
 // vérification que la publication, contre le RÉFÉRENTIEL ARCHIVÉ de la charge (§20.12).
-function verifierClotureDuCatalogue(e, { resoudre, cles, registre }) {
+function verifierClotureDuCatalogue(e, { resoudre, cles, registre, modelesAutorises }) {
   const charge = e && e.attestation && e.attestation.charge;
   const ra = resoudre(charge && charge.referentiel_version);
   if (!ra || ra.ok !== true || !ra.referentiel) return [`référentiel archivé : ${(ra && ra.raison) || 'introuvable'}`];
-  return S.verifierAttestationSignee(e.attestation, { entree: e, registre, referentiel: ra.referentiel, cles });
+  return S.verifierAttestationSignee(e.attestation, { entree: e, registre, referentiel: ra.referentiel, cles, modelesAutorises });
 }
 
 async function main() {

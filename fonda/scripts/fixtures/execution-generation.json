@@ -1,0 +1,45 @@
+{
+  "description": "Fixture SYNTHÉTIQUE (CDC v8.3 §20.3) : exécutions du workflow de génération au format de l'API publique n8n (includeData). Les valeurs entre << >> sont substituées par les tests (empreintes et identifiants dépendent du lot de test). Le modèle est un snapshot Sonnet daté REPRÉSENTATIF, À CONFIRMER à la recette §20.8 (champ model d'un vrai appel capturé sur l'instance).",
+  "modele": "claude-sonnet-5-5-20261001",
+  "reussie": {
+    "id": 501, "workflowId": "wfGen", "status": "success", "mode": "webhook",
+    "startedAt": "2026-10-18T07:00:00.000Z", "stoppedAt": "2026-10-18T07:01:00.000Z",
+    "workflowData": { "pinData": {} },
+    "data": { "resultData": { "runData": {
+      "FONDA Entree generation": [{ "data": { "main": [[{ "json": { "set_id": "<<SET_ID>>", "ref": "<<REF>>" } }]] } }],
+      "FONDA Sortie generation": [{ "data": { "main": [[{ "json": {
+        "schema": "generation-fonda/v1", "set_id": "<<SET_ID>>", "ref": "<<REF>>", "notion_id": "<<NOTION_ID>>", "palier": "<<PALIER>>",
+        "moteur": { "version": "v1", "sha256": "<<MOTEUR_SHA256>>" }, "referentiel_version": "<<REFERENTIEL_VERSION>>",
+        "journal_commit": "<<JOURNAL_COMMIT>>", "modele": "claude-sonnet-5-5-20261001",
+        "empreinte_pedagogique": "<<EMPREINTE_PEDAGOGIQUE>>", "empreinte_complete": "<<EMPREINTE_COMPLETE>>",
+        "candidat_fichier_id": "drv-lot"
+      } }]] } }]
+    } } }
+  },
+  "erreur_sans_depot": {
+    "id": 498, "workflowId": "wfGen", "status": "error", "mode": "webhook",
+    "startedAt": "2026-10-18T06:50:00.000Z", "stoppedAt": "2026-10-18T06:50:20.000Z",
+    "workflowData": { "pinData": {} },
+    "data": { "resultData": { "runData": {
+      "FONDA Entree generation": [{ "data": { "main": [[{ "json": { "set_id": "<<SET_ID>>", "ref": "<<REF>>" } }]] } }]
+    } } }
+  },
+  "erreur_apres_depot": {
+    "id": 499, "workflowId": "wfGen", "status": "error", "mode": "webhook",
+    "startedAt": "2026-10-18T06:55:00.000Z", "stoppedAt": "2026-10-18T06:55:40.000Z",
+    "workflowData": { "pinData": {} },
+    "data": { "resultData": { "runData": {
+      "FONDA Entree generation": [{ "data": { "main": [[{ "json": { "set_id": "<<SET_ID>>", "ref": "<<REF>>" } }]] } }]
+    } } },
+    "fichier_depose": { "id": "drv-orphelin", "nom": "<<SET_ID>>.lot.json", "modifie_le": "2026-10-18T06:55:30.000Z", "properties": { "fonda_set_id": "<<SET_ID>>", "fonda_execution_id": "499" }, "proprietesLisibles": true }
+  },
+  "doublon": {
+    "id": 502, "workflowId": "wfGen", "status": "success", "mode": "webhook",
+    "startedAt": "2026-10-18T07:05:00.000Z", "stoppedAt": "2026-10-18T07:06:00.000Z",
+    "workflowData": { "pinData": {} },
+    "data": { "resultData": { "runData": {
+      "FONDA Entree generation": [{ "data": { "main": [[{ "json": { "set_id": "<<SET_ID>>", "ref": "<<REF>>" } }]] } }]
+    } } }
+  },
+  "pinData": { "FONDA Entree generation": [{ "json": { "set_id": "<<SET_ID>>", "ref": "<<REF>>" } }] }
+}

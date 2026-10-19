@@ -2,9 +2,11 @@
 // §11 bis, §12, §14. Node seulement (require('crypto') permis : jamais copié dans n8n).
 //
 // Enveloppe : { type: "cloture-signee", charge, signature } ; signature = base64 d'une
-// signature RSA-SHA256 PKCS#1 v1.5 sur les OCTETS CANONIQUES de la charge
-// (attestation-cloture/v1, fonda/engine/canonique.js — la charge ne contient jamais de
-// champ « signature »).
+// signature RSA-SHA256 PKCS#1 v1.5 sur les OCTETS CANONIQUES de la charge, au contrat
+// désigné par charge.schema ∈ { attestation-cloture/v1, attestation-cloture/v2 }
+// (fonda/engine/canonique.js — la charge ne contient jamais de champ « signature »).
+// v1 acceptée telle quelle ; v2 (CDC v8.3 §20.9) : invariants COMMUNS puis PAR SOURCE
+// (page_relecture | saisie_locale), liaison de génération, modèle ∈ liste épinglée (G5).
 //
 // Clés : fonda/data/cles/cles.json = [{ cle_id, fichier, sha256_pem, algorithme,
 // valide_du, valide_au, revoquee_le }] ; fichier = « cles/<cle_id>.pem » (SPKI PEM,
@@ -123,22 +125,27 @@ function recevabilite(declaration, clotureLe) {
   return null;
 }
 
-// --- Invariants de VALEUR de la charge (§11, §11 bis) ----------------------------------
-function invariantsValeur(ch) {
-  const e = [];
-  if (ch.schema !== 'attestation-cloture/v1') e.push('schema ≠ attestation-cloture/v1');
-  if (!/^[0-9a-f]{64}$/.test(ch.sha256_instantane)) e.push('sha256_instantane : 64 hex attendus');
-  else if (ch.code_confirmation !== ch.sha256_instantane.slice(0, 16)) e.push('code_confirmation ≠ 16 premiers hex de sha256_instantane');
-  const dates = [['confirmation.le', ch.confirmation.le], ['fidelite_transmission.le', ch.fidelite_transmission.le],
-    ['execution_cloture.terminee_le', ch.execution_cloture.terminee_le], ['revoque_le', ch.revoque_le], ['cloture_le', ch.cloture_le],
-    ...ch.provenances.map((p, i) => [`provenances[${i}].demarree_le`, p.demarree_le])];
+// --- Invariants de VALEUR de la charge (§11, §11 bis ; v2 : §20.9) ---------------------
+// Pièces COMMUNES à v1 et v2 (tout ce qui ne porte ni sur provenances, ni sur
+// execution_cloture, ni sur revoque_le).
+function datesIncidents(ch) {
+  const dates = [];
   ch.incidents_connus.forEach((x, i) => {
     dates.push([`incidents_connus[${i}].detecte_le`, x.detecte_le]);
     if (x.resolu_le !== null) dates.push([`incidents_connus[${i}].resolu_le`, x.resolu_le]);
     if (x.periode.debut !== null) dates.push([`incidents_connus[${i}].periode.debut`, x.periode.debut]);
     if (x.periode.fin !== null) dates.push([`incidents_connus[${i}].periode.fin`, x.periode.fin]);
   });
+  return dates;
+}
+function verifierDates(e, dates) {
   for (const [nom, v] of dates) if (!dateSignee(v)) e.push(`${nom} : date ISO UTC à la milliseconde attendue (fuseau Z)`);
+}
+function invariantsCode(ch, e) {
+  if (!/^[0-9a-f]{64}$/.test(ch.sha256_instantane)) e.push('sha256_instantane : 64 hex attendus');
+  else if (ch.code_confirmation !== ch.sha256_instantane.slice(0, 16)) e.push('code_confirmation ≠ 16 premiers hex de sha256_instantane');
+}
+function invariantsCommuns(ch, e) {
   // Confirmation (§5, §11 bis)
   const cf = ch.confirmation;
   if (!MODES.includes(cf.mode)) e.push(`confirmation.mode hors énumération (${cf.mode})`);
@@ -155,22 +162,7 @@ function invariantsValeur(ch) {
   const tous = [...co.selection, ...co.ecartees];
   if (new Set(tous).size !== tous.length) e.push('coeur : selection et ecartees non disjointes ou avec doublon');
   if (co.selection.length === 0) e.push('coeur.selection vide');
-  // Provenances : ≥ 1, success, execution_id unique, tri (date puis id, unités de code)
-  if (ch.provenances.length === 0) e.push('provenances vides');
-  const ids = ch.provenances.map((p) => p.execution_id);
-  if (new Set(ids).size !== ids.length) e.push('provenances : execution_id en double');
-  ch.provenances.forEach((p, i) => {
-    if (p.statut !== 'success') e.push(`provenances[${i}].statut ≠ "success"`);
-    if (!estTexte(p.execution_id) || !estTexte(p.workflow_id)) e.push(`provenances[${i}] : identifiants vides`);
-    const q = ch.provenances[i + 1];
-    if (q && !(p.demarree_le < q.demarree_le || (p.demarree_le === q.demarree_le && p.execution_id < q.execution_id))) {
-      e.push(`provenances : ordre (demarree_le puis execution_id, par unité de code) non respecté à l'index ${i}`);
-    }
-  });
   if (!Number.isSafeInteger(ch.nb_fichiers_decision) || ch.nb_fichiers_decision < 1) e.push('nb_fichiers_decision : entier ≥ 1 attendu');
-  const ec = ch.execution_cloture;
-  if (ec.statut !== 'success') e.push('execution_cloture.statut ≠ "success"');
-  if (!estTexte(ec.execution_id) || !estTexte(ec.workflow_id)) e.push('execution_cloture : identifiants vides');
   // Levées : types connus, une au plus par type, ordre du CDC
   const types = ch.levees.map((l) => l.type);
   if (types.some((t) => !TYPES_LEVEE.includes(t))) e.push('levees : type inconnu');
@@ -196,7 +188,122 @@ function invariantsValeur(ch) {
     if (!nomme && !memeBadge(b, BADGE_SANS_NOM)) e.push('badge incohérent : relue_et_validee au nom du relecteur attribué, ou forme « sans nom »');
   }
   if (!(b.id === null || b.id === ch.relecteur_attribue)) e.push('badge.id ∉ { relecteur_attribue, null }');
+}
+// Provenances (§11 bis) : ≥ 1, success, execution_id unique, tri (date puis id).
+function invariantsProvenances(ch, e) {
+  if (ch.provenances.length === 0) e.push('provenances vides');
+  const ids = ch.provenances.map((p) => p.execution_id);
+  if (new Set(ids).size !== ids.length) e.push('provenances : execution_id en double');
+  ch.provenances.forEach((p, i) => {
+    if (p.statut !== 'success') e.push(`provenances[${i}].statut ≠ "success"`);
+    if (!estTexte(p.execution_id) || !estTexte(p.workflow_id)) e.push(`provenances[${i}] : identifiants vides`);
+    const q = ch.provenances[i + 1];
+    if (q && !(p.demarree_le < q.demarree_le || (p.demarree_le === q.demarree_le && p.execution_id < q.execution_id))) {
+      e.push(`provenances : ordre (demarree_le puis execution_id, par unité de code) non respecté à l'index ${i}`);
+    }
+  });
+}
+function invariantsExecutionCloture(ec, e) {
+  if (ec.statut !== 'success') e.push('execution_cloture.statut ≠ "success"');
+  if (!estTexte(ec.execution_id) || !estTexte(ec.workflow_id)) e.push('execution_cloture : identifiants vides');
+}
+
+// v1 (§11 bis) — inchangée.
+function invariantsValeurV1(ch) {
+  const e = [];
+  if (ch.schema !== 'attestation-cloture/v1') e.push('schema ≠ attestation-cloture/v1');
+  invariantsCode(ch, e);
+  verifierDates(e, [['confirmation.le', ch.confirmation.le], ['fidelite_transmission.le', ch.fidelite_transmission.le],
+    ['execution_cloture.terminee_le', ch.execution_cloture.terminee_le], ['revoque_le', ch.revoque_le], ['cloture_le', ch.cloture_le],
+    ...ch.provenances.map((p, i) => [`provenances[${i}].demarree_le`, p.demarree_le]), ...datesIncidents(ch)]);
+  invariantsCommuns(ch, e);
+  invariantsProvenances(ch, e);
+  invariantsExecutionCloture(ch.execution_cloture, e);
   return e;
+}
+
+// G5 (§20.8) : identifiant Sonnet DATÉ (jamais un alias flottant) ; liste épinglée,
+// identique dans le nœud n8n et ici. À CONFIRMER à la recette §20.8 (champ model d'un
+// vrai appel capturé sur l'instance).
+const MODELE_DATE = /^claude-sonnet-[a-z0-9-]*\d{8}$/;
+function modelesValides(liste) {
+  return Array.isArray(liste) && liste.length > 0 && liste.every((m) => typeof m === 'string' && MODELE_DATE.test(m)) && new Set(liste).size === liste.length;
+}
+// Lecture stricte de fonda/data/modeles-autorises.json : { schema, generation_fonda: [] }.
+function lireModelesAutorises(texte) {
+  let o;
+  try { o = JSON.parse(texte); } catch { throw new Error('modeles-autorises.json : JSON invalide'); }
+  if (!o || typeof o !== 'object' || Array.isArray(o) || Object.keys(o).sort().join() !== 'generation_fonda,schema' || o.schema !== 'modeles-autorises/v1'
+    || !Array.isArray(o.generation_fonda) || !o.generation_fonda.every((m) => typeof m === 'string' && MODELE_DATE.test(m))) {
+    throw new Error('modeles-autorises.json : { schema: "modeles-autorises/v1", generation_fonda: [identifiants Sonnet datés] } attendu');
+  }
+  return o.generation_fonda;
+}
+
+// v2 (§20.9) : invariants COMMUNS, puis invariants PAR SOURCE. execution_cloture n'est
+// déréférencé qu'en « page_relecture ».
+const SOURCES = ['page_relecture', 'saisie_locale'];
+const croissant = (e, nom, suite) => {
+  for (let i = 0; i + 1 < suite.length; i += 1) {
+    if (!(suite[i][1] <= suite[i + 1][1])) e.push(`chronologie ${nom} : ${suite[i][0]} ≤ ${suite[i + 1][0]} non respecté`);
+  }
+};
+function invariantsValeurV2(ch, { modelesAutorises } = {}) {
+  const e = [];
+  if (ch.schema !== 'attestation-cloture/v2') e.push('schema ≠ attestation-cloture/v2');
+  invariantsCode(ch, e);
+  const g = ch.generation;
+  const datesGeneration = [['generation.demarree_le', g.demarree_le], ['generation.terminee_le', g.terminee_le],
+    ['generation.listing_debut_le', g.listing_debut_le], ['generation.listing_fin_le', g.listing_fin_le]];
+  const communes = [...datesGeneration, ['confirmation.le', ch.confirmation.le], ['fidelite_transmission.le', ch.fidelite_transmission.le], ['cloture_le', ch.cloture_le]];
+  verifierDates(e, [...communes, ...datesIncidents(ch)]);
+  invariantsCommuns(ch, e);
+  // Liaison de génération (§20.3, §20.8)
+  if (g.statut !== 'success') e.push('generation.statut ≠ "success"');
+  if (!estTexte(g.execution_id) || !estTexte(g.workflow_id)) e.push('generation : identifiants vides');
+  if (!/^sha256:[0-9a-f]{64}$/.test(g.empreinte_complete)) e.push('generation.empreinte_complete : sha256:<64 hex> attendu');
+  if (!/^[0-9a-f]{40}$/.test(g.journal_commit)) e.push('generation.journal_commit : 40 hex attendus');
+  if (!/^sha256:[0-9a-f]{64}$/.test(ch.referentiel_version)) e.push('referentiel_version : sha256:<64 hex> attendu');
+  if (!modelesValides(modelesAutorises)) e.push('liste des modèles autorisés absente, vide ou non datée : charge v2 non vérifiable (G5, §20.8)');
+  else if (!modelesAutorises.includes(g.modele)) e.push(`generation.modele « ${g.modele} » ∉ modèles autorisés épinglés (G5)`);
+  // Chronologie commune
+  if (communes.every(([, v]) => dateSignee(v))) croissant(e, 'commune', [datesGeneration[0], datesGeneration[1], datesGeneration[2], datesGeneration[3], communes[4], communes[5], communes[6]]);
+  // Par source
+  if (ch.source_decisions === 'page_relecture') {
+    verifierDates(e, ch.provenances.map((p, i) => [`provenances[${i}].demarree_le`, p.demarree_le]));
+    invariantsProvenances(ch, e);
+    if (ch.execution_cloture === null) e.push('page_relecture : execution_cloture requise (non nulle)');
+    else {
+      invariantsExecutionCloture(ch.execution_cloture, e);
+      verifierDates(e, [['execution_cloture.terminee_le', ch.execution_cloture.terminee_le]]);
+    }
+    if (ch.revoque_le === null) e.push('page_relecture : revoque_le requis (non nul)');
+    else verifierDates(e, [['revoque_le', ch.revoque_le]]);
+    if (ch.fin_saisie_le !== null) e.push('page_relecture : fin_saisie_le doit être null');
+    const suite = [['generation.terminee_le', g.terminee_le], ['revoque_le', ch.revoque_le], ['execution_cloture.terminee_le', ch.execution_cloture && ch.execution_cloture.terminee_le], ['listing_debut_le', g.listing_debut_le]];
+    if (suite.every(([, v]) => dateSignee(v))) croissant(e, 'page', suite);
+  } else if (ch.source_decisions === 'saisie_locale') {
+    if (ch.provenances.length !== 0) e.push('saisie_locale : provenances doit être vide');
+    if (ch.execution_cloture !== null) e.push('saisie_locale : execution_cloture doit être null');
+    if (ch.revoque_le !== null) e.push('saisie_locale : revoque_le doit être null');
+    if (ch.fin_saisie_le === null) e.push('saisie_locale : fin_saisie_le requise (non nulle)');
+    else verifierDates(e, [['fin_saisie_le', ch.fin_saisie_le]]);
+    if (ch.nb_fichiers_decision !== 1) e.push('saisie_locale : nb_fichiers_decision = 1 attendu');
+    if (ch.relecteur_attribue !== 'eric') e.push('saisie_locale : relecteur_attribue = "eric" attendu (§20.6)');
+    if (ch.confirmation.mode !== 'auto') e.push('saisie_locale : confirmation.mode = "auto" attendu (§20.6)');
+    const suite = [['generation.terminee_le', g.terminee_le], ['fin_saisie_le', ch.fin_saisie_le], ['listing_debut_le', g.listing_debut_le]];
+    if (suite.every(([, v]) => dateSignee(v))) croissant(e, 'saisie locale', suite);
+  } else {
+    e.push(`source_decisions hors énumération (${ch.source_decisions}) : ${SOURCES.join(' | ')}`);
+  }
+  return e;
+}
+
+// Aiguillage par schéma (liste FERMÉE). v1 acceptée telle quelle ; v2 exige la liste
+// des modèles autorisés.
+function invariantsValeur(ch, options = {}) {
+  if (ch && ch.schema === 'attestation-cloture/v2') return invariantsValeurV2(ch, options);
+  return invariantsValeurV1(ch);
 }
 
 // --- Invariants de DÉPÔT (charge <-> entrée, lot, registre, référentiel) ---------------
@@ -221,7 +328,8 @@ function invariantsDepot(ch, { entree, registre, referentiel }) {
 }
 
 // Vérification complète, ordre fail-closed. Renvoie la liste des erreurs (vide = ok).
-function verifierAttestationSignee(enveloppe, { entree, registre, referentiel, cles }) {
+const CONTRATS_CHARGE = Object.freeze(['attestation-cloture/v1', 'attestation-cloture/v2']);
+function verifierAttestationSignee(enveloppe, { entree, registre, referentiel, cles, modelesAutorises }) {
   if (!enveloppe || typeof enveloppe !== 'object' || Array.isArray(enveloppe)
     || Object.keys(enveloppe).sort().join() !== 'charge,signature,type' || enveloppe.type !== TYPE) {
     return [`enveloppe : { type: "${TYPE}", charge, signature } attendu`];
@@ -229,7 +337,9 @@ function verifierAttestationSignee(enveloppe, { entree, registre, referentiel, c
   const signature = base64Strict(enveloppe.signature);
   if (!signature) return ['signature : base64 strict attendu (une seule écriture admise)'];
   let octets;
-  try { octets = Buffer.from(Canonique.octetsContrat('attestation-cloture/v1', enveloppe.charge)); } catch (err) { return [`charge : ${err.message}`]; }
+  const schema = enveloppe.charge && typeof enveloppe.charge === 'object' ? enveloppe.charge.schema : undefined;
+  if (!CONTRATS_CHARGE.includes(schema)) return [`charge.schema : ${CONTRATS_CHARGE.join(' | ')} attendu`];
+  try { octets = Buffer.from(Canonique.octetsContrat(schema, enveloppe.charge)); } catch (err) { return [`charge : ${err.message}`]; }
   const ch = enveloppe.charge;
   const k = cles.obtenir(ch.cle_id);
   if (!k.ok) return [k.raison];
@@ -238,11 +348,12 @@ function verifierAttestationSignee(enveloppe, { entree, registre, referentiel, c
   let valide = false;
   try { valide = crypto.verify('sha256', octets, { key: k.cle, padding: crypto.constants.RSA_PKCS1_PADDING }, signature); } catch { valide = false; }
   if (!valide) return ['signature RSA-SHA256 PKCS#1 v1.5 invalide sur les octets canoniques de la charge'];
-  const ev = invariantsValeur(ch);
+  const ev = invariantsValeur(ch, { modelesAutorises });
   if (ev.length) return ev;
   return invariantsDepot(ch, { entree, registre, referentiel });
 }
 
 module.exports = {
-  TYPE, ALGORITHME, chargerCles, recevabilite, invariantsValeur, invariantsDepot, verifierAttestationSignee, dateSignee,
+  TYPE, ALGORITHME, CONTRATS_CHARGE, SOURCES, chargerCles, recevabilite, invariantsValeur, invariantsDepot, verifierAttestationSignee, dateSignee,
+  lireModelesAutorises, modelesValides,
 };

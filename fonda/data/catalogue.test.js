@@ -93,6 +93,10 @@ describe('chaîne publiée FONDA — cohérence complète', () => {
   // Type 2 (CDC §11, §14) : chaque clôture signée est RE-VÉRIFIÉE en CI avec les clés du
   // dépôt (signature, recevabilité, invariants de valeur et de dépôt). Une clé révoquée
   // rend ses attestations irrecevables : la CI échoue jusqu'au retrait ou à la reclôture.
+  test('modèles autorisés (G5, §20.8) : fichier conforme ; identifiants Sonnet DATÉS seulement (vide tant que la recette n\'a pas eu lieu)', () => {
+    const S = require('../scripts/attestation-signee.js');
+    assert.ok(Array.isArray(S.lireModelesAutorises(fs.readFileSync(path.join(DATA, 'modeles-autorises.json'), 'utf8'))));
+  });
   test('clés du dépôt : cles.json conforme (clé publique eric-2026)', () => {
     const { clesDuDepot } = require('../scripts/publier-lot.js');
     assert.ok(Array.isArray(clesDuDepot().ids));
@@ -107,7 +111,8 @@ describe('chaîne publiée FONDA — cohérence complète', () => {
       const registre = require('../engine/moteurs.json');
       const refs = RA.refsDeConfiance();
       const resoudre = (version) => RA.resoudreReferentiel({ version, refs });
-      assert.deepEqual(verifierClotureDuCatalogue(e, { resoudre, cles: clesDuDepot(), registre }), []);
+      const modelesAutorises = require('../scripts/attestation-signee.js').lireModelesAutorises(fs.readFileSync(path.join(DATA, 'modeles-autorises.json'), 'utf8'));
+      assert.deepEqual(verifierClotureDuCatalogue(e, { resoudre, cles: clesDuDepot(), registre, modelesAutorises }), []);
     });
   }
 
