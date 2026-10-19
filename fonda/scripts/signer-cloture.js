@@ -217,7 +217,7 @@ const NOM_DECISION_LOCALE = 'decision.json';
 // avec nonce aléatoire, generation = 0, recu_le = instant de l'écriture,
 // hash_formulaire = "saisie-locale". Elle ne se corrige plus (erreur -> abandon).
 // N'appelle aucun signataire : la garde maîtresse ne concerne que la signature.
-// deps = { config: { dossier }, drive: { lireLotGenere }, moteur, registre, fs, horloge, saisir, afficher, aleatoire? }
+// deps = { config: { dossier }, drive: { lireLotGenere }, referentiel, moteur, registre, fs, horloge, saisir, afficher, aleatoire? }
 async function saisirDecisionLocale(setId, deps) {
   if (!C.SET_ID_PATTERN.test(setId || '')) refuser('set_id invalide');
   verifierDossierLocal(deps.config.dossier, deps.fs && deps.fs.realpath);
@@ -230,13 +230,21 @@ async function saisirDecisionLocale(setId, deps) {
   const lu = await deps.drive.lireLotGenere(setId);
   const lot = lu ? lireJson(lu.octets) : undefined;
   if (!lot || !C.validerLot(lot).valide || lot.set_id !== setId) refuser('lot généré illisible ou non conforme', 'local');
+  // §20.6 : Éric ne saisit JAMAIS les décisions d'un autre relecteur — vérifié AVANT toute
+  // saisie (référentiel de design ; la clôture revérifie contre le référentiel ARCHIVÉ).
+  const ref = deps.referentiel;
+  if (!ref || !Array.isArray(ref.notions)) refuser('référentiel absent : relecteur attribué non vérifiable avant la saisie');
+  const notion = ref.notions.find((n) => n && n.id === lot.notion_id);
+  if (!notion || notion.relecteur !== 'eric') refuser(`saisie locale réservée au relecteur « eric » (notion ${lot.notion_id} : ${notion ? notion.relecteur : 'absente'}) — §20.6`, 'refus');
   const moteur = deps.moteur;
   const reg = (deps.registre || []).find((l) => l && moteur && l.version === moteur.version);
   if (!reg || reg.sha256 !== moteur.sha256) refuser('moteur ≠ registre moteurs.json');
   const cartes = [];
   for (const [i, c] of lot.cartes.entries()) {
     deps.afficher([`Carte ${i + 1}/${lot.cartes.length} [${c.item_id}] ${c.question}`, `  Réponse attendue : ${c.reponse === undefined ? '(non renseignée)' : c.reponse}`,
-      `  Profil : ${c.profil_correction} ; réponses acceptées : ${c.reponses_acceptees.map((x) => JSON.stringify(x)).join(' | ')}`].join('\n'));
+      `  Profil : ${c.profil_correction} ; réponses acceptées : ${c.reponses_acceptees.map((x) => JSON.stringify(x)).join(' | ')}`,
+      `  Unité : ${c.unite === undefined ? 'aucune (par défaut)' : c.unite} ; arrondi : ${c.arrondi === undefined ? 'aucun (par défaut)' : c.arrondi} ; seconde chance : ${c.seconde_chance === undefined ? 'non (par défaut)' : (c.seconde_chance ? 'oui' : 'non')}`,
+      `  Contexte : ${c.contexte === undefined ? '(aucun)' : c.contexte}`].join('\n'));
     let choix;
     for (;;) {
       choix = (await deps.saisir('garder / ecarter : ')).trim();
@@ -299,14 +307,21 @@ async function cloturer(setId, deps) {
   const page = config.source === 'page_relecture';
   const levees = deps.levees || [];
   const constats = new L.Constats();
-  // Lecture réseau : toute panne -> refus TEMPORAIRE immédiat (rien n'est figé).
-  const lire = async (quoi, f) => {
-    try { return await f(); } catch (e) { if (e instanceof Refus) throw e; return refuser(`${quoi} injoignable ou en erreur (${e.message}) : refus temporaire, relancer`, 'temporaire'); }
+  // Lectures : un échec n'interrompt PAS l'évaluation ; il devient un constat (accès
+  // insuffisant 401/403 -> incident ; panne -> refus temporaire) et les évaluations qui
+  // dépendent de la donnée manquante sont sautées (aucune issue déduite d'un manque).
+  const enEchec = (quoi, e) => {
+    if (e && (e.statut === 401 || e.statut === 403)) constats.ajouter('incident', `${quoi} : accès insuffisant (${e.statut}) — incident de chaîne`);
+    else constats.ajouter('temporaire', `${quoi} injoignable ou en erreur (${e && e.message}) : relancer`);
   };
-  const observerSur = async (workflowId) => {
-    try { return await observer(api, workflowId); } catch (e) {
-      if (e instanceof Refus) return refuser(`observations contradictoires ou inexploitables (${e.message}) : incident de chaîne`, 'incident');
-      return refuser(`API n8n injoignable (${e.message}) : refus temporaire`, 'temporaire');
+  const lire = async (quoi, f) => {
+    try { return { ok: true, v: await f() }; } catch (e) { if (e instanceof Refus) throw e; enEchec(quoi, e); return { ok: false }; }
+  };
+  const observerSur = async (quoi, workflowId) => {
+    try { return { ok: true, v: await observer(api, workflowId) }; } catch (e) {
+      if (e instanceof Refus) constats.ajouter('incident', `${quoi} : observations contradictoires ou inexploitables (${e.message})`);
+      else enEchec(`${quoi} (API n8n)`, e);
+      return { ok: false };
     }
   };
 
@@ -315,50 +330,70 @@ async function cloturer(setId, deps) {
 
   // ── LISTING en intervalle (§20.7) : toutes les sources ──
   const listingDebut = deps.horloge().toISOString();
-  const executionsGen = await observerSur(config.workflowGeneration);
+  const gen = await observerSur('workflow de génération', config.workflowGeneration);
   const details = new Map();
-  for (const x of executionsGen) details.set(x.id, await lire(`API n8n (exécution ${x.id})`, () => api.lireExecution(x.id)));
-  const candidats = await lire('Drive (candidats/)', () => drive.listerCandidats());
-  let candidatEnv = null; let clotures = []; let confirmations = []; let listeDecisions = null; let fichiersLocaux = [];
+  let detailsOk = gen.ok;
+  if (gen.ok) {
+    for (const x of gen.v) {
+      const r = await lire(`API n8n (exécution ${x.id})`, () => api.lireExecution(x.id));
+      if (r.ok) details.set(x.id, r.v); else detailsOk = false;
+    }
+  }
+  const cand = await lire('Drive (candidats/)', () => drive.listerCandidats());
+  let candidatEnv = { ok: false }; let clotures = { ok: false }; let confirmations = { ok: false }; let listeDecisions = { ok: false }; let locales = { ok: false };
   if (page) {
     candidatEnv = await lire('Drive (candidat)', () => drive.lireCandidat(setId));
-    clotures = (await observerSur(config.workflowCloture)).filter((x) => { const r = rattachement(x.brut); return r && r.set_id === setId && r.type === 'cloture'; });
-    confirmations = await observerSur(config.workflowConfirmation);
+    const cl = await observerSur('workflow de clôture', config.workflowCloture);
+    clotures = cl.ok ? { ok: true, v: cl.v.filter((x) => { const r = rattachement(x.brut); return r && r.set_id === setId && r.type === 'cloture'; }) } : cl;
+    confirmations = await observerSur('workflow de confirmation', config.workflowConfirmation);
     listeDecisions = await lire('Drive (decisions/)', () => drive.listerDecisions(setId));
   } else {
-    fichiersLocaux = await lire('dossier local (décisions)', () => deps.decisionsLocales(setId));
+    locales = await lire('dossier local (décisions)', () => deps.decisionsLocales(setId));
   }
-  const incidentsBruts = await lire('incidents', () => deps.incidents());
+  const inc = await lire('incidents', () => deps.incidents());
   const listingFin = deps.horloge().toISOString();
   // ── Lot généré : relu APRÈS le listing (stabilité observée, pas un verrou) ──
   const lotApres = await lire('Drive (lot généré)', () => drive.lireLotGenere(setId));
 
   // ═══ Évaluation complète : constats classés, aucune écriture ═══
-  if (!candidats || !Array.isArray(candidats.fichiers)) refuser('listing de candidats/ illisible : incident de chaîne', 'incident');
-  if (candidats.incompleteSearch === true && !levees.some((l) => l.type === 'recherche_incomplete')) constats.ajouter('temporaire', 'recherche Drive incomplète (candidats/) sans levée explicite');
-  // §20.2 classement
-  const { retenue, fichier } = L.classerExecutions({ setId, executions: executionsGen, details, fichiers: candidats.fichiers, constats });
+  let fichiersCandidats = null;
+  if (cand.ok) {
+    if (!cand.v || !Array.isArray(cand.v.fichiers)) constats.ajouter('incident', 'listing de candidats/ illisible');
+    else {
+      fichiersCandidats = cand.v.fichiers;
+      if (cand.v.incompleteSearch === true && !levees.some((l) => l.type === 'recherche_incomplete')) constats.ajouter('temporaire', 'recherche Drive incomplète (candidats/) sans levée explicite');
+    }
+  }
+  // Incident global sur les générations non terminées : dès que le listing est disponible.
+  if (gen.ok) L.incidentsGeneration(gen.v, constats);
+  // §20.2 classement (seulement sur des observations COMPLÈTES)
+  let retenue = null; let fichier = null;
+  if (gen.ok && detailsOk && fichiersCandidats) ({ retenue, fichier } = L.classerExecutions({ setId, executions: gen.v, details, fichiers: fichiersCandidats, constats, normaliserDate }));
   // Lot source (§20.4, §20.7)
   let lotSource = null;
-  if (!lotAvant || !lotApres) constats.ajouter('abandon', `lot généré ${setId}.lot.json absent`);
-  else {
-    if (lotAvant.id !== lotApres.id || lotAvant.modifie_le !== lotApres.modifie_le || !Buffer.from(lotAvant.octets).equals(Buffer.from(lotApres.octets))) {
-      constats.ajouter('temporaire', 'lot généré instable pendant le listing (identifiant, date ou contenu) : relancer la clôture');
-    }
-    if (fichier && lotAvant.id !== fichier.id) constats.ajouter('abandon', 'lot généré lu ≠ fichier candidat retenu');
-    const lot = lireJson(lotAvant.octets);
-    if (lot === undefined) constats.ajouter('incident', 'lot généré illisible (JSON invalide) : incident de chaîne');
+  if (lotAvant.ok && lotApres.ok) {
+    const av = lotAvant.v; const ap = lotApres.v;
+    if (!av || !ap) constats.ajouter('abandon', `lot généré ${setId}.lot.json absent`);
     else {
-      const v = C.validerLot(lot);
-      const nuls = v.valide ? L.nullsExplicites(lot) : [];
-      if (!v.valide) constats.ajouter('abandon', `lot généré non conforme à lot-fonda/v1 : ${v.erreurs.join(' ; ')}`);
-      else if (nuls.length) constats.ajouter('abandon', `lot généré : null explicite interdit (${nuls.join(', ')})`);
-      else if (lot.set_id !== setId) constats.ajouter('abandon', 'lot généré : set_id ≠ set_id demandé');
-      else lotSource = lot;
+      // Trois observations de la date : lecture avant, listing, lecture après.
+      const datesLot = [av.modifie_le, ap.modifie_le, ...(fichier ? [fichier.modifie_le] : [])].map((d) => normaliserDate(d));
+      if (av.id !== ap.id || !Buffer.from(av.octets).equals(Buffer.from(ap.octets)) || new Set(datesLot).size !== 1) {
+        constats.ajouter('temporaire', 'lot généré instable pendant le listing (identifiant, date ou contenu différents entre lecture avant, listing et lecture après) : relancer la clôture');
+      }
+      if (fichier && av.id !== fichier.id) constats.ajouter('abandon', 'lot généré lu ≠ fichier candidat retenu');
+      if (datesLot.some((d) => d === null)) constats.ajouter('incident', 'lot généré : date de modification illisible');
+      else if (retenue && retenue.x.stoppedAt && datesLot.some((d) => d > retenue.x.stoppedAt)) constats.ajouter('abandon', 'lot généré modifié APRÈS la fin de l\'exécution de génération');
+      const lot = lireJson(av.octets);
+      if (lot === undefined) constats.ajouter('incident', 'lot généré illisible (JSON invalide) : incident de chaîne');
+      else {
+        const v = C.validerLot(lot);
+        const nuls = v.valide ? L.nullsExplicites(lot) : [];
+        if (!v.valide) constats.ajouter('abandon', `lot généré non conforme à lot-fonda/v1 : ${v.erreurs.join(' ; ')}`);
+        else if (nuls.length) constats.ajouter('abandon', `lot généré : null explicite interdit (${nuls.join(', ')})`);
+        else if (lot.set_id !== setId) constats.ajouter('abandon', 'lot généré : set_id ≠ set_id demandé');
+        else lotSource = lot;
+      }
     }
-    const modifie = normaliserDate(lotAvant.modifie_le);
-    if (!modifie) constats.ajouter('incident', 'lot généré : date de modification illisible');
-    else if (retenue && retenue.x.stoppedAt && modifie > retenue.x.stoppedAt) constats.ajouter('abandon', 'lot généré modifié APRÈS la fin de l\'exécution de génération');
   }
   const sha = C.sha256WebCrypto();
   const empreintes = lotSource ? { pedagogique: await C.calculerEmpreinte(lotSource, sha), complete: L.empreinteComplete(lotSource) } : null;
@@ -368,8 +403,8 @@ async function cloturer(setId, deps) {
     const brute = details.get(retenue.x.id);
     const s0 = brute ? L.itemUnique(brute, L.NOEUD_SORTIE) : { ok: false };
     const commit = s0.ok && typeof s0.json.journal_commit === 'string' && /^[0-9a-f]{40}$/.test(s0.json.journal_commit) ? s0.json.journal_commit : null;
-    const journalCommit = commit ? await lire('historique de confiance (journal)', () => deps.journal(commit)) : null;
-    sortie = L.rapprocher({ setId, retenue, fichier, brute, workflowId: config.workflowGeneration, journalCommit, registre: deps.registre, modelesAutorises: config.modelesAutorises, lotSource, empreintes, constats });
+    const jc = commit ? await lire('historique de confiance (journal)', () => deps.journal(commit)) : { ok: true, v: null };
+    if (jc.ok) sortie = L.rapprocher({ setId, retenue, fichier, brute, workflowId: config.workflowGeneration, journalCommit: jc.v, registre: deps.registre, modelesAutorises: config.modelesAutorises, lotSource, empreintes, constats });
   }
   // Référentiel ARCHIVÉ de la version de la sortie (§20.12) et relecteur attribué.
   let referentiel = null; let relecteur = null;
@@ -393,26 +428,28 @@ async function cloturer(setId, deps) {
   let derniere = null; let duLot = []; let revoqueLe = null; let finSaisie = null;
   if (page) {
     const ev = evaluerPage({ setId, candidatEnv, clotures, confirmations, listeDecisions, rattachement, levees, constats, sortie, relecteur, empreintes, listingDebut });
-    if (ev) { decisions.push(...ev.decisions); derniere = ev.derniere; duLot = ev.duLot; revoqueLe = ev.revoqueLe; fenetre = ev.fenetre; }
+    decisions.push(...ev.decisions); ({ derniere, duLot, revoqueLe, fenetre } = ev);
   } else {
     if (relecteur !== null && relecteur !== 'eric') constats.ajouter('refus', `saisie locale réservée au relecteur « eric » (relecteur attribué : ${relecteur}) — §20.6`);
-    const lus = (fichiersLocaux || []).map((f) => ({ nom: f.nom, d: lireJson(f.octets), octets: Buffer.from(f.octets) }));
-    if (!lus.length) constats.ajouter('local', `aucune décision figée dans ${dossierDecisionLocale(config.dossier, setId)} : lancer la saisie locale`);
-    for (const f of lus) if (f.d === undefined) constats.ajouter('incident', `décision locale ${f.nom} illisible`);
-    const conformes = lus.filter((f) => f.d !== undefined);
-    if (new Set(conformes.map((f) => f.octets.toString('hex'))).size > 1) constats.ajouter('abandon', 'deux décisions figées distinctes pour ce set_id : conflit');
-    for (const f of conformes) {
-      const d = f.d;
-      if (!decisionConforme(d)) { constats.ajouter('abandon', `décision figée ${f.nom} non conforme à decision-fonda/v1`); continue; }
-      if (d.set_id !== setId || d.generation !== 0 || d.hash_formulaire !== 'saisie-locale') { constats.ajouter('abandon', `décision figée ${f.nom} : set_id, generation = 0 ou hash_formulaire = « saisie-locale » non respectés`); continue; }
-      decisions.push(d);
-    }
-    if (decisions.length) {
-      finSaisie = decisions[0].recu_le;
-      if (retenue && retenue.x.startedAt) fenetre = { debut: retenue.x.startedAt, fin: finSaisie };
+    if (locales.ok) {
+      const lus = (locales.v || []).map((f) => ({ nom: f.nom, d: lireJson(f.octets), octets: Buffer.from(f.octets) }));
+      if (!lus.length) constats.ajouter('local', `aucune décision figée dans ${dossierDecisionLocale(config.dossier, setId)} : lancer la saisie locale`);
+      for (const f of lus) if (f.d === undefined) constats.ajouter('incident', `décision locale ${f.nom} illisible`);
+      const conformes = lus.filter((f) => f.d !== undefined);
+      if (new Set(conformes.map((f) => f.octets.toString('hex'))).size > 1) constats.ajouter('abandon', 'deux décisions figées distinctes pour ce set_id : conflit');
+      for (const f of conformes) {
+        const d = f.d;
+        if (!decisionConforme(d)) { constats.ajouter('abandon', `décision figée ${f.nom} non conforme à decision-fonda/v1`); continue; }
+        if (d.set_id !== setId || d.generation !== 0 || d.hash_formulaire !== 'saisie-locale') { constats.ajouter('abandon', `décision figée ${f.nom} : set_id, generation = 0 ou hash_formulaire = « saisie-locale » non respectés`); continue; }
+        decisions.push(d);
+      }
+      if (decisions.length) {
+        finSaisie = decisions[0].recu_le;
+        if (retenue && retenue.x.startedAt) fenetre = { debut: retenue.x.startedAt, fin: finSaisie };
+      }
     }
   }
-  // §20.5 réconciliation de CHAQUE décision, puis unicité
+  // §20.5 réconciliation de CHAQUE décision (tardives comprises), puis unicité
   if (lotSource && decisions.length) {
     const empreintePubliee = async (gardees) => C.calculerEmpreinte(lotPublie(lotSource, { selection: gardees }), sha);
     for (const d of decisions) for (const err of await L.reconcilier(d, { setId, lotSource, empreintes, empreintePubliee })) constats.ajouter('abandon', `réconciliation : ${err}`);
@@ -423,7 +460,7 @@ async function cloturer(setId, deps) {
   }
   // Incidents (§10 B) : fenêtre de candidature de la source
   const incidents = [];
-  for (const i of incidentsBruts || []) {
+  for (const i of (inc.ok ? inc.v : null) || []) {
     if (!i || typeof i.id !== 'string' || !i.id || typeof i.nature !== 'string' || !i.periode) { constats.ajouter('incident', 'incident illisible'); continue; }
     if (i.statut !== 'resolu') { constats.ajouter('incident', `incident ${i.id} ouvert : toute clôture signée est suspendue`); continue; }
     const detecte = normaliserDate(i.detecte_le);
@@ -440,6 +477,8 @@ async function cloturer(setId, deps) {
     const autres = constats.liste.filter((c) => c !== tranche).map((c) => `[${c.issue}] ${c.raison}`);
     refuser(`${tranche.raison}${autres.length ? ` (autres constats : ${autres.join(' ; ')})` : ''}`, tranche.issue);
   }
+  // Invariants de complétude (toute donnée manquante a produit un constat ci-dessus).
+  if (!retenue || !lotSource || !sortie || !decisions.length || relecteur === null || (page && (!derniere || !revoqueLe))) refuser('évaluation incomplète sans constat (bug) : refus');
 
   // ═══ Instantané figé + confirmation (§3 ; code calculé APRÈS la décision figée) ═══
   const coeur = decisions[0].coeur;
@@ -460,10 +499,28 @@ async function cloturer(setId, deps) {
   const code = shaInstantane.slice(0, 16);
   const dossierLot = path.join(config.dossier, `${setId}-${code}`);
   verifierDossierLocal(dossierLot, deps.fs && deps.fs.realpath); // destination finale, avant toute écriture
-  deps.fs.ecrireExclusif(path.join(dossierLot, 'instantane.json'), texteInstantane);
-  deps.fs.ecrireExclusif(path.join(dossierLot, 'export.json'), `${JSON.stringify({ sha256_instantane: shaInstantane, sha256_recapitulatif: shaRecap, exporte_le: deps.horloge().toISOString() }, null, 2)}\n`);
+  // Instantané écrit UNE fois. S'il existe déjà (reprise après code faux ou fidélité non
+  // attestée, §20.13) : relu et vérifié OCTET POUR OCTET, jamais reconstruit ni réécrit.
+  const cheminInst = path.join(dossierLot, 'instantane.json');
+  const cheminExport = path.join(dossierLot, 'export.json');
+  const cheminRecap = path.join(dossierLot, `recapitulatif-${setId}-${code}.txt`);
   const rendu = rendreRecapitulatif(recapitulatif);
-  deps.fs.ecrireExclusif(path.join(dossierLot, `recapitulatif-${setId}-${code}.txt`), `${rendu}\n\n${shaInstantane}\n`);
+  let dejaLa;
+  try { dejaLa = deps.fs.existe(cheminInst); } catch (e) { refuser(`${cheminInst} inaccessible (${e.code || e.message}) : refus`); }
+  if (dejaLa === true) {
+    let ok = false;
+    try {
+      const exp = JSON.parse(deps.fs.lire(cheminExport).toString('utf8'));
+      ok = deps.fs.lire(cheminInst).equals(Buffer.from(texteInstantane, 'utf8')) && exp.sha256_instantane === shaInstantane && exp.sha256_recapitulatif === shaRecap
+        && deps.fs.lire(cheminRecap).equals(Buffer.from(`${rendu}\n\n${shaInstantane}\n`, 'utf8'));
+    } catch { ok = false; }
+    if (!ok) refuser(`reprise : l'instantané existant de ${dossierLot} ne correspond pas aux données relues — traitement manuel (archiver le dossier)`, 'local');
+    deps.afficher('Reprise de la confirmation sur l\'instantané EXISTANT (relu et vérifié, non reconstruit).\n');
+  } else if (dejaLa === false) {
+    deps.fs.ecrireExclusif(cheminInst, texteInstantane);
+    deps.fs.ecrireExclusif(cheminExport, `${JSON.stringify({ sha256_instantane: shaInstantane, sha256_recapitulatif: shaRecap, exporte_le: deps.horloge().toISOString() }, null, 2)}\n`);
+    deps.fs.ecrireExclusif(cheminRecap, `${rendu}\n\n${shaInstantane}\n`);
+  } else refuser(`${cheminInst} : état indéterminé — refus`);
   deps.afficher(`${rendu}\n\nCODE DE CONFIRMATION : ${code}`);
 
   const auto = relecteur === 'eric';
@@ -537,63 +594,81 @@ async function cloturer(setId, deps) {
   return { enveloppe, dossierLot, lotPublie: publie };
 }
 
-// Parcours PAGE (v8.2 §7, §9, §10 ; décisions par la page de relecture) : constats, jamais
-// d'exception (sauf données inexploitables). Renvoie null si l'évaluation ne peut aboutir.
 function evaluerPage({ setId, candidatEnv, clotures, confirmations, listeDecisions, rattachement, levees, constats, sortie, relecteur, empreintes, listingDebut }) {
-  const c = candidatEnv;
-  if (!c || c.schema !== 'candidat-fonda/v1' || !c.lot || !c.relecture) { constats.ajouter('incident', 'candidat (enveloppe de relecture) illisible ou non conforme'); return null; }
-  const rel = c.relecture;
-  if (rel.statut !== 'clos') { constats.ajouter('temporaire', `candidat au statut « ${rel.statut} » (clôture technique requise)`); return null; }
-  const revoqueLe = normaliserDate(rel.clos_le);
-  const creeLe = normaliserDate(rel.cree_le);
-  if (!revoqueLe || !creeLe) { constats.ajouter('incident', 'relecture.clos_le / cree_le absent ou mal formé'); return null; }
-  if (creeLe > revoqueLe) constats.ajouter('incident', 'fenêtre de candidature inversée (cree_le > clos_le)');
-  if (c.lot.set_id !== setId) constats.ajouter('abandon', 'set_id du candidat ≠ set_id demandé');
-  // Lot de l'enveloppe = lot généré (immuable) : même empreinte complète.
-  try { if (empreintes && L.empreinteComplete(c.lot) !== empreintes.complete) constats.ajouter('abandon', 'lot de l\'enveloppe de relecture ≠ lot généré'); } catch { constats.ajouter('abandon', 'lot de l\'enveloppe de relecture non projetable'); }
-  if (sortie && rel.referentiel_version !== sortie.referentiel_version) constats.ajouter('abandon', 'referentiel_version du candidat ≠ génération');
-  if (relecteur !== null && rel.relecteur_attribue !== relecteur) constats.ajouter('abandon', 'relecteur attribué du candidat ≠ référentiel archivé');
-  if (sortie && (!rel.moteur || rel.moteur.version !== sortie.moteur.version || rel.moteur.sha256 !== sortie.moteur.sha256)) constats.ajouter('abandon', 'moteur du candidat ≠ moteur de la génération');
+  // Parcours PAGE (v8.2 §7, §9, §10) : chaque partie est évaluée dès que sa donnée est
+  // disponible, sans retour anticipé ; une décision tardive reste réconciliée et
+  // rapprochée (un blocage dur n'est jamais masqué par une date).
+  let revoqueLe = null; let creeLe = null; let derniere = null;
+  if (candidatEnv.ok) {
+    const c = candidatEnv.v;
+    if (!c || c.schema !== 'candidat-fonda/v1' || !c.lot || !c.relecture) constats.ajouter('incident', 'candidat (enveloppe de relecture) illisible ou non conforme');
+    else {
+      const rel = c.relecture;
+      if (rel.statut !== 'clos') constats.ajouter('temporaire', `candidat au statut « ${rel.statut} » (clôture technique requise)`);
+      revoqueLe = normaliserDate(rel.clos_le);
+      creeLe = normaliserDate(rel.cree_le);
+      if (!revoqueLe || !creeLe) constats.ajouter('incident', 'relecture.clos_le / cree_le absent ou mal formé');
+      else if (creeLe > revoqueLe) constats.ajouter('incident', 'fenêtre de candidature inversée (cree_le > clos_le)');
+      if (c.lot.set_id !== setId) constats.ajouter('abandon', 'set_id du candidat ≠ set_id demandé');
+      try { if (empreintes && L.empreinteComplete(c.lot) !== empreintes.complete) constats.ajouter('abandon', 'lot de l\'enveloppe de relecture ≠ lot généré'); } catch { constats.ajouter('abandon', 'lot de l\'enveloppe de relecture non projetable'); }
+      if (sortie && rel.referentiel_version !== sortie.referentiel_version) constats.ajouter('abandon', 'referentiel_version du candidat ≠ génération');
+      if (relecteur !== null && rel.relecteur_attribue !== relecteur) constats.ajouter('abandon', 'relecteur attribué du candidat ≠ référentiel archivé');
+      if (sortie && (!rel.moteur || rel.moteur.version !== sortie.moteur.version || rel.moteur.sha256 !== sortie.moteur.sha256)) constats.ajouter('abandon', 'moteur du candidat ≠ moteur de la génération');
+    }
+  }
   // 1. Exécution de clôture
-  if (clotures.some((x) => !STATUTS_TERMINAUX.includes(x.status))) { constats.ajouter('incident', 'une clôture technique de ce lot est encore en cours'); return null; }
-  const reussies = clotures.filter((x) => x.status === 'success' && x.stoppedAt && x.startedAt);
-  if (!reussies.length) { constats.ajouter('temporaire', 'aucune clôture technique réussie rattachée à ce lot'); return null; }
-  reussies.sort((a, b) => (a.stoppedAt < b.stoppedAt ? -1 : a.stoppedAt > b.stoppedAt ? 1 : 0));
-  const derniere = reussies[reussies.length - 1];
-  if (reussies.length > 1 && reussies[reussies.length - 2].stoppedAt === derniere.stoppedAt) constats.ajouter('abandon', 'deux clôtures techniques à la même date : aucun départage arbitraire');
+  if (clotures.ok) {
+    if (clotures.v.some((x) => !STATUTS_TERMINAUX.includes(x.status))) constats.ajouter('incident', 'une clôture technique de ce lot est encore en cours');
+    const reussies = clotures.v.filter((x) => x.status === 'success' && x.stoppedAt && x.startedAt)
+      .sort((a, b) => (a.stoppedAt < b.stoppedAt ? -1 : a.stoppedAt > b.stoppedAt ? 1 : 0));
+    if (!reussies.length) constats.ajouter('temporaire', 'aucune clôture technique réussie rattachée à ce lot');
+    else {
+      derniere = reussies[reussies.length - 1];
+      if (reussies.length > 1 && reussies[reussies.length - 2].stoppedAt === derniere.stoppedAt) constats.ajouter('abandon', 'deux clôtures techniques à la même date : aucun départage arbitraire');
+    }
+  }
   // 2. Filet sur les confirmations
   const duLot = [];
-  for (const x of confirmations) {
-    if (STATUTS_EN_VOL.includes(x.status)) { constats.ajouter('incident', `exécution de confirmation ${x.id} non terminée (${x.status})`); continue; }
-    if (!STATUTS_TERMINAUX.includes(x.status)) { constats.ajouter('incident', `exécution de confirmation ${x.id} au statut inconnu (${x.status})`); continue; }
-    const r = rattachement(x.brut);
-    if (!r) { constats.ajouter('incident', `exécution de confirmation ${x.id} sans données exploitables`); continue; }
-    if (r.set_id !== setId) continue;
-    if (r.type === 'conflit') { constats.ajouter('abandon', `sortie « conflit » (exécution ${x.id}) : blocage dur`); continue; }
-    if (x.status !== 'success') { constats.ajouter('abandon', `exécution de confirmation ${x.id} du lot au statut ${x.status} : blocage dur`); continue; }
-    if (r.type !== 'decision' || typeof r.nonce !== 'string' || !r.nonce || !x.startedAt || !x.stoppedAt) { constats.ajouter('incident', `exécution ${x.id} : rattachement de décision incomplet`); continue; }
-    duLot.push({ x, nonce: r.nonce });
+  if (confirmations.ok) {
+    for (const x of confirmations.v) {
+      if (STATUTS_EN_VOL.includes(x.status)) { constats.ajouter('incident', `exécution de confirmation ${x.id} non terminée (${x.status})`); continue; }
+      if (!STATUTS_TERMINAUX.includes(x.status)) { constats.ajouter('incident', `exécution de confirmation ${x.id} au statut inconnu (${x.status})`); continue; }
+      const r = rattachement(x.brut);
+      if (!r) { constats.ajouter('incident', `exécution de confirmation ${x.id} sans données exploitables`); continue; }
+      if (r.set_id !== setId) continue;
+      if (r.type === 'conflit') { constats.ajouter('abandon', `sortie « conflit » (exécution ${x.id}) : blocage dur`); continue; }
+      if (x.status !== 'success') { constats.ajouter('abandon', `exécution de confirmation ${x.id} du lot au statut ${x.status} : blocage dur`); continue; }
+      if (r.type !== 'decision' || typeof r.nonce !== 'string' || !r.nonce || !x.startedAt || !x.stoppedAt) { constats.ajouter('incident', `exécution ${x.id} : rattachement de décision incomplet`); continue; }
+      duLot.push({ x, nonce: r.nonce });
+    }
   }
-  if (!listeDecisions || !Array.isArray(listeDecisions.fichiers)) { constats.ajouter('incident', 'listing de decisions/ illisible'); return null; }
-  if (listeDecisions.incompleteSearch === true && !levees.some((l) => l.type === 'recherche_incomplete')) constats.ajouter('temporaire', 'recherche Drive incomplète (decisions/) sans levée explicite');
+  // 3. Décisions sur Drive
   const decisions = [];
-  const presentes = new Set(); // nonces des décisions du lot PRÉSENTES sur Drive, quelle que soit leur date
-  for (const f of listeDecisions.fichiers) {
-    if (!f || f.contenu == null) { constats.ajouter('incident', `fichier de decisions/ illisible (${f && f.nom})`); continue; }
-    const d = f.contenu;
-    if (!decisionConforme(d)) { constats.ajouter('incident', `fichier de decisions/ non conforme (${f.nom})`); continue; }
-    if (d.set_id !== setId) continue;
-    presentes.add(d.nonce);
-    const modifie = normaliserDate(f.modifie_le);
-    if (!modifie) { constats.ajouter('incident', `${f.nom} : date de modification illisible`); continue; }
-    // Écriture postérieure à la clôture technique, ou au début du listing (§20.7).
-    if (modifie > derniere.stoppedAt || modifie > listingDebut) { constats.ajouter('temporaire', `${f.nom} écrit après la clôture technique ou pendant le listing : nouvelle clôture technique requise`); continue; }
-    if (!duLot.some((e) => e.nonce === d.nonce)) { constats.ajouter('abandon', `${f.nom} : décision sans exécution correspondante : blocage dur`); continue; }
-    decisions.push(d);
+  if (listeDecisions.ok) {
+    const liste = listeDecisions.v;
+    if (!liste || !Array.isArray(liste.fichiers)) constats.ajouter('incident', 'listing de decisions/ illisible');
+    else {
+      if (liste.incompleteSearch === true && !levees.some((l) => l.type === 'recherche_incomplete')) constats.ajouter('temporaire', 'recherche Drive incomplète (decisions/) sans levée explicite');
+      const presentes = new Set();
+      for (const f of liste.fichiers) {
+        if (!f || f.contenu == null) { constats.ajouter('incident', `fichier de decisions/ illisible (${f && f.nom})`); continue; }
+        const d = f.contenu;
+        if (!decisionConforme(d)) { constats.ajouter('incident', `fichier de decisions/ non conforme (${f.nom})`); continue; }
+        if (d.set_id !== setId) continue;
+        presentes.add(d.nonce);
+        const modifie = normaliserDate(f.modifie_le);
+        if (!modifie) constats.ajouter('incident', `${f.nom} : date de modification illisible`);
+        // Écriture postérieure à la clôture technique ou au début du listing (§20.7) :
+        // nouvelle clôture technique requise — la décision reste réconciliée et rapprochée.
+        else if ((derniere && modifie > derniere.stoppedAt) || modifie > listingDebut) constats.ajouter('temporaire', `${f.nom} écrit après la clôture technique ou pendant le listing : nouvelle clôture technique requise`);
+        if (confirmations.ok && !duLot.some((e) => e.nonce === d.nonce)) constats.ajouter('abandon', `${f.nom} : décision sans exécution correspondante : blocage dur`);
+        decisions.push(d);
+      }
+      if (confirmations.ok) for (const e of duLot) if (!presentes.has(e.nonce)) constats.ajouter('abandon', `décision de l'exécution ${e.x.id} absente de Drive : blocage dur`);
+      if (!decisions.length) constats.ajouter('temporaire', 'aucune décision pour ce lot');
+    }
   }
-  for (const e of duLot) if (!presentes.has(e.nonce)) constats.ajouter('abandon', `décision de l'exécution ${e.x.id} absente de Drive : blocage dur`);
-  if (!decisions.length) { constats.ajouter('temporaire', 'aucune décision pour ce lot'); return null; }
-  return { decisions, derniere, duLot, revoqueLe, fenetre: { debut: creeLe, fin: revoqueLe } };
+  return { decisions, derniere, duLot, revoqueLe, fenetre: creeLe && revoqueLe && creeLe <= revoqueLe ? { debut: creeLe, fin: revoqueLe } : null };
 }
 
 // CLI : la garde maîtresse s'applique avant toute lecture de secret ou appel réseau.

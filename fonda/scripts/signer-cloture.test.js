@@ -237,9 +237,9 @@ describe('§20.2–20.3 liaison de génération : chaque violation -> refus clas
   const cas = [
     ['erreur APRÈS dépôt (fixture)', (ctx) => { autreExec('erreur_apres_depot', 499, 'error')(ctx); ctx.candidats.push(ctx.fx.erreur_apres_depot.fichier_depose); }, /erreur APRÈS dépôt/, 'abandon'],
     ['doublon : deux exécutions réussies (fixture)', autreExec('doublon', 502, 'success'), /2 exécution\(s\) de génération réussie/, 'abandon'],
-    ['pinData non vide (fixture)', ({ gen, fx }) => { gen[501].workflowData.pinData = fx.pinData; }, /pinData non vide/, 'abandon'],
+    ['pinData non vide (fixture)', ({ gen, fx }) => { gen[501].workflowData.pinData = fx.pinData; }, /pinData ni absent ni objet vide/, 'abandon'],
     ['exécution de génération non terminée (running)', ({ execs, gen, fx }) => { execs.wfGen.push({ id: 503, workflowId: 'wfGen', status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null }); gen[503] = { ...fx.doublon, id: 503, status: 'running' }; }, /non terminée/, 'incident'],
-    ['item du déclencheur manquant', ({ execs, gen }) => { execs.wfGen.push({ id: 504, workflowId: 'wfGen', status: 'error', startedAt: '2026-10-18T06:00:00.000Z', stoppedAt: '2026-10-18T06:00:01.000Z' }); gen[504] = { id: 504, workflowId: 'wfGen', status: 'error', mode: 'webhook', data: { resultData: { runData: {} } }, workflowData: {} }; }, /item du déclencheur manquant/, 'incident'],
+    ['item du déclencheur manquant', ({ execs, gen }) => { execs.wfGen.push({ id: 504, workflowId: 'wfGen', status: 'error', startedAt: '2026-10-18T06:00:00.000Z', stoppedAt: '2026-10-18T06:00:01.000Z' }); gen[504] = { id: 504, workflowId: 'wfGen', status: 'error', mode: 'webhook', startedAt: '2026-10-18T06:00:00.000Z', stoppedAt: '2026-10-18T06:00:01.000Z', data: { resultData: { runData: {} } }, workflowData: {} }; }, /item du déclencheur manquant/, 'incident'],
     ['exécution sans données (purgée)', ({ execs }) => { execs.wfGen.push({ id: 505, workflowId: 'wfGen', status: 'error', startedAt: '2026-10-18T06:00:00.000Z', stoppedAt: '2026-10-18T06:00:01.000Z' }); }, /item du déclencheur manquant/, 'incident'],
     ['workflowData absent (information indisponible)', ({ gen }) => { delete gen[501].workflowData; }, /workflowData absent/, 'refus'],
     ['fichier candidats/ sans properties', ({ candidats }) => { candidats.push({ id: 'drv-x', nom: 'autre.lot.json', modifie_le: '2026-10-18T07:00:00.000Z', properties: null, proprietesLisibles: true }); }, /properties absentes/, 'abandon'],
@@ -266,6 +266,17 @@ describe('§20.2–20.3 liaison de génération : chaque violation -> refus clas
     ['lot modifié APRÈS la fin de la génération', ({ setLotGenere, candidats }) => { setLotGenere({ modifie_le: '2026-10-18T07:02:00.000Z' }); candidats[0].modifie_le = '2026-10-18T07:02:00.000Z'; }, /modifié APRÈS/, 'abandon'],
     ['lot instable pendant le listing', ({ deps }) => { let n = 0; const f = deps.drive.lireLotGenere; deps.drive.lireLotGenere = async (s) => { n += 1; const r = await f(s); if (n === 2) r.modifie_le = '2026-10-18T07:00:31.000Z'; return r; }; }, /instable/, 'temporaire'],
     ['API injoignable', ({ deps }) => { deps.api.lireExecution = async () => { throw new Error('ECONNREFUSED'); }; }, /injoignable/, 'temporaire'],
+    ['détail n8n : statut terminal ≠ listing', ({ gen }) => { gen[501].status = 'error'; }, /observations contradictoires.*statuts terminaux différents/, 'incident'],
+    ['détail n8n : autre identifiant', ({ gen }) => { gen[501].id = 777; }, /observations contradictoires.*identifiant du détail/, 'incident'],
+    ['détail n8n : startedAt contradictoire', ({ gen }) => { gen[501].startedAt = '2026-10-18T06:59:00.000Z'; }, /startedAt contradictoire/, 'incident'],
+    ['génération en cours d\'un AUTRE lot (incident global)', ({ execs, gen, fx }) => { execs.wfGen.push({ id: 506, workflowId: 'wfGen', status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null }); gen[506] = { ...fx.doublon, id: 506, status: 'running' }; gen[506].data.resultData.runData['FONDA Entree generation'][0].data.main[0][0].json.set_id = 'set_fonda_lexique_nI_02'; }, /non terminée ou de statut inconnu/, 'incident'],
+    ['déclencheur au set_id vide (non attribuable)', ({ execs, gen, fx }) => { execs.wfGen.push({ id: 507, workflowId: 'wfGen', status: 'error', startedAt: fx.erreur_sans_depot.startedAt, stoppedAt: fx.erreur_sans_depot.stoppedAt }); gen[507] = copie({ ...fx.erreur_sans_depot, id: 507 }); gen[507].data.resultData.runData['FONDA Entree generation'][0].data.main[0][0].json.set_id = ''; }, /non attribuable/, 'incident'],
+    ['second fichier rattaché à l\'exécution retenue (autre nom, autre set_id)', ({ candidats }) => { candidats.push({ id: 'drv-autre', nom: 'set_fonda_lexique_nI_02.lot.json', modifie_le: '2026-10-18T07:00:40.000Z', properties: { fonda_set_id: 'set_fonda_lexique_nI_02', fonda_execution_id: '501' }, proprietesLisibles: true }); }, /exécution retenue 501 : 2 fichier/, 'abandon'],
+    ['workflowData tableau', ({ gen }) => { gen[501].workflowData = []; }, /workflowData absent/, 'refus'],
+    ['pinData null', ({ gen }) => { gen[501].workflowData.pinData = null; }, /pinData ni absent ni objet vide/, 'abandon'],
+    ['date du listing postérieure à la génération (lectures stables)', ({ candidats }) => { candidats[0].modifie_le = '2026-10-18T07:05:00.000Z'; }, /modifié APRÈS/, 'abandon'],
+    ['accès API insuffisant (403)', ({ deps }) => { deps.api.lireExecution = async () => { const e = new Error('Forbidden'); e.statut = 403; throw e; }; }, /accès insuffisant \(403\)/, 'incident'],
+    ['génération active PUIS panne Drive : l\'incident l\'emporte', ({ execs, gen, fx, deps }) => { execs.wfGen.push({ id: 503, workflowId: 'wfGen', status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null }); gen[503] = { ...fx.doublon, id: 503, status: 'running' }; deps.drive.listerCandidats = async () => { throw new Error('Drive 503'); }; }, /non terminée/, 'incident'],
   ];
   for (const [libelle, modifier, motif, issue] of cas) {
     test(libelle, async () => sansSignature(await scenario({ source: 'saisie_locale', modifier }), motif, issue));
@@ -345,7 +356,7 @@ describe('§20.6 saisie locale : décisions figées', () => {
   test('saisirDecisionLocale : brouillon carte par carte, re-demande sur saisie invalide, écriture EXCLUSIVE, decision réconciliable', async () => {
     const sc = await scenario({ source: 'saisie_locale' });
     const reponses = ['peut-etre', ...sc.lotRelu.cartes.map((c) => c.choix), 'oui'];
-    const deps = { ...sc.deps, moteur: { ...MOTEUR }, aleatoire: () => 'nonce-test-0001', saisir: async () => reponses.shift() };
+    const deps = { ...sc.deps, moteur: { ...MOTEUR }, referentiel: REFERENTIEL, aleatoire: () => 'nonce-test-0001', saisir: async () => reponses.shift() };
     const r = await saisirDecisionLocale(sc.setId, deps);
     assert.equal(r.figee, true);
     assert.equal(r.chemin, path.join('/tmp/fonda-cloture-test', sc.setId, 'decision.json'));
@@ -364,15 +375,15 @@ describe('§20.6 saisie locale : décisions figées', () => {
   test('saisirDecisionLocale : brouillon non figé -> rien n\'est écrit', async () => {
     const sc = await scenario({ source: 'saisie_locale' });
     const reponses = [...sc.lotRelu.cartes.map((c) => c.choix), 'non'];
-    const r = await saisirDecisionLocale(sc.setId, { ...sc.deps, moteur: { ...MOTEUR }, saisir: async () => reponses.shift() });
+    const r = await saisirDecisionLocale(sc.setId, { ...sc.deps, moteur: { ...MOTEUR }, referentiel: REFERENTIEL, saisir: async () => reponses.shift() });
     assert.equal(r.figee, false);
     assert.equal(sc.etat.ecrits.size, 0);
   });
   test('saisirDecisionLocale : dossier dans le dépôt ou Dropbox, moteur hors registre -> refus', async () => {
     const sc = await scenario({ source: 'saisie_locale' });
-    await assert.rejects(saisirDecisionLocale(sc.setId, { ...sc.deps, moteur: { ...MOTEUR }, config: { dossier: path.join(__dirname, 'x') } }), /DANS le dépôt/);
-    await assert.rejects(saisirDecisionLocale(sc.setId, { ...sc.deps, moteur: { ...MOTEUR }, config: { dossier: '/Users/x/Dropbox/c' } }), /Dropbox/);
-    await assert.rejects(saisirDecisionLocale(sc.setId, { ...sc.deps, moteur: { version: 'v1', sha256: '0'.repeat(64) } }), /registre/);
+    await assert.rejects(saisirDecisionLocale(sc.setId, { ...sc.deps, moteur: { ...MOTEUR }, referentiel: REFERENTIEL, config: { dossier: path.join(__dirname, 'x') } }), /DANS le dépôt/);
+    await assert.rejects(saisirDecisionLocale(sc.setId, { ...sc.deps, moteur: { ...MOTEUR }, referentiel: REFERENTIEL, config: { dossier: '/Users/x/Dropbox/c' } }), /Dropbox/);
+    await assert.rejects(saisirDecisionLocale(sc.setId, { ...sc.deps, referentiel: REFERENTIEL, moteur: { version: 'v1', sha256: '0'.repeat(64) } }), /registre/);
   });
 });
 
@@ -420,6 +431,10 @@ describe('parcours page (v8.2) : chaque refus -> ZÉRO signature', () => {
     ['lot de l\'enveloppe ≠ lot généré', ({ candidat }) => { candidat.lot.cartes[0].question += ' (modifiée)'; }, /≠ lot généré/, 'abandon'],
     ['exécution d\'un AUTRE lot sans dates (observation inexploitable)', ({ execs }) => { execs.wfConf[2].startedAt = null; execs.wfConf[2].stoppedAt = null; }, /sans startedAt\/stoppedAt/, 'incident'],
     ['exécution sans identifiant', ({ execs }) => { execs.wfConf.push({ workflowId: 'wfConf', status: 'success', startedAt: '2026-10-19T10:00:00.000Z', stoppedAt: '2026-10-19T10:00:01.000Z' }); }, /identifiant/, 'incident'],
+    ['candidat non clos ET confirmation en cours : l\'incident l\'emporte', ({ candidat, execs }) => { candidat.relecture.statut = 'en_attente'; execs.wfConf.push({ id: 40, workflowId: 'wfConf', status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null }); }, /non terminée/, 'incident'],
+    ['aucune clôture réussie ET décision illisible : l\'incident l\'emporte', ({ rattachements, fichiers }) => { delete rattachements[20]; fichiers[0].contenu = null; }, /illisible/, 'incident'],
+    ['décision tardive ORPHELINE : abandon (pas seulement temporaire)', ({ fichiers, decision }) => { fichiers.push({ nom: 'tard.json', modifie_le: '2026-10-20T08:30:00.000Z', contenu: decision('n77') }); }, /sans exécution correspondante/, 'abandon'],
+    ['décision tardive au cœur distinct : abandon (unicité)', ({ fichiers }) => { const d = fichiers[1].contenu; d.coeur.selection = d.coeur.selection.slice(1); d.coeur.ecartees = [d.lot_relu.cartes[0].item_id, ...d.coeur.ecartees]; d.lot_relu.cartes[0].choix = 'ecarter'; fichiers[1].modifie_le = '2026-10-20T08:30:00.000Z'; }, /cœurs distincts/, 'abandon'],
   ];
   for (const [libelle, modifier, motif, issue] of cas) {
     test(libelle, async () => sansSignature(await scenario({ modifier }), motif, issue));
@@ -504,5 +519,50 @@ describe('outils disque et dates', () => {
     assert.equal(normaliserDate('2026-10-19T19:00:00+02:00'), '2026-10-19T17:00:00.000Z');
     assert.equal(normaliserDate('2026-10-19T17:00:00.123456Z'), '2026-10-19T17:00:00.123Z');
     for (const v of ['2026-10-19T17:00:00', '2026-02-30T00:00:00Z', '2026-10-19 17:00:00Z', 1760000000000, null]) assert.equal(normaliserDate(v), null, String(v));
+  });
+});
+
+describe('reprise sur l\'instantané EXISTANT (§20.13) et saisie locale (critique Codex r1)', () => {
+  for (const [libelle, champ] of [['code faux', 'Code'], ['fidélité non attestée', 'atteste']]) {
+    test(`${libelle} puis relance : reprise sur l'instantané relu et vérifié, jamais réécrit -> signature`, async () => {
+      const sc = await scenario({ source: 'saisie_locale' });
+      const saisir = sc.deps.saisir;
+      sc.deps.saisir = async (q) => (new RegExp(champ).test(q) ? (champ === 'Code' ? '0'.repeat(16) : 'non') : saisir(q));
+      await assert.rejects(cloturer(sc.setId, sc.deps), /code de confirmation|fidélité/);
+      const avant = new Map(sc.etat.ecrits);
+      sc.deps.saisir = saisir;
+      sc.etat.affiche = '';
+      const { enveloppe } = await cloturer(sc.setId, sc.deps);
+      assert.equal(sc.etat.signatures, 1);
+      assert.match(sc.etat.affiche, /Reprise de la confirmation sur l'instantané EXISTANT/);
+      for (const [p, o] of avant) assert.ok(sc.etat.ecrits.get(p).equals(o), `${p} inchangé`);
+      assert.equal(enveloppe.charge.sha256_instantane, crypto.createHash('sha256').update(avant.get([...avant.keys()].find((p) => p.endsWith('instantane.json')))).digest('hex'));
+    });
+  }
+  test('reprise : instantané existant altéré -> refus (traitement manuel), zéro signature', async () => {
+    const sc = await scenario({ source: 'saisie_locale' });
+    const saisir = sc.deps.saisir;
+    sc.deps.saisir = async (q) => (/Code/.test(q) ? '0'.repeat(16) : saisir(q));
+    await assert.rejects(cloturer(sc.setId, sc.deps), /code de confirmation/);
+    const p = [...sc.etat.ecrits.keys()].find((k) => k.endsWith('instantane.json'));
+    sc.etat.ecrits.set(p, Buffer.concat([sc.etat.ecrits.get(p), Buffer.from(' ')]));
+    sc.deps.saisir = saisir;
+    await sansSignature(sc, /ne correspond pas/, 'local');
+  });
+  test('saisirDecisionLocale : lot attribué à un autre relecteur -> refus AVANT toute saisie, rien écrit', async () => {
+    const sc = await scenario({ source: 'page_relecture' }); // lot de français (justine)
+    let questions = 0;
+    const deps = { ...sc.deps, moteur: { ...MOTEUR }, referentiel: REFERENTIEL, saisir: async () => { questions += 1; return 'garder'; } };
+    await assert.rejects(saisirDecisionLocale(sc.setId, deps), /réservée au relecteur « eric »/);
+    assert.equal(questions, 0);
+    assert.equal(sc.etat.ecrits.size, 0);
+    await assert.rejects(saisirDecisionLocale(sc.setId, { ...deps, referentiel: undefined }), /référentiel/);
+  });
+  test('saisirDecisionLocale : rendu AVANT le choix — unité, arrondi, seconde chance, contexte', async () => {
+    const sc = await scenario({ source: 'saisie_locale' });
+    const reponses = [...sc.lotRelu.cartes.map((c) => c.choix), 'non'];
+    await saisirDecisionLocale(sc.setId, { ...sc.deps, moteur: { ...MOTEUR }, referentiel: REFERENTIEL, saisir: async () => reponses.shift() });
+    assert.match(sc.etat.affiche, /Unité : .* ; arrondi : .* ; seconde chance : /);
+    assert.match(sc.etat.affiche, /Contexte : /);
   });
 });

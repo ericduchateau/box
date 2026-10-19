@@ -57,19 +57,53 @@ function itemUnique(brute, noeud) {
 // executions : observations normalisées { id, status, startedAt, stoppedAt } du workflow
 // épinglé ; details : Map(id -> exécution brute avec données) ; fichiers : listing de
 // FONDA-Lots/candidats/ [{ id, nom, modifie_le, properties, proprietesLisibles }].
-function classerExecutions({ setId, executions, details, fichiers, constats }) {
+// Confrontation du DÉTAIL (includeData) à l'observation du listing : même identifiant,
+// même workflow, statuts compatibles, mêmes dates renseignées ; sinon observations
+// contradictoires -> incident (§11 bis, §20.13). Renvoie la raison ou null.
+function contradiction(x, brute, normaliserDate) {
+  if (String(brute.id) !== x.id) return `identifiant du détail ${brute.id} ≠ ${x.id}`;
+  if (brute.workflowId !== x.workflowId) return 'workflowId du détail ≠ listing';
+  const tx = STATUTS_TERMINAUX.includes(x.status);
+  const tb = STATUTS_TERMINAUX.includes(brute.status);
+  if (tx && !tb) return `statut terminal au listing (${x.status}), non terminal au détail (${brute.status})`;
+  if (tx && tb && x.status !== brute.status) return `statuts terminaux différents (listing ${x.status}, détail ${brute.status})`;
+  for (const [k, v] of [['startedAt', x.startedAt], ['stoppedAt', x.stoppedAt]]) {
+    const b = brute[k] == null ? null : normaliserDate(brute[k]);
+    if (brute[k] != null && b === null) return `${k} du détail hors grammaire`;
+    if (v && b && v !== b) return `${k} contradictoire (listing ${v}, détail ${b})`;
+    if (tx && v && !b) return `${k} absent du détail d'une exécution terminée`;
+  }
+  return null;
+}
+
+// Incident GLOBAL (quel que soit le lot), évalué dès que le LISTING est disponible —
+// indépendamment des détails et de Drive : exécution new/running/waiting ou de statut
+// inconnu du workflow de génération (§20.13 priorité 1).
+function incidentsGeneration(executions, constats) {
+  for (const x of executions) {
+    if (!STATUTS_TERMINAUX.includes(x.status)) constats.ajouter('incident', `exécution de génération ${x.id} non terminée ou de statut inconnu (${x.status}) : incident de chaîne, toute clôture suspendue`);
+  }
+}
+
+function classerExecutions({ setId, executions, details, fichiers, constats, normaliserDate }) {
   const nomAttendu = `${setId}.lot.json`;
   const concernees = [];
   const tolerees = [];
   for (const x of executions) {
+    // Non terminée : déjà constatée par incidentsGeneration (incident GLOBAL).
+    if (!STATUTS_TERMINAUX.includes(x.status)) continue;
     const brute = details.get(x.id);
+    if (brute) {
+      const contra = contradiction(x, brute, normaliserDate);
+      if (contra) { constats.ajouter('incident', `exécution ${x.id} : observations contradictoires (${contra})`); continue; }
+    }
     const entree = brute ? itemUnique(brute, NOEUD_ENTREE) : { ok: false, raison: 'données de l\'exécution indisponibles' };
     if (!entree.ok) {
       // Item du déclencheur manquant : exécution non attribuable -> incident (§20.2).
       constats.ajouter('incident', `exécution ${x.id} du workflow de génération : item du déclencheur manquant (${entree.raison}) — non attribuable`);
       continue;
     }
-    if (typeof entree.json.set_id !== 'string' || typeof entree.json.ref !== 'string') {
+    if (typeof entree.json.set_id !== 'string' || !C.SET_ID_PATTERN.test(entree.json.set_id) || typeof entree.json.ref !== 'string' || !entree.json.ref) {
       constats.ajouter('incident', `exécution ${x.id} : déclencheur sans { set_id, ref } exploitable — non attribuable`);
       continue;
     }
@@ -99,9 +133,7 @@ function classerExecutions({ setId, executions, details, fichiers, constats }) {
   const reussies = [];
   for (const c of concernees) {
     const { x } = c;
-    if (!STATUTS_TERMINAUX.includes(x.status)) {
-      constats.ajouter('incident', `exécution de génération ${x.id} de ${setId} non terminée (${x.status}) : incident de chaîne`);
-    } else if (x.status !== 'success') {
+    if (x.status !== 'success') {
       if ((parExecution.get(x.id) || []).length) constats.ajouter('abandon', `exécution de génération ${x.id} en erreur APRÈS dépôt d'un fichier candidat`);
       else tolerees.push(x.id);
     } else reussies.push(c);
@@ -110,6 +142,11 @@ function classerExecutions({ setId, executions, details, fichiers, constats }) {
   if (duLot.length !== 1) constats.ajouter('abandon', `${duLot.length} fichier(s) candidat(s) pour ${setId} (exactement un attendu)`);
   const retenue = reussies.length === 1 ? reussies[0] : null;
   const fichier = duLot.length === 1 ? duLot[0] : null;
+  // Rattachement INVERSE : l'exécution retenue a exactement UN fichier, le lot.
+  if (retenue) {
+    const lies = parExecution.get(retenue.x.id) || [];
+    if (lies.length !== 1 || (fichier && lies[0] !== fichier)) constats.ajouter('abandon', `exécution retenue ${retenue.x.id} : ${lies.length} fichier(s) candidats/ rattaché(s) (exactement le lot attendu)`);
+  }
   if (retenue && fichier && fichier.properties.fonda_execution_id !== retenue.x.id) {
     constats.ajouter('abandon', `fichier ${fichier.nom} : fonda_execution_id ${fichier.properties.fonda_execution_id} ≠ exécution retenue ${retenue.x.id}`);
   }
@@ -153,12 +190,13 @@ function rapprocher({ setId, retenue, fichier, brute, workflowId, journalCommit,
   const abandon = (m) => constats.ajouter('abandon', m);
   const x = retenue.x;
   // Extraction (API publique, includeData).
-  if (!brute || !brute.workflowData || typeof brute.workflowData !== 'object') {
+  if (!brute || !brute.workflowData || typeof brute.workflowData !== 'object' || Array.isArray(brute.workflowData)) {
     constats.ajouter('refus', `exécution ${x.id} : workflowData absent (information indisponible, exécution purgée ?) — refus ; abandon si elle ne reviendra pas`);
     return null;
   }
   const pin = brute.workflowData.pinData;
-  if (pin !== undefined && pin !== null && !(typeof pin === 'object' && !Array.isArray(pin) && Object.keys(pin).length === 0)) abandon(`exécution ${x.id} : pinData non vide (données épinglées) — inexploitable`);
+  // pinData : ABSENT ou objet VIDE seulement (null, tableau, objet non vide -> inexploitable).
+  if (pin !== undefined && !(pin !== null && typeof pin === 'object' && !Array.isArray(pin) && Object.keys(pin).length === 0)) abandon(`exécution ${x.id} : pinData ni absent ni objet vide — inexploitable`);
   const sortie = itemUnique(brute, NOEUD_SORTIE);
   if (!sortie.ok) { abandon(`exécution ${x.id} : sortie métier inexploitable (${sortie.raison})`); return null; }
   const s = sortie.json;
@@ -234,6 +272,6 @@ function unicite(decisions) {
 }
 
 module.exports = {
-  NOEUD_ENTREE, NOEUD_SORTIE, PRIORITE, Constats, itemUnique, classerExecutions, nullsExplicites, projectionComplete, empreinteComplete,
+  contradiction, incidentsGeneration, NOEUD_ENTREE, NOEUD_SORTIE, PRIORITE, Constats, itemUnique, classerExecutions, nullsExplicites, projectionComplete, empreinteComplete,
   rapprocher, reconcilier, unicite,
 };
