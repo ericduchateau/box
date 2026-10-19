@@ -441,16 +441,19 @@ async function cloturer(setId, deps) {
   const ap = lotApres.ok ? lotApres.v : undefined;
   if (av === null || ap === null) constats.ajouter('abandon', `lot généré ${setId}.lot.json absent`);
   const lus = [av, ap].filter(Boolean);
+  // DATES de modification : toutes les observations disponibles (lectures ET listing de
+  // candidats/), indépendamment de la lecture du contenu.
+  const datesLot = [...lus.map((x) => x.modifie_le), ...(fichierVu ? [fichierVu.modifie_le] : [])].map((dt) => normaliserDate(dt));
+  if (datesLot.length) {
+    if (new Set(datesLot).size > 1) constats.ajouter('temporaire', 'lot généré instable pendant le listing (dates de modification différentes entre lectures et listing) : relancer la clôture');
+    if (datesLot.some((dt) => dt === null)) constats.ajouter('incident', 'lot généré : date de modification illisible');
+    else if (generationObservee && generationObservee.x.stoppedAt && datesLot.some((dt) => dt > generationObservee.x.stoppedAt)) constats.ajouter('abandon', 'lot généré modifié APRÈS la fin de l\'exécution de génération');
+  }
   if (lus.length) {
     if (av && ap && (av.id !== ap.id || !Buffer.from(av.octets).equals(Buffer.from(ap.octets)))) {
       constats.ajouter('temporaire', 'lot généré instable pendant le listing (identifiant ou contenu différents entre les deux lectures) : relancer la clôture');
     }
-    // Observations de la date : lectures disponibles et listing.
-    const datesLot = [...lus.map((x) => x.modifie_le), ...(fichierVu ? [fichierVu.modifie_le] : [])].map((dt) => normaliserDate(dt));
-    if (new Set(datesLot).size > 1) constats.ajouter('temporaire', 'lot généré instable pendant le listing (dates de modification différentes entre lectures et listing) : relancer la clôture');
     if (fichierVu && lus.some((x) => x.id !== fichierVu.id)) constats.ajouter('abandon', 'lot généré lu ≠ fichier candidat retenu');
-    if (datesLot.some((dt) => dt === null)) constats.ajouter('incident', 'lot généré : date de modification illisible');
-    else if (generationObservee && generationObservee.x.stoppedAt && datesLot.some((dt) => dt > generationObservee.x.stoppedAt)) constats.ajouter('abandon', 'lot généré modifié APRÈS la fin de l\'exécution de génération');
     // Chaque contenu DISTINCT lu est contrôlé ; le premier conforme sert aux comparaisons.
     const vus = new Set();
     for (const x of lus) {

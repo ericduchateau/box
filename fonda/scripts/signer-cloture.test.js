@@ -796,3 +796,16 @@ describe('critique Codex r6 : génération observée malgré un examen non exhau
     await sansSignature(sc, /recouvre/, 'abandon');
   });
 });
+
+describe('critique Codex r7 : dates du listing Drive sans lecture du contenu', () => {
+  for (const source of ['saisie_locale', 'page_relecture']) {
+    test(`${source} : listing daté APRÈS la génération, deux lectures du lot en panne -> abandon`, async () => {
+      const sc = await scenario({ source, modifier: ({ candidats, deps }) => { candidats[0].modifie_le = '2026-10-18T07:02:00.000Z'; deps.drive.lireLotGenere = async () => { throw new Error('Drive 503'); }; } });
+      await sansSignature(sc, /modifié APRÈS/, 'abandon');
+    });
+  }
+  test('date illisible au listing, lectures en panne -> incident', async () => {
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ candidats, deps }) => { candidats[0].modifie_le = 'hier'; deps.drive.lireLotGenere = async () => { throw new Error('Drive 503'); }; } });
+    await sansSignature(sc, /date de modification illisible/, 'incident');
+  });
+});
