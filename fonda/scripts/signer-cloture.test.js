@@ -862,3 +862,51 @@ describe('§20.13 amendement r6 : règle d\'observation incomplète', () => {
     await sansSignature(sc, /absent/, 'abandon');
   });
 });
+
+describe('critique Codex r9 : garde-fou 1 — contrôles intrinsèques des décisions sans référence', () => {
+  const pannes = (deps) => { deps.drive.lireLotGenere = async () => { throw new Error('Drive 503'); }; deps.api.lireExecution = async () => { throw new Error('503'); }; };
+  for (const [libelle, f, motif] of [
+    ['lot_relu.set_id ≠ set_id', (d) => { d.lot_relu.set_id = 'set_fonda_lexique_nI_02'; }, /lot_relu.set_id/],
+    ['choix interdit', (d) => { d.lot_relu.cartes[0].choix = 'peut-etre'; }, /choix ∉/],
+    ['selection incohérente avec les « garder »', (d) => { d.coeur.selection = d.coeur.selection.slice(1); }, /coeur.selection ≠ cartes « garder »/],
+  ]) {
+    test(`saisie locale : ${libelle}, lot ET génération illisibles -> abandon (pas « temporaire »)`, async () => {
+      const sc = await scenario({ source: 'saisie_locale', modifier: ({ locales, decisionLocale, deps }) => { const d = copie(decisionLocale); f(d); locales[0].octets = Buffer.from(JSON.stringify(d)); pannes(deps); } });
+      await sansSignature(sc, motif, 'abandon');
+    });
+    test(`page : ${libelle}, lot ET génération illisibles -> abandon`, async () => {
+      const sc = await scenario({ modifier: ({ fichiers, deps }) => { for (const x of fichiers) f(x.contenu); pannes(deps); } });
+      await sansSignature(sc, motif, 'abandon');
+    });
+  }
+});
+
+describe('garde-fou 1 (§20.13 r6) : contrôles déterminables malgré une lecture en panne', () => {
+  const pannes = (deps) => { deps.drive.lireLotGenere = async () => { throw new Error('Drive 503'); }; deps.api.lireExecution = async () => { throw new Error('503'); }; };
+  test('moteur du cœur hors registre -> abandon', async () => {
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ locales, decisionLocale, deps }) => { const d = copie(decisionLocale); d.coeur.moteur = { version: 'v999', sha256: '0'.repeat(64) }; locales[0].octets = Buffer.from(JSON.stringify(d)); pannes(deps); } });
+    await sansSignature(sc, /absent du registre/, 'abandon');
+  });
+  test('page : moteur du candidat ≠ moteur du cœur -> abandon', async () => {
+    const sc = await scenario({ modifier: ({ candidat, deps }) => { candidat.relecture.moteur = { version: 'v1', sha256: '0'.repeat(64) }; pannes(deps); } });
+    await sansSignature(sc, /moteur du candidat ≠ moteur du cœur/, 'abandon');
+  });
+  test('page : relecteur du candidat ≠ son référentiel archivé déclaré -> abandon', async () => {
+    const sc = await scenario({ modifier: ({ candidat, deps }) => { candidat.relecture.relecteur_attribue = 'eric'; pannes(deps); } });
+    await sansSignature(sc, /son référentiel archivé/, 'abandon');
+  });
+  test('deux clôtures antérieures aux codes distincts -> abandon', async () => {
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ deps }) => { pannes(deps); deps.fs.lister = () => [`set_fonda_grandeurs-mesures_nI_02-${'a'.repeat(16)}`, `set_fonda_grandeurs-mesures_nI_02-${'b'.repeat(16)}`]; } });
+    await sansSignature(sc, /2 clôtures antérieures/, 'abandon');
+  });
+  test('incident contenant fin_saisie_le (génération illisible) -> abandon', async () => {
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ deps }) => { pannes(deps); deps.incidents = async () => [{ id: 'i1', nature: 'x', detecte_le: '2026-10-19T16:00:00.000Z', statut: 'resolu', resolu_le: '2026-10-19T18:00:00.000Z', preuve_resolution: 'ok', periode: { debut: '2026-10-19T16:00:00.000Z', fin: '2026-10-19T18:00:00.000Z' } }]; } });
+    await sansSignature(sc, /recouvre/, 'abandon');
+  });
+  test('observation terminale sans dates reçue avant une panne -> incident', async () => {
+    const sc = await scenario({ source: 'saisie_locale' });
+    const base = sc.deps.api.listerExecutions;
+    sc.deps.api.listerExecutions = async (q) => { if (q.workflowId === 'wfGen' && q.status === 'waiting') return [{ id: 511, workflowId: 'wfGen', status: 'success', startedAt: null, stoppedAt: null }]; if (q.workflowId === 'wfGen' && !q.status) throw new Error('timeout'); return base(q); };
+    await sansSignature(sc, /terminée sans dates cohérentes/, 'incident');
+  });
+});

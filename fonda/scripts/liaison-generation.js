@@ -268,7 +268,8 @@ function rapprocher({ setId, retenue, fichier, brute, workflowId, journalCommit,
 
 // --- §20.5 Réconciliation de CHAQUE décision, puis unicité ------------------------------------
 // decision : decision-fonda/v1 ; contexte : { setId, lotSource (null si non lu), empreintes:
-// { pedagogique, complete } (du lot lu, sinon de la sortie de génération),
+// { pedagogique, complete } (du lot lu, sinon de la sortie de génération ; null si aucune —
+// les contrôles INTRINSÈQUES de la décision sont faits quand même, garde-fou 1 §20.13 r6),
 // empreintePubliee(cartesGardees) -> Promise<string> }. Renvoie les erreurs.
 async function reconcilier(decision, { setId, lotSource, empreintes, empreintePubliee }) {
   const e = [];
@@ -276,7 +277,7 @@ async function reconcilier(decision, { setId, lotSource, empreintes, empreintePu
   const lr = decision.lot_relu;
   const co = decision.coeur;
   if (decision.set_id !== setId || lr.set_id !== setId) e.push('lot_relu.set_id / decision.set_id ≠ set_id');
-  if (lr.empreinte_complete !== empreintes.complete) e.push('lot_relu.empreinte_complete ≠ empreinte complète recalculée du lot source');
+  if (empreintes && lr.empreinte_complete !== empreintes.complete) e.push('lot_relu.empreinte_complete ≠ empreinte complète recalculée du lot source');
   const relus = lr.cartes.map((c) => c.item_id);
   // Sans lot source lu (lecture en panne, déjà constatée), les contrôles qui n'en dépendent
   // pas restent faits : empreintes de la génération, choix, cohérence interne.
@@ -288,7 +289,7 @@ async function reconcilier(decision, { setId, lotSource, empreintes, empreintePu
   const ecartees = lr.cartes.filter((c) => c.choix === 'ecarter').map((c) => c.item_id);
   if (JSON.stringify(co.selection) !== JSON.stringify(gardees)) e.push('coeur.selection ≠ cartes « garder » (ordre du lot source)');
   if (JSON.stringify(co.ecartees) !== JSON.stringify(ecartees)) e.push('coeur.ecartees ≠ cartes « ecarter » (ordre du lot source)');
-  if (co.empreinte_relue !== empreintes.pedagogique) e.push('coeur.empreinte_relue ≠ empreinte pédagogique du lot source');
+  if (empreintes && co.empreinte_relue !== empreintes.pedagogique) e.push('coeur.empreinte_relue ≠ empreinte pédagogique du lot source');
   if (co.action === 'accepter' && gardees.length === 0) e.push('action « accepter » sans carte gardée');
   if (lotSource && co.action === 'accepter' && gardees.length > 0 && co.empreinte_publiee !== await empreintePubliee(gardees)) e.push('coeur.empreinte_publiee ≠ empreinte du lot filtré');
   return e;

@@ -374,7 +374,10 @@ async function cloturer(setId, deps) {
       if (e instanceof Refus) constats.ajouter('incident', `${quoi} : observations contradictoires ou inexploitables (${e.message})`);
       else enEchec(`${quoi} (API n8n)`, e);
       // Exécutions en vol DÉJÀ observées avant la panne : incident (jamais perdu).
-      for (const v of suivi.vues || []) if (!STATUTS_TERMINAUX.includes(v.status)) constats.ajouter('incident', `${quoi} : exécution ${v.id} non terminée ou de statut inconnu (${v.status}), observée avant la panne`);
+      for (const v of suivi.vues || []) {
+        if (!STATUTS_TERMINAUX.includes(v.status)) constats.ajouter('incident', `${quoi} : exécution ${v.id} non terminée ou de statut inconnu (${v.status}), observée avant la panne`);
+        else if (!v.startedAt || !v.stoppedAt || v.stoppedAt < v.startedAt) constats.ajouter('incident', `${quoi} : exécution ${v.id} terminée sans dates cohérentes, observée avant la panne`);
+      }
       return { ok: false };
     }
   };
@@ -514,6 +517,16 @@ async function cloturer(setId, deps) {
     }
   }
 
+  // Parcours page, référentiel non résolu par la génération : relecteur du candidat
+  // contrôlé contre SON référentiel archivé déclaré (garde-fou 1).
+  if (page && relecteur === null && candidatEnv.ok && candidatEnv.v && candidatEnv.v.relecture && candidatEnv.v.lot) {
+    const rel = candidatEnv.v.relecture;
+    let oct = null;
+    try { oct = /^sha256:[0-9a-f]{64}$/.test(rel.referentiel_version || '') ? await deps.referentielArchive(rel.referentiel_version) : null; } catch { oct = null; }
+    const ref = oct && `sha256:${sha256Hex(Buffer.from(oct))}` === rel.referentiel_version ? lireJson(oct) : null;
+    const n = ref && Array.isArray(ref.notions) ? ref.notions.find((x) => x && x.id === candidatEnv.v.lot.notion_id) : null;
+    if (n && n.relecteur !== rel.relecteur_attribue) constats.ajouter('abandon', 'relecteur attribué du candidat ≠ son référentiel archivé');
+  }
   // ── Décisions ──
   const decisions = [];
   let fenetre = null; // fenêtre de candidature (§10 B ; §20.6 en saisie locale)
@@ -547,12 +560,18 @@ async function cloturer(setId, deps) {
     for (const err of L.unicite(decisions)) constats.ajouter('abandon', `unicité (§10 A) : ${err}`);
     // Empreintes de référence : celles du lot lu, sinon celles de la sortie de génération.
     const reference = empreintes || (sortie ? { pedagogique: sortie.empreinte_pedagogique, complete: sortie.empreinte_complete } : null);
-    if (reference) {
-      const empreintePubliee = async (gardees) => C.calculerEmpreinte(lotPublie(lotSource, { selection: gardees }), sha);
-      for (const d of decisions) for (const err of await L.reconcilier(d, { setId, lotSource, empreintes: reference, empreintePubliee })) constats.ajouter('abandon', `réconciliation : ${err}`);
-    }
+    // Contrôles INTRINSÈQUES toujours faits ; comparaisons d'empreintes si une référence existe.
+    const empreintePubliee = async (gardees) => C.calculerEmpreinte(lotPublie(lotSource, { selection: gardees }), sha);
+    for (const d of decisions) for (const err of await L.reconcilier(d, { setId, lotSource, empreintes: reference, empreintePubliee })) constats.ajouter('abandon', `réconciliation : ${err}`);
     const co = decisions[0].coeur;
     if (co.action !== 'accepter') constats.ajouter('abandon', `action « ${co.action} » : rien à publier`);
+    // Garde-fou 1 (§20.13 r6) : déterminables sur leurs propres données.
+    const reg = (deps.registre || []).find((l) => l && l.version === co.moteur.version);
+    if (!reg || reg.sha256 !== co.moteur.sha256) constats.ajouter('abandon', 'coeur.moteur absent du registre moteurs.json');
+    if (page && candidatEnv.ok && candidatEnv.v && candidatEnv.v.relecture) {
+      const rel = candidatEnv.v.relecture;
+      if (!rel.moteur || rel.moteur.version !== co.moteur.version || rel.moteur.sha256 !== co.moteur.sha256) constats.ajouter('abandon', 'moteur du candidat ≠ moteur du cœur');
+    }
     if (sortie && (co.moteur.version !== sortie.moteur.version || co.moteur.sha256 !== sortie.moteur.sha256)) constats.ajouter('abandon', 'coeur.moteur ≠ moteur de la génération');
   }
   // Lot publié et garde-fous du MOTEUR, clé déclarée et recevable : évalués AVANT la
@@ -590,6 +609,8 @@ async function cloturer(setId, deps) {
   }
   let entreesDossier = null;
   try { entreesDossier = deps.fs.lister(config.dossier); } catch (e) { enEchec(`dossier de clôture ${config.dossier}`, e); }
+  const anterieures = (entreesDossier || []).filter((nom) => nom.startsWith(`${setId}-`));
+  if (anterieures.length > 1) constats.ajouter('abandon', `${anterieures.length} clôtures antérieures aux instantanés distincts pour ${setId} : données modifiées après un figement — abandon du set_id`);
   for (const nom of entreesDossier || []) {
     if (nom.startsWith(`${setId}-`) && codeAttendu && nom !== `${setId}-${codeAttendu}`) constats.ajouter('abandon', `clôture antérieure ${nom} : instantané figé sur d'AUTRES données (décision ou lot modifiés) — abandon du set_id`);
   }
@@ -604,7 +625,10 @@ async function cloturer(setId, deps) {
     const fin = normaliserDate(i.periode.fin);
     if (!detecte || !resolu || !fin || (i.periode.debut !== null && !debut) || fin !== resolu || (debut !== null && debut > fin) || detecte > resolu
       || typeof i.preuve_resolution !== 'string' || !i.preuve_resolution.trim()) { constats.ajouter('incident', `incident ${i.id} : dates ou preuve de résolution non conformes`); continue; }
-    if (fenetre && (debut === null || debut <= fenetre.fin) && fin >= fenetre.debut) { constats.ajouter('abandon', `incident ${i.id} : sa période recouvre la fenêtre de candidature — abandon et nouveau set_id`); continue; }
+    // Fenêtre complète, ou borne seule connue (fin_saisie_le) : un incident qui CONTIENT la
+    // borne recouvre nécessairement la fenêtre (garde-fou 1).
+    const contientFin = !fenetre && finSaisie && (debut === null || debut <= finSaisie) && fin >= finSaisie;
+    if (contientFin || (fenetre && (debut === null || debut <= fenetre.fin) && fin >= fenetre.debut)) { constats.ajouter('abandon', `incident ${i.id} : sa période recouvre la fenêtre de candidature — abandon et nouveau set_id`); continue; }
     incidents.push({ id: i.id, nature: i.nature, detecte_le: detecte, statut: 'resolu', resolu_le: resolu, preuve_resolution: i.preuve_resolution, periode: { debut, fin } });
   }
   // RÈGLE D'OBSERVATION INCOMPLÈTE (§20.13, amendement r6) : une lecture en panne ->
