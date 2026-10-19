@@ -159,7 +159,10 @@ function classerExecutions({ setId, examinees, complet, vueFichiers, constats })
     if (reussies.length !== 1) constats.ajouter('abandon', `${reussies.length} exécution(s) de génération réussie(s) pour ${setId} (exactement une attendue)`);
     retenue = reussies.length === 1 ? reussies[0] : null;
   } else if (reussies.length > 1) constats.ajouter('abandon', `${reussies.length} exécutions de génération réussies pour ${setId} (exactement une attendue)`);
-  if (vueFichiers === INDISPONIBLE) return { retenue, fichier: INDISPONIBLE };
+  // Candidate : l'unique exécution réussie OBSERVÉE — sa table §20.3 est évaluée même si
+  // l'examen n'est pas exhaustif ; « exactement une » n'est conclu que sur examen complet.
+  const candidate = reussies.length === 1 ? reussies[0] : null;
+  if (vueFichiers === INDISPONIBLE) return { retenue, candidate, fichier: INDISPONIBLE };
   const { parExecution, fichier } = vueFichiers;
   for (const c of concernees) {
     if (c.x.status !== 'success' && (parExecution.get(c.x.id) || []).length) constats.ajouter('abandon', `exécution de génération ${c.x.id} en erreur APRÈS dépôt d'un fichier candidat`);
@@ -175,7 +178,7 @@ function classerExecutions({ setId, examinees, complet, vueFichiers, constats })
     if (retenue && retenue !== INDISPONIBLE && c.x.id === retenue.x.id) continue;
     for (const f of parExecution.get(c.x.id) || []) if (f !== fichier) constats.ajouter('abandon', `fichier ${f.nom} rattaché à l'exécution ${c.x.id} de ${setId} (doublon)`);
   }
-  return { retenue, fichier };
+  return { retenue, candidate, fichier };
 }
 
 // --- §20.4 Projection complète et empreinte_complete --------------------------------------
@@ -209,14 +212,21 @@ function empreinteComplete(lot) {
 function rapprocher({ setId, retenue, fichier, brute, workflowId, journalCommit, registre, modelesAutorises, lotSource, empreintes, constats }) {
   const abandon = (m) => constats.ajouter('abandon', m);
   const x = retenue.x;
-  // Extraction (API publique, includeData).
+  // Métadonnées API d'abord : contrôlables même si une autre pièce manque.
+  if (!brute || brute.workflowId !== workflowId || x.workflowId !== workflowId) abandon('workflow_id ≠ workflow épinglé');
+  if (brute && brute.mode !== 'webhook') abandon(`mode d'exécution « ${brute.mode} » ≠ webhook`);
+  if (x.status !== 'success') abandon('statut ≠ success');
+  if (!x.startedAt || !x.stoppedAt || !DATE_SIGNEE.test(x.startedAt) || !DATE_SIGNEE.test(x.stoppedAt)) abandon('dates de l\'exécution non renseignées ou non normalisées');
+  else if (x.startedAt > x.stoppedAt) abandon('demarree_le > terminee_le');
+  // Extraction (API publique, includeData) : workflowData absent ne saute QUE pinData.
   if (!brute || !brute.workflowData || typeof brute.workflowData !== 'object' || Array.isArray(brute.workflowData)) {
     constats.ajouter('refus', `exécution ${x.id} : workflowData absent (information indisponible, exécution purgée ?) — refus ; abandon si elle ne reviendra pas`);
-    return null;
+  } else {
+    const pin = brute.workflowData.pinData;
+    // pinData : ABSENT ou objet VIDE seulement (null, tableau, objet non vide -> inexploitable).
+    if (pin !== undefined && !(pin !== null && typeof pin === 'object' && !Array.isArray(pin) && Object.keys(pin).length === 0)) abandon(`exécution ${x.id} : pinData ni absent ni objet vide — inexploitable`);
   }
-  const pin = brute.workflowData.pinData;
-  // pinData : ABSENT ou objet VIDE seulement (null, tableau, objet non vide -> inexploitable).
-  if (pin !== undefined && !(pin !== null && typeof pin === 'object' && !Array.isArray(pin) && Object.keys(pin).length === 0)) abandon(`exécution ${x.id} : pinData ni absent ni objet vide — inexploitable`);
+  if (!brute) return null;
   const sortie = itemUnique(brute, NOEUD_SORTIE);
   if (!sortie.ok) { abandon(`exécution ${x.id} : sortie métier inexploitable (${sortie.raison})`); return null; }
   const s = sortie.json;
@@ -253,12 +263,6 @@ function rapprocher({ setId, retenue, fichier, brute, workflowId, journalCommit,
   // fichier candidat
   if (fichier !== INDISPONIBLE && (!fichier || s.candidat_fichier_id !== fichier.id || fichier.nom !== `${setId}.lot.json`
     || fichier.properties.fonda_execution_id !== x.id || fichier.properties.fonda_set_id !== setId)) abandon('candidat_fichier_id ≠ fichier lu (nom, properties)');
-  // métadonnées API
-  if (brute.workflowId !== workflowId || x.workflowId !== workflowId) abandon('workflow_id ≠ workflow épinglé');
-  if (brute.mode !== 'webhook') abandon(`mode d'exécution « ${brute.mode} » ≠ webhook`);
-  if (x.status !== 'success') abandon('statut ≠ success');
-  if (!x.startedAt || !x.stoppedAt || !DATE_SIGNEE.test(x.startedAt) || !DATE_SIGNEE.test(x.stoppedAt)) abandon('dates de l\'exécution non renseignées ou non normalisées');
-  else if (x.startedAt > x.stoppedAt) abandon('demarree_le > terminee_le');
   return s;
 }
 

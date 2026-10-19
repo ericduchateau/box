@@ -418,16 +418,18 @@ async function cloturer(setId, deps) {
   // dès que le listing est disponible ; classement selon les données observées.
   // Fichiers candidats/ examinés SEULS dès que leur listing est lu (indépendant de n8n).
   const vueFichiers = fichiersCandidats ? L.examinerFichiers({ setId, fichiers: fichiersCandidats, constats }) : L.INDISPONIBLE;
-  let retenue = null; let fichier = vueFichiers === L.INDISPONIBLE ? L.INDISPONIBLE : vueFichiers.fichier;
+  let retenue = null; let candidate = null; let fichier = vueFichiers === L.INDISPONIBLE ? L.INDISPONIBLE : vueFichiers.fichier;
   if (gen.ok) {
     const ex = L.examinerExecutions({ executions: gen.v, details, constats, normaliserDate });
     const r = L.classerExecutions({ setId, examinees: ex.examinees, complet: ex.complet, vueFichiers, constats });
     retenue = r.retenue === L.INDISPONIBLE ? null : r.retenue;
+    candidate = r.candidate;
     fichier = r.fichier;
   }
   const fichierVu = fichier && fichier !== L.INDISPONIBLE ? fichier : null;
   // Lot source (§20.4, §20.7)
   let lotSource = null;
+  const lotsConformes = []; // contenus conformes DISTINCTS lus (tous comparés à la génération)
   // CONTENU contrôlé sur toute lecture disponible (avant et/ou après) ; STABILITÉ prouvée
   // seulement si les deux lectures existent (une lecture en panne est déjà constatée
   // « temporaire » : la signature reste impossible, mais les anomalies observées sont
@@ -459,19 +461,28 @@ async function cloturer(setId, deps) {
       if (!v.valide) constats.ajouter('abandon', `lot généré non conforme à lot-fonda/v1 : ${v.erreurs.join(' ; ')}`);
       else if (nuls.length) constats.ajouter('abandon', `lot généré : null explicite interdit (${nuls.join(', ')})`);
       else if (lot.set_id !== setId) constats.ajouter('abandon', 'lot généré : set_id ≠ set_id demandé');
-      else if (!lotSource) lotSource = lot;
+      else { lotsConformes.push(lot); if (!lotSource) lotSource = lot; }
     }
   }
   const sha = C.sha256WebCrypto();
   const empreintes = lotSource ? { pedagogique: await C.calculerEmpreinte(lotSource, sha), complete: L.empreinteComplete(lotSource) } : null;
   // §20.3 rapprochement
   let sortie = null;
-  if (retenue) {
-    const brute = details.get(retenue.x.id);
+  const generationEvaluee = retenue || candidate;
+  if (generationEvaluee) {
+    const brute = details.get(generationEvaluee.x.id);
     const s0 = brute ? L.itemUnique(brute, L.NOEUD_SORTIE) : { ok: false };
     const commit = s0.ok && typeof s0.json.journal_commit === 'string' && /^[0-9a-f]{40}$/.test(s0.json.journal_commit) ? s0.json.journal_commit : null;
     const jc = commit ? await lire('historique de confiance (journal)', () => deps.journal(commit)) : { ok: true, v: null };
-    sortie = L.rapprocher({ setId, retenue, fichier, brute, workflowId: config.workflowGeneration, journalCommit: jc.ok ? jc.v : L.INDISPONIBLE, registre: deps.registre, modelesAutorises: config.modelesAutorises, lotSource, empreintes, constats });
+    sortie = L.rapprocher({ setId, retenue: generationEvaluee, fichier, brute: brute === L.INDISPONIBLE ? null : brute, workflowId: config.workflowGeneration, journalCommit: jc.ok ? jc.v : L.INDISPONIBLE, registre: deps.registre, modelesAutorises: config.modelesAutorises, lotSource, empreintes, constats });
+  }
+  // CHAQUE contenu conforme lu (pas seulement le premier) comparé aux empreintes de la
+  // génération : une discordance constatée est un abandon, prioritaire sur l'instabilité.
+  if (sortie) {
+    for (const lot of lotsConformes.slice(1)) {
+      if (await C.calculerEmpreinte(lot, sha) !== sortie.empreinte_pedagogique) constats.ajouter('abandon', 'seconde lecture du lot : empreinte_pedagogique ≠ génération');
+      if (L.empreinteComplete(lot) !== sortie.empreinte_complete) constats.ajouter('abandon', 'seconde lecture du lot : empreinte_complete ≠ génération');
+    }
   }
   // Référentiel ARCHIVÉ de la version de la sortie (§20.12) et relecteur attribué.
   let referentiel = null; let relecteur = null;

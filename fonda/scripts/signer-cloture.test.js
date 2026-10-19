@@ -745,3 +745,37 @@ describe('critique Codex r4 : observateur, lectures partielles du lot', () => {
     await sansSignature(sc, /empreinte/, 'abandon');
   });
 });
+
+describe('critique Codex r5 : contenus multiples du lot, examen non exhaustif', () => {
+  for (const source of ['saisie_locale', 'page_relecture']) {
+    test(`${source} : seconde lecture CONFORME mais modifiée -> abandon (empreinte), prioritaire sur l'instabilité`, async () => {
+      const sc = await scenario({ source });
+      let n = 0; const l = sc.deps.drive.lireLotGenere;
+      sc.deps.drive.lireLotGenere = async (x) => { n += 1; const r = await l(x); if (n === 2) { const lot = JSON.parse(r.octets.toString('utf8')); lot.cartes[0].question += ' (modifiée)'; r.octets = Buffer.from(JSON.stringify(lot)); } return r; };
+      await sansSignature(sc, /seconde lecture du lot : empreinte/, 'abandon');
+    });
+  }
+  test('détail d\'une AUTRE exécution en panne : la génération du lot reste contrôlée (mode manual -> abandon)', async () => {
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ execs, gen, fx }) => {
+      execs.wfGen.push({ id: 498, workflowId: 'wfGen', status: 'error', startedAt: fx.erreur_sans_depot.startedAt, stoppedAt: fx.erreur_sans_depot.stoppedAt });
+      gen[498] = fx.erreur_sans_depot; gen[501].mode = 'manual';
+    } });
+    const lire = sc.deps.api.lireExecution;
+    sc.deps.api.lireExecution = async (id) => { if (id === '498') throw new Error('503'); return lire(id); };
+    await sansSignature(sc, /≠ webhook/, 'abandon');
+  });
+  test('workflowData absent ET mode manual : l\'abandon (mode) l\'emporte sur le refus (données indisponibles)', async () => {
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ gen }) => { delete gen[501].workflowData; gen[501].mode = 'manual'; } });
+    await sansSignature(sc, /≠ webhook/, 'abandon');
+  });
+  test('workflowData absent ET modèle interdit dans la sortie : la table reste évaluée -> abandon', async () => {
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ gen }) => { delete gen[501].workflowData; gen[501].data.resultData.runData['FONDA Sortie generation'][0].data.main[0][0].json.modele = 'claude-sonnet-5-5'; } });
+    await sansSignature(sc, /∉ liste autorisée/, 'abandon');
+  });
+  test('examen non exhaustif, génération du lot conforme : jamais de signature (refus temporaire)', async () => {
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ execs, gen, fx }) => { execs.wfGen.push({ id: 498, workflowId: 'wfGen', status: 'error', startedAt: fx.erreur_sans_depot.startedAt, stoppedAt: fx.erreur_sans_depot.stoppedAt }); gen[498] = fx.erreur_sans_depot; } });
+    const lire = sc.deps.api.lireExecution;
+    sc.deps.api.lireExecution = async (id) => { if (id === '498') throw new Error('503'); return lire(id); };
+    await sansSignature(sc, /injoignable/, 'temporaire');
+  });
+});
