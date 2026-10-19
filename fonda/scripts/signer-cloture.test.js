@@ -838,3 +838,27 @@ describe('critique Codex r8 : identité du fichier effectivement lu', () => {
     await sansSignature(sc, /palier \/ notion|non conforme/, 'abandon');
   });
 });
+
+describe('§20.13 amendement r6 : règle d\'observation incomplète', () => {
+  test('(a) lecture en panne + anomalie déterminable sur ses propres données -> l\'issue FINE se déclenche (abandon)', async () => {
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ gen, deps }) => {
+      gen[501].data.resultData.runData['FONDA Sortie generation'][0].data.main[0][0].json.modele = 'claude-sonnet-5-5';
+      deps.drive.listerCandidats = async () => { throw new Error('Drive 503'); };
+    } });
+    const err = await sansSignature(sc, /∉ liste autorisée/, 'abandon');
+    assert.match(err.message, /observation incomplète : Drive \(candidats\/\)/);
+  });
+  test('(b) lecture en panne sans autre signal -> refus temporaire, anomalies « à confirmer » listées', async () => {
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ deps, locales }) => { locales.length = 0; deps.drive.listerCandidats = async () => { throw new Error('Drive 503'); }; } });
+    const err = await sansSignature(sc, /observation incomplète \(lectures en échec : Drive \(candidats\/\) injoignable.*\) : refus temporaire, relancer/, 'temporaire');
+    assert.match(err.message, /à confirmer sur observation complète : \[local\] aucune décision figée/);
+  });
+  test('(b bis) lecture en panne, aucun autre constat -> refus temporaire, « aucune » anomalie à confirmer', async () => {
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ deps }) => { deps.incidents = async () => { throw new Error('incidents injoignables'); }; } });
+    await sansSignature(sc, /à confirmer sur observation complète : aucune/, 'temporaire');
+  });
+  test('(c) absence DÉFINITIVE du lot généré (fichier absent) -> abandon', async () => {
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ deps }) => { deps.drive.lireLotGenere = async () => null; } });
+    await sansSignature(sc, /absent/, 'abandon');
+  });
+});

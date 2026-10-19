@@ -358,7 +358,10 @@ async function cloturer(setId, deps) {
   // Lectures : un échec n'interrompt PAS l'évaluation ; il devient un constat (accès
   // insuffisant 401/403 -> incident ; panne -> refus temporaire) et les évaluations qui
   // dépendent de la donnée manquante sont sautées (aucune issue déduite d'un manque).
+  // Lectures en échec : l'observation est INCOMPLÈTE (règle §20.13, amendement r6).
+  const lecturesEnEchec = [];
   const enEchec = (quoi, e) => {
+    lecturesEnEchec.push(quoi);
     if (e && (e.statut === 401 || e.statut === 403)) constats.ajouter('incident', `${quoi} : accès insuffisant (${e.statut}) — incident de chaîne`);
     else constats.ajouter('temporaire', `${quoi} injoignable ou en erreur (${e && e.message}) : relancer`);
   };
@@ -604,10 +607,24 @@ async function cloturer(setId, deps) {
     if (fenetre && (debut === null || debut <= fenetre.fin) && fin >= fenetre.debut) { constats.ajouter('abandon', `incident ${i.id} : sa période recouvre la fenêtre de candidature — abandon et nouveau set_id`); continue; }
     incidents.push({ id: i.id, nature: i.nature, detecte_le: detecte, statut: 'resolu', resolu_le: resolu, preuve_resolution: i.preuve_resolution, periode: { debut, fin } });
   }
+  // RÈGLE D'OBSERVATION INCOMPLÈTE (§20.13, amendement r6) : une lecture en panne ->
+  // AU MINIMUM un refus temporaire, jamais de signature. Garde-fou 1 : un contrôle
+  // déterminable sur SES PROPRES données complètes garde son niveau fin (incident ou
+  // abandon établi). Les autres anomalies observées sont listées « à confirmer » : leur
+  // issue définitive n'est tranchée qu'à la RELANCE, sur observation complète.
+  // Garde-fou 2 : indisponible transitoire -> refus temporaire ; absence définitive
+  // (fichier absent, exécution purgée sans retour) -> abandon (§20.13 inchangé).
   const tranche = constats.retenue();
   if (tranche) {
     const autres = constats.liste.filter((c) => c !== tranche).map((c) => `[${c.issue}] ${c.raison}`);
-    refuser(`${tranche.raison}${autres.length ? ` (autres constats : ${autres.join(' ; ')})` : ''}`, tranche.issue);
+    if (lecturesEnEchec.length && (tranche.issue === 'temporaire' || tranche.issue === 'local' || tranche.issue === 'refus')) {
+      const panne = (c) => lecturesEnEchec.some((q) => c.raison.startsWith(q));
+      const pannes = constats.liste.filter(panne).map((c) => c.raison);
+      const aConfirmer = constats.liste.filter((c) => !panne(c)).map((c) => `[${c.issue}] ${c.raison}`);
+      refuser(`observation incomplète (lectures en échec : ${pannes.join(' ; ')}) : refus temporaire, relancer — anomalies observées, à confirmer sur observation complète : ${aConfirmer.length ? aConfirmer.join(' ; ') : 'aucune'}`, 'temporaire');
+    }
+    const incomplete = lecturesEnEchec.length ? ` [observation incomplète : ${lecturesEnEchec.join(', ')}]` : '';
+    refuser(`${tranche.raison}${incomplete}${autres.length ? ` (autres constats : ${autres.join(' ; ')})` : ''}`, tranche.issue);
   }
   // Invariants de complétude (toute donnée manquante a produit un constat ci-dessus).
   if (!retenue || !lotSource || !sortie || !decisions.length || relecteur === null || (page && (!derniere || !revoqueLe))) refuser('évaluation incomplète sans constat (bug) : refus');
