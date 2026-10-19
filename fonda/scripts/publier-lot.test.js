@@ -445,6 +445,7 @@ describe('publier : préconditions, écritures, marqueur et --reprendre (dépôt
     fsN.writeFileSync(pathN.join(dir, REL.cat), texteJson(CATALOGUE));
     fsN.writeFileSync(pathN.join(dir, REL.jou), texteJson(journal));
     fsN.writeFileSync(pathN.join(dir, REL.ref), texteJson(REFERENTIEL));
+    fsN.writeFileSync(pathN.join(dir, 'fonda/data/modeles-autorises.json'), texteJson({ schema: 'modeles-autorises/v1', generation_fonda: [] }));
     git('add', '-A'); git('commit', '-q', '-m', 'base');
     const ext = fsN.mkdtempSync(pathN.join(os.tmpdir(), 'publier-entrees-'));
     const lot = LOT_FR();
@@ -624,6 +625,7 @@ describe('publier : verrou commun, liens symboliques, modifications masquées, r
     fsN.writeFileSync(pathN.join(dir, REL.cat), texteJson(CATALOGUE));
     fsN.writeFileSync(pathN.join(dir, REL.jou), texteJson(journalTest()));
     fsN.writeFileSync(pathN.join(dir, REL.ref), texteJson(REFERENTIEL));
+    fsN.writeFileSync(pathN.join(dir, 'fonda/data/modeles-autorises.json'), texteJson({ schema: 'modeles-autorises/v1', generation_fonda: [] }));
     git('add', '-A'); git('commit', '-q', '-m', 'base');
     const ext = fsN.mkdtempSync(pathN.join(os.tmpdir(), 'publier2-ext-'));
     const lot = LOT_FR();
@@ -834,6 +836,7 @@ describe('fenêtre résiduelle contrôle -> écriture : réduite et détectée (
     fsN.writeFileSync(pathN.join(dir, REL.cat), texteJson(CATALOGUE));
     fsN.writeFileSync(pathN.join(dir, REL.jou), texteJson(journalTest()));
     fsN.writeFileSync(pathN.join(dir, REL.ref), texteJson(REFERENTIEL));
+    fsN.writeFileSync(pathN.join(dir, 'fonda/data/modeles-autorises.json'), texteJson({ schema: 'modeles-autorises/v1', generation_fonda: [] }));
     git('add', '-A'); git('commit', '-q', '-m', 'base');
     const ext = fsN.mkdtempSync(pathN.join(os.tmpdir(), 'publier3-ext-'));
     const lot = LOT_FR();
