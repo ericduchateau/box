@@ -454,6 +454,8 @@ async function cloturer(setId, deps) {
       constats.ajouter('temporaire', 'lot généré instable pendant le listing (identifiant ou contenu différents entre les deux lectures) : relancer la clôture');
     }
     if (fichierVu && lus.some((x) => x.id !== fichierVu.id)) constats.ajouter('abandon', 'lot généré lu ≠ fichier candidat retenu');
+    // Identité de CHAQUE fichier effectivement lu : nom exact (indépendant du listing).
+    if (lus.some((x) => x.nom !== `${setId}.lot.json`)) constats.ajouter('abandon', `fichier lu : nom ≠ ${setId}.lot.json`);
     // Chaque contenu DISTINCT lu est contrôlé ; le premier conforme sert aux comparaisons.
     const vus = new Set();
     for (const x of lus) {
@@ -467,6 +469,7 @@ async function cloturer(setId, deps) {
       if (!v.valide) constats.ajouter('abandon', `lot généré non conforme à lot-fonda/v1 : ${v.erreurs.join(' ; ')}`);
       else if (nuls.length) constats.ajouter('abandon', `lot généré : null explicite interdit (${nuls.join(', ')})`);
       else if (lot.set_id !== setId) constats.ajouter('abandon', 'lot généré : set_id ≠ set_id demandé');
+      else if (!C.decomposerSetId(setId) || lot.palier !== C.decomposerSetId(setId).palier || C.slugDeNotion(lot.notion_id) !== C.decomposerSetId(setId).slug) constats.ajouter('abandon', 'lot généré : palier / notion ≠ ceux encodés dans set_id');
       else { lotsConformes.push(lot); if (!lotSource) lotSource = lot; }
     }
   }
@@ -482,6 +485,8 @@ async function cloturer(setId, deps) {
     const jc = commit ? await lire('historique de confiance (journal)', () => deps.journal(commit)) : { ok: true, v: null };
     sortie = L.rapprocher({ setId, retenue: generationEvaluee, fichier, brute: brute === L.INDISPONIBLE ? null : brute, workflowId: config.workflowGeneration, journalCommit: jc.ok ? jc.v : L.INDISPONIBLE, registre: deps.registre, modelesAutorises: config.modelesAutorises, lotSource, empreintes, constats });
   }
+  // Identité du fichier lu contre la SORTIE de génération (indépendant du listing Drive).
+  if (sortie && lus.some((x) => x.id !== sortie.candidat_fichier_id)) constats.ajouter('abandon', 'fichier lu : identifiant ≠ candidat_fichier_id de la génération');
   // CHAQUE contenu conforme lu (pas seulement le premier) comparé aux empreintes de la
   // génération : une discordance constatée est un abandon, prioritaire sur l'instabilité.
   if (sortie) {

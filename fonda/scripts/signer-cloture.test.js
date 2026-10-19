@@ -823,3 +823,18 @@ describe('audit préventif : contrôles sans lot source lu (empreintes de la gé
     await sansSignature(sc, /≠ lot généré/, 'abandon');
   });
 });
+
+describe('critique Codex r8 : identité du fichier effectivement lu', () => {
+  test('les deux lectures renvoient un AUTRE nom (listing inchangé) -> abandon, zéro signature', async () => {
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ setLotGenere }) => { setLotGenere({ nom: 'autre.lot.json' }); } });
+    await sansSignature(sc, /nom ≠/, 'abandon');
+  });
+  test('identifiant lu ≠ candidat_fichier_id, listing Drive indisponible -> abandon', async () => {
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ setLotGenere, deps }) => { setLotGenere({ id: 'drv-autre' }); deps.drive.listerCandidats = async () => { throw new Error('Drive 503'); }; } });
+    await sansSignature(sc, /candidat_fichier_id de la génération/, 'abandon');
+  });
+  test('lot nF sous un set_id nI, génération indisponible -> abandon', async () => {
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ lot, setLotGenere, deps }) => { const l = copie(lot); l.palier = 'nF'; l.cartes.forEach((c) => { c.palier = 'nF'; }); setLotGenere({ octets: Buffer.from(JSON.stringify(l)) }); deps.api.lireExecution = async () => { throw new Error('503'); }; } });
+    await sansSignature(sc, /palier \/ notion|non conforme/, 'abandon');
+  });
+});
