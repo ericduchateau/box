@@ -910,3 +910,26 @@ describe('garde-fou 1 (§20.13 r6) : contrôles déterminables malgré une lectu
     await sansSignature(sc, /terminée sans dates cohérentes/, 'incident');
   });
 });
+
+describe('critique Codex r10 : observations partielles exploitées, moteur du candidat', () => {
+  const pannePartielle = (sc, wf, renvoi) => { const base = sc.deps.api.listerExecutions; sc.deps.api.listerExecutions = async (q) => { if (q.workflowId === wf && q.status === 'waiting') return renvoi; if (q.workflowId === wf && !q.status) throw new Error('timeout'); return base(q); }; };
+  test('confirmation « conflit » reçue avant une panne du listing -> abandon (pas temporaire)', async () => {
+    const sc = await scenario({ modifier: ({ rattachements }) => { rattachements[99] = { set_id: 'set_fonda_comprendre-consigne_nI_02', type: 'conflit', nonce: 'n99' }; } });
+    pannePartielle(sc, 'wfConf', [{ id: 99, workflowId: 'wfConf', status: 'success', startedAt: '2026-10-19T17:10:00.000Z', stoppedAt: '2026-10-19T17:10:01.000Z' }]);
+    await sansSignature(sc, /conflit/, 'abandon');
+  });
+  test('confirmation non attribuable reçue avant une panne du listing -> incident', async () => {
+    const sc = await scenario();
+    pannePartielle(sc, 'wfConf', [{ id: 98, workflowId: 'wfConf', status: 'success', startedAt: '2026-10-19T17:10:00.000Z', stoppedAt: '2026-10-19T17:10:01.000Z' }]);
+    await sansSignature(sc, /sans données exploitables/, 'incident');
+  });
+  test('page : moteur du candidat hors registre, génération et décisions en panne -> abandon', async () => {
+    const sc = await scenario({ modifier: ({ candidat, deps }) => { candidat.relecture.moteur = { version: 'v1', sha256: '0'.repeat(64) }; deps.api.lireExecution = async () => { throw new Error('503'); }; deps.drive.listerDecisions = async () => { throw new Error('Drive 503'); }; } });
+    await sansSignature(sc, /moteur du candidat absent du registre/, 'abandon');
+  });
+  test('génération : observation partielle exploitée (mode manual) malgré la panne de la liste complète -> abandon', async () => {
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ gen }) => { gen[501].mode = 'manual'; } });
+    pannePartielle(sc, 'wfGen', [{ id: 501, workflowId: 'wfGen', status: 'success', startedAt: '2026-10-18T07:00:00.000Z', stoppedAt: '2026-10-18T07:01:00.000Z' }]);
+    await sansSignature(sc, /≠ webhook/, 'abandon');
+  });
+});

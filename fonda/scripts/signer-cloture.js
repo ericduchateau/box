@@ -378,7 +378,7 @@ async function cloturer(setId, deps) {
         if (!STATUTS_TERMINAUX.includes(v.status)) constats.ajouter('incident', `${quoi} : exécution ${v.id} non terminée ou de statut inconnu (${v.status}), observée avant la panne`);
         else if (!v.startedAt || !v.stoppedAt || v.stoppedAt < v.startedAt) constats.ajouter('incident', `${quoi} : exécution ${v.id} terminée sans dates cohérentes, observée avant la panne`);
       }
-      return { ok: false };
+      return { ok: false, partiel: suivi.vues || [] };
     }
   };
 
@@ -389,8 +389,11 @@ async function cloturer(setId, deps) {
   const listingDebut = deps.horloge().toISOString();
   const gen = await observerSur('workflow de génération', config.workflowGeneration);
   const details = new Map();
-  if (gen.ok) {
-    for (const x of gen.v) {
+  // Observations de génération : complètes, sinon PARTIELLES (reçues avant une panne) —
+  // examinées quand même (garde-fou 1) ; l'exhaustivité exige gen.ok.
+  const obsGen = gen.ok ? gen.v : (gen.partiel || []);
+  {
+    for (const x of obsGen) {
       const r = await lire(`API n8n (exécution ${x.id})`, () => api.lireExecution(x.id));
       details.set(x.id, r.ok ? r.v : L.INDISPONIBLE);
     }
@@ -425,9 +428,9 @@ async function cloturer(setId, deps) {
   // Fichiers candidats/ examinés SEULS dès que leur listing est lu (indépendant de n8n).
   const vueFichiers = fichiersCandidats ? L.examinerFichiers({ setId, fichiers: fichiersCandidats, constats }) : L.INDISPONIBLE;
   let retenue = null; let candidate = null; let fichier = vueFichiers === L.INDISPONIBLE ? L.INDISPONIBLE : vueFichiers.fichier;
-  if (gen.ok) {
-    const ex = L.examinerExecutions({ executions: gen.v, details, constats, normaliserDate });
-    const r = L.classerExecutions({ setId, examinees: ex.examinees, complet: ex.complet, vueFichiers, constats });
+  if (obsGen.length || gen.ok) {
+    const ex = L.examinerExecutions({ executions: obsGen, details, constats, normaliserDate });
+    const r = L.classerExecutions({ setId, examinees: ex.examinees, complet: gen.ok && ex.complet, vueFichiers, constats });
     retenue = r.retenue === L.INDISPONIBLE ? null : r.retenue;
     candidate = r.candidate;
     fichier = r.fichier;
@@ -532,7 +535,7 @@ async function cloturer(setId, deps) {
   let fenetre = null; // fenêtre de candidature (§10 B ; §20.6 en saisie locale)
   let derniere = null; let duLot = []; let revoqueLe = null; let finSaisie = null;
   if (page) {
-    const ev = evaluerPage({ setId, candidatEnv, clotures, confirmations, listeDecisions, rattachement, levees, constats, sortie, relecteur, empreintes, listingDebut });
+    const ev = evaluerPage({ setId, candidatEnv, clotures, confirmations, listeDecisions, rattachement, levees, constats, sortie, relecteur, empreintes, listingDebut, registre: deps.registre });
     decisions.push(...ev.decisions); ({ derniere, duLot, revoqueLe, fenetre } = ev);
   } else {
     if (relecteur !== null && relecteur !== 'eric') constats.ajouter('refus', `saisie locale réservée au relecteur « eric » (relecteur attribué : ${relecteur}) — §20.6`);
@@ -790,7 +793,7 @@ async function cloturer(setId, deps) {
   return { enveloppe, dossierLot, lotPublie: publie };
 }
 
-function evaluerPage({ setId, candidatEnv, clotures, confirmations, listeDecisions, rattachement, levees, constats, sortie, relecteur, empreintes, listingDebut }) {
+function evaluerPage({ setId, candidatEnv, clotures, confirmations, listeDecisions, rattachement, levees, constats, sortie, relecteur, empreintes, listingDebut, registre }) {
   // Parcours PAGE (v8.2 §7, §9, §10) : chaque partie est évaluée dès que sa donnée est
   // disponible, sans retour anticipé ; une décision tardive reste réconciliée et
   // rapprochée (un blocage dur n'est jamais masqué par une date).
@@ -806,6 +809,9 @@ function evaluerPage({ setId, candidatEnv, clotures, confirmations, listeDecisio
       if (!revoqueLe || !creeLe) constats.ajouter('incident', 'relecture.clos_le / cree_le absent ou mal formé');
       else if (creeLe > revoqueLe) constats.ajouter('incident', 'fenêtre de candidature inversée (cree_le > clos_le)');
       if (c.lot.set_id !== setId) constats.ajouter('abandon', 'set_id du candidat ≠ set_id demandé');
+      // Moteur du candidat contre le REGISTRE, directement (garde-fou 1).
+      const regC = rel.moteur ? (registre || []).find((l) => l && l.version === rel.moteur.version) : null;
+      if (!regC || regC.sha256 !== rel.moteur.sha256) constats.ajouter('abandon', 'moteur du candidat absent du registre moteurs.json');
       const completeRef = empreintes ? empreintes.complete : (sortie ? sortie.empreinte_complete : null);
       try { if (completeRef && L.empreinteComplete(c.lot) !== completeRef) constats.ajouter('abandon', 'lot de l\'enveloppe de relecture ≠ lot généré'); } catch { constats.ajouter('abandon', 'lot de l\'enveloppe de relecture non projetable'); }
       if (sortie && rel.referentiel_version !== sortie.referentiel_version) constats.ajouter('abandon', 'referentiel_version du candidat ≠ génération');
@@ -814,19 +820,20 @@ function evaluerPage({ setId, candidatEnv, clotures, confirmations, listeDecisio
     }
   }
   // 1. Exécution de clôture
-  if (clotures.ok) {
-    // TOUTES les exécutions du workflow de clôture : en vol ou de statut inconnu (quel que
-    // soit le lot), ou non attribuables -> incident (§20.13 priorité 1).
+  // TOUTES les exécutions du workflow de clôture OBSERVÉES (même partiellement, garde-fou 1) :
+  // en vol ou de statut inconnu (quel que soit le lot), ou non attribuables -> incident ;
+  // les conclusions sur la clôture retenue exigent un listing complet.
+  {
     const duLotClot = [];
-    for (const x of clotures.v) {
+    for (const x of clotures.ok ? clotures.v : (clotures.partiel || [])) {
       if (!STATUTS_TERMINAUX.includes(x.status)) { constats.ajouter('incident', `exécution de clôture ${x.id} non terminée ou de statut inconnu (${x.status}) : une clôture technique est encore en cours`); continue; }
       const r = rattachement(x.brut);
       if (!r || typeof r.set_id !== 'string' || r.type !== 'cloture') { constats.ajouter('incident', `exécution de clôture ${x.id} non attribuable à un lot`); continue; }
       if (r.set_id === setId) duLotClot.push(x);
     }
-    const reussies = duLotClot.filter((x) => x.status === 'success' && x.stoppedAt && x.startedAt)
+    const reussies = !clotures.ok ? null : duLotClot.filter((x) => x.status === 'success' && x.stoppedAt && x.startedAt)
       .sort((a, b) => (a.stoppedAt < b.stoppedAt ? -1 : a.stoppedAt > b.stoppedAt ? 1 : 0));
-    if (!reussies.length) constats.ajouter('temporaire', 'aucune clôture technique réussie rattachée à ce lot');
+    if (reussies === null) { /* listing en échec : déjà constaté */ } else if (!reussies.length) constats.ajouter('temporaire', 'aucune clôture technique réussie rattachée à ce lot');
     else {
       derniere = reussies[reussies.length - 1];
       if (reussies.length > 1 && reussies[reussies.length - 2].stoppedAt === derniere.stoppedAt) constats.ajouter('abandon', 'deux clôtures techniques à la même date : aucun départage arbitraire');
@@ -834,8 +841,8 @@ function evaluerPage({ setId, candidatEnv, clotures, confirmations, listeDecisio
   }
   // 2. Filet sur les confirmations
   const duLot = [];
-  if (confirmations.ok) {
-    for (const x of confirmations.v) {
+  {
+    for (const x of confirmations.ok ? confirmations.v : (confirmations.partiel || [])) {
       if (STATUTS_EN_VOL.includes(x.status)) { constats.ajouter('incident', `exécution de confirmation ${x.id} non terminée (${x.status})`); continue; }
       if (!STATUTS_TERMINAUX.includes(x.status)) { constats.ajouter('incident', `exécution de confirmation ${x.id} au statut inconnu (${x.status})`); continue; }
       const r = rattachement(x.brut);
@@ -869,7 +876,7 @@ function evaluerPage({ setId, candidatEnv, clotures, confirmations, listeDecisio
         if (confirmations.ok && !duLot.some((e) => e.nonce === d.nonce)) constats.ajouter('abandon', `${f.nom} : décision sans exécution correspondante : blocage dur`);
         decisions.push(d);
       }
-      if (confirmations.ok) for (const e of duLot) if (!presentes.has(e.nonce)) constats.ajouter('abandon', `décision de l'exécution ${e.x.id} absente de Drive : blocage dur`);
+      for (const e of duLot) if (!presentes.has(e.nonce)) constats.ajouter('abandon', `décision de l'exécution ${e.x.id} absente de Drive : blocage dur`);
       if (!decisions.length) constats.ajouter('temporaire', 'aucune décision pour ce lot');
     }
   }
