@@ -717,3 +717,31 @@ describe('critique Codex r3 : double attestation, fusion, observations partielle
     await sansSignature(sc, /clôture antérieure/, 'abandon');
   });
 });
+
+describe('critique Codex r4 : observateur, lectures partielles du lot', () => {
+  for (const [libelle, premiere, motif] of [
+    ['statut inconnu dans une première observation', { status: 'mystere', startedAt: '2026-10-18T05:00:00.000Z', stoppedAt: null }, /statut inconnu/],
+    ['stoppedAt différent entre deux observations', { status: 'success', startedAt: '2026-10-18T05:00:00.000Z', stoppedAt: '2026-10-18T05:02:00.000Z' }, /contradictoires \(stoppedAt\)/],
+    ['chronologie inversée dans une observation', { status: 'success', startedAt: '2026-10-18T05:00:00.000Z', stoppedAt: '2026-10-18T04:00:00.000Z' }, /avant d'avoir démarré/],
+  ]) {
+    test(`observateur : ${libelle}, écrasée par une observation valide -> incident, zéro signature`, async () => {
+      const sc = await scenario({ source: 'saisie_locale' });
+      const base = sc.deps.api.listerExecutions;
+      const valide = { id: 510, workflowId: 'wfGen', status: 'success', startedAt: '2026-10-18T05:00:00.000Z', stoppedAt: '2026-10-18T05:01:00.000Z' };
+      sc.deps.api.listerExecutions = async (q) => (q.workflowId === 'wfGen' && !q.status ? [...(await base(q)), { id: 510, workflowId: 'wfGen', ...premiere }, valide] : base(q));
+      await sansSignature(sc, motif, 'incident');
+    });
+  }
+  test('première lecture du lot en panne, seconde illisible -> incident', async () => {
+    const sc = await scenario({ source: 'saisie_locale' });
+    let n = 0; const l = sc.deps.drive.lireLotGenere;
+    sc.deps.drive.lireLotGenere = async (x) => { n += 1; if (n === 1) throw new Error('Drive 503'); const r = await l(x); r.octets = Buffer.from('{ cassé'); return r; };
+    await sansSignature(sc, /illisible/, 'incident');
+  });
+  test('lot à empreinte discordante lu, seconde lecture en panne -> abandon (contenu contrôlé sans preuve de stabilité)', async () => {
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ lot, setLotGenere }) => { const l = copie(lot); l.cartes[0].question += ' (modifiée)'; setLotGenere({ octets: Buffer.from(JSON.stringify(l)) }); } });
+    let n = 0; const l = sc.deps.drive.lireLotGenere;
+    sc.deps.drive.lireLotGenere = async (x) => { n += 1; if (n === 2) throw new Error('Drive 503'); return l(x); };
+    await sansSignature(sc, /empreinte/, 'abandon');
+  });
+});

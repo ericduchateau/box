@@ -132,15 +132,20 @@ async function observer(api, workflowId, suivi = null) {
       if (x.startedAt != null && n.startedAt === null) refuser(`exécution ${id} : startedAt hors grammaire (${source})`);
       if (x.stoppedAt != null && n.stoppedAt === null) refuser(`exécution ${id} : stoppedAt hors grammaire (${source})`);
       if (n.workflowId !== workflowId) refuser(`exécution ${id} : workflowId inattendu`);
+      // Chaque observation est validée AVANT toute fusion (aucune anomalie écrasée) :
+      // statut connu, chronologie d'une observation terminale.
+      if (!STATUTS_TERMINAUX.includes(n.status) && !STATUTS_EN_VOL.includes(n.status)) refuser(`exécution ${id} : statut inconnu (${n.status}) (${source})`);
+      if (STATUTS_TERMINAUX.includes(n.status) && n.startedAt && n.stoppedAt && n.stoppedAt < n.startedAt) refuser(`exécution ${id} terminée avant d'avoir démarré (${source}) : incident de chaîne`);
       const v = vues.get(id);
       if (!v) { vues.set(id, n); continue; }
       // Évolution normale : non terminé -> terminé ; startedAt null -> date.
       if (v.startedAt && n.startedAt && v.startedAt !== n.startedAt) refuser(`exécution ${id} : observations contradictoires (startedAt)`);
+      if (v.stoppedAt && n.stoppedAt && v.stoppedAt !== n.stoppedAt) refuser(`exécution ${id} : observations contradictoires (stoppedAt)`);
       const tv = STATUTS_TERMINAUX.includes(v.status);
       const tn = STATUTS_TERMINAUX.includes(n.status);
       if (tv && tn && v.status !== n.status) refuser(`exécution ${id} : deux statuts terminaux différents`);
       if (tv && !tn) refuser(`exécution ${id} : retour d'un statut terminal à un statut non terminal (contradiction)`);
-      vues.set(id, { ...v, ...n, startedAt: n.startedAt || v.startedAt });
+      vues.set(id, { ...v, ...n, startedAt: n.startedAt || v.startedAt, stoppedAt: n.stoppedAt || v.stoppedAt });
     }
   };
   // Requêtes « en vol » D'ABORD, liste complète ENSUITE : une exécution vue en cours
@@ -423,30 +428,38 @@ async function cloturer(setId, deps) {
   const fichierVu = fichier && fichier !== L.INDISPONIBLE ? fichier : null;
   // Lot source (§20.4, §20.7)
   let lotSource = null;
-  // Contenu examiné dès la PREMIÈRE lecture ; stabilité dès que la seconde est lue.
+  // CONTENU contrôlé sur toute lecture disponible (avant et/ou après) ; STABILITÉ prouvée
+  // seulement si les deux lectures existent (une lecture en panne est déjà constatée
+  // « temporaire » : la signature reste impossible, mais les anomalies observées sont
+  // classées à leur rang).
   const av = lotAvant.ok ? lotAvant.v : undefined;
   const ap = lotApres.ok ? lotApres.v : undefined;
   if (av === null || ap === null) constats.ajouter('abandon', `lot généré ${setId}.lot.json absent`);
-  if (av) {
-    {
-      // Observations de la date : lecture avant, listing, lecture après (si lues).
-      const datesLot = [av.modifie_le, ...(ap ? [ap.modifie_le] : []), ...(fichierVu ? [fichierVu.modifie_le] : [])].map((d) => normaliserDate(d));
-      if ((ap && (av.id !== ap.id || !Buffer.from(av.octets).equals(Buffer.from(ap.octets)))) || new Set(datesLot).size !== 1) {
-        constats.ajouter('temporaire', 'lot généré instable pendant le listing (identifiant, date ou contenu différents entre lecture avant, listing et lecture après) : relancer la clôture');
-      }
-      if (fichierVu && av.id !== fichierVu.id) constats.ajouter('abandon', 'lot généré lu ≠ fichier candidat retenu');
-      if (datesLot.some((d) => d === null)) constats.ajouter('incident', 'lot généré : date de modification illisible');
-      else if (retenue && retenue.x.stoppedAt && datesLot.some((d) => d > retenue.x.stoppedAt)) constats.ajouter('abandon', 'lot généré modifié APRÈS la fin de l\'exécution de génération');
-      const lot = lireJson(av.octets);
-      if (lot === undefined) constats.ajouter('incident', 'lot généré illisible (JSON invalide) : incident de chaîne');
-      else {
-        const v = C.validerLot(lot);
-        const nuls = v.valide ? L.nullsExplicites(lot) : [];
-        if (!v.valide) constats.ajouter('abandon', `lot généré non conforme à lot-fonda/v1 : ${v.erreurs.join(' ; ')}`);
-        else if (nuls.length) constats.ajouter('abandon', `lot généré : null explicite interdit (${nuls.join(', ')})`);
-        else if (lot.set_id !== setId) constats.ajouter('abandon', 'lot généré : set_id ≠ set_id demandé');
-        else if (ap) lotSource = lot; // utilisé seulement si la stabilité a pu être observée
-      }
+  const lus = [av, ap].filter(Boolean);
+  if (lus.length) {
+    if (av && ap && (av.id !== ap.id || !Buffer.from(av.octets).equals(Buffer.from(ap.octets)))) {
+      constats.ajouter('temporaire', 'lot généré instable pendant le listing (identifiant ou contenu différents entre les deux lectures) : relancer la clôture');
+    }
+    // Observations de la date : lectures disponibles et listing.
+    const datesLot = [...lus.map((x) => x.modifie_le), ...(fichierVu ? [fichierVu.modifie_le] : [])].map((dt) => normaliserDate(dt));
+    if (new Set(datesLot).size > 1) constats.ajouter('temporaire', 'lot généré instable pendant le listing (dates de modification différentes entre lectures et listing) : relancer la clôture');
+    if (fichierVu && lus.some((x) => x.id !== fichierVu.id)) constats.ajouter('abandon', 'lot généré lu ≠ fichier candidat retenu');
+    if (datesLot.some((dt) => dt === null)) constats.ajouter('incident', 'lot généré : date de modification illisible');
+    else if (retenue && retenue.x.stoppedAt && datesLot.some((dt) => dt > retenue.x.stoppedAt)) constats.ajouter('abandon', 'lot généré modifié APRÈS la fin de l\'exécution de génération');
+    // Chaque contenu DISTINCT lu est contrôlé ; le premier conforme sert aux comparaisons.
+    const vus = new Set();
+    for (const x of lus) {
+      const cle = Buffer.from(x.octets).toString('hex');
+      if (vus.has(cle)) continue;
+      vus.add(cle);
+      const lot = lireJson(x.octets);
+      if (lot === undefined) { constats.ajouter('incident', 'lot généré illisible (JSON invalide) : incident de chaîne'); continue; }
+      const v = C.validerLot(lot);
+      const nuls = v.valide ? L.nullsExplicites(lot) : [];
+      if (!v.valide) constats.ajouter('abandon', `lot généré non conforme à lot-fonda/v1 : ${v.erreurs.join(' ; ')}`);
+      else if (nuls.length) constats.ajouter('abandon', `lot généré : null explicite interdit (${nuls.join(', ')})`);
+      else if (lot.set_id !== setId) constats.ajouter('abandon', 'lot généré : set_id ≠ set_id demandé');
+      else if (!lotSource) lotSource = lot;
     }
   }
   const sha = C.sha256WebCrypto();
