@@ -57,62 +57,80 @@ function itemUnique(brute, noeud) {
 // executions : observations normalisées { id, status, startedAt, stoppedAt } du workflow
 // épinglé ; details : Map(id -> exécution brute avec données) ; fichiers : listing de
 // FONDA-Lots/candidats/ [{ id, nom, modifie_le, properties, proprietesLisibles }].
-// Confrontation du DÉTAIL (includeData) à l'observation du listing : même identifiant,
-// même workflow, statuts compatibles, mêmes dates renseignées ; sinon observations
-// contradictoires -> incident (§11 bis, §20.13). Renvoie la raison ou null.
-function contradiction(x, brute, normaliserDate) {
-  if (String(brute.id) !== x.id) return `identifiant du détail ${brute.id} ≠ ${x.id}`;
-  if (brute.workflowId !== x.workflowId) return 'workflowId du détail ≠ listing';
+// Sentinelle : donnée NON OBSERVÉE (lecture en échec, déjà constatée par l'appelant).
+// Un contrôle qui en dépend est sauté ; jamais assimilée à une absence.
+const INDISPONIBLE = Object.freeze({ indisponible: true });
+
+// Fusion du DÉTAIL (includeData, lu après le listing) avec l'observation du listing
+// (§11 bis) : évolution normale non terminé -> terminé (l'observation TERMINALE est
+// retenue) ; contradictions (identifiant, workflow, deux statuts terminaux différents,
+// retour terminal -> non terminal, dates renseignées différentes) -> { contradiction }.
+function fusionner(x, brute, normaliserDate) {
+  if (String(brute.id) !== x.id) return { contradiction: `identifiant du détail ${brute.id} ≠ ${x.id}` };
+  if (brute.workflowId !== x.workflowId) return { contradiction: 'workflowId du détail ≠ listing' };
   const tx = STATUTS_TERMINAUX.includes(x.status);
   const tb = STATUTS_TERMINAUX.includes(brute.status);
-  if (tx && !tb) return `statut terminal au listing (${x.status}), non terminal au détail (${brute.status})`;
-  if (tx && tb && x.status !== brute.status) return `statuts terminaux différents (listing ${x.status}, détail ${brute.status})`;
-  for (const [k, v] of [['startedAt', x.startedAt], ['stoppedAt', x.stoppedAt]]) {
+  if (tx && !tb) return { contradiction: `statut terminal au listing (${x.status}), non terminal au détail (${brute.status})` };
+  if (tx && tb && x.status !== brute.status) return { contradiction: `statuts terminaux différents (listing ${x.status}, détail ${brute.status})` };
+  const obs = { ...x, status: tb ? brute.status : x.status };
+  for (const k of ['startedAt', 'stoppedAt']) {
     const b = brute[k] == null ? null : normaliserDate(brute[k]);
-    if (brute[k] != null && b === null) return `${k} du détail hors grammaire`;
-    if (v && b && v !== b) return `${k} contradictoire (listing ${v}, détail ${b})`;
-    if (tx && v && !b) return `${k} absent du détail d'une exécution terminée`;
+    if (brute[k] != null && b === null) return { contradiction: `${k} du détail hors grammaire` };
+    if (x[k] && b && x[k] !== b) return { contradiction: `${k} contradictoire (listing ${x[k]}, détail ${b})` };
+    obs[k] = x[k] || b;
   }
-  return null;
+  if (STATUTS_TERMINAUX.includes(obs.status) && (!obs.startedAt || !obs.stoppedAt)) return { contradiction: 'exécution terminée sans startedAt/stoppedAt' };
+  return { obs };
 }
 
-// Incident GLOBAL (quel que soit le lot), évalué dès que le LISTING est disponible —
-// indépendamment des détails et de Drive : exécution new/running/waiting ou de statut
-// inconnu du workflow de génération (§20.13 priorité 1).
-function incidentsGeneration(executions, constats) {
-  for (const x of executions) {
-    if (!STATUTS_TERMINAUX.includes(x.status)) constats.ajouter('incident', `exécution de génération ${x.id} non terminée ou de statut inconnu (${x.status}) : incident de chaîne, toute clôture suspendue`);
-  }
-}
-
-function classerExecutions({ setId, executions, details, fichiers, constats, normaliserDate }) {
-  const nomAttendu = `${setId}.lot.json`;
-  const concernees = [];
-  const tolerees = [];
-  for (const x of executions) {
-    // Non terminée : déjà constatée par incidentsGeneration (incident GLOBAL).
-    if (!STATUTS_TERMINAUX.includes(x.status)) continue;
-    const brute = details.get(x.id);
-    if (brute) {
-      const contra = contradiction(x, brute, normaliserDate);
-      if (contra) { constats.ajouter('incident', `exécution ${x.id} : observations contradictoires (${contra})`); continue; }
+// Examen de CHAQUE exécution du workflow de génération, indépendamment des autres et de
+// Drive : fusion détail/listing, incident GLOBAL (non terminée ou statut inconnu, quel
+// que soit le lot), déclencheur attribuable. details : Map(id -> brute | INDISPONIBLE).
+// Renvoie { examinees: [{ x, entree }] (terminées et attribuables), complet }.
+function examinerExecutions({ executions, details, constats, normaliserDate }) {
+  const examinees = [];
+  let complet = true;
+  for (const x0 of executions) {
+    const brute = details.get(x0.id);
+    let x = x0;
+    if (brute && brute !== INDISPONIBLE) {
+      const f = fusionner(x0, brute, normaliserDate);
+      if (f.contradiction) { constats.ajouter('incident', `exécution ${x0.id} : observations contradictoires (${f.contradiction})`); continue; }
+      x = f.obs;
     }
-    const entree = brute ? itemUnique(brute, NOEUD_ENTREE) : { ok: false, raison: 'données de l\'exécution indisponibles' };
-    if (!entree.ok) {
-      // Item du déclencheur manquant : exécution non attribuable -> incident (§20.2).
-      constats.ajouter('incident', `exécution ${x.id} du workflow de génération : item du déclencheur manquant (${entree.raison}) — non attribuable`);
+    if (!STATUTS_TERMINAUX.includes(x.status)) {
+      constats.ajouter('incident', `exécution de génération ${x.id} non terminée ou de statut inconnu (${x.status}) : incident de chaîne, toute clôture suspendue`);
       continue;
     }
+    if (brute === INDISPONIBLE) { complet = false; continue; } // lecture en échec : déjà constatée
+    const entree = brute ? itemUnique(brute, NOEUD_ENTREE) : { ok: false, raison: 'données de l\'exécution indisponibles (purgées ?)' };
+    if (!entree.ok) { constats.ajouter('incident', `exécution ${x.id} du workflow de génération : item du déclencheur manquant (${entree.raison}) — non attribuable`); continue; }
     if (typeof entree.json.set_id !== 'string' || !C.SET_ID_PATTERN.test(entree.json.set_id) || typeof entree.json.ref !== 'string' || !entree.json.ref) {
       constats.ajouter('incident', `exécution ${x.id} : déclencheur sans { set_id, ref } exploitable — non attribuable`);
       continue;
     }
-    if (entree.json.set_id !== setId) continue;
-    concernees.push({ x, entree: entree.json });
+    examinees.push({ x, entree: entree.json });
   }
+  return { examinees, complet };
+}
+
+// §20.2 Classement des exécutions du set_id. Sur des exécutions examinées ; les
+// conclusions de NOMBRE (« exactement une réussie ») exigent un examen complet ; celles
+// sur les fichiers exigent le listing de candidats/ (fichiers ≠ INDISPONIBLE).
+// Renvoie { retenue, fichier } : null = absent ; INDISPONIBLE = non déterminable.
+function classerExecutions({ setId, examinees, complet, fichiers, constats }) {
+  const nomAttendu = `${setId}.lot.json`;
+  const concernees = examinees.filter((c) => c.entree.set_id === setId);
+  const reussies = concernees.filter((c) => c.x.status === 'success');
+  let retenue = INDISPONIBLE;
+  if (complet) {
+    if (reussies.length !== 1) constats.ajouter('abandon', `${reussies.length} exécution(s) de génération réussie(s) pour ${setId} (exactement une attendue)`);
+    retenue = reussies.length === 1 ? reussies[0] : null;
+  } else if (reussies.length > 1) constats.ajouter('abandon', `${reussies.length} exécutions de génération réussies pour ${setId} (exactement une attendue)`);
+  if (fichiers === INDISPONIBLE) return { retenue, fichier: INDISPONIBLE };
   // Fichiers candidats : lien fichier <-> exécution par properties PUBLIQUES (§20.2).
   const parExecution = new Map();
-  let duLot = [];
+  const duLot = [];
   for (const f of fichiers) {
     if (!f || f.proprietesLisibles !== true || !f.properties || typeof f.properties !== 'object') {
       constats.ajouter('abandon', `fichier candidats/ ${f && f.nom} : properties absentes ou illisibles (≠ absence de dépôt)`);
@@ -130,32 +148,23 @@ function classerExecutions({ setId, executions, details, fichiers, constats, nor
       duLot.push(f);
     }
   }
-  const reussies = [];
   for (const c of concernees) {
-    const { x } = c;
-    if (x.status !== 'success') {
-      if ((parExecution.get(x.id) || []).length) constats.ajouter('abandon', `exécution de génération ${x.id} en erreur APRÈS dépôt d'un fichier candidat`);
-      else tolerees.push(x.id);
-    } else reussies.push(c);
+    if (c.x.status !== 'success' && (parExecution.get(c.x.id) || []).length) constats.ajouter('abandon', `exécution de génération ${c.x.id} en erreur APRÈS dépôt d'un fichier candidat`);
   }
-  if (reussies.length !== 1) constats.ajouter('abandon', `${reussies.length} exécution(s) de génération réussie(s) pour ${setId} (exactement une attendue)`);
   if (duLot.length !== 1) constats.ajouter('abandon', `${duLot.length} fichier(s) candidat(s) pour ${setId} (exactement un attendu)`);
-  const retenue = reussies.length === 1 ? reussies[0] : null;
   const fichier = duLot.length === 1 ? duLot[0] : null;
-  // Rattachement INVERSE : l'exécution retenue a exactement UN fichier, le lot.
-  if (retenue) {
+  if (retenue && retenue !== INDISPONIBLE) {
+    // Rattachement INVERSE : l'exécution retenue a exactement UN fichier, le lot.
     const lies = parExecution.get(retenue.x.id) || [];
     if (lies.length !== 1 || (fichier && lies[0] !== fichier)) constats.ajouter('abandon', `exécution retenue ${retenue.x.id} : ${lies.length} fichier(s) candidats/ rattaché(s) (exactement le lot attendu)`);
+    if (fichier && fichier.properties.fonda_execution_id !== retenue.x.id) constats.ajouter('abandon', `fichier ${fichier.nom} : fonda_execution_id ${fichier.properties.fonda_execution_id} ≠ exécution retenue ${retenue.x.id}`);
   }
-  if (retenue && fichier && fichier.properties.fonda_execution_id !== retenue.x.id) {
-    constats.ajouter('abandon', `fichier ${fichier.nom} : fonda_execution_id ${fichier.properties.fonda_execution_id} ≠ exécution retenue ${retenue.x.id}`);
-  }
-  // Fichiers rattachés à une exécution de CE lot qui n'est pas la retenue (doublon) -> abandon.
+  // Fichiers rattachés à une exécution de CE lot qui n'est pas la retenue (doublon).
   for (const c of concernees) {
-    if (retenue && c.x.id === retenue.x.id) continue;
+    if (retenue && retenue !== INDISPONIBLE && c.x.id === retenue.x.id) continue;
     for (const f of parExecution.get(c.x.id) || []) if (f !== fichier) constats.ajouter('abandon', `fichier ${f.nom} rattaché à l'exécution ${c.x.id} de ${setId} (doublon)`);
   }
-  return { retenue, fichier, tolerees };
+  return { retenue, fichier };
 }
 
 // --- §20.4 Projection complète et empreinte_complete --------------------------------------
@@ -205,10 +214,12 @@ function rapprocher({ setId, retenue, fichier, brute, workflowId, journalCommit,
   // set_id, notion_id, palier
   const d = C.decomposerSetId(setId);
   if (s.set_id !== setId || retenue.entree.set_id !== setId) abandon('set_id : sortie = déclencheur = set_id demandé non respecté');
-  if (!d || s.palier !== d.palier || s.palier !== lotSource.palier || s.notion_id !== lotSource.notion_id || C.slugDeNotion(s.notion_id) !== d.slug) abandon('notion_id / palier ≠ ceux encodés dans set_id');
+  if (!d || s.palier !== d.palier || C.slugDeNotion(s.notion_id) !== d.slug) abandon('notion_id / palier ≠ ceux encodés dans set_id');
+  if (lotSource && (s.palier !== lotSource.palier || s.notion_id !== lotSource.notion_id)) abandon('notion_id / palier ≠ ceux du lot source');
   // ref et journal
   if (s.ref !== retenue.entree.ref) abandon('ref : sortie ≠ déclencheur');
   if (typeof s.journal_commit !== 'string' || !HEX40.test(s.journal_commit)) abandon('journal_commit : 40 hex attendus');
+  else if (journalCommit === INDISPONIBLE) { /* lecture du journal en échec : constatée par l'appelant */ }
   else if (!journalCommit || journalCommit.surPremierParent !== true) abandon(`journal_commit ${s.journal_commit.slice(0, 7)} hors de la chaîne du premier parent de design`);
   else {
     const j = journalCommit.journal;
@@ -223,12 +234,14 @@ function rapprocher({ setId, retenue, fichier, brute, workflowId, journalCommit,
   if (!EMPREINTE.test(s.referentiel_version)) abandon('referentiel_version : sha256:<64 hex> attendu');
   // modèle (G5) : champ model de la RÉPONSE, liste épinglée, aucun repli
   if (!Array.isArray(modelesAutorises) || !modelesAutorises.includes(s.modele)) abandon(`modele « ${s.modele} » ∉ liste autorisée épinglée (G5)`);
-  // empreintes du lot source LU
-  if (s.empreinte_pedagogique !== empreintes.pedagogique) abandon('empreinte_pedagogique ≠ empreinte recalculée du lot source lu');
-  if (s.empreinte_complete !== empreintes.complete) abandon('empreinte_complete ≠ empreinte complète recalculée du lot source lu');
+  // empreintes du lot source LU (si le lot a pu être lu et validé)
+  if (empreintes) {
+    if (s.empreinte_pedagogique !== empreintes.pedagogique) abandon('empreinte_pedagogique ≠ empreinte recalculée du lot source lu');
+    if (s.empreinte_complete !== empreintes.complete) abandon('empreinte_complete ≠ empreinte complète recalculée du lot source lu');
+  }
   // fichier candidat
-  if (!fichier || s.candidat_fichier_id !== fichier.id || fichier.nom !== `${setId}.lot.json`
-    || fichier.properties.fonda_execution_id !== x.id || fichier.properties.fonda_set_id !== setId) abandon('candidat_fichier_id ≠ fichier lu (nom, properties)');
+  if (fichier !== INDISPONIBLE && (!fichier || s.candidat_fichier_id !== fichier.id || fichier.nom !== `${setId}.lot.json`
+    || fichier.properties.fonda_execution_id !== x.id || fichier.properties.fonda_set_id !== setId)) abandon('candidat_fichier_id ≠ fichier lu (nom, properties)');
   // métadonnées API
   if (brute.workflowId !== workflowId || x.workflowId !== workflowId) abandon('workflow_id ≠ workflow épinglé');
   if (brute.mode !== 'webhook') abandon(`mode d'exécution « ${brute.mode} » ≠ webhook`);
@@ -272,6 +285,6 @@ function unicite(decisions) {
 }
 
 module.exports = {
-  contradiction, incidentsGeneration, NOEUD_ENTREE, NOEUD_SORTIE, PRIORITE, Constats, itemUnique, classerExecutions, nullsExplicites, projectionComplete, empreinteComplete,
+  INDISPONIBLE, fusionner, examinerExecutions, NOEUD_ENTREE, NOEUD_SORTIE, PRIORITE, Constats, itemUnique, classerExecutions, nullsExplicites, projectionComplete, empreinteComplete,
   rapprocher, reconcilier, unicite,
 };

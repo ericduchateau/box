@@ -111,6 +111,7 @@ async function scenario(x = {}) {
       ecrireExclusif(p, t) { if (etat.ecrits.has(p)) throw new Error('existe déjà'); etat.ecrits.set(p, Buffer.from(t, 'utf8')); },
       lire(p) { if (!etat.ecrits.has(p)) throw new Error('absent'); return etat.ecrits.get(p); },
       existe(p) { return etat.ecrits.has(p); },
+      lister(d) { const n = new Set(); for (const p of etat.ecrits.keys()) if (p.startsWith(`${d}/`)) n.add(p.slice(d.length + 1).split('/')[0]); return [...n]; },
     },
     signer: (octets) => { etat.signatures += 1; return crypto.sign('sha256', octets, { key: privateKey, padding: crypto.constants.RSA_PKCS1_PADDING }); },
     cles: CLES, registre: REGISTRE,
@@ -224,6 +225,73 @@ describe('aller-retour v2 : signer -> attestation-signee vérifie -> publier-lot
       assert.ok(i > iDebut && i < iFin, `${app} dans l'intervalle`);
     }
   });
+  test('évolution normale : génération vue « running » au listing puis « success » au détail -> fusionnée, signée (§11 bis)', async () => {
+    const sc = await scenario({ source: 'saisie_locale' });
+    const base = sc.deps.api.listerExecutions;
+    sc.deps.api.listerExecutions = async (q) => (q.workflowId === 'wfGen' && q.status === 'running' ? [{ id: 501, workflowId: 'wfGen', status: 'running', startedAt: '2026-10-18T07:00:00.000Z', stoppedAt: null }]
+      : q.workflowId === 'wfGen' && !q.status ? [] : base(q));
+    const { enveloppe } = await cloturer(sc.setId, sc.deps);
+    assert.equal(enveloppe.charge.generation.statut, 'success');
+    assert.equal(enveloppe.charge.generation.terminee_le, '2026-10-18T07:01:00.000Z');
+  });
+  test('panne d\'UN détail : la contradiction d\'un autre détail reste un incident (dépendances par exécution)', async () => {
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ execs, gen, fx }) => {
+      execs.wfGen.push({ id: 498, workflowId: 'wfGen', status: 'error', startedAt: fx.erreur_sans_depot.startedAt, stoppedAt: fx.erreur_sans_depot.stoppedAt });
+      gen[498] = fx.erreur_sans_depot; gen[501].status = 'error';
+    } });
+    const lire = sc.deps.api.lireExecution;
+    sc.deps.api.lireExecution = async (id) => { if (id === '498') throw new Error('timeout'); return lire(id); };
+    await sansSignature(sc, /statuts terminaux différents/, 'incident');
+  });
+  test('journal illisible : les autres lignes de la table restent évaluées (modèle interdit -> abandon)', async () => {
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ gen, deps }) => {
+      gen[501].data.resultData.runData['FONDA Sortie generation'][0].data.main[0][0].json.modele = 'claude-sonnet-5-5';
+      deps.journal = async () => { throw new Error('git indisponible'); };
+    } });
+    await sansSignature(sc, /∉ liste autorisée/, 'abandon');
+  });
+  test('journal illisible SEUL : refus TEMPORAIRE (jamais un abandon déduit d\'une donnée manquante)', async () => {
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ deps }) => { deps.journal = async () => { throw new Error('git indisponible'); }; } });
+    const err = await sansSignature(sc, /journal.*injoignable/, 'temporaire');
+    assert.doesNotMatch(err.message, /\[abandon\]/);
+  });
+  test('Drive candidats/ illisible : la table reste évaluée (modèle interdit -> abandon)', async () => {
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ gen, deps }) => {
+      gen[501].data.resultData.runData['FONDA Sortie generation'][0].data.main[0][0].json.modele = 'claude-sonnet-5-5';
+      deps.drive.listerCandidats = async () => { throw new Error('Drive 503'); };
+    } });
+    await sansSignature(sc, /∉ liste autorisée/, 'abandon');
+  });
+  test('clé absente ET code faux : refus TEMPORAIRE avant toute confirmation', async () => {
+    const sc = await scenario({ source: 'saisie_locale', code: '0'.repeat(16), modifier: ({ deps }) => { deps.config.cleId = 'cle-inconnue'; } });
+    await sansSignature(sc, /non déclarée/, 'temporaire');
+    assert.ok(![...sc.etat.ecrits.keys()].some((p) => p.endsWith('instantane.json')), 'aucun instantané écrit');
+  });
+  test('instantané altéré ET code faux : §3.4 détecté AVANT la demande du code', async () => {
+    const sc = await scenario({ source: 'saisie_locale', code: '0'.repeat(16), modifier: ({ deps }) => { const l = deps.fs.lire; deps.fs.lire = (p) => (p.endsWith('instantane.json') ? Buffer.concat([l(p), Buffer.from(' ')]) : l(p)); } });
+    await sansSignature(sc, /§3.4 \(a\)/);
+  });
+  test('clôture ANTÉRIEURE de ce set_id sur d\'autres données (décision modifiée après un code faux) -> abandon, jamais un second instantané', async () => {
+    const sc = await scenario({ source: 'saisie_locale', code: '0'.repeat(16) });
+    await assert.rejects(cloturer(sc.setId, sc.deps), /code de confirmation/);
+    // Nouvelle décision (autres choix) : l'instantané changerait de code.
+    const d = copie(sc.decisionLocale);
+    d.lot_relu.cartes[0].choix = 'ecarter'; d.coeur.selection = d.coeur.selection.slice(1); d.coeur.ecartees = [d.lot_relu.cartes[0].item_id, ...d.coeur.ecartees];
+    d.coeur.empreinte_publiee = await C.calculerEmpreinte({ ...sc.lot, revue_carte_par_carte: true, nb_cartes: d.coeur.selection.length, cartes: sc.lot.cartes.filter((c) => d.coeur.selection.includes(c.item_id)) }, sha);
+    sc.locales[0].octets = Buffer.from(JSON.stringify(d));
+    sc.deps.saisir = async (q) => (/Code/.test(q) ? /CODE DE CONFIRMATION : ([0-9a-f]{16})/.exec(sc.etat.affiche).pop() : 'oui');
+    const n = sc.etat.ecrits.size;
+    await sansSignature(sc, /clôture antérieure .*AUTRES données/, 'abandon');
+    assert.equal(sc.etat.ecrits.size, n, 'aucune écriture');
+  });
+  test('déjà signé pour ce set_id : relance refusée, jamais une seconde attestation', async () => {
+    const sc = await scenario({ source: 'saisie_locale' });
+    await cloturer(sc.setId, sc.deps);
+    sc.etat.affiche = '';
+    const err = await cloturer(sc.setId, sc.deps).then(() => null, (e) => e);
+    assert.match(err.message, /déjà signé/);
+    assert.equal(sc.etat.signatures, 1);
+  });
   test('exécution en erreur SANS dépôt : tentative tolérée (fixture « erreur_sans_depot »)', async () => {
     const sc = await scenario({ modifier: ({ execs, gen, fx }) => { execs.wfGen.push({ id: 498, workflowId: 'wfGen', status: 'error', startedAt: fx.erreur_sans_depot.startedAt, stoppedAt: fx.erreur_sans_depot.stoppedAt }); gen[498] = fx.erreur_sans_depot; } });
     const { enveloppe } = await cloturer(sc.setId, sc.deps);
@@ -238,7 +306,7 @@ describe('§20.2–20.3 liaison de génération : chaque violation -> refus clas
     ['erreur APRÈS dépôt (fixture)', (ctx) => { autreExec('erreur_apres_depot', 499, 'error')(ctx); ctx.candidats.push(ctx.fx.erreur_apres_depot.fichier_depose); }, /erreur APRÈS dépôt/, 'abandon'],
     ['doublon : deux exécutions réussies (fixture)', autreExec('doublon', 502, 'success'), /2 exécution\(s\) de génération réussie/, 'abandon'],
     ['pinData non vide (fixture)', ({ gen, fx }) => { gen[501].workflowData.pinData = fx.pinData; }, /pinData ni absent ni objet vide/, 'abandon'],
-    ['exécution de génération non terminée (running)', ({ execs, gen, fx }) => { execs.wfGen.push({ id: 503, workflowId: 'wfGen', status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null }); gen[503] = { ...fx.doublon, id: 503, status: 'running' }; }, /non terminée/, 'incident'],
+    ['exécution de génération non terminée (running)', ({ execs, gen, fx }) => { execs.wfGen.push({ id: 503, workflowId: 'wfGen', status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null }); gen[503] = { ...fx.doublon, id: 503, status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null }; }, /non terminée/, 'incident'],
     ['item du déclencheur manquant', ({ execs, gen }) => { execs.wfGen.push({ id: 504, workflowId: 'wfGen', status: 'error', startedAt: '2026-10-18T06:00:00.000Z', stoppedAt: '2026-10-18T06:00:01.000Z' }); gen[504] = { id: 504, workflowId: 'wfGen', status: 'error', mode: 'webhook', startedAt: '2026-10-18T06:00:00.000Z', stoppedAt: '2026-10-18T06:00:01.000Z', data: { resultData: { runData: {} } }, workflowData: {} }; }, /item du déclencheur manquant/, 'incident'],
     ['exécution sans données (purgée)', ({ execs }) => { execs.wfGen.push({ id: 505, workflowId: 'wfGen', status: 'error', startedAt: '2026-10-18T06:00:00.000Z', stoppedAt: '2026-10-18T06:00:01.000Z' }); }, /item du déclencheur manquant/, 'incident'],
     ['workflowData absent (information indisponible)', ({ gen }) => { delete gen[501].workflowData; }, /workflowData absent/, 'refus'],
@@ -269,14 +337,14 @@ describe('§20.2–20.3 liaison de génération : chaque violation -> refus clas
     ['détail n8n : statut terminal ≠ listing', ({ gen }) => { gen[501].status = 'error'; }, /observations contradictoires.*statuts terminaux différents/, 'incident'],
     ['détail n8n : autre identifiant', ({ gen }) => { gen[501].id = 777; }, /observations contradictoires.*identifiant du détail/, 'incident'],
     ['détail n8n : startedAt contradictoire', ({ gen }) => { gen[501].startedAt = '2026-10-18T06:59:00.000Z'; }, /startedAt contradictoire/, 'incident'],
-    ['génération en cours d\'un AUTRE lot (incident global)', ({ execs, gen, fx }) => { execs.wfGen.push({ id: 506, workflowId: 'wfGen', status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null }); gen[506] = { ...fx.doublon, id: 506, status: 'running' }; gen[506].data.resultData.runData['FONDA Entree generation'][0].data.main[0][0].json.set_id = 'set_fonda_lexique_nI_02'; }, /non terminée ou de statut inconnu/, 'incident'],
+    ['génération en cours d\'un AUTRE lot (incident global)', ({ execs, gen, fx }) => { execs.wfGen.push({ id: 506, workflowId: 'wfGen', status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null }); gen[506] = copie({ ...fx.doublon, id: 506, status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null }); gen[506].data.resultData.runData['FONDA Entree generation'][0].data.main[0][0].json.set_id = 'set_fonda_lexique_nI_02'; }, /non terminée ou de statut inconnu/, 'incident'],
     ['déclencheur au set_id vide (non attribuable)', ({ execs, gen, fx }) => { execs.wfGen.push({ id: 507, workflowId: 'wfGen', status: 'error', startedAt: fx.erreur_sans_depot.startedAt, stoppedAt: fx.erreur_sans_depot.stoppedAt }); gen[507] = copie({ ...fx.erreur_sans_depot, id: 507 }); gen[507].data.resultData.runData['FONDA Entree generation'][0].data.main[0][0].json.set_id = ''; }, /non attribuable/, 'incident'],
     ['second fichier rattaché à l\'exécution retenue (autre nom, autre set_id)', ({ candidats }) => { candidats.push({ id: 'drv-autre', nom: 'set_fonda_lexique_nI_02.lot.json', modifie_le: '2026-10-18T07:00:40.000Z', properties: { fonda_set_id: 'set_fonda_lexique_nI_02', fonda_execution_id: '501' }, proprietesLisibles: true }); }, /exécution retenue 501 : 2 fichier/, 'abandon'],
     ['workflowData tableau', ({ gen }) => { gen[501].workflowData = []; }, /workflowData absent/, 'refus'],
     ['pinData null', ({ gen }) => { gen[501].workflowData.pinData = null; }, /pinData ni absent ni objet vide/, 'abandon'],
     ['date du listing postérieure à la génération (lectures stables)', ({ candidats }) => { candidats[0].modifie_le = '2026-10-18T07:05:00.000Z'; }, /modifié APRÈS/, 'abandon'],
     ['accès API insuffisant (403)', ({ deps }) => { deps.api.lireExecution = async () => { const e = new Error('Forbidden'); e.statut = 403; throw e; }; }, /accès insuffisant \(403\)/, 'incident'],
-    ['génération active PUIS panne Drive : l\'incident l\'emporte', ({ execs, gen, fx, deps }) => { execs.wfGen.push({ id: 503, workflowId: 'wfGen', status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null }); gen[503] = { ...fx.doublon, id: 503, status: 'running' }; deps.drive.listerCandidats = async () => { throw new Error('Drive 503'); }; }, /non terminée/, 'incident'],
+    ['génération active PUIS panne Drive : l\'incident l\'emporte', ({ execs, gen, fx, deps }) => { execs.wfGen.push({ id: 503, workflowId: 'wfGen', status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null }); gen[503] = { ...fx.doublon, id: 503, status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null }; deps.drive.listerCandidats = async () => { throw new Error('Drive 503'); }; }, /non terminée/, 'incident'],
   ];
   for (const [libelle, modifier, motif, issue] of cas) {
     test(libelle, async () => sansSignature(await scenario({ source: 'saisie_locale', modifier }), motif, issue));
@@ -284,7 +352,7 @@ describe('§20.2–20.3 liaison de génération : chaque violation -> refus clas
   test('priorité §20.13 : incident ET abandon simultanés -> l\'incident l\'emporte (les autres constats sont cités)', async () => {
     const sc = await scenario({ source: 'saisie_locale', modifier: (ctx) => {
       ctx.execs.wfGen.push({ id: 503, workflowId: 'wfGen', status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null });
-      ctx.gen[503] = { ...ctx.fx.doublon, id: 503, status: 'running' };
+      ctx.gen[503] = { ...ctx.fx.doublon, id: 503, status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null };
       ctx.gen[501].mode = 'manual';
     } });
     const err = await sansSignature(sc, /non terminée/, 'incident');
@@ -424,7 +492,9 @@ describe('parcours page (v8.2) : chaque refus -> ZÉRO signature', () => {
     ['fenêtre de candidature inversée', ({ candidat }) => { candidat.relecture.cree_le = '2026-10-21T00:00:00.000Z'; }, /inversée/, 'incident'],
     ['deux clôtures techniques à la même date', ({ execs, rattachements }) => { execs.wfClot.push({ ...execs.wfClot[0], id: 21 }); rattachements[21] = rattachements[20]; }, /même date/, 'abandon'],
     ['clôture technique en cours', ({ execs, rattachements }) => { execs.wfClot.push({ id: 22, workflowId: 'wfClot', status: 'running', startedAt: '2026-10-20T08:20:00.000Z', stoppedAt: null }); rattachements[22] = rattachements[20]; }, /encore en cours/, 'incident'],
-    ['aucune clôture technique rattachée', ({ rattachements }) => { delete rattachements[20]; }, /aucune clôture/, 'temporaire'],
+    ['aucune clôture technique', ({ execs }) => { execs.wfClot.length = 0; }, /aucune clôture/, 'temporaire'],
+    ['exécution de clôture NON ATTRIBUABLE (même terminée)', ({ rattachements }) => { delete rattachements[20]; }, /non attribuable/, 'incident'],
+    ['exécution de clôture en cours non attribuable (autre lot ?) : incident global', ({ execs }) => { execs.wfClot.push({ id: 23, workflowId: 'wfClot', status: 'running', startedAt: '2026-10-20T08:20:00.000Z', stoppedAt: null }); }, /non terminée ou de statut inconnu/, 'incident'],
     ['moteur du candidat ≠ génération', ({ candidat }) => { candidat.relecture.moteur = { version: 'v1', sha256: '0'.repeat(64) }; }, /moteur du candidat/, 'abandon'],
     ['referentiel_version du candidat ≠ génération', ({ candidat }) => { candidat.relecture.referentiel_version = `sha256:${'2'.repeat(64)}`; }, /referentiel_version du candidat/, 'abandon'],
     ['relecteur du candidat ≠ référentiel archivé', ({ candidat }) => { candidat.relecture.relecteur_attribue = 'eric'; }, /relecteur attribué du candidat/, 'abandon'],
@@ -449,7 +519,7 @@ describe('parcours page (v8.2) : chaque refus -> ZÉRO signature', () => {
     ['sous-dossier final lien vers le dépôt', { modifier: ({ deps }) => { deps.fs.realpath = (p) => (/set_fonda_/.test(p) ? path.join(__dirname, 'x') : p); } }, /DANS le dépôt/],
     ['instantané déjà écrit (jamais reconstruit)', { modifier: ({ deps }) => { const e = deps.fs.ecrireExclusif; deps.fs.ecrireExclusif = (p, t) => { if (p.endsWith('instantane.json')) throw new Error('existe déjà'); return e(p, t); }; } }, /existe déjà/],
     ['instantané altéré sur disque avant signature', { modifier: ({ deps }) => { const l = deps.fs.lire; deps.fs.lire = (p) => (p.endsWith('instantane.json') ? Buffer.concat([l(p), Buffer.from(' ')]) : l(p)); } }, /§3.4 \(a\)/],
-    ['attestation.json déjà présent', { modifier: ({ deps }) => { const e = deps.fs.existe; deps.fs.existe = (p) => (p.endsWith('attestation.json') ? true : e(p)); } }, /existe déjà/],
+    ['attestation.json déjà présent', { modifier: ({ deps }) => { const e = deps.fs.existe; deps.fs.existe = (p) => (p.endsWith('attestation.json') ? true : e(p)); } }, /déjà signé/],
     ['attestation.json inaccessible (EACCES)', { modifier: ({ deps }) => { const e = deps.fs.existe; deps.fs.existe = (p) => { if (p.endsWith('attestation.json')) { const x = new Error('accès refusé'); x.code = 'EACCES'; throw x; } return e(p); }; } }, /inaccessible/],
     ['existe() indéterminé', { modifier: ({ deps }) => { const e = deps.fs.existe; deps.fs.existe = (p) => (p.endsWith('attestation.json') ? undefined : e(p)); } }, /indéterminé/],
   ];
@@ -556,7 +626,11 @@ describe('reprise sur l\'instantané EXISTANT (§20.13) et saisie locale (critiq
     await assert.rejects(saisirDecisionLocale(sc.setId, deps), /réservée au relecteur « eric »/);
     assert.equal(questions, 0);
     assert.equal(sc.etat.ecrits.size, 0);
-    await assert.rejects(saisirDecisionLocale(sc.setId, { ...deps, referentiel: undefined }), /référentiel/);
+    // Génération illisible ou ambiguë : relecteur non déterminable -> aucune saisie.
+    const sl = await scenario({ source: 'saisie_locale' });
+    let q2 = 0;
+    await assert.rejects(saisirDecisionLocale(sl.setId, { ...sl.deps, moteur: { ...MOTEUR }, saisir: async () => { q2 += 1; return 'garder'; }, api: { ...sl.deps.api, lireExecution: async () => null } }), /saisie impossible/);
+    assert.equal(q2, 0);
   });
   test('saisirDecisionLocale : rendu AVANT le choix — unité, arrondi, seconde chance, contexte', async () => {
     const sc = await scenario({ source: 'saisie_locale' });

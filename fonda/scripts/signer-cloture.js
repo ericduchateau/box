@@ -30,8 +30,16 @@
 //     décision contre le lot source puis unicité du cœur ET du lot_relu (§20.5, §10 A) ;
 //     incidents sur la fenêtre de candidature de la source ([cree_le, clos_le] en page,
 //     [generation.demarree_le, fin_saisie_le] en saisie locale).
-//  4. Issues CLASSÉES (§20.13) : tous les constats sont réunis, la première ligne
-//     applicable l'emporte (incident > abandon > refus temporaire > arrêt local).
+//  4. Issues CLASSÉES (§20.13) : tous les constats sont réunis — lectures en échec
+//     comprises (401/403 -> incident, panne -> refus temporaire), chaque contrôle ne
+//     dépendant que de SES données —, ainsi que les garde-fous du moteur et la clé ;
+//     la première ligne applicable l'emporte (incident > abandon > refus temporaire >
+//     arrêt local). PRÉCONDITIONS hors matrice (garde, configuration, set_id, dossier) :
+//     refus « precondition » AVANT toute observation.
+//     Clôture ANTÉRIEURE de ce set_id (dossier <set_id>-<code>) : autre code = instantané
+//     figé sur d'autres données -> abandon ; même code = REPRISE (instantané, export et
+//     récapitulatif relus et vérifiés octet pour octet, jamais réécrits) ; déjà signé ->
+//     refus (jamais deux attestations). §3.4 vérifié avant ET après la confirmation.
 //  5. Instantané figé (§3) : lot source, cœur, lot_relu, moteur, récapitulatif ; écrit UNE
 //     fois (wx) hors dépôt et hors Dropbox ; code (16 premiers hex) calculé APRÈS la
 //     décision figée ; confirmation (auto si relecteur = « eric ») ; fidélité ; contrôles
@@ -63,7 +71,9 @@ const STATUTS_TERMINAUX = ['success', 'error', 'crashed', 'canceled'];
 const STATUTS_EN_VOL = ['new', 'running', 'waiting'];
 const DATE_SOURCE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
 
-// Refus : .issue ∈ { incident, abandon, refus, temporaire, local } (§20.13 ; « refus » par défaut).
+// Refus : .issue ∈ { incident, abandon, refus, temporaire, local } (§20.13) ou « precondition »
+// (appel invalide : garde, configuration, set_id, dossier — refusé AVANT toute observation,
+// hors matrice : aucune issue sur le lot ne peut être établie sans appel valide).
 class Refus extends Error { constructor(m, issue = 'refus') { super(m); this.issue = issue; } }
 const refuser = (m, issue) => { throw new Refus(m, issue); };
 const sha256Hex = (b) => crypto.createHash('sha256').update(b).digest('hex');
@@ -217,7 +227,34 @@ const NOM_DECISION_LOCALE = 'decision.json';
 // avec nonce aléatoire, generation = 0, recu_le = instant de l'écriture,
 // hash_formulaire = "saisie-locale". Elle ne se corrige plus (erreur -> abandon).
 // N'appelle aucun signataire : la garde maîtresse ne concerne que la signature.
-// deps = { config: { dossier }, drive: { lireLotGenere }, referentiel, moteur, registre, fs, horloge, saisir, afficher, aleatoire? }
+// deps = { config: { dossier, workflowGeneration }, api, drive: { lireLotGenere }, referentielArchive, moteur, registre, fs,
+//         horloge, saisir, afficher, aleatoire? }
+// Relecteur attribué selon le référentiel ARCHIVÉ désigné par la sortie de l'UNIQUE
+// exécution réussie de génération de ce set_id ; toute ambiguïté ou lecture impossible
+// -> refus (aucune saisie).
+async function relecteurDeLaGeneration(setId, deps) {
+  let execs;
+  try { execs = await observer(deps.api, deps.config.workflowGeneration); } catch (e) { refuser(`génération illisible (${e.message}) : saisie impossible`); }
+  const sorties = [];
+  for (const x of execs.filter((e) => e.status === 'success')) {
+    const brute = await deps.api.lireExecution(x.id);
+    const entree = brute ? L.itemUnique(brute, L.NOEUD_ENTREE) : { ok: false };
+    if (!entree.ok || entree.json.set_id !== setId) continue;
+    const sortie = L.itemUnique(brute, L.NOEUD_SORTIE);
+    if (!sortie.ok) refuser(`exécution ${x.id} : sortie de génération inexploitable — saisie impossible`);
+    sorties.push(sortie.json);
+  }
+  if (sorties.length !== 1) refuser(`${sorties.length} exécution(s) de génération réussie(s) pour ${setId} : relecteur attribué non déterminable — saisie impossible`);
+  const v = sorties[0].referentiel_version;
+  let octets;
+  try { octets = await deps.referentielArchive(v); } catch (e) { refuser(`référentiel archivé ${v} introuvable (${e.message}) — saisie impossible`); }
+  if (!octets || `sha256:${sha256Hex(Buffer.from(octets))}` !== v) refuser('référentiel archivé ≠ referentiel_version — saisie impossible');
+  const ref = lireJson(octets);
+  const n = ref && Array.isArray(ref.notions) ? ref.notions.find((x) => x && x.id === sorties[0].notion_id) : null;
+  if (!n) refuser('notion absente du référentiel archivé — saisie impossible');
+  return n.relecteur;
+}
+
 async function saisirDecisionLocale(setId, deps) {
   if (!C.SET_ID_PATTERN.test(setId || '')) refuser('set_id invalide');
   verifierDossierLocal(deps.config.dossier, deps.fs && deps.fs.realpath);
@@ -231,11 +268,10 @@ async function saisirDecisionLocale(setId, deps) {
   const lot = lu ? lireJson(lu.octets) : undefined;
   if (!lot || !C.validerLot(lot).valide || lot.set_id !== setId) refuser('lot généré illisible ou non conforme', 'local');
   // §20.6 : Éric ne saisit JAMAIS les décisions d'un autre relecteur — vérifié AVANT toute
-  // saisie (référentiel de design ; la clôture revérifie contre le référentiel ARCHIVÉ).
-  const ref = deps.referentiel;
-  if (!ref || !Array.isArray(ref.notions)) refuser('référentiel absent : relecteur attribué non vérifiable avant la saisie');
-  const notion = ref.notions.find((n) => n && n.id === lot.notion_id);
-  if (!notion || notion.relecteur !== 'eric') refuser(`saisie locale réservée au relecteur « eric » (notion ${lot.notion_id} : ${notion ? notion.relecteur : 'absente'}) — §20.6`, 'refus');
+  // saisie, contre le référentiel ARCHIVÉ de la génération (sortie de l'unique exécution
+  // réussie de ce set_id), comme à la clôture (§20.12).
+  const relecteur = await relecteurDeLaGeneration(setId, deps);
+  if (relecteur !== 'eric') refuser(`saisie locale réservée au relecteur « eric » (relecteur attribué : ${relecteur}) — §20.6`, 'refus');
   const moteur = deps.moteur;
   const reg = (deps.registre || []).find((l) => l && moteur && l.version === moteur.version);
   if (!reg || reg.sha256 !== moteur.sha256) refuser('moteur ≠ registre moteurs.json');
@@ -297,12 +333,12 @@ async function saisirDecisionLocale(setId, deps) {
  */
 async function cloturer(setId, deps) {
   // ── Garde maîtresse ──
-  if (typeof deps.rattachement !== 'function') refuser('contrat de rattachement exécution n8n <-> lot NON DÉFINI (§11 bis) : signature refusée');
+  if (typeof deps.rattachement !== 'function') refuser('contrat de rattachement exécution n8n <-> lot NON DÉFINI (§11 bis) : signature refusée', 'precondition');
   const { config, api, drive, rattachement } = deps;
-  if (!C.SET_ID_PATTERN.test(setId || '')) refuser('set_id invalide');
-  if (!S.SOURCES.includes(config.source)) refuser(`config.source : ${S.SOURCES.join(' | ')} attendu`);
-  if (!S.modelesValides(config.modelesAutorises)) refuser('config.modelesAutorises : liste épinglée d\'identifiants Sonnet DATÉS requise (G5, §20.8) — aucun repli');
-  if (typeof config.workflowGeneration !== 'string' || !config.workflowGeneration) refuser('config.workflowGeneration : workflow de génération épinglé requis');
+  if (!C.SET_ID_PATTERN.test(setId || '')) refuser('set_id invalide', 'precondition');
+  if (!S.SOURCES.includes(config.source)) refuser(`config.source : ${S.SOURCES.join(' | ')} attendu`, 'precondition');
+  if (!S.modelesValides(config.modelesAutorises)) refuser('config.modelesAutorises : liste épinglée d\'identifiants Sonnet DATÉS requise (G5, §20.8) — aucun repli', 'precondition');
+  if (typeof config.workflowGeneration !== 'string' || !config.workflowGeneration) refuser('config.workflowGeneration : workflow de génération épinglé requis', 'precondition');
   verifierDossierLocal(config.dossier, deps.fs && deps.fs.realpath);
   const page = config.source === 'page_relecture';
   const levees = deps.levees || [];
@@ -332,11 +368,10 @@ async function cloturer(setId, deps) {
   const listingDebut = deps.horloge().toISOString();
   const gen = await observerSur('workflow de génération', config.workflowGeneration);
   const details = new Map();
-  let detailsOk = gen.ok;
   if (gen.ok) {
     for (const x of gen.v) {
       const r = await lire(`API n8n (exécution ${x.id})`, () => api.lireExecution(x.id));
-      if (r.ok) details.set(x.id, r.v); else detailsOk = false;
+      details.set(x.id, r.ok ? r.v : L.INDISPONIBLE);
     }
   }
   const cand = await lire('Drive (candidats/)', () => drive.listerCandidats());
@@ -344,7 +379,7 @@ async function cloturer(setId, deps) {
   if (page) {
     candidatEnv = await lire('Drive (candidat)', () => drive.lireCandidat(setId));
     const cl = await observerSur('workflow de clôture', config.workflowCloture);
-    clotures = cl.ok ? { ok: true, v: cl.v.filter((x) => { const r = rattachement(x.brut); return r && r.set_id === setId && r.type === 'cloture'; }) } : cl;
+    clotures = cl; // TOUTES les observations : non attribuables et en vol examinées (evaluerPage)
     confirmations = await observerSur('workflow de confirmation', config.workflowConfirmation);
     listeDecisions = await lire('Drive (decisions/)', () => drive.listerDecisions(setId));
   } else {
@@ -364,11 +399,16 @@ async function cloturer(setId, deps) {
       if (cand.v.incompleteSearch === true && !levees.some((l) => l.type === 'recherche_incomplete')) constats.ajouter('temporaire', 'recherche Drive incomplète (candidats/) sans levée explicite');
     }
   }
-  // Incident global sur les générations non terminées : dès que le listing est disponible.
-  if (gen.ok) L.incidentsGeneration(gen.v, constats);
-  // §20.2 classement (seulement sur des observations COMPLÈTES)
-  let retenue = null; let fichier = null;
-  if (gen.ok && detailsOk && fichiersCandidats) ({ retenue, fichier } = L.classerExecutions({ setId, executions: gen.v, details, fichiers: fichiersCandidats, constats, normaliserDate }));
+  // §20.2 : examen de chaque exécution (fusion détail/listing, incident GLOBAL, déclencheur)
+  // dès que le listing est disponible ; classement selon les données observées.
+  let retenue = null; let fichier = L.INDISPONIBLE;
+  if (gen.ok) {
+    const ex = L.examinerExecutions({ executions: gen.v, details, constats, normaliserDate });
+    const r = L.classerExecutions({ setId, examinees: ex.examinees, complet: ex.complet, fichiers: fichiersCandidats || L.INDISPONIBLE, constats });
+    retenue = r.retenue === L.INDISPONIBLE ? null : r.retenue;
+    fichier = r.fichier;
+  }
+  const fichierVu = fichier && fichier !== L.INDISPONIBLE ? fichier : null;
   // Lot source (§20.4, §20.7)
   let lotSource = null;
   if (lotAvant.ok && lotApres.ok) {
@@ -376,11 +416,11 @@ async function cloturer(setId, deps) {
     if (!av || !ap) constats.ajouter('abandon', `lot généré ${setId}.lot.json absent`);
     else {
       // Trois observations de la date : lecture avant, listing, lecture après.
-      const datesLot = [av.modifie_le, ap.modifie_le, ...(fichier ? [fichier.modifie_le] : [])].map((d) => normaliserDate(d));
+      const datesLot = [av.modifie_le, ap.modifie_le, ...(fichierVu ? [fichierVu.modifie_le] : [])].map((d) => normaliserDate(d));
       if (av.id !== ap.id || !Buffer.from(av.octets).equals(Buffer.from(ap.octets)) || new Set(datesLot).size !== 1) {
         constats.ajouter('temporaire', 'lot généré instable pendant le listing (identifiant, date ou contenu différents entre lecture avant, listing et lecture après) : relancer la clôture');
       }
-      if (fichier && av.id !== fichier.id) constats.ajouter('abandon', 'lot généré lu ≠ fichier candidat retenu');
+      if (fichierVu && av.id !== fichierVu.id) constats.ajouter('abandon', 'lot généré lu ≠ fichier candidat retenu');
       if (datesLot.some((d) => d === null)) constats.ajouter('incident', 'lot généré : date de modification illisible');
       else if (retenue && retenue.x.stoppedAt && datesLot.some((d) => d > retenue.x.stoppedAt)) constats.ajouter('abandon', 'lot généré modifié APRÈS la fin de l\'exécution de génération');
       const lot = lireJson(av.octets);
@@ -399,12 +439,12 @@ async function cloturer(setId, deps) {
   const empreintes = lotSource ? { pedagogique: await C.calculerEmpreinte(lotSource, sha), complete: L.empreinteComplete(lotSource) } : null;
   // §20.3 rapprochement
   let sortie = null;
-  if (retenue && lotSource) {
+  if (retenue) {
     const brute = details.get(retenue.x.id);
     const s0 = brute ? L.itemUnique(brute, L.NOEUD_SORTIE) : { ok: false };
     const commit = s0.ok && typeof s0.json.journal_commit === 'string' && /^[0-9a-f]{40}$/.test(s0.json.journal_commit) ? s0.json.journal_commit : null;
     const jc = commit ? await lire('historique de confiance (journal)', () => deps.journal(commit)) : { ok: true, v: null };
-    if (jc.ok) sortie = L.rapprocher({ setId, retenue, fichier, brute, workflowId: config.workflowGeneration, journalCommit: jc.v, registre: deps.registre, modelesAutorises: config.modelesAutorises, lotSource, empreintes, constats });
+    sortie = L.rapprocher({ setId, retenue, fichier, brute, workflowId: config.workflowGeneration, journalCommit: jc.ok ? jc.v : L.INDISPONIBLE, registre: deps.registre, modelesAutorises: config.modelesAutorises, lotSource, empreintes, constats });
   }
   // Référentiel ARCHIVÉ de la version de la sortie (§20.12) et relecteur attribué.
   let referentiel = null; let relecteur = null;
@@ -415,7 +455,7 @@ async function cloturer(setId, deps) {
       if (`sha256:${sha256Hex(Buffer.from(octets))}` !== sortie.referentiel_version) constats.ajouter('abandon', 'référentiel archivé ≠ referentiel_version');
       else {
         referentiel = lireJson(octets);
-        const n = referentiel && Array.isArray(referentiel.notions) ? referentiel.notions.find((x) => x && x.id === lotSource.notion_id) : null;
+        const n = referentiel && Array.isArray(referentiel.notions) ? referentiel.notions.find((x) => x && x.id === sortie.notion_id) : null;
         if (!n) constats.ajouter('abandon', 'notion absente du référentiel archivé');
         else relecteur = n.relecteur;
       }
@@ -458,6 +498,26 @@ async function cloturer(setId, deps) {
     if (co.action !== 'accepter') constats.ajouter('abandon', `action « ${co.action} » : rien à publier`);
     if (sortie && (co.moteur.version !== sortie.moteur.version || co.moteur.sha256 !== sortie.moteur.sha256)) constats.ajouter('abandon', 'coeur.moteur ≠ moteur de la génération');
   }
+  // Lot publié et garde-fous du MOTEUR, clé déclarée et recevable : évalués AVANT la
+  // tranche (matrice §20.13), revérifiés ensuite.
+  let publie = null;
+  if (lotSource && decisions.length && decisions[0].coeur.action === 'accepter') {
+    const co = decisions[0].coeur;
+    publie = lotPublie(lotSource, co);
+    const vl = C.validerLot(publie);
+    if (!vl.valide) constats.ajouter('abandon', `lot publié non conforme : ${vl.erreurs.join(' ; ')}`);
+    let m = null;
+    try { m = chargerMoteurNode(co.moteur.version, co.moteur.sha256, deps.registre); } catch (e) { constats.ajouter('abandon', `moteur du cœur non chargeable : ${e.message}`); }
+    if (m) {
+      for (const c of publie.cartes) {
+        if (!m.valider(c).valide) constats.ajouter('abandon', `${c.item_id} refusée par le moteur ${co.moteur.version}`);
+        else if (!m.outils.verifierReponseOr(c).ok || !m.outils.verifierFormesAcceptees(c).ok) constats.ajouter('abandon', `${c.item_id} : garde-fous du moteur non respectés`);
+      }
+    }
+  }
+  const k0 = deps.cles.obtenir(config.cleId);
+  if (!k0.ok) constats.ajouter('temporaire', k0.raison);
+  else { const irr = S.recevabilite(k0.declaration, new Date(Date.parse(listingFin)).toISOString()); if (irr) constats.ajouter('temporaire', irr); }
   // Incidents (§10 B) : fenêtre de candidature de la source
   const incidents = [];
   for (const i of (inc.ok ? inc.v : null) || []) {
@@ -483,7 +543,7 @@ async function cloturer(setId, deps) {
   // ═══ Instantané figé + confirmation (§3 ; code calculé APRÈS la décision figée) ═══
   const coeur = decisions[0].coeur;
   const moteur = coeur.moteur;
-  const publie = lotPublie(lotSource, coeur);
+  publie = lotPublie(lotSource, coeur);
   const vl = C.validerLot(publie);
   if (!vl.valide) refuser(`lot publié non conforme : ${vl.erreurs.join(' ; ')}`, 'abandon');
   const m = chargerMoteurNode(moteur.version, moteur.sha256, deps.registre);
@@ -499,6 +559,18 @@ async function cloturer(setId, deps) {
   const code = shaInstantane.slice(0, 16);
   const dossierLot = path.join(config.dossier, `${setId}-${code}`);
   verifierDossierLocal(dossierLot, deps.fs && deps.fs.realpath); // destination finale, avant toute écriture
+  // Clôture ANTÉRIEURE de ce set_id (recherche par set_id, pas par code) : un dossier
+  // <set_id>-<autre code> = instantané figé sur d'autres données -> abandon ; un dossier
+  // déjà signé -> refus (jamais deux attestations pour un set_id).
+  let entrees;
+  try { entrees = deps.fs.lister(config.dossier); } catch (e) { refuser(`${config.dossier} illisible (${e.code || e.message}) : refus`); }
+  for (const nom of entrees || []) {
+    if (!nom.startsWith(`${setId}-`)) continue;
+    if (nom !== `${setId}-${code}`) refuser(`clôture antérieure ${nom} : instantané figé sur d'AUTRES données (décision ou lot modifiés) — abandon du set_id`, 'abandon');
+  }
+  let signe;
+  try { signe = deps.fs.existe(path.join(dossierLot, 'attestation.json')); } catch (e) { refuser(`attestation.json inaccessible (${e.code || e.message}) : refus`); }
+  if (signe !== false) refuser(`${dossierLot} : déjà signé ou état indéterminé — jamais deux attestations pour un set_id`, 'local');
   // Instantané écrit UNE fois. S'il existe déjà (reprise après code faux ou fidélité non
   // attestée, §20.13) : relu et vérifié OCTET POUR OCTET, jamais reconstruit ni réécrit.
   const cheminInst = path.join(dossierLot, 'instantane.json');
@@ -521,6 +593,17 @@ async function cloturer(setId, deps) {
     deps.fs.ecrireExclusif(cheminExport, `${JSON.stringify({ sha256_instantane: shaInstantane, sha256_recapitulatif: shaRecap, exporte_le: deps.horloge().toISOString() }, null, 2)}\n`);
     deps.fs.ecrireExclusif(cheminRecap, `${rendu}\n\n${shaInstantane}\n`);
   } else refuser(`${cheminInst} : état indéterminé — refus`);
+  // §3.4 sur les fichiers RELUS, AVANT la confirmation (puis de nouveau après).
+  const verifier34 = () => {
+    const relu = deps.fs.lire(cheminInst);
+    const exportRelu = JSON.parse(deps.fs.lire(cheminExport).toString('utf8'));
+    if (sha256Hex(relu) !== exportRelu.sha256_instantane || exportRelu.sha256_instantane !== shaInstantane) refuser('§3.4 (a) : SHA-256 de instantane.json ≠ export');
+    const lu = JSON.parse(relu.toString('utf8'));
+    const shaRederive = sha256Hex(Buffer.from(Canonique.octetsContrat('recapitulatif-fonda/v1', projeterRecapitulatif(lu.candidat_lot, lu.coeur, lu.moteur))));
+    if (shaRederive !== exportRelu.sha256_recapitulatif || shaRederive !== sha256Hex(Buffer.from(Canonique.octetsContrat('recapitulatif-fonda/v1', lu.recapitulatif)))) refuser('§3.4 (b) : récapitulatif re-dérivé ≠ récapitulatif stocké');
+    return lu;
+  };
+  verifier34();
   deps.afficher(`${rendu}\n\nCODE DE CONFIRMATION : ${code}`);
 
   const auto = relecteur === 'eric';
@@ -533,16 +616,9 @@ async function cloturer(setId, deps) {
   if ((await deps.saisir('J\'atteste que le récapitulatif confirmé est celui exporté, transmis sans retouche (oui/non) : ')).trim() !== 'oui') refuser('fidélité de transmission non attestée : reprendre sur l\'instantané existant', 'local');
   const fideliteLe = deps.horloge().toISOString();
 
-  // Contrôles §3.4 sur les fichiers RELUS (jamais sur les objets en mémoire).
-  const relu = deps.fs.lire(path.join(dossierLot, 'instantane.json'));
-  const exportRelu = JSON.parse(deps.fs.lire(path.join(dossierLot, 'export.json')).toString('utf8'));
-  if (sha256Hex(relu) !== exportRelu.sha256_instantane || exportRelu.sha256_instantane !== shaInstantane) refuser('§3.4 (a) : SHA-256 de instantane.json ≠ export');
-  const inst = JSON.parse(relu.toString('utf8'));
-  const recapRederive = projeterRecapitulatif(inst.candidat_lot, inst.coeur, inst.moteur);
-  const shaRederive = sha256Hex(Buffer.from(Canonique.octetsContrat('recapitulatif-fonda/v1', recapRederive)));
-  if (shaRederive !== exportRelu.sha256_recapitulatif || shaRederive !== sha256Hex(Buffer.from(Canonique.octetsContrat('recapitulatif-fonda/v1', inst.recapitulatif)))) {
-    refuser('§3.4 (b) : récapitulatif re-dérivé ≠ récapitulatif stocké');
-  }
+  // Contrôles §3.4 de nouveau sur les fichiers RELUS après la confirmation (jamais sur
+  // les objets en mémoire).
+  const inst = verifier34();
   if (L.empreinteComplete(inst.candidat_lot) !== sortie.empreinte_complete) refuser('instantané : empreinte complète du lot source ≠ génération');
 
   // ═══ Charge v2, signature, revérification ═══
@@ -571,8 +647,9 @@ async function cloturer(setId, deps) {
   // valeur (communs + par source) et de dépôt — tout refus ici => signataire jamais appelé.
   let octets;
   try { octets = Buffer.from(Canonique.octetsContrat('attestation-cloture/v2', charge)); } catch (e) { refuser(`charge non conforme : ${e.message}`); }
-  const k = deps.cles.obtenir(charge.cle_id);
-  if (!k.ok) refuser(k.raison, 'temporaire');
+  // Clé validée UNE fois (avant la tranche) puis figée : jamais relue.
+  const k = k0;
+  if (!k.ok || charge.cle_id !== config.cleId) refuser(k.raison || 'cle_id ≠ configuration', 'temporaire');
   const irrecevable = S.recevabilite(k.declaration, charge.cloture_le);
   if (irrecevable) refuser(irrecevable, 'temporaire');
   const entree = { set_id: setId, notion_id: charge.notion_id, palier: charge.palier, item_ids: [...inst.coeur.selection], empreinte: inst.coeur.empreinte_publiee, moteur: { ...inst.moteur }, relecteur: badge };
@@ -618,8 +695,16 @@ function evaluerPage({ setId, candidatEnv, clotures, confirmations, listeDecisio
   }
   // 1. Exécution de clôture
   if (clotures.ok) {
-    if (clotures.v.some((x) => !STATUTS_TERMINAUX.includes(x.status))) constats.ajouter('incident', 'une clôture technique de ce lot est encore en cours');
-    const reussies = clotures.v.filter((x) => x.status === 'success' && x.stoppedAt && x.startedAt)
+    // TOUTES les exécutions du workflow de clôture : en vol ou de statut inconnu (quel que
+    // soit le lot), ou non attribuables -> incident (§20.13 priorité 1).
+    const duLotClot = [];
+    for (const x of clotures.v) {
+      if (!STATUTS_TERMINAUX.includes(x.status)) { constats.ajouter('incident', `exécution de clôture ${x.id} non terminée ou de statut inconnu (${x.status}) : une clôture technique est encore en cours`); continue; }
+      const r = rattachement(x.brut);
+      if (!r || typeof r.set_id !== 'string' || r.type !== 'cloture') { constats.ajouter('incident', `exécution de clôture ${x.id} non attribuable à un lot`); continue; }
+      if (r.set_id === setId) duLotClot.push(x);
+    }
+    const reussies = duLotClot.filter((x) => x.status === 'success' && x.stoppedAt && x.startedAt)
       .sort((a, b) => (a.stoppedAt < b.stoppedAt ? -1 : a.stoppedAt > b.stoppedAt ? 1 : 0));
     if (!reussies.length) constats.ajouter('temporaire', 'aucune clôture technique réussie rattachée à ce lot');
     else {
@@ -692,7 +777,7 @@ function existeSurDisque(p) {
 
 module.exports = {
   existeSurDisque, cloturer, saisirDecisionLocale, Refus, normaliserDate, projeterRecapitulatif, rendreRecapitulatif, decisionConforme, lotPublie,
-  choisirBadge, verifierDossierLocal, observer, evaluerPage, NOM_DECISION_LOCALE,
+  choisirBadge, verifierDossierLocal, observer, evaluerPage, relecteurDeLaGeneration, NOM_DECISION_LOCALE,
 };
 
 if (require.main === module) main();
