@@ -223,8 +223,10 @@ function rapprocher({ setId, retenue, fichier, brute, workflowId, journalCommit,
     constats.ajouter('refus', `exécution ${x.id} : workflowData absent (information indisponible, exécution purgée ?) — refus ; abandon si elle ne reviendra pas`);
   } else {
     const pin = brute.workflowData.pinData;
-    // pinData : ABSENT ou objet VIDE seulement (null, tableau, objet non vide -> inexploitable).
-    if (pin !== undefined && !(pin !== null && typeof pin === 'object' && !Array.isArray(pin) && Object.keys(pin).length === 0)) abandon(`exécution ${x.id} : pinData ni absent ni objet vide — inexploitable`);
+    // pinData : ABSENT, null ou objet VIDE = rien d'épinglé (sûr). Objet NON vide = un nœud épinglé
+    // (génération potentiellement truquée) ; tableau ou autre type = malformé -> inexploitable.
+    const pinVide = pin === undefined || pin === null || (typeof pin === 'object' && !Array.isArray(pin) && Object.keys(pin).length === 0);
+    if (!pinVide) abandon(`exécution ${x.id} : pinData ni absent, ni null, ni objet vide (données épinglées ou type invalide) — inexploitable`);
   }
   if (!brute) return null;
   const sortie = itemUnique(brute, NOEUD_SORTIE);

@@ -292,6 +292,19 @@ describe('aller-retour v2 : signer -> attestation-signee vérifie -> publier-lot
     assert.match(err.message, /signature déjà tentée/);
     assert.equal(sc.etat.signatures, 1);
   });
+  // pinData « rien d'épinglé » (CDC v8.3 r7, §20.3) : absent, null (workflow créé par l'API n8n) ou {}.
+  for (const [libelle, appliquer] of [
+    ['absent', (w) => { delete w.pinData; }],
+    ['null (API n8n)', (w) => { w.pinData = null; }],
+    ['objet vide {}', (w) => { w.pinData = {}; }],
+  ]) {
+    test(`pinData ${libelle} : accepté, aucun constat pinData, signature`, async () => {
+      const sc = await scenario({ modifier: ({ gen }) => appliquer(gen[501].workflowData) });
+      const { enveloppe } = await cloturer(sc.setId, sc.deps);
+      assert.equal(enveloppe.charge.generation.execution_id, '501');
+      assert.ok(!/pinData/.test(sc.etat.affiche), 'aucun constat pinData');
+    });
+  }
   test('exécution en erreur SANS dépôt : tentative tolérée (fixture « erreur_sans_depot »)', async () => {
     const sc = await scenario({ modifier: ({ execs, gen, fx }) => { execs.wfGen.push({ id: 498, workflowId: 'wfGen', status: 'error', startedAt: fx.erreur_sans_depot.startedAt, stoppedAt: fx.erreur_sans_depot.stoppedAt }); gen[498] = fx.erreur_sans_depot; } });
     const { enveloppe } = await cloturer(sc.setId, sc.deps);
@@ -305,7 +318,16 @@ describe('§20.2–20.3 liaison de génération : chaque violation -> refus clas
   const cas = [
     ['erreur APRÈS dépôt (fixture)', (ctx) => { autreExec('erreur_apres_depot', 499, 'error')(ctx); ctx.candidats.push(ctx.fx.erreur_apres_depot.fichier_depose); }, /erreur APRÈS dépôt/, 'abandon'],
     ['doublon : deux exécutions réussies (fixture)', autreExec('doublon', 502, 'success'), /2 exécution\(s\) de génération réussie/, 'abandon'],
-    ['pinData non vide (fixture)', ({ gen, fx }) => { gen[501].workflowData.pinData = fx.pinData; }, /pinData ni absent ni objet vide/, 'abandon'],
+    ['pinData non vide (fixture)', ({ gen, fx }) => { gen[501].workflowData.pinData = fx.pinData; }, /pinData ni absent, ni null, ni objet vide/, 'abandon'],
+    ['pinData non vide { unNoeud: [...] }', ({ gen }) => { gen[501].workflowData.pinData = { unNoeud: [{ json: {} }] }; }, /pinData ni absent, ni null, ni objet vide/, 'abandon'],
+    ['pinData tableau []', ({ gen }) => { gen[501].workflowData.pinData = []; }, /pinData ni absent, ni null, ni objet vide/, 'abandon'],
+    ['pinData chaîne « x »', ({ gen }) => { gen[501].workflowData.pinData = 'x'; }, /pinData ni absent, ni null, ni objet vide/, 'abandon'],
+    ['pinData nombre 1', ({ gen }) => { gen[501].workflowData.pinData = 1; }, /pinData ni absent, ni null, ni objet vide/, 'abandon'],
+    ['pinData booléen true', ({ gen }) => { gen[501].workflowData.pinData = true; }, /pinData ni absent, ni null, ni objet vide/, 'abandon'],
+    // Valeurs « falsy » : refusées aussi (garde contre une régression vers `!pin`).
+    ['pinData chaîne vide', ({ gen }) => { gen[501].workflowData.pinData = ''; }, /pinData ni absent, ni null, ni objet vide/, 'abandon'],
+    ['pinData nombre 0', ({ gen }) => { gen[501].workflowData.pinData = 0; }, /pinData ni absent, ni null, ni objet vide/, 'abandon'],
+    ['pinData booléen false', ({ gen }) => { gen[501].workflowData.pinData = false; }, /pinData ni absent, ni null, ni objet vide/, 'abandon'],
     ['exécution de génération non terminée (running)', ({ execs, gen, fx }) => { execs.wfGen.push({ id: 503, workflowId: 'wfGen', status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null }); gen[503] = { ...fx.doublon, id: 503, status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null }; }, /non terminée/, 'incident'],
     ['item du déclencheur manquant', ({ execs, gen }) => { execs.wfGen.push({ id: 504, workflowId: 'wfGen', status: 'error', startedAt: '2026-10-18T06:00:00.000Z', stoppedAt: '2026-10-18T06:00:01.000Z' }); gen[504] = { id: 504, workflowId: 'wfGen', status: 'error', mode: 'webhook', startedAt: '2026-10-18T06:00:00.000Z', stoppedAt: '2026-10-18T06:00:01.000Z', data: { resultData: { runData: {} } }, workflowData: {} }; }, /item du déclencheur manquant/, 'incident'],
     ['exécution sans données (purgée)', ({ execs }) => { execs.wfGen.push({ id: 505, workflowId: 'wfGen', status: 'error', startedAt: '2026-10-18T06:00:00.000Z', stoppedAt: '2026-10-18T06:00:01.000Z' }); }, /item du déclencheur manquant/, 'incident'],
@@ -341,7 +363,6 @@ describe('§20.2–20.3 liaison de génération : chaque violation -> refus clas
     ['déclencheur au set_id vide (non attribuable)', ({ execs, gen, fx }) => { execs.wfGen.push({ id: 507, workflowId: 'wfGen', status: 'error', startedAt: fx.erreur_sans_depot.startedAt, stoppedAt: fx.erreur_sans_depot.stoppedAt }); gen[507] = copie({ ...fx.erreur_sans_depot, id: 507 }); gen[507].data.resultData.runData['FONDA Entree generation'][0].data.main[0][0].json.set_id = ''; }, /non attribuable/, 'incident'],
     ['second fichier rattaché à l\'exécution retenue (autre nom, autre set_id)', ({ candidats }) => { candidats.push({ id: 'drv-autre', nom: 'set_fonda_lexique_nI_02.lot.json', modifie_le: '2026-10-18T07:00:40.000Z', properties: { fonda_set_id: 'set_fonda_lexique_nI_02', fonda_execution_id: '501' }, proprietesLisibles: true }); }, /exécution retenue 501 : 2 fichier/, 'abandon'],
     ['workflowData tableau', ({ gen }) => { gen[501].workflowData = []; }, /workflowData absent/, 'refus'],
-    ['pinData null', ({ gen }) => { gen[501].workflowData.pinData = null; }, /pinData ni absent ni objet vide/, 'abandon'],
     ['date du listing postérieure à la génération (lectures stables)', ({ candidats }) => { candidats[0].modifie_le = '2026-10-18T07:05:00.000Z'; }, /modifié APRÈS/, 'abandon'],
     ['accès API insuffisant (403)', ({ deps }) => { deps.api.lireExecution = async () => { const e = new Error('Forbidden'); e.statut = 403; throw e; }; }, /accès insuffisant \(403\)/, 'incident'],
     ['génération active PUIS panne Drive : l\'incident l\'emporte', ({ execs, gen, fx, deps }) => { execs.wfGen.push({ id: 503, workflowId: 'wfGen', status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null }); gen[503] = { ...fx.doublon, id: 503, status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null }; deps.drive.listerCandidats = async () => { throw new Error('Drive 503'); }; }, /non terminée/, 'incident'],
