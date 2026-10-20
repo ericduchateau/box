@@ -35,7 +35,7 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 6. **Correcteur tolérant au mot après le nombre** (« 2 bus » noté faux sans `unite` ; avec `unite`, le nombre seul donne « presque, unité oubliée »).
 
 ## Dettes OBLIGATOIRES avant activation du workflow de génération (étape 5, avant le vrai run §20.8)
-- **A — pinData null (API n8n)** : l'API crée `pinData: null` (non modifiable) et les exécutions le recopient ; le signataire n'admet que absent/`{}` (contournement étape 4 : enregistrement éditeur → `{}`). PR SÉPARÉE (Codex + Claude) après merge de l'étape 4 : `rapprocher` + CDC acceptent absent | null | `{}`, refusent objet non vide / tableau / autre (tests null, {}, absent acceptés ; {node:[…]}, [] refusés).
+- **A — pinData null (API n8n)** [EN COURS : `fix/box-fonda-pindata-null` + CDC r7 `caeaf2c`, relecture Codex puis Claude] : l'API crée `pinData: null` (non modifiable) et les exécutions le recopient ; le signataire n'admet que absent/`{}` (contournement étape 4 : enregistrement éditeur → `{}`). PR SÉPARÉE (Codex + Claude) après merge de l'étape 4 : `rapprocher` + CDC acceptent absent | null | `{}`, refusent objet non vide / tableau / autre (tests null, {}, absent acceptés ; {node:[…]}, [] refusés).
 - **B — appel mal formé (Codex r1 #4)** : correctif CÔTÉ WORKFLOW, pas signataire (le signataire a raison) : le nœud d'entrée émet TOUJOURS `{set_id, ref}` pour tout corps valide ; le malformé est rejeté à la frontière du webhook (4xx) sans exécution auditée non attribuable ; test jusqu'au signataire.
 - **C — dépôts concurrents (Codex r1 #5)** : dépôt idempotent ou exclusion mutuelle, reprises réseau incertaines comprises. En l'état : sûr (abandon), atténué par « un appel à la fois par set_id ».
 
