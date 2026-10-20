@@ -290,7 +290,7 @@ La brique 1 **ne garantit pas techniquement** qu'une fiche « n'est ni fabriqué
 ### 20.3 Sortie métier et rattachement : table normative
 Le workflow épinglé (`workflow_id` fixé dans la configuration locale) a un nœud déclencheur nommé exactement **`FONDA Entree generation`** et un nœud final **`FONDA Sortie generation`**, qui émet une sortie **`generation-fonda/v1`** = `{ schema: "generation-fonda/v1", set_id, ref, notion_id, palier, moteur: { version, sha256 }, referentiel_version, journal_commit, modele, empreinte_pedagogique, empreinte_complete, candidat_fichier_id }` (toutes chaînes sauf `moteur` ; empreintes `sha256:<64 hex>`, `referentiel_version` `sha256:<64 hex>`, `journal_commit` 40 hex).
 
-**Extraction** (API publique, lecture seule, `includeData`) : métadonnées de l'exécution ; `workflowData` présent ; `runData["FONDA Sortie generation"]` : **exactement un run**, sortie `main[0]`, **exactement un item** ; `runData["FONDA Entree generation"]` : un run, un item. `workflowData.pinData` **absent, null ou objet vide** (rien d'épinglé) ; objet non vide, tableau ou autre type → inexploitable (données épinglées) ; `workflowData` absent → information indisponible.
+**Extraction** (API publique, lecture seule, `includeData`) : métadonnées de l'exécution ; `workflowData` présent ; `runData["FONDA Sortie generation"]` : **exactement un run**, sortie `main[0]`, **exactement un item** ; `runData["FONDA Entree generation"]` : un run, un item. `workflowData.pinData` **absent, null ou objet vide** (rien d'épinglé) ; objet non vide, tableau ou autre type → inexploitable (données épinglées ou type invalide) ; `workflowData` absent → information indisponible.
 
 | Champ | Source | Égalités exigées | Si violé |
 |---|---|---|---|
