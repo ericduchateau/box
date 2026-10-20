@@ -35,8 +35,12 @@ Clic par clic (Hostinger VPS, n8n en Docker) :
 3. Chercher `EXECUTIONS_DATA_PRUNE` :
    - absente → la purge est **ACTIVE** (défaut) : l'ajouter avec la valeur `false` ;
    - présente à `true` → la passer à `false`.
-4. Redémarrer le conteneur n8n (**Restart**). Les workflows actifs de production BOX reprennent seuls ; vérifier ensuite qu'un webhook BOX répond (ouvrir le catalogue élève).
-5. Contrôler dans le **Terminal** : `docker exec <conteneur n8n> printenv | grep EXECUTIONS_DATA`. La sortie doit contenir `EXECUTIONS_DATA_PRUNE=false`.
+4. **Recréer** le conteneur n8n, **en heures creuses**, car il interrompt brièvement la production BOX. Un simple **Restart** (`docker compose restart`, ou le bouton Restart) **ne recharge PAS** l'environnement modifié : le conteneur repart avec ses anciennes variables.
+   - Docker Manager de Hostinger : bouton **Redeploy** (ou « Recreate ») du projet n8n ;
+   - Terminal : depuis le dossier du projet (celui qui contient `docker-compose.yml`), lancer `docker compose up -d`, qui recrée les conteneurs dont la configuration a changé.
+
+   Les workflows actifs de production BOX reprennent seuls. Vérifier ensuite qu'un webhook BOX répond (ouvrir le catalogue élève).
+5. Contrôler dans le **Terminal** **après** la recréation : `docker exec <conteneur n8n> printenv | grep EXECUTIONS_DATA`. La sortie doit contenir `EXECUTIONS_DATA_PRUNE=false`. Si la valeur n'apparaît pas, le conteneur n'a pas été recréé : refaire l'étape 4, sans jamais se contenter d'un Restart.
 
 > Point à confirmer : le menu exact de hPanel dépend du modèle d'installation choisi chez Hostinger (modèle « n8n » Docker ou installation manuelle). Le nom des variables, lui, est celui de la documentation n8n (« Execution data » dans les variables d'environnement).
 
@@ -57,7 +61,7 @@ Vérifié par               : ______________________
   EXECUTIONS_DATA_PRUNE                 : __________ (attendu : false)
   EXECUTIONS_DATA_MAX_AGE               : __________
   EXECUTIONS_DATA_PRUNE_MAX_COUNT       : __________
-  Conteneur redémarré le                : __________
+  Conteneur RECRÉÉ le (pas un restart)  : __________
   Webhooks BOX vérifiés après redémarrage : oui / non
 
 Conclusion (cocher)       : [ ] conforme  [ ] non conforme → pas de vrai run
