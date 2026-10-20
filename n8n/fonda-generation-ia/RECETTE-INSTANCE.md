@@ -55,11 +55,13 @@ type dc   # vérifier que la fonction est bien définie
 ```
 
 0. **Prouver que ce contexte reconstruit la PRODUCTION**, avant toute édition (sinon **ARRÊT** : un contexte différent pourrait changer autre chose, par exemple un mot de passe de base, sans que le diff le montre) :
-   - `dc config <service n8n>` : relever la section `environment` du service n8n ;
-   - `docker exec <ID n8n> printenv` : **chaque** variable listée dans cette section doit avoir **exactement la même valeur** dans le conteneur (variable par variable ; les variables propres à l'image, absentes du Compose, sont ignorées) ;
+   - **environnement comparé DANS LES DEUX SENS** (service n8n) :
+     - (i) **reconstruit → production** : `dc config <service n8n>`, section `environment`. **Chaque** variable listée doit avoir **exactement la même valeur** dans `docker exec <ID n8n> printenv` ;
+     - (ii) **production → reconstruit** : chaque variable de `docker exec <ID n8n> printenv` doit **soit** figurer dans cette section avec la même valeur, **soit** être une variable **par défaut de l'image exacte**, avec la même valeur. Ces variables par défaut s'obtiennent par `docker image inspect <ImageID AVANT> --format '{{json .Config.Env}}'`. Exceptions admises, propres à Docker : `HOSTNAME`, `HOME`, `PATH` (si elle est égale à celle de l'image).
+     - **Une seule variable de production absente du résultat reconstruit (et qui n'est pas un défaut de l'image) → ARRÊT** : un `env_file` modifié ou manquant, ou une variable venue du shell, serait perdu à la recréation.
    - **montages et ports** : `docker inspect <ID n8n> --format '{{json .Mounts}} {{json .HostConfig.PortBindings}}'`, à comparer aux sections `volumes` et `ports` de `dc config <service n8n>` ;
-   - même vérification pour le service de la base (`dc config <service base>`, puis `docker exec <ID base> printenv`, puis `docker inspect`) ;
-   - **variables du shell** : `dc config` ne doit afficher **aucun avertissement** « variable is not set ». Une variable venue du shell du déploiement initial, absente ici, la ferait apparaître.
+   - même vérification **dans les deux sens** pour le service de la base (`dc config <service base>`, `docker exec <ID base> printenv`, défauts de son image, puis `docker inspect` pour les montages et les ports) ;
+   - **contrôle complémentaire** : `dc config` ne doit afficher **aucun avertissement** « variable is not set ». Ce contrôle ne suffit pas : une variable transmise sous la forme `- VARIABLE` (sans valeur), absente du shell, ne déclenche aucun avertissement. C'est le sens (ii) ci-dessus qui la détecte.
 
    Toute différence : **ARRÊT**, rien n'est modifié, prévenir Claude. Ces sorties contiennent des secrets : ne pas les copier ailleurs.
 1. **Sauvegardes** :
