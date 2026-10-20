@@ -24,8 +24,7 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 1. **Mergés** : étape 3 (canonique, journal + M2, immuabilité + CODEOWNERS ; `immuabilite` requis sur `design`/`main`) ; 4.0 (CDC v8.2 §11 bis + schémas canoniques, PR #14) ; 4a (PR #15, publication Type 2 vérifiée) ; 4b-code (PR #16, `signer-cloture.js`, garde maîtresse) ; cérémonie de clé `eric-2026` (publique dans `fonda/data/cles/`, privée chiffrée hors dépôt, jamais lue par les agents).
 2. **Brique 1 démarrée (ordre §20.14)** — étape 1 **mergée** (PR #18, `50fdbf7`, CI verte : 5 schémas, v1 intacte, 114 vecteurs) ; outils d'audit mergés (PR #19 : reconstruction des vecteurs sans canonique.js, rejeu durci des mutations, en CI). Étape 2 **mergée** (PR #20 : publier-lot, transition publie, `--reprendre`, verrou, référentiel archivé). Étape 3 **mergée** (PR #22, `992f4f4`, signer v2 + attestation-signee v2). **Étape 4 prête, en attente du feu vert Claude** (`feat/box-fonda-generation-ia-brique1`, Codex r3 « propre pour merge », webhook Header Auth `GfnXr5hYrYgC5RwA`) : workflow « n8n génère » COMPLET créé INACTIF, **workflowId `vrqgtS5kQMvP9Ok5`**, construit par `n8n/fonda-generation-ia/construire-workflow.js` (modules du moteur embarqués à l'octet), harnais `workflow.test.js`, `RECETTE-INSTANCE.md` (§20.10, à remplir par Éric). Aucun vrai run avant §20.8. Garde maîtresse NON levée.
 3. **Dette `--etendu` FERMÉE** (PR #21) : 1220 vecteurs de refus d'élargissement (un par type interdit au CDC — null, nombre, chaîne, booléen, objet, tableau — sur chaque chemin de chaque contrat), liste tenue À LA MAIN contre le CDC (`fonda/scripts/champs-canonique.js`, confrontée aux schémas chargés) ; `--etendu` : 506/506 détectées, en CI.
-4. Réglages à confirmer (Éric) : « Allow rebase merging » décoché ; « Do not allow bypassing » ; CODEOWNERS sur `main`.
-5. Bloc 3 (prod, feu vert) : orpheline `box_7e7tcooh`. `feat/box-delete-hardening` ; Moteur A + dette `defi_id` ; collecte `/box-fonda-events` ; recette `canonique.js` en vrai nœud n8n.
+4. Réglages à confirmer (Éric) : « Allow rebase merging » décoché ; « Do not allow bypassing » ; CODEOWNERS sur `main`. — bloc 3 (prod, feu vert) : orpheline `box_7e7tcooh`. `feat/box-delete-hardening` ; Moteur A + dette `defi_id` ; collecte `/box-fonda-events` ; recette `canonique.js` en vrai nœud n8n.
 
 ## 🔖 Check-list AVANT PUBLICATION / usage élève réel
 1. **Régénérer la clé API Anthropic** (a circulé en clair) : scripts locaux + nœud `Claude API` (HTTP, header en clair) de `BOX - Generation Flashcards` ; idéalement passer par un credential n8n.
@@ -35,8 +34,10 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 5. **Fidélité du banc de test** : contexte navigateur unique (vm partagé), parcours depuis `App.initFonda()` — à prioriser avant d'élargir FONDA à d'autres notions.
 6. **Correcteur tolérant au mot après le nombre** (« 2 bus » noté faux sans `unite` ; avec `unite`, le nombre seul donne « presque, unité oubliée »).
 
-## Dette ouverte avant la recette §20.8
-- **pinData null (API n8n) → durcissement du signataire** : l'API crée `pinData: null` (refuse de le modifier) et les exécutions le recopient ; le signataire n'admet que absent/`{}`. Contournement étape 4 : enregistrement depuis l'éditeur (→ `{}`). PR SÉPARÉE après merge de l'étape 4 : `rapprocher` + CDC acceptent absent | null | `{}`, refusent objet non vide / tableau / autre (tests : null, {}, absent acceptés ; {node:[…]}, [] refusés).
+## Dettes OBLIGATOIRES avant activation du workflow de génération (étape 5, avant le vrai run §20.8)
+- **A — pinData null (API n8n)** : l'API crée `pinData: null` (non modifiable) et les exécutions le recopient ; le signataire n'admet que absent/`{}` (contournement étape 4 : enregistrement éditeur → `{}`). PR SÉPARÉE (Codex + Claude) après merge de l'étape 4 : `rapprocher` + CDC acceptent absent | null | `{}`, refusent objet non vide / tableau / autre (tests null, {}, absent acceptés ; {node:[…]}, [] refusés).
+- **B — appel mal formé (Codex r1 #4)** : correctif CÔTÉ WORKFLOW, pas signataire (le signataire a raison) : le nœud d'entrée émet TOUJOURS `{set_id, ref}` pour tout corps valide ; le malformé est rejeté à la frontière du webhook (4xx) sans exécution auditée non attribuable ; test jusqu'au signataire.
+- **C — dépôts concurrents (Codex r1 #5)** : dépôt idempotent ou exclusion mutuelle, reprises réseau incertaines comprises. En l'état : sûr (abandon), atténué par « un appel à la fois par set_id ».
 
 ## Autres dettes (non bloquantes)
 - `?action=delete` public (seul le code protège) ; anciens liens Valider/Rejeter en GET, HMAC sans expiration ; QR code, favicon/lockup FONDA absents ; `non-regression.test.js` en quarantaine (comparer à `main`).
@@ -50,8 +51,7 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - **Historique de confiance = chaîne du premier parent** de la référence et de `design` (états réellement publiés) : les commits intermédiaires d'une PR ne comptent pas, son merge oui. Suppose merge commit ou squash (rebase-merge et push direct exclus). Le CI **détecte** une violation, la **protection de branche l'empêche**. Reporté au CDC §17 + annexe A.
 
 ## Pièges
-- Chrome met `css/style.css` en cache : désactiver le cache pour toute preuve visuelle ; figer `Math.random` (sinon deux captures du même état BOX diffèrent).
-- Scripts injectés dynamiquement : ordre garanti par `await` séquentiel, preuve de chargement = export sur `window`.
+- Chrome met `css/style.css` en cache : désactiver le cache pour toute preuve visuelle ; figer `Math.random` (sinon deux captures du même état BOX diffèrent). Scripts injectés dynamiquement : ordre garanti par `await` séquentiel, preuve de chargement = export sur `window`.
 - `fonda/data/calendar.json` a `semaines: []` : « Aucun défi programmé » est l'état réel, pas un bug.
 - Profil `orthographe` : ne jamais normaliser accents/pluriels (c'est ce qu'on mesure).
 - Moteur publié **immuable** : toute retouche de `moteur-correction-v1.js` change son SHA-256 → interdit après merge ; nouveau comportement = `v2` + nouveaux `set_id`.
