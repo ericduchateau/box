@@ -44,6 +44,9 @@ const CONFIG = Object.freeze({
   nCartes: 6,
   credentialAnthropic: { id: 'YnhTnSOc1u7S99Q7', name: 'Anthropic FONDA' },
   credentialDrive: { id: 'cukxQDNwWIqOAK02', name: 'Google Drive la bonne!' },
+  // Header Auth du webhook (en-tête X-FONDA-Token) : RÉFÉRENCE par id seulement ; la
+  // valeur du jeton vit dans n8n, jamais dans le dépôt ni dans une conversation.
+  credentialWebhook: { id: 'GfnXr5hYrYgC5RwA', name: 'FONDA Webhook Token' },
 });
 
 const NOEUDS = Object.freeze({
@@ -121,7 +124,7 @@ const REQUIS = [
 ].join('\n');
 
 // SHA-256 et UTF-8 en JavaScript pur (FIPS 180-4) : aucun crypto/Buffer/TextEncoder.
-const OUTILS = `// SHA-256 (FIPS 180-4) et UTF-8 en JavaScript pur.
+const OUTILS = `// SHA-256 (FIPS 180-4), UTF-8 et base64 en JavaScript pur.
 function octetsUtf8(texte) {
   const o = [];
   for (let i = 0; i < texte.length; i += 1) {
@@ -174,6 +177,52 @@ function sha256Hex(octets) {
     H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;
   }
   return H.map((x) => (x >>> 0).toString(16).padStart(8, '0')).join('');
+}
+function octetsBase64(b64) {
+  const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const s = b64.replace(/\\n/g, '');
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(s) || s.length % 4 !== 0) throw new Error('base64 invalide');
+  const o = [];
+  for (let i = 0; i < s.length; i += 4) {
+    const v = [0, 1, 2, 3].map((k) => (s[i + k] === '=' ? 0 : A.indexOf(s[i + k])));
+    const n = (v[0] << 18) | (v[1] << 12) | (v[2] << 6) | v[3];
+    o.push((n >> 16) & 255);
+    if (s[i + 2] !== '=') o.push((n >> 8) & 255);
+    if (s[i + 3] !== '=') o.push(n & 255);
+  }
+  return o;
+}
+// Décodage UTF-8 STRICT : toute séquence invalide ou non canonique est refusée
+// (le texte ré-encodé doit redonner exactement les mêmes octets).
+function texteUtf8(octets) {
+  let t = '';
+  let i = 0;
+  while (i < octets.length) {
+    const b = octets[i];
+    const n = b < 0x80 ? 0 : b >= 0xf0 ? 3 : b >= 0xe0 ? 2 : b >= 0xc0 ? 1 : -1;
+    if (n < 0 || i + n >= octets.length) throw new Error('UTF-8 invalide');
+    let c = n === 0 ? b : b & (0x3f >> n);
+    for (let k = 1; k <= n; k += 1) {
+      const x = octets[i + k];
+      if ((x & 0xc0) !== 0x80) throw new Error('UTF-8 invalide');
+      c = (c << 6) | (x & 0x3f);
+    }
+    if (c > 0x10ffff) throw new Error('UTF-8 invalide');
+    t += String.fromCodePoint(c);
+    i += n + 1;
+  }
+  const r = octetsUtf8(t);
+  if (r.length !== octets.length || r.some((x, k) => x !== octets[k])) throw new Error('UTF-8 non canonique');
+  return t;
+}
+// Fichier du dépôt lu par l'API GitHub « contents » au commit consigné : octets EXACTS
+// du blob (base64), jamais un texte ré-sérialisé par le nœud HTTP.
+function fichierDepot(nomNoeud, chemin) {
+  const f = unItem(nomNoeud);
+  if (f.type !== 'file' || f.encoding !== 'base64' || f.path !== chemin || typeof f.content !== 'string') throw new Error(nomNoeud + ' : fichier ' + chemin + ' attendu (contents, base64)');
+  const octets = octetsBase64(f.content);
+  if (octets.length !== f.size) throw new Error(nomNoeud + ' : taille ≠ ' + f.size + ' octets');
+  return { octets, texte: texteUtf8(octets) };
 }`;
 
 const UN_ITEM = (noeud) => `function unItem(nom) {
@@ -226,16 +275,11 @@ function codePreparer(moteur) {
     UN_ITEM(NOEUDS.preparer),
     `const { decomposerSetId, slugDeNotion } = M_catalogue.exports;
 const Journal = M_journal.exports;
-const texte = (nom) => {
-  const t = unItem(nom).data;
-  if (typeof t !== 'string' || !t) throw new Error(nom + ' : texte attendu');
-  return t;
-};
 const entree = unItem(${JSON.stringify(NOEUDS.entree)});
 const journalCommit = unItem(${JSON.stringify(NOEUDS.fixer)}).journal_commit;
 
 // 1. Réservation journalisée pour (set_id, ref), état « reserve », au commit consigné.
-const journal = Journal.lireJournalTexte(texte(${JSON.stringify(NOEUDS.journal)}));
+const journal = Journal.lireJournalTexte(fichierDepot(${JSON.stringify(NOEUDS.journal)}, 'fonda/data/set_ids-journal.json').texte);
 const reservation = Journal.verifierReservation(journal, entree.set_id, entree.ref);
 if (!reservation.ok) throw new Error('réservation : ' + reservation.raison);
 
@@ -245,14 +289,14 @@ if (!Array.isArray(listing.files) || listing.nextPageToken) throw new Error('lis
 if (listing.files.length !== 0) throw new Error(entree.set_id + ' : ' + listing.files.length + ' fichier(s) déjà dans candidats/ — jamais de second dépôt');
 
 // 3. Notion et palier encodés dans le set_id, au référentiel du commit consigné.
-const texteReferentiel = texte(${JSON.stringify(NOEUDS.referentiel)});
-const referentiel = JSON.parse(texteReferentiel);
+const fichierReferentiel = fichierDepot(${JSON.stringify(NOEUDS.referentiel)}, 'fonda/data/referentiel.json');
+const referentiel = JSON.parse(fichierReferentiel.texte);
 const { notion, palier } = notionDuSetId(entree.set_id, referentiel);
 if (estNotionExclue(notion.id)) throw new Error(notion.id + ' exclue de la génération automatique');
-const referentiel_version = 'sha256:' + sha256Hex(octetsUtf8(texteReferentiel));
+const referentiel_version = 'sha256:' + sha256Hex(fichierReferentiel.octets); // octets exacts du blob
 
 // 4. Moteur : le dernier du registre au commit consigné = celui embarqué ici.
-const registre = JSON.parse(texte(${JSON.stringify(NOEUDS.moteurs)}));
+const registre = JSON.parse(fichierDepot(${JSON.stringify(NOEUDS.moteurs)}, 'fonda/engine/moteurs.json').texte);
 const dernier = dernierMoteur(registre);
 if (dernier.version !== CONFIG.moteur.version || dernier.sha256 !== CONFIG.moteur.sha256) throw new Error('moteur embarqué ≠ dernier moteur de moteurs.json au commit consigné');
 
@@ -322,7 +366,7 @@ if (!d) throw new Error('set_id indécomposable');
 const candidats = construireCandidats({ notion: prep.notion, palier: prep.palier, cartesBrutes: cartesValides, sequence: d.sequence, ts: new Date().toISOString() });
 const jeu = validerJeu(candidats);
 if (!jeu.valide) throw new Error('jeu : ' + jeu.erreurs.join(', '));
-const referentiel = JSON.parse(unItem(${JSON.stringify(NOEUDS.referentiel)}).data);
+const referentiel = JSON.parse(fichierDepot(${JSON.stringify(NOEUDS.referentiel)}, 'fonda/data/referentiel.json').texte);
 const notionIdsConnus = new Set(referentiel.notions.map((n) => n.id));
 candidats.forEach((c, i) => {
   const v = validerCandidate(c, { notionIdsConnus });
@@ -390,10 +434,17 @@ const uuid = (graine) => {
   const h = crypto.createHash('sha256').update(`fonda-generation-ia:${graine}`).digest('hex');
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;
 };
-const RAW = (fichier) => `={{ 'https://raw.githubusercontent.com/${CONFIG.depot}/' + $('${NOEUDS.fixer}').first().json.journal_commit + '/${fichier}' }}`;
-const texteHttp = (nom, fichier) => ({
+// Format de réponse : TOUJOURS « autodetect » (option absente). Dans n8n 2.6.3
+// (HttpRequestV3), « text » sur un corps JSON le PARSE puis le RE-SÉRIALISE (octets
+// changés), et « json » avec un corps brut (raw) renvoie un flux NON LU ; seul
+// l'autodetect lit le flux et décode selon le Content-Type.
+const GITHUB_ENTETES = { parameters: [{ name: 'Accept', value: 'application/vnd.github+json' }, { name: 'User-Agent', value: 'box-fonda-generation-ia' }] };
+const fichierHttp = (nom, fichier) => ({
   name: nom, type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2,
-  parameters: { url: RAW(fichier), options: { response: { response: { responseFormat: 'text' } }, timeout: 30000 } },
+  parameters: {
+    url: `={{ 'https://api.github.com/repos/${CONFIG.depot}/contents/${fichier}?ref=' + $('${NOEUDS.fixer}').first().json.journal_commit }}`,
+    sendHeaders: true, headerParameters: GITHUB_ENTETES, options: { timeout: 30000 },
+  },
 });
 
 function construireWorkflow() {
@@ -401,7 +452,10 @@ function construireWorkflow() {
   const noeuds = [
     {
       name: NOEUDS.webhook, type: 'n8n-nodes-base.webhook', typeVersion: 2, webhookId: uuid('webhook'),
-      parameters: { httpMethod: 'POST', path: CONFIG.cheminWebhook, options: {} }, // réponse immédiate (défaut onReceived, omis comme le fait l'éditeur)
+      credentials: { httpHeaderAuth: CONFIG.credentialWebhook },
+      // Appel sans en-tête X-FONDA-Token valide : refusé par n8n AVANT toute exécution.
+      // Réponse immédiate (défaut onReceived, omis comme le fait l'éditeur).
+      parameters: { httpMethod: 'POST', path: CONFIG.cheminWebhook, authentication: 'headerAuth', options: {} },
     },
     { name: NOEUDS.entree, type: 'n8n-nodes-base.code', typeVersion: 2, parameters: { jsCode: codeEntree() } },
     {
@@ -409,14 +463,14 @@ function construireWorkflow() {
       parameters: {
         url: `https://api.github.com/repos/${CONFIG.depot}/commits/${CONFIG.branche}`,
         sendHeaders: true,
-        headerParameters: { parameters: [{ name: 'Accept', value: 'application/vnd.github+json' }, { name: 'User-Agent', value: 'box-fonda-generation-ia' }] },
-        options: { response: { response: { responseFormat: 'json' } }, timeout: 30000 },
+        headerParameters: GITHUB_ENTETES,
+        options: { timeout: 30000 },
       },
     },
     { name: NOEUDS.fixer, type: 'n8n-nodes-base.code', typeVersion: 2, parameters: { jsCode: codeFixer() } },
-    texteHttp(NOEUDS.journal, 'fonda/data/set_ids-journal.json'),
-    texteHttp(NOEUDS.referentiel, 'fonda/data/referentiel.json'),
-    texteHttp(NOEUDS.moteurs, 'fonda/engine/moteurs.json'),
+    fichierHttp(NOEUDS.journal, 'fonda/data/set_ids-journal.json'),
+    fichierHttp(NOEUDS.referentiel, 'fonda/data/referentiel.json'),
+    fichierHttp(NOEUDS.moteurs, 'fonda/engine/moteurs.json'),
     {
       name: NOEUDS.existant, type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2,
       credentials: { googleDriveOAuth2Api: CONFIG.credentialDrive },
@@ -429,7 +483,7 @@ function construireWorkflow() {
           { name: 'fields', value: 'nextPageToken,files(id,name,properties)' },
           { name: 'pageSize', value: '100' },
         ] },
-        options: { response: { response: { responseFormat: 'json' } }, timeout: 30000 },
+        options: { timeout: 30000 },
       },
     },
     { name: NOEUDS.preparer, type: 'n8n-nodes-base.code', typeVersion: 2, parameters: { jsCode: codePreparer(moteur) } },
@@ -442,7 +496,7 @@ function construireWorkflow() {
         sendHeaders: true,
         headerParameters: { parameters: [{ name: 'anthropic-version', value: '2023-06-01' }] },
         sendBody: true, specifyBody: 'json', jsonBody: '={{ JSON.stringify($json.requete) }}',
-        options: { response: { response: { responseFormat: 'json' } }, timeout: 600000 },
+        options: { timeout: 600000 },
       },
     },
     { name: NOEUDS.construire, type: 'n8n-nodes-base.code', typeVersion: 2, parameters: { jsCode: codeConstruire(moteur) } },
@@ -457,7 +511,7 @@ function construireWorkflow() {
         sendBody: true, contentType: 'raw',
         rawContentType: '={{ \'multipart/related; boundary=\' + $json.depot.frontiere }}',
         body: '={{ $json.depot.corps }}',
-        options: { response: { response: { responseFormat: 'json' } }, timeout: 60000 },
+        options: { timeout: 60000 },
       },
     },
     { name: NOEUDS.sortie, type: 'n8n-nodes-base.code', typeVersion: 2, parameters: { jsCode: codeSortie() } },

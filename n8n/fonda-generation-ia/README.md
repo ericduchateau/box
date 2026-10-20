@@ -11,10 +11,10 @@ CDC relecture v8.3, §20.14 étape 4. Le workflow est **complet**, **créé INAC
 
 | # | Nœud | Rôle |
 |---|------|------|
-| 1 | Webhook generation | `POST /webhook/box-fonda-generation-ia`, corps `{ "set_id", "ref" }` (déclenchement `mode = webhook`) |
+| 1 | Webhook generation | `POST /webhook/box-fonda-generation-ia`, corps `{ "set_id", "ref" }` (déclenchement `mode = webhook`). **Header Auth** : en-tête `X-FONDA-Token`, credential « FONDA Webhook Token » référencée par id ; sans jeton valide, n8n refuse l'appel avant toute exécution |
 | 2 | **FONDA Entree generation** | `item.json = { set_id, ref }` exactement (motif `SET_ID_PATTERN`, `ref` non vide) |
 | 3–4 | Lire commit design, Fixer commit | `journal_commit` = tête de `design` (40 hex) au moment de l'exécution |
-| 5–7 | Lire journal, referentiel, moteurs | `raw.githubusercontent.com/ericduchateau/box/<journal_commit>/…` (dépôt public) |
+| 5–7 | Lire journal, referentiel, moteurs | API GitHub `contents/<chemin>?ref=<journal_commit>` (dépôt public) : **octets exacts** du blob en base64, décodés et hachés en JS pur |
 | 8 | Chercher candidat existant | Drive `candidats/` : aucun fichier de ce nom ni de `fonda_set_id`, sinon arrêt |
 | 9 | Preparer generation | réservation `(set_id, ref)` à l'état `reserve` au commit consigné ; notion exclue → arrêt ; `referentiel_version` = SHA-256 des octets lus ; moteur = dernier du registre = moteur embarqué ; requête **G3** |
 | 10 | Appel Sonnet | HTTP `api.anthropic.com/v1/messages`, credential `anthropicApi` par id (`YnhTnSOc1u7S99Q7`), modèle **épinglé** `claude-sonnet-5-5-20261001` (à confirmer §20.8), sans nouvel essai ni repli |
@@ -25,6 +25,12 @@ CDC relecture v8.3, §20.14 étape 4. Le workflow est **complet**, **créé INAC
 **G3 (liste blanche).** Le prompt est construit **uniquement** depuis `{ id, libelle, matiere, axe, micro_competence, enonce_modele }`, le palier et les règles du dépôt (`construirePrompt`), à la version `referentiel_version`. En sont exclus `taux_eval`, `priorite_initiale`, `frequence_base_semaines`, et toute donnée de cours, de mail, de classe ou d'élève. Aucun contexte tiré d'autres lots n'est transmis, contrairement au script local : le CDC n'inscrit pas cette donnée dans la liste blanche. Le harnais le prouve en injectant des marqueurs dans le référentiel : aucun n'apparaît dans la requête.
 
 **Présupposé.** La génération exige une **réservation journalisée** pour `(set_id, ref)` sur `design` (`generer-lot-fonda.js --reserver`, puis PR). Sans elle, l'exécution s'arrête avant l'appel au modèle. La fixture du harnais simule cette réservation (journal synthétique).
+
+**Nœuds HTTP : format de réponse « autodetect » partout.** Dans n8n 2.6.3 (`HttpRequestV3`), « text » appliqué à un corps JSON le parse puis le **re-sérialise**, ce qui change les octets et fausserait `referentiel_version`. De son côté, « json » associé à un corps brut (`raw`, dépôt multipart) renvoie un **flux non lu**. Seul l'autodetect lit le flux et décode selon le `Content-Type`. Relecture Codex r1, vérifiée dans le source n8n.
+
+**Appelant (étape 5).** Il envoie l'en-tête `X-FONDA-Token` (jeton lu hors dépôt), valide `{ set_id, ref }` **avant** l'envoi et n'envoie **qu'un appel à la fois par set_id**. Deux risques résiduels sont acceptés et documentés (décision d'Éric du 2026-10-20, relecture Codex r1, points 4 et 5) :
+- un appel authentifié mais mal formé crée une exécution en erreur sans déclencheur exploitable ; le signataire la classe « incident » et suspend les clôtures, ce qui reste fail-closed ;
+- deux appels simultanés pour un même set_id peuvent déposer deux fichiers, car Drive n'impose pas l'unicité ; le signataire abandonne et il faut une nouvelle réservation. Jamais de signature erronée.
 
 **Erreurs.** Une erreur **avant** le dépôt ne laisse aucun fichier. Une erreur **après** le dépôt (réponse Drive incohérente) laisse un fichier rattaché à une exécution en erreur : le signataire abandonne (§20.2). Il n'y a pas de branche d'erreur ni de `continueOnFail`, par choix : tout échec arrête la chaîne.
 

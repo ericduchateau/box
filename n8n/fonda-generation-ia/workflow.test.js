@@ -37,6 +37,15 @@ const REFERENTIEL = lireOctets('fonda/data/referentiel.json').toString('utf8');
 const MOTEURS = lireOctets('fonda/engine/moteurs.json').toString('utf8');
 const JOURNAL = { schema: 'set-ids-journal/v1', lignes: [{ set_id: FX.set_id, transition: 'reserve', le: '2026-10-20', ref: FX.ref }] };
 
+// Réponse de l'API GitHub « contents » : octets EXACTS en base64 (lignes de 60 + \n).
+const contenuGithub = (chemin, texteOuOctets) => {
+  const b = Buffer.isBuffer(texteOuOctets) ? texteOuOctets : Buffer.from(texteOuOctets, 'utf8');
+  return { type: 'file', encoding: 'base64', path: chemin, size: b.length, sha: 'blob', content: b.toString('base64').replace(/(.{60})/g, '$1\n') + '\n' };
+};
+const J = 'fonda/data/set_ids-journal.json';
+const R = 'fonda/data/referentiel.json';
+const MO = 'fonda/engine/moteurs.json';
+
 // --- Simulateur d'exécution n8n (mode webhook, un item par nœud) -----------------------------
 // Expression n8n « ={{ … }} » évaluée dans un contexte nu avec $ et $json.
 function evaluer(valeur, ctx) {
@@ -99,9 +108,9 @@ function lireMultipart(requete) {
 function reponsesNominales(sur = {}) {
   return {
     [N.commit]: () => ({ sha: FX.journal_commit, commit: { message: 'fixture' } }),
-    [N.journal]: () => ({ data: JSON.stringify(JOURNAL, null, 2) + '\n' }),
-    [N.referentiel]: () => ({ data: REFERENTIEL }),
-    [N.moteurs]: () => ({ data: MOTEURS }),
+    [N.journal]: () => contenuGithub(J, JSON.stringify(JOURNAL, null, 2) + '\n'),
+    [N.referentiel]: () => contenuGithub(R, lireOctets(R)),
+    [N.moteurs]: () => contenuGithub(MO, lireOctets(MO)),
     [N.existant]: () => ({ files: [] }),
     [N.ia]: () => FX.reponse_ia,
     [N.deposer]: (r) => { const { metadonnees } = lireMultipart(r); return { id: FX.fichier_drive_id, name: metadonnees.name, parents: metadonnees.parents, properties: metadonnees.properties }; },
@@ -148,7 +157,32 @@ describe('export : structure, inactif, sans pinData', () => {
     const w = noeud(N.webhook);
     assert.equal(w.parameters.httpMethod, 'POST');
     assert.equal(w.parameters.path, 'box-fonda-generation-ia');
+    assert.equal(w.parameters.authentication, 'headerAuth', 'webhook protégé par Header Auth');
+    assert.deepEqual(Object.keys(w.credentials), ['httpHeaderAuth']);
+    assert.match(w.credentials.httpHeaderAuth.id, /^[A-Za-z0-9]{16}$/, 'credential référencée par id');
+    assert.equal(w.credentials.httpHeaderAuth.name, 'FONDA Webhook Token');
+    assert.ok(!/X-FONDA-Token"\s*:\s*"|"value"\s*:\s*"[^"]{20,}"/.test(JSON.stringify(w)), 'aucune valeur de jeton dans le nœud');
     assert.ok(!/^box-(catalogue|set|question|delete|tally|validate|reject|select)/.test(w.parameters.path), 'jamais une route BOX');
+  });
+  test('arrêt sur erreur : aucun onError/continueOnFail/alwaysOutputData, aucun nouvel essai', () => {
+    for (const n of WF.nodes) {
+      assert.ok(n.onError === undefined || n.onError === 'stopWorkflow', `${n.name} : onError`);
+      assert.notEqual(n.continueOnFail, true, `${n.name} : continueOnFail`);
+      assert.notEqual(n.alwaysOutputData, true, `${n.name} : alwaysOutputData`);
+      assert.notEqual(n.retryOnFail, true, `${n.name} : retryOnFail`);
+    }
+    assert.equal(WF.settings.errorWorkflow, undefined);
+  });
+  test('HTTP : format de réponse « autodetect » partout (n8n 2.6.3 : « text » re-sérialise, « json »+raw renvoie un flux non lu)', () => {
+    for (const n of WF.nodes.filter((x) => x.type === 'n8n-nodes-base.httpRequest')) {
+      assert.equal(n.typeVersion, 4.2, n.name);
+      assert.equal(n.parameters.options.response, undefined, `${n.name} : options.response`);
+    }
+  });
+  test('fichiers du dépôt lus par l\'API contents AU commit consigné (octets exacts)', () => {
+    for (const [nom, chemin] of [[N.journal, J], [N.referentiel, R], [N.moteurs, MO]]) {
+      assert.equal(noeud(nom).parameters.url, `={{ 'https://api.github.com/repos/ericduchateau/box/contents/${chemin}?ref=' + $('${N.fixer}').first().json.journal_commit }}`);
+    }
   });
   test('§20.10 (a) : exécutions réussies, en erreur ET manuelles conservées', () => {
     assert.equal(WF.settings.saveDataSuccessExecution, 'all');
@@ -219,6 +253,17 @@ describe('code embarqué : identique au dépôt', () => {
     const dernier = require('../../fonda/scripts/moteurs.js').dernierMoteur(reg);
     for (const nom of [N.preparer, N.construire]) assert.match(code(nom), new RegExp(`"sha256": "${dernier.sha256}"`));
     assert.equal(sha(lireOctets(B.MODULES.moteur)), dernier.sha256);
+  });
+  test('base64 et UTF-8 strict en JavaScript pur = Buffer ; séquences invalides refusées', () => {
+    const o = vm.runInNewContext(`${B.OUTILS}\n;({ octetsBase64, texteUtf8 })`, {});
+    for (const t of ['', 'a', 'ab', 'abc', 'é😀𝄞\u{10ffff}', REFERENTIEL]) {
+      const b = Buffer.from(t, 'utf8');
+      const d = o.octetsBase64(b.toString('base64').replace(/(.{60})/g, '$1\n'));
+      assert.deepEqual([...d], [...b]);
+      assert.equal(o.texteUtf8(d), t);
+    }
+    for (const mauvais of [[0x80], [0xc0, 0x80], [0xe0, 0x80, 0x80], [0xed, 0xa0, 0x80], [0xf4, 0x90, 0x80, 0x80], [0xc3]]) assert.throws(() => o.texteUtf8(mauvais), /UTF-(8|16)/, JSON.stringify(mauvais));
+    for (const mauvais of ['abc', 'a$==', '====']) assert.throws(() => o.octetsBase64(mauvais), /base64/);
   });
   test('SHA-256 en JavaScript pur = node:crypto (longueurs limites, UTF-8 hors BMP)', () => {
     const outils = vm.runInNewContext(`${B.OUTILS}\n;({ octetsUtf8, sha256Hex })`, {});
@@ -344,7 +389,7 @@ describe('G3 : prompt construit UNIQUEMENT depuis la liste blanche', async () =>
   n.frequence_base_semaines = 777;
   n.classe = 'CANARI-CLASSE'; n.eleves = ['CANARI-ELEVE']; n.cours = 'CANARI-COURS'; n.mail = 'canari@exemple.invalid';
   const texteP = JSON.stringify(piege, null, 2) + '\n';
-  const r = await executer(WF, { corps: CORPS, reponses: reponsesNominales({ [N.referentiel]: () => ({ data: texteP }) }) });
+  const r = await executer(WF, { corps: CORPS, reponses: reponsesNominales({ [N.referentiel]: () => contenuGithub(R, texteP) }) });
   const requete = JSON.parse(r.requetes[N.ia].jsonBody);
 
   test('requête = { model, max_tokens, messages[1] } seulement', () => {
@@ -375,17 +420,17 @@ describe('refus avant dépôt (aucun fichier candidat)', () => {
     ['set_id invalide', { corps: { ...CORPS, set_id: 'set_fonda_X' } }, N.entree],
     ['ref vide', { corps: { ...CORPS, ref: '' } }, N.entree],
     ['commit design mal formé', { reponses: { [N.commit]: () => ({ sha: 'abc' }) } }, N.fixer],
-    ['réservation absente', { reponses: { [N.journal]: () => ({ data: JSON.stringify({ schema: 'set-ids-journal/v1', lignes: [] }) }) } }, N.preparer],
+    ['réservation absente', { reponses: { [N.journal]: () => contenuGithub(J, JSON.stringify({ schema: 'set-ids-journal/v1', lignes: [] })) } }, N.preparer],
     ['autre ref réservée', { corps: { ...CORPS, ref: '2026-10-20-autre0001' } }, N.preparer],
-    ['set_id déjà publié', { reponses: { [N.journal]: () => ({ data: JSON.stringify({ schema: 'set-ids-journal/v1', lignes: [...JOURNAL.lignes, { set_id: FX.set_id, transition: 'publie', le: '2026-10-20', ref: `${FX.ref}:publie` }] }) }) } }, N.preparer],
+    ['set_id déjà publié', { reponses: { [N.journal]: () => contenuGithub(J, JSON.stringify({ schema: 'set-ids-journal/v1', lignes: [...JOURNAL.lignes, { set_id: FX.set_id, transition: 'publie', le: '2026-10-20', ref: `${FX.ref}:publie` }] })) } }, N.preparer],
     ['candidat déjà déposé', { reponses: { [N.existant]: () => ({ files: [{ id: 'z', name: `${FX.set_id}.lot.json` }] }) } }, N.preparer],
     ['listing paginé', { reponses: { [N.existant]: () => ({ files: [], nextPageToken: 't' }) } }, N.preparer],
-    ['moteur du registre ≠ moteur embarqué', { reponses: { [N.moteurs]: () => ({ data: JSON.stringify([{ version: 'v1', sha256: '0'.repeat(64) }]) }) } }, N.preparer],
+    ['moteur du registre ≠ moteur embarqué', { reponses: { [N.moteurs]: () => contenuGithub(MO, JSON.stringify([{ version: 'v1', sha256: '0'.repeat(64) }])) } }, N.preparer],
     ['modèle de la réponse ≠ épinglé (aucun repli)', { reponses: { [N.ia]: () => ({ ...FX.reponse_ia, model: 'claude-sonnet-5-5-20990101' }) } }, N.construire],
     ['modèle absent de la réponse', { reponses: { [N.ia]: () => { const x = { ...FX.reponse_ia }; delete x.model; return x; } } }, N.construire],
     ['max_tokens sans texte', { reponses: { [N.ia]: () => ({ ...FX.reponse_ia, content: [{ type: 'thinking', thinking: '…' }], stop_reason: 'max_tokens' }) } }, N.construire],
     ['aucune carte valide', { reponses: { [N.ia]: () => ({ ...FX.reponse_ia, content: [{ type: 'text', text: '{"cartes":[]}' }] }) } }, N.construire],
-    ['notion exclue (géométrie)', { corps: { set_id: 'set_fonda_geometrie_nI_50', ref: FX.ref }, reponses: { [N.journal]: () => ({ data: JSON.stringify({ schema: 'set-ids-journal/v1', lignes: [{ set_id: 'set_fonda_geometrie_nI_50', transition: 'reserve', le: '2026-10-20', ref: FX.ref }] }) }) } }, N.preparer],
+    ['notion exclue (géométrie)', { corps: { set_id: 'set_fonda_geometrie_nI_50', ref: FX.ref }, reponses: { [N.journal]: () => contenuGithub(J, JSON.stringify({ schema: 'set-ids-journal/v1', lignes: [{ set_id: 'set_fonda_geometrie_nI_50', transition: 'reserve', le: '2026-10-20', ref: FX.ref }] })) } }, N.preparer],
   ];
   for (const [nom, { corps = CORPS, reponses = {} }, attendu] of cas) {
     test(nom, async () => {
