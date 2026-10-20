@@ -41,9 +41,9 @@ Dans les deux cas, l'échec reste du côté sûr : jamais de signature erronée.
 - `validate_node` (webhook, Appel Sonnet, Deposer candidat, lectures raw) : 0 erreur. La seule alerte, qui recommande `onError: continueRegularOutput` sur le webhook, est écartée volontairement : fail-closed.
 - `n8n_validate_workflow vrqgtS5kQMvP9Ok5` : 13 nœuds, 12 connexions valides, 13 expressions validées. Les **2 « erreurs » sont des faux positifs** (« Array items must be objects with json property » sur Preparer generation et Construire lot), comme les 2 avertissements (« Dynamic require() »). Tous viennent de l'analyse statique du **code des modules embarqués** (`return ['…']` de `validerAttestation`, `require('./catalogue.js')` résolu par `requis`) et non de la sortie des nœuds. Le harnais prouve que chaque nœud Code renvoie `[{ json }]` et s'exécute sans `require`, `Buffer`, `TextEncoder` ni `crypto`.
 
-## Dette ouverte : pinData `null` (API n8n)
+## pinData `null` (API n8n) : dette A soldée
 
-Un workflow créé par l'API publique a `pinData: null`, que l'API refuse de modifier, et chaque exécution recopie cette valeur. Or le signataire n'admet que « absent ou objet vide ». Correctif provisoire (décision d'Éric, 2026-10-20) : un enregistrement depuis l'éditeur, sans activation, normalise `pinData` à `{}`, puis on ré-exporte. **Avant la recette §20.8**, une PR séparée durcira `liaison-generation.rapprocher` et le CDC : seront acceptables `pinData` absent, `null` ou `{}` ; seront refusés un objet non vide, un tableau ou tout autre type.
+L'API publique n8n crée les workflows avec `pinData: null`, champ qu'elle n'accepte pas en écriture (`additionalProperties: false`), et chaque exécution recopie cette valeur. Depuis la PR de la dette A (CDC v8.3 r7), `liaison-generation.rapprocher` traite `pinData` **absent, `null` ou `{}`** comme « rien d'épinglé ». Un objet non vide, un tableau ou tout autre type reste inexploitable. L'enregistrement depuis l'éditeur, contournement de l'étape 4 qui a normalisé le live à `{}`, n'est donc plus nécessaire. L'export livré reste soumis au harnais : `pinData` absent ou `{}`.
 
 ## Recette d'instance (§20.10)
 

@@ -324,6 +324,10 @@ describe('§20.2–20.3 liaison de génération : chaque violation -> refus clas
     ['pinData chaîne « x »', ({ gen }) => { gen[501].workflowData.pinData = 'x'; }, /pinData non vide/, 'abandon'],
     ['pinData nombre 1', ({ gen }) => { gen[501].workflowData.pinData = 1; }, /pinData non vide/, 'abandon'],
     ['pinData booléen true', ({ gen }) => { gen[501].workflowData.pinData = true; }, /pinData non vide/, 'abandon'],
+    // Valeurs « falsy » : refusées aussi (garde contre une régression vers `!pin`).
+    ['pinData chaîne vide', ({ gen }) => { gen[501].workflowData.pinData = ''; }, /pinData non vide/, 'abandon'],
+    ['pinData nombre 0', ({ gen }) => { gen[501].workflowData.pinData = 0; }, /pinData non vide/, 'abandon'],
+    ['pinData booléen false', ({ gen }) => { gen[501].workflowData.pinData = false; }, /pinData non vide/, 'abandon'],
     ['exécution de génération non terminée (running)', ({ execs, gen, fx }) => { execs.wfGen.push({ id: 503, workflowId: 'wfGen', status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null }); gen[503] = { ...fx.doublon, id: 503, status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null }; }, /non terminée/, 'incident'],
     ['item du déclencheur manquant', ({ execs, gen }) => { execs.wfGen.push({ id: 504, workflowId: 'wfGen', status: 'error', startedAt: '2026-10-18T06:00:00.000Z', stoppedAt: '2026-10-18T06:00:01.000Z' }); gen[504] = { id: 504, workflowId: 'wfGen', status: 'error', mode: 'webhook', startedAt: '2026-10-18T06:00:00.000Z', stoppedAt: '2026-10-18T06:00:01.000Z', data: { resultData: { runData: {} } }, workflowData: {} }; }, /item du déclencheur manquant/, 'incident'],
     ['exécution sans données (purgée)', ({ execs }) => { execs.wfGen.push({ id: 505, workflowId: 'wfGen', status: 'error', startedAt: '2026-10-18T06:00:00.000Z', stoppedAt: '2026-10-18T06:00:01.000Z' }); }, /item du déclencheur manquant/, 'incident'],
