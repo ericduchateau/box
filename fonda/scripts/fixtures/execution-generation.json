@@ -41,5 +41,24 @@
       "FONDA Entree generation": [{ "data": { "main": [[{ "json": { "set_id": "<<SET_ID>>", "ref": "<<REF>>" } }]] } }]
     } } }
   },
-  "pinData": { "FONDA Entree generation": [{ "json": { "set_id": "<<SET_ID>>", "ref": "<<REF>>" } }] }
+  "pinData": { "FONDA Entree generation": [{ "json": { "set_id": "<<SET_ID>>", "ref": "<<REF>>" } }] },
+  "workflow_ia": {
+    "description": "Exécution SIMULÉE du workflow n8n/fonda-generation-ia/box-fonda-generation-ia.json (harnais n8n/fonda-generation-ia/workflow.test.js) : déclencheur, réponses HTTP simulées (GitHub, Drive, Anthropic), AUCUN appel réel. La réservation de (set_id, ref) est simulée par un journal synthétique au commit journal_commit ; référentiel et registre des moteurs sont ceux du dépôt. La réponse IA est SIMULÉE : model = snapshot Sonnet daté REPRÉSENTATIF, À CONFIRMER à la recette §20.8. La 4e carte est volontairement fausse (rejetée par le correcteur).",
+    "execution_id": "601",
+    "set_id": "set_fonda_proportionnalite_nI_50",
+    "ref": "2026-10-20-fixture0001",
+    "journal_commit": "0123456789abcdef0123456789abcdef01234567",
+    "startedAt": "2026-10-20T07:00:00.000Z",
+    "stoppedAt": "2026-10-20T07:01:30.000Z",
+    "reponse_ia": {
+      "id": "msg_fixture_601", "type": "message", "role": "assistant", "model": "claude-sonnet-5-5-20261001",
+      "content": [
+        { "type": "thinking", "thinking": "(simulé)", "signature": "fixture" },
+        { "type": "text", "text": "{\"cartes\":[{\"contexte\":\"recette-crepes\",\"question\":\"Pour 4 crêpes, il faut 100 g de farine. Combien de grammes de farine faut-il pour 12 crêpes ?\",\"reponse\":\"300 g\",\"difficulte\":\"facile\",\"profil_correction\":\"numerique\",\"reponses_acceptees\":[\"300 g\",\"300\"],\"unite\":\"g\"},{\"contexte\":\"prix-cahiers\",\"question\":\"3 cahiers identiques coûtent 6 €. Combien coûtent 5 de ces cahiers ?\",\"reponse\":\"10 €\",\"difficulte\":\"moyen\",\"profil_correction\":\"numerique\",\"reponses_acceptees\":[\"10 €\",\"10\"],\"unite\":\"€\"},{\"contexte\":\"tableau-proportionnalite\",\"question\":\"Quel tableau est un tableau de proportionnalité ? A : 1 donne 3 et 2 donne 5. B : 1 donne 3 et 2 donne 6. C : 1 donne 2 et 2 donne 5. Réponds par la lettre.\",\"reponse\":\"B\",\"difficulte\":\"facile\",\"profil_correction\":\"exact\",\"reponses_acceptees\":[\"B\"]},{\"contexte\":\"vitesse-velo\",\"question\":\"Un cycliste parcourt 15 km en 1 heure à vitesse constante. Quelle distance parcourt-il en 2 heures ?\",\"reponse\":\"trente kilomètres\",\"difficulte\":\"facile\",\"profil_correction\":\"numerique\",\"reponses_acceptees\":[\"trente kilomètres\"],\"unite\":\"km\"}]}" }
+      ],
+      "stop_reason": "end_turn",
+      "usage": { "input_tokens": 1, "output_tokens": 1 }
+    },
+    "fichier_drive_id": "drv-lot"
+  }
 }
