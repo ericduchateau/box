@@ -7,7 +7,11 @@ CDC relecture v8.3, §20.14 étape 4. Le workflow est **complet**, **créé INAC
   - répond **400** sur un corps malformé, **sans appeler** la génération : aucune exécution auditée n'est créée ;
   - sinon transmet **exactement** `{ set_id, ref }` au webhook de génération, avec la credential `GfnXr5hYrYgC5RwA` (jeton distinct, F5), sans nouvel essai ;
   - répond **202** si la génération a **accepté** l'appel (200 immédiat, `onReceived`). C'est une acceptation, pas une fin de génération ;
-  - répond **504** `{ etat: 'inconnu' }` dans tous les autres cas (délai dépassé, connexion refusée, 401, 404, 500, 2xx inattendu). Consigne : **observer, ne jamais renvoyer**.
+  - répond **504** `{ etat: 'inconnu' }` dans tous les autres cas : délai dépassé, connexion refusée, 401, 404, 500, 2xx inattendu, ou **3xx** (les redirections ne sont **jamais suivies** : `followRedirects: false`, alors qu'elles le sont par défaut en 4.2). Consigne : **observer, ne jamais renvoyer** ;
+  - **limite** : si le portier lui-même échoue avant tout Respond, n8n répond **500** « Error in workflow ». Avant la transmission, rien n'est lancé ; après, la génération peut déjà tourner. **L'appelant traite donc 500, une rupture de connexion ou un délai dépassé comme « inconnu »** (verrou du lot 4) et n'envoie jamais de nouvelle requête automatiquement.
+  - **Vérification AVANT activation** (Éric, consignée avec la recette) :
+    - les deux credentials (« FONDA Portier Token » `sdVd72oXHCWhIxTd` et « FONDA Webhook Token » `GfnXr5hYrYgC5RwA`) contiennent des **valeurs différentes**, générées séparément. Le harnais ne compare que les identifiants ; il ne voit pas les valeurs ;
+    - sur une copie, ou pendant la première fenêtre active, un appel **direct** au webhook de génération avec le jeton du portier reçoit **403/401** : la frontière interne refuse le jeton de l'appelant.
 
   Harnais : `portier.test.js`, simulateur `simulateur.js`.
 - **workflowId de l'instance : `vrqgtS5kQMvP9Ok5`.** C'est l'identifiant à épingler dans `config.workflowGeneration` à l'étape 5.

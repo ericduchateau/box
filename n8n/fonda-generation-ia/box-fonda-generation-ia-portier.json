@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-10-20T19:38:21.216Z",
+  "updatedAt": "2026-10-20T19:46:28.485Z",
   "createdAt": "2026-10-20T19:38:21.216Z",
   "id": "MkYrdhgTo52nA3av",
   "name": "BOX - FONDA Generation IA (portier)",
@@ -121,6 +121,11 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ set_id: $('Valider corps').first().json.set_id, ref: $('Valider corps').first().json.ref }) }}",
         "options": {
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
           "response": {
             "response": {
               "fullResponse": true,
@@ -289,9 +294,9 @@
   "staticData": null,
   "meta": null,
   "pinData": null,
-  "versionId": "851a7788-b97f-4cdf-86b1-bad870b34526",
+  "versionId": "5a51ef8d-01a1-417a-850c-c315ac44bcd9",
   "activeVersionId": null,
-  "versionCounter": 1,
+  "versionCounter": 2,
   "triggerCount": 0,
   "tags": [],
   "activeVersion": null

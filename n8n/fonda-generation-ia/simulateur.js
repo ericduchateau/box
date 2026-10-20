@@ -5,7 +5,13 @@
 //   - HTTP : `neverError` -> tout statut sort par la sortie principale ; sinon statut >= 400
 //     = erreur ; `fullResponse` -> { statusCode, headers, body } ; erreur de transport =
 //     exception (sortie d'erreur si continueErrorOutput, sinon échec de l'exécution) ;
-//   - Respond : code `options.responseCode`, 200 par défaut (absence = 200).
+//   - Respond : code `options.responseCode`, 200 par défaut (absence = 200) ;
+//   - nœud `disabled` : l'entrée passe telle quelle sur la sortie 0 (workflow-execute) ;
+//   - IF v2 « strict » : un type inattendu LÈVE (exécution en échec), jamais `false` ;
+//   - HTTP : redirections 3xx suivies SAUF `options.redirect.redirect.followRedirects === false`
+//     (défaut 4.2 : suivies) — chaque requête suivie est un nouvel appel au gestionnaire ;
+//   - webhook `responseMode: responseNode` : exécution en échec AVANT tout Respond -> le
+//     gestionnaire n8n répond 500 « Error in workflow » (webhook-helpers).
 
 'use strict';
 
@@ -27,8 +33,14 @@ function evaluer(valeur, ctx) {
 function conditionVraie(c, ctx) {
   const g = evaluer(c.leftValue, ctx);
   const op = c.operator || {};
-  if (op.type === 'boolean' && op.operation === 'true') return g === true;
-  if (op.type === 'number' && op.operation === 'equals') return typeof g === 'number' && g === c.rightValue;
+  if (op.type === 'boolean' && op.operation === 'true') {
+    if (typeof g !== 'boolean') throw new Error(`IF strict : booléen attendu (${typeof g})`);
+    return g === true;
+  }
+  if (op.type === 'number' && op.operation === 'equals') {
+    if (typeof g !== 'number') throw new Error(`IF strict : nombre attendu (${typeof g})`);
+    return g === c.rightValue;
+  }
   throw new Error(`opérateur IF non simulé : ${JSON.stringify(op)}`);
 }
 
@@ -50,7 +62,8 @@ async function executerGraphe(wf, { corps, entetes = {}, reponses = {}, executio
     const n = parNom.get(nom);
     let parSortie; // tableau indexé par sortie : items ou null
     try {
-      if (n.type === 'n8n-nodes-base.webhook') parSortie = [[{ json: { headers: entetes, params: {}, query: {}, body: corps } }]];
+      if (n.disabled && n.type !== 'n8n-nodes-base.webhook') parSortie = [entree];
+      else if (n.type === 'n8n-nodes-base.webhook') parSortie = [[{ json: { headers: entetes, params: {}, query: {}, body: corps } }]];
       else if (n.type === 'n8n-nodes-base.code') {
         const $input = { all: () => entree, first: () => entree[0] };
         const fn = vm.runInNewContext(`(async function () {\n${n.parameters.jsCode}\n})`, { $input, $, $execution: { id: executionId }, ...contexteCode });
@@ -73,6 +86,8 @@ async function executerGraphe(wf, { corps, entetes = {}, reponses = {}, executio
         try {
           if (!reponses[n.name]) throw new Error(`réponse simulée absente pour ${n.name}`);
           rep = await reponses[n.name](requete);
+          const suivre = !(n.parameters.options && n.parameters.options.redirect && n.parameters.options.redirect.redirect && n.parameters.options.redirect.redirect.followRedirects === false);
+          for (let k = 0; suivre && rep.statusCode >= 300 && rep.statusCode < 400 && k < 21; k += 1) rep = await reponses[n.name]({ ...requete, url: (rep.headers || {}).location });
           if (!opt.neverError && rep.statusCode >= 400) throw new Error(`HTTP ${rep.statusCode}`);
         } catch (e) {
           if (n.onError === 'continueErrorOutput') { parSortie = [null, [{ json: { error: { message: e.message } } }]]; rep = null; } else throw e;
@@ -80,7 +95,9 @@ async function executerGraphe(wf, { corps, entetes = {}, reponses = {}, executio
         if (rep) parSortie = [[{ json: json(opt.fullResponse ? { statusCode: rep.statusCode, headers: {}, body: rep.body } : rep.body) }], null];
       } else throw new Error(`type de nœud non simulé : ${n.type}`);
     } catch (e) {
-      return { status: 'error', noeudErreur: n.name, erreur: e.message, runData, requetes, sorties, reponseWebhook };
+      const modeNoeud = depart.parameters && depart.parameters.responseMode === 'responseNode';
+      const repondu = reponseWebhook || (modeNoeud ? { code: 500, corps: { message: 'Error in workflow' }, noeud: '(gestionnaire webhook n8n)' } : null);
+      return { status: 'error', noeudErreur: n.name, erreur: e.message, runData, requetes, sorties, reponseWebhook: repondu };
     }
     const principale = parSortie.find((x) => x) || [];
     sorties[n.name] = principale;

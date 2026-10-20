@@ -330,7 +330,8 @@ function construireWorkflowPortier() {
         sendBody: true, specifyBody: 'json',
         // Corps construit EXPLICITEMENT : exactement { set_id, ref }, jamais $json.
         jsonBody: `={{ JSON.stringify({ set_id: ${VC}.set_id, ref: ${VC}.ref }) }}`,
-        options: { response: { response: { fullResponse: true, neverError: true } }, timeout: 30000 },
+        // Redirections JAMAIS suivies (suivies par défaut en 4.2, y compris en POST) : un 3xx -> 504.
+        options: { redirect: { redirect: { followRedirects: false } }, response: { response: { fullResponse: true, neverError: true } }, timeout: 30000 },
       },
     },
     si(P.siAcceptee, '={{ $json.statusCode }}', { type: 'number', operation: 'equals' }, 200),

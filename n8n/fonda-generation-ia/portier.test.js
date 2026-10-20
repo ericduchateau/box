@@ -78,8 +78,12 @@ describe('portier : export, structure, jetons', () => {
     assert.notEqual(t.retryOnFail, true);
     assert.equal(t.onError, 'continueErrorOutput');
     assert.deepEqual(t.parameters.options.response.response, { fullResponse: true, neverError: true });
+    assert.deepEqual(t.parameters.options.redirect, { redirect: { followRedirects: false } }, 'redirections jamais suivies (suivies par défaut en 4.2)');
     for (const n of PORTIER.nodes.filter((x) => x.name !== P.transmettre)) assert.equal(n.onError, undefined, `${n.name} : onError interdit`);
     assert.ok(PORTIER.nodes.every((n) => n.retryOnFail !== true && n.continueOnFail !== true && n.alwaysOutputData !== true));
+  });
+  test('aucun nœud désactivé (un IF désactivé laisserait passer un corps malformé vers la génération)', () => {
+    assert.ok(PORTIER.nodes.every((n) => n.disabled !== true));
   });
   test('chaque Respond fixe EXPLICITEMENT son code (400, 202, 504 ; 200 par défaut sinon)', () => {
     const codes = Object.fromEntries(PORTIER.nodes.filter((n) => n.type === 'n8n-nodes-base.respondToWebhook').map((n) => [n.name, n.parameters.options.responseCode]));
@@ -129,6 +133,8 @@ describe('portier : comportement', () => {
     ['500 interne', () => ({ statusCode: 500, body: { message: 'Error in workflow' } })],
     ['404 (workflow de génération inactif)', () => ({ statusCode: 404, body: { message: 'webhook not registered' } })],
     ['2xx inattendu (204)', () => ({ statusCode: 204, body: '' })],
+    ['redirection 307 (jamais suivie)', () => ({ statusCode: 307, headers: { location: 'https://ailleurs.example/accepte' }, body: '' })],
+    ['redirection 302 (jamais suivie)', () => ({ statusCode: 302, headers: { location: 'https://ailleurs.example/accepte' }, body: '' })],
   ];
   for (const [nom, rep] of incertains) {
     test(`${nom} -> 504 « observer, ne jamais renvoyer », un seul appel`, async () => {
@@ -139,6 +145,36 @@ describe('portier : comportement', () => {
       assert.equal(appels, 1);
     });
   }
+});
+
+describe('portier : échecs internes (limite documentée : 500, état inconnu)', () => {
+  const copie = () => JSON.parse(JSON.stringify(PORTIER));
+  test('échec AVANT transmission -> 500 du gestionnaire n8n, aucun appel à la génération', async () => {
+    const w = copie();
+    const v = w.nodes.find((n) => n.name === P.valider);
+    v.parameters.jsCode = `throw new Error('panne simulée');\n${v.parameters.jsCode}`;
+    let appels = 0;
+    const r = await executerGraphe(w, { corps: CORPS, reponses: { [P.transmettre]: () => { appels += 1; return accepter(); } } });
+    assert.equal(r.status, 'error');
+    assert.equal(r.reponseWebhook.code, 500);
+    assert.equal(appels, 0);
+  });
+  test('échec APRÈS transmission -> 500, génération DÉJÀ lancée : l\'appelant traite 500 comme « inconnu »', async () => {
+    const w = copie();
+    w.nodes.find((n) => n.name === P.accepte).parameters.responseBody = '={{ (() => { throw new Error("panne simulée"); })() }}';
+    let appels = 0;
+    const r = await executerGraphe(w, { corps: CORPS, reponses: { [P.transmettre]: () => { appels += 1; return accepter(); } } });
+    assert.equal(r.reponseWebhook.code, 500);
+    assert.equal(appels, 1, 'la génération a été appelée : un renvoi créerait un doublon');
+  });
+  test('simulateur fidèle : IF strict lève sur un type inattendu ; nœud désactivé = passage direct', async () => {
+    const w = copie();
+    w.nodes.find((n) => n.name === P.siValide).disabled = true;
+    const r = await executerGraphe(w, { corps: { ...CORPS, x: 1 }, reponses: { [P.transmettre]: accepter } });
+    assert.deepEqual(JSON.parse(r.requetes[P.transmettre].jsonBody), {}, 'IF désactivé : le malformé partirait vers la génération (d\'où le test structurel)');
+    const r2 = await executerGraphe(PORTIER, { corps: CORPS, reponses: { [P.transmettre]: () => ({ statusCode: '200', body: {} }) } });
+    assert.equal(r2.reponseWebhook.code, 500, 'statusCode non numérique : IF strict en échec -> 500');
+  });
 });
 
 // --- 3. Jusqu'au signataire -------------------------------------------------------------------
@@ -173,6 +209,22 @@ async function bout(corps, journal) {
   return { r, generations, constats, examinees, complet };
 }
 
+const lireMultipart = (requete) => {
+  const frontiere = /boundary=(.+)$/.exec(requete.rawContentType)[1];
+  const parties = requete.body.split(`--${frontiere}`);
+  const partie = (x) => x.split('\r\n\r\n').slice(1).join('\r\n\r\n').replace(/\r\n$/, '');
+  return { metadonnees: JSON.parse(partie(parties[1])), contenu: partie(parties[2]) };
+};
+const reponsesCompletes = (journal) => ({
+  ...reponsesGeneration(journal),
+  [N.ia]: () => ({ statusCode: 200, body: FX.reponse_ia }),
+  [N.deposer]: (q) => { const { metadonnees } = lireMultipart(q); return { statusCode: 200, body: { id: FX.fichier_drive_id, name: metadonnees.name, parents: metadonnees.parents, properties: metadonnees.properties } }; },
+});
+const versBrute = (g, id) => ({
+  id, workflowId: GEN.id, status: g.status, mode: 'webhook', startedAt: '2026-10-20T07:00:00.000Z', stoppedAt: '2026-10-20T07:00:05.000Z',
+  workflowData: {}, data: { resultData: { runData: g.runData } },
+});
+
 describe('portier -> génération -> signataire', () => {
   const sansReservation = { schema: 'set-ids-journal/v1', lignes: [] };
   test('malformé : aucune exécution du workflow audité, aucun constat', async () => {
@@ -194,6 +246,34 @@ describe('portier -> génération -> signataire', () => {
     const c2 = new L.Constats();
     L.classerExecutions({ setId: FX.set_id, examinees, complet, vueFichiers: L.INDISPONIBLE, constats: c2 });
     assert.ok(c2.liste.every((c) => c.issue === 'abandon'));
+  });
+  const avecReservation = { schema: 'set-ids-journal/v1', lignes: [{ set_id: FX.set_id, transition: 'reserve', le: '2026-10-20', ref: FX.ref }] };
+  test('génération lancée puis réponse PERDUE -> 504 « inconnu », la génération a bien tourné (ne jamais renvoyer)', async () => {
+    let g = null;
+    const r = await portier(CORPS, async (q) => {
+      g = await executerGraphe(GEN, { corps: JSON.parse(q.jsonBody), reponses: reponsesCompletes(avecReservation), executionId: '710' });
+      const e = new Error('socket hang up'); e.code = 'ECONNRESET'; throw e;
+    });
+    assert.equal(r.reponseWebhook.code, 504);
+    assert.equal(g.status, 'success', g.erreur);
+    assert.ok(g.requetes[N.deposer], 'candidat déposé malgré la réponse perdue');
+  });
+  test('tentative en erreur attribuable PUIS réussite : le signataire retient la réussite, la tentative est tolérée', async () => {
+    const g1 = await executerGraphe(GEN, { corps: CORPS, reponses: reponsesGeneration({ schema: 'set-ids-journal/v1', lignes: [] }), executionId: '720' });
+    const g2 = await executerGraphe(GEN, { corps: CORPS, reponses: reponsesCompletes(avecReservation), executionId: '721' });
+    assert.equal(g1.status, 'error');
+    assert.equal(g2.status, 'success', g2.erreur);
+    const brutes = [versBrute(g1, '720'), versBrute(g2, '721')];
+    brutes[0].stoppedAt = '2026-10-20T06:59:00.000Z'; brutes[0].startedAt = '2026-10-20T06:58:00.000Z';
+    const constats = new L.Constats();
+    const x = brutes.map((b) => ({ id: b.id, workflowId: GEN.id, status: b.status, startedAt: b.startedAt, stoppedAt: b.stoppedAt }));
+    const { examinees, complet } = L.examinerExecutions({ executions: x, details: new Map(brutes.map((b) => [b.id, b])), constats, normaliserDate: (d) => d });
+    const { metadonnees } = lireMultipart(g2.requetes[N.deposer]);
+    const fichier = { id: FX.fichier_drive_id, nom: metadonnees.name, modifie_le: '2026-10-20T07:00:04.000Z', properties: metadonnees.properties, proprietesLisibles: true };
+    const vueFichiers = L.examinerFichiers({ setId: FX.set_id, fichiers: [fichier], constats });
+    const { retenue } = L.classerExecutions({ setId: FX.set_id, examinees, complet, vueFichiers, constats });
+    assert.deepEqual(constats.liste, []);
+    assert.equal(retenue.x.id, '721');
   });
 });
 
