@@ -226,7 +226,7 @@ function rapprocher({ setId, retenue, fichier, brute, workflowId, journalCommit,
     // pinData : ABSENT, null ou objet VIDE = rien d'épinglé (sûr). Objet NON vide = un nœud épinglé
     // (génération potentiellement truquée) ; tableau ou autre type = malformé -> inexploitable.
     const pinVide = pin === undefined || pin === null || (typeof pin === 'object' && !Array.isArray(pin) && Object.keys(pin).length === 0);
-    if (!pinVide) abandon(`exécution ${x.id} : pinData non vide (données épinglées) — inexploitable`);
+    if (!pinVide) abandon(`exécution ${x.id} : pinData ni absent, ni null, ni objet vide (données épinglées ou type invalide) — inexploitable`);
   }
   if (!brute) return null;
   const sortie = itemUnique(brute, NOEUD_SORTIE);
