@@ -179,6 +179,9 @@ describe('export : structure, inactif, sans pinData', () => {
       assert.equal(n.parameters.options.response, undefined, `${n.name} : options.response`);
     }
   });
+  test('plafond de l\'API contents (1 Mo) : fichiers lus par le workflow sous 900 Ko (alerte précoce en CI)', () => {
+    for (const f of [J, R, MO]) assert.ok(lireOctets(f).length < 900 * 1024, `${f} approche 1 Mo : passer à l'API git/blobs avant`);
+  });
   test('fichiers du dépôt lus par l\'API contents AU commit consigné (octets exacts)', () => {
     for (const [nom, chemin] of [[N.journal, J], [N.referentiel, R], [N.moteurs, MO]]) {
       assert.equal(noeud(nom).parameters.url, `={{ 'https://api.github.com/repos/ericduchateau/box/contents/${chemin}?ref=' + $('${N.fixer}').first().json.journal_commit }}`);
@@ -263,7 +266,7 @@ describe('code embarqué : identique au dépôt', () => {
       assert.equal(o.texteUtf8(d), t);
     }
     for (const mauvais of [[0x80], [0xc0, 0x80], [0xe0, 0x80, 0x80], [0xed, 0xa0, 0x80], [0xf4, 0x90, 0x80, 0x80], [0xc3]]) assert.throws(() => o.texteUtf8(mauvais), /UTF-(8|16)/, JSON.stringify(mauvais));
-    for (const mauvais of ['abc', 'a$==', '====']) assert.throws(() => o.octetsBase64(mauvais), /base64/);
+    for (const mauvais of ['abc', 'a$==', '====', 'YR==', 'YWJ=', 'Y=Q=']) assert.throws(() => o.octetsBase64(mauvais), /base64/, mauvais);
   });
   test('SHA-256 en JavaScript pur = node:crypto (longueurs limites, UTF-8 hors BMP)', () => {
     const outils = vm.runInNewContext(`${B.OUTILS}\n;({ octetsUtf8, sha256Hex })`, {});
@@ -425,6 +428,9 @@ describe('refus avant dépôt (aucun fichier candidat)', () => {
     ['set_id déjà publié', { reponses: { [N.journal]: () => contenuGithub(J, JSON.stringify({ schema: 'set-ids-journal/v1', lignes: [...JOURNAL.lignes, { set_id: FX.set_id, transition: 'publie', le: '2026-10-20', ref: `${FX.ref}:publie` }] })) } }, N.preparer],
     ['candidat déjà déposé', { reponses: { [N.existant]: () => ({ files: [{ id: 'z', name: `${FX.set_id}.lot.json` }] }) } }, N.preparer],
     ['listing paginé', { reponses: { [N.existant]: () => ({ files: [], nextPageToken: 't' }) } }, N.preparer],
+    ['fichier > 1 Mo (contents sans base64)', { reponses: { [N.referentiel]: () => ({ ...contenuGithub(R, lireOctets(R)), encoding: 'none', content: '' }) } }, N.preparer],
+    ['taille incohérente', { reponses: { [N.referentiel]: () => ({ ...contenuGithub(R, lireOctets(R)), size: 1 }) } }, N.preparer],
+    ['autre chemin renvoyé', { reponses: { [N.referentiel]: () => contenuGithub('fonda/data/autre.json', lireOctets(R)) } }, N.preparer],
     ['moteur du registre ≠ moteur embarqué', { reponses: { [N.moteurs]: () => contenuGithub(MO, JSON.stringify([{ version: 'v1', sha256: '0'.repeat(64) }])) } }, N.preparer],
     ['modèle de la réponse ≠ épinglé (aucun repli)', { reponses: { [N.ia]: () => ({ ...FX.reponse_ia, model: 'claude-sonnet-5-5-20990101' }) } }, N.construire],
     ['modèle absent de la réponse', { reponses: { [N.ia]: () => { const x = { ...FX.reponse_ia }; delete x.model; return x; } } }, N.construire],

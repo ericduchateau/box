@@ -32,6 +32,11 @@ CDC relecture v8.3, §20.14 étape 4. Le workflow est **complet**, **créé INAC
 - un appel authentifié mais mal formé crée une exécution en erreur sans déclencheur exploitable ; le signataire la classe « incident » et suspend les clôtures, ce qui reste fail-closed ;
 - deux appels simultanés pour un même set_id peuvent déposer deux fichiers, car Drive n'impose pas l'unicité ; le signataire abandonne et il faut une nouvelle réservation. Jamais de signature erronée.
 
+**Limites d'exploitation (relecture Codex r2).**
+- *Cadence* : chaque génération fait 4 appels REST GitHub non authentifiés, alors que la limite est de 60 par heure et par IP, partagée avec les autres usages de l'instance. L'appelant de l'étape 5 lance donc **au plus 10 générations par heure**. Au-delà, l'exécution échoue avant l'appel au modèle : refus sûr, aucun dépôt.
+- *Taille* : l'API contents ne renvoie le contenu base64 que **jusqu'à 1 Mo**. Le journal grossit à chaque réservation : 4,6 Ko le 2026-10-20. Le harnais échoue en CI dès qu'un fichier lu dépasse 900 Ko, et il faudra alors passer à l'API `git/blobs`. Au-delà de 1 Mo, le workflow refuse (`encoding ≠ base64`) : refus sûr.
+- *Jeton* : le nœud webhook enregistre les en-têtes de la requête, dont `X-FONDA-Token`, dans les données d'exécution conservées (§20.10). Ces données restent sur l'instance, qui n'est accessible qu'à Éric et à l'API. On ne les exporte jamais. Si elles devaient sortir de l'instance, il faudrait régénérer le jeton. Un jeton révélé permet seulement de **déclencher** une génération, qui exige de toute façon une réservation au journal.
+
 **Erreurs.** Une erreur **avant** le dépôt ne laisse aucun fichier. Une erreur **après** le dépôt (réponse Drive incohérente) laisse un fichier rattaché à une exécution en erreur : le signataire abandonne (§20.2). Il n'y a pas de branche d'erreur ni de `continueOnFail`, par choix : tout échec arrête la chaîne.
 
 ## Validation (rapport joint à la PR)

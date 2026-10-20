@@ -186,6 +186,8 @@ function octetsBase64(b64) {
   for (let i = 0; i < s.length; i += 4) {
     const v = [0, 1, 2, 3].map((k) => (s[i + k] === '=' ? 0 : A.indexOf(s[i + k])));
     const n = (v[0] << 18) | (v[1] << 12) | (v[2] << 6) | v[3];
+    // Bits de remplissage nuls exigés (forme canonique) : « YR== » refusé (≠ « YQ== »).
+    if ((s[i + 2] === '=' && (v[1] & 0x0f) !== 0) || (s[i + 3] === '=' && s[i + 2] !== '=' && (v[2] & 0x03) !== 0)) throw new Error('base64 non canonique');
     o.push((n >> 16) & 255);
     if (s[i + 2] !== '=') o.push((n >> 8) & 255);
     if (s[i + 3] !== '=') o.push(n & 255);
