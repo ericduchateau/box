@@ -33,8 +33,8 @@ Toutes les commandes ci-dessous s'exécutent dans le **terminal du VPS** (l'hôt
 
 ### (b1) Constater d'abord (lecture seule, aucune interruption)
 1. Identifier les conteneurs du projet :
-   `docker ps --no-trunc --format '{{.ID}}  {{.Names}}  {{.Image}}  {{.Label "com.docker.compose.project"}}  {{.Label "com.docker.compose.service"}}  {{.Label "com.docker.compose.project.working_dir"}}  {{.Label "com.docker.compose.project.config_files"}}'`
-   Pour le conteneur n8n, noter : **ID**, **nom**, **projet**, **service**, **dossier de travail** et **fichier(s) Compose** (liste séparée par des virgules, **dans cet ordre**). Noter aussi le **service et le conteneur de la base** (Postgres) s'il y en a un.
+   `docker ps --no-trunc --format '{{.ID}}  {{.Names}}  {{.Image}}  {{.Label "com.docker.compose.project"}}  {{.Label "com.docker.compose.service"}}  {{.Label "com.docker.compose.project.working_dir"}}  {{.Label "com.docker.compose.project.config_files"}}  {{.Label "com.docker.compose.project.environment_file"}}'`
+   Pour le conteneur n8n, noter : **ID**, **nom**, **projet**, **service**, **dossier de travail**, **fichier(s) Compose** (liste séparée par des virgules, **dans cet ordre**) et **fichier(s) d'environnement** du déploiement (dernier label ; vide = `.env` du dossier par défaut). Noter aussi le **service et le conteneur de la base** (Postgres) s'il y en a un.
    **Si l'un des labels projet, service, dossier ou fichiers est vide : ARRÊT** (installation hors Compose ou inconnue). Prévenir Claude.
 2. **Identité réelle de l'image** (le texte de la colonne IMAGE ne suffit pas) : `docker inspect <ID n8n> --format '{{.Image}}'`, qui donne un `sha256:…`. Noter cette valeur : c'est **ImageID AVANT**.
 3. Lire la valeur effective : `docker exec <ID n8n> printenv EXECUTIONS_DATA_PRUNE`.
@@ -46,28 +46,40 @@ Toutes les commandes ci-dessous s'exécutent dans le **terminal du VPS** (l'hôt
    **Si un de ces montages manque : ARRÊT**, ne rien recréer (la recréation effacerait les données), prévenir Claude.
 
 ### (b2) Préparer (sans interruption)
-Toutes les commandes Compose se lancent **depuis le dossier de travail noté**, avec **un `-f` par fichier, dans l'ordre noté**. Abréviation utilisée ensuite :
-`DC = docker compose -p <projet> --project-directory <dossier> -f <fichier1> [-f <fichier2> …]`
-(Si un `.env` existe dans ce dossier, il est relu automatiquement : ne pas le déplacer.)
+Toutes les commandes Compose passent par une **fonction shell** qui reprend **exactement** le contexte du déploiement. Elle est définie une fois, dans le terminal du VPS, avec les valeurs notées en (b1), entre guillemets, un `-f` par fichier dans l'ordre, et un `--env-file` par fichier d'environnement noté. Si ce label est vide, on n'en met pas : le `.env` du dossier est alors lu automatiquement.
 
+```sh
+dc() { docker compose -p "<projet>" --project-directory "<dossier>" \
+  -f "<fichier1>" [-f "<fichier2>" …] [--env-file "<env1>" …] "$@"; }
+type dc   # vérifier que la fonction est bien définie
+```
+
+0. **Prouver que ce contexte reconstruit la PRODUCTION**, avant toute édition (sinon **ARRÊT** : un contexte différent pourrait changer autre chose, par exemple un mot de passe de base, sans que le diff le montre) :
+   - `dc config <service n8n>` : relever la section `environment` du service n8n ;
+   - `docker exec <ID n8n> printenv` : **chaque** variable listée dans cette section doit avoir **exactement la même valeur** dans le conteneur (variable par variable ; les variables propres à l'image, absentes du Compose, sont ignorées) ;
+   - **montages et ports** : `docker inspect <ID n8n> --format '{{json .Mounts}} {{json .HostConfig.PortBindings}}'`, à comparer aux sections `volumes` et `ports` de `dc config <service n8n>` ;
+   - même vérification pour le service de la base (`dc config <service base>`, puis `docker exec <ID base> printenv`, puis `docker inspect`) ;
+   - **variables du shell** : `dc config` ne doit afficher **aucun avertissement** « variable is not set ». Une variable venue du shell du déploiement initial, absente ici, la ferait apparaître.
+
+   Toute différence : **ARRÊT**, rien n'est modifié, prévenir Claude. Ces sorties contiennent des secrets : ne pas les copier ailleurs.
 1. **Sauvegardes** :
    - (i) **copie exacte** de chaque fichier Compose (et du `.env` s'il existe) avant édition : `cp -p <fichier> <fichier>.avant-prune-AAAAMMJJ` ;
    - (ii) **instantané du VPS** dans hPanel (Snapshots / Backups), heure notée. C'est un **recours ultime avec perte possible** : le restaurer effacerait toutes les écritures (BOX comprises) faites depuis sa prise. Ce n'est pas un retour arrière ordinaire.
-2. **Configuration résolue AVANT** (fichier local, jamais publié : elle contient des secrets) : `$DC config > /root/compose-avant.yml`.
+2. **Configuration résolue AVANT** (fichier local, jamais publié : elle contient des secrets) : `dc config > /root/compose-avant.yml`.
 3. **Éditer** le fichier Compose : sous le service n8n, bloc `environment:`,
    - si `EXECUTIONS_DATA_PRUNE` **n'existe pas** → **ajouter** `- EXECUTIONS_DATA_PRUNE=false` (ou `EXECUTIONS_DATA_PRUNE: "false"` en forme clé: valeur) ;
    - si elle **existe** → **remplacer sa valeur** par `false` et **noter la valeur initiale**.
 
    Une variable écrite dans le `.env` ne suffit pas : elle n'entre dans le conteneur que si le Compose la référence (`env_file:` ou `${…}` sous `environment:`).
-4. **Démontrer que SEULE cette variable change** : `$DC config > /root/compose-apres.yml && diff -u /root/compose-avant.yml /root/compose-apres.yml`.
+4. **Démontrer que SEULE cette variable change** : `dc config > /root/compose-apres.yml && diff -u /root/compose-avant.yml /root/compose-apres.yml`.
    Le diff doit contenir **une seule** modification, **dans le bloc du service n8n**, sur `EXECUTIONS_DATA_PRUNE`, avec la valeur `"false"`. Toute autre ligne différente : **ARRÊT**, restaurer la copie (i), prévenir Claude.
-5. **Image figée** : `$DC config --images` doit citer pour n8n la même référence que la colonne IMAGE de (b1), et `docker image inspect <cette référence> --format '{{.Id}}'` doit être **égal à ImageID AVANT**. Sinon (le tag local désigne désormais une autre image) : **ARRÊT**.
+5. **Image figée** : `dc config --images` doit citer pour n8n la même référence que la colonne IMAGE de (b1), et `docker image inspect <cette référence> --format '{{.Id}}'` doit être **égal à ImageID AVANT**. Sinon (le tag local désigne désormais une autre image) : **ARRÊT**.
 6. **Avant l'arrêt** : n8n → menu **Executions** : aucune exécution BOX `Running`. Sinon, attendre.
 
 ### (b3) Recréer (heures creuses, quelques secondes à une minute d'interruption)
 Un **Restart** (bouton, ou `docker compose restart`) **ne recharge pas** l'environnement. Le bouton **Update** de hPanel peut **mettre à jour l'image** : **ne pas l'utiliser**.
 
-`$DC up -d --no-deps --no-build --pull never <service n8n>`
+`dc up -d --no-deps --no-build --pull never <service n8n>`
 
 - `--no-deps` : la base et les autres services ne sont pas recréés.
 - `--pull never --no-build` : aucun téléchargement ni aucune construction d'image (cela empêche un changement d'image mais ne le prouve pas : d'où le contrôle (b4.1)).
@@ -75,7 +87,7 @@ Un **Restart** (bouton, ou `docker compose restart`) **ne recharge pas** l'envir
 ### (b4) Contrôler
 1. `docker ps --no-trunc` : **nouvel ID** du conteneur n8n (≠ ID AVANT). Puis `docker inspect <nouvel ID> --format '{{.Image}}'` = **ImageID AVANT** (identité réelle).
 2. `docker exec <nouvel ID> printenv EXECUTIONS_DATA_PRUNE` → **exactement `false`**.
-   - **Sinon : recette NON CONFORME.** Ne pas recréer à nouveau à l'aveugle : vérifier la cible et `$DC config` avec Claude.
+   - **Sinon : recette NON CONFORME.** Ne pas recréer à nouveau à l'aveugle : vérifier la cible et `dc config` avec Claude.
 3. **Production BOX** :
    - les 9 workflows BOX attendus sont **Active** ;
    - le menu Executions ne montre aucune erreur nouvelle depuis la recréation ;
@@ -83,7 +95,7 @@ Un **Restart** (bouton, ou `docker compose restart`) **ne recharge pas** l'envir
    - si possible, une fiche s'ouvre.
 4. **Retour arrière exact** en cas d'échec d'un contrôle BOX :
    1. restaurer la **copie exacte** (b2.1-i) du ou des fichiers Compose (`cp -p <fichier>.avant-prune-AAAAMMJJ <fichier>`) ;
-   2. vérifier que `$DC config` est identique à `/root/compose-avant.yml` ;
+   2. vérifier que `dc config` est identique à `/root/compose-avant.yml` ;
    3. recréer avec la même commande (b3) ;
    4. vérifier que `printenv` donne la **valeur initiale**.
 
@@ -115,6 +127,8 @@ Vérifié par                        : ______________________
   Projet / service n8n / service base   : __________ / __________ / __________
   Dossier de travail                    : __________
   Fichier(s) Compose (ordre)            : __________
+  Fichier(s) d'environnement            : __________ (ou « .env par défaut »)
+  Contexte = production (b2.0) ?        : oui / non (non → ARRÊT)
   ID conteneur n8n AVANT                : __________
   ImageID AVANT (sha256)                : __________
   printenv AVANT                        : __________
