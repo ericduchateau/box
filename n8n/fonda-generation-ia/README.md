@@ -2,6 +2,14 @@
 
 CDC relecture v8.3, §20.14 étape 4. Le workflow est **complet**, **créé INACTIF** dans l'instance et **jamais exécuté pour de vrai** avant la recette §20.8. À cette recette : régénérer la clé Anthropic, capturer le vrai champ `model` d'un appel, remplir `fonda/data/modeles-autorises.json` (vide jusque-là), puis relire et merger.
 
+- **Portier (dette B, plan étape 5, lot 3)** : workflow NON audité « BOX - FONDA Generation IA (portier) », créé INACTIF. workflowId du portier : `MkYrdhgTo52nA3av`. L'appelant n'appelle **que** le portier (`POST /webhook/box-fonda-generation-ia-portier`, en-tête `X-FONDA-Token` = credential « FONDA Portier Token » `sdVd72oXHCWhIxTd`). Le portier :
+  - valide `{ set_id, ref }` par `validerDeclencheur`, code identique à celui de l'entrée de génération ;
+  - répond **400** sur un corps malformé, **sans appeler** la génération : aucune exécution auditée n'est créée ;
+  - sinon transmet **exactement** `{ set_id, ref }` au webhook de génération, avec la credential `GfnXr5hYrYgC5RwA` (jeton distinct, F5), sans nouvel essai ;
+  - répond **202** si la génération a **accepté** l'appel (200 immédiat, `onReceived`). C'est une acceptation, pas une fin de génération ;
+  - répond **504** `{ etat: 'inconnu' }` dans tous les autres cas (délai dépassé, connexion refusée, 401, 404, 500, 2xx inattendu). Consigne : **observer, ne jamais renvoyer**.
+
+  Harnais : `portier.test.js`, simulateur `simulateur.js`.
 - **workflowId de l'instance : `vrqgtS5kQMvP9Ok5`.** C'est l'identifiant à épingler dans `config.workflowGeneration` à l'étape 5.
 - Artefact relu : `box-fonda-generation-ia.json`, **export exact** du live (`GET /api/v1/workflows/vrqgtS5kQMvP9Ok5`, identique à `n8n_get_workflow`), indenté à 2 espaces. On retire **un seul** champ, `shared` : ce sont les métadonnées du propriétaire, qui contiennent son adresse e-mail, interdite dans le dépôt public. Après toute modification live, ré-exporter et committer : le diff git doit refléter l'état réel.
 - Le JSON est **construit** par `construire-workflow.js` à partir du dépôt. Les nœuds Code embarquent, à l'identique, `catalogue.js`, `journal-set-ids.js`, `generation.js`, `moteur-correction-v1.js` et `canonique.js`, ainsi que les fonctions pures de `generer-lot-fonda.js`, `moteurs.js` et `liaison-generation.js`. **Ne jamais éditer les nœuds Code dans l'interface** : on modifie le dépôt, on reconstruit, on met à jour le live, on ré-exporte.

@@ -47,6 +47,11 @@ const CONFIG = Object.freeze({
   // Header Auth du webhook (en-tête X-FONDA-Token) : RÉFÉRENCE par id seulement ; la
   // valeur du jeton vit dans n8n, jamais dans le dépôt ni dans une conversation.
   credentialWebhook: { id: 'GfnXr5hYrYgC5RwA', name: 'FONDA Webhook Token' },
+  // Portier (dette B) : jeton DISTINCT, détenu par l'appelant (Mac d'Éric) seulement.
+  nomPortier: 'BOX - FONDA Generation IA (portier)',
+  cheminPortier: 'box-fonda-generation-ia-portier',
+  credentialPortier: { id: 'sdVd72oXHCWhIxTd', name: 'FONDA Portier Token' },
+  urlGeneration: 'https://n8n.srv868991.hstgr.cloud/webhook/box-fonda-generation-ia',
 });
 
 const NOEUDS = Object.freeze({
@@ -236,19 +241,114 @@ const UN_ITEM = (noeud) => `function unItem(nom) {
 }`;
 
 // --- Nœuds Code ------------------------------------------------------------------------------
+// Validation UNIQUE du déclencheur (dette B) : injectée À L'IDENTIQUE dans « Valider corps »
+// (portier) et « FONDA Entree generation » (workflow audité) — égalité prouvée par le harnais.
+// Pure, ne lève JAMAIS : { valide: true, set_id, ref } | { valide: false, erreur }.
+const VALIDER_DECLENCHEUR = `// >>> VALIDATION validerDeclencheur (commune portier / entrée)
+const SET_ID_PATTERN = new RegExp(${JSON.stringify(C.SET_ID_PATTERN.source)}, ${JSON.stringify(C.SET_ID_PATTERN.flags)});
+function validerDeclencheur(corps) {
+  if (!corps || typeof corps !== 'object' || Array.isArray(corps)) return { valide: false, erreur: 'corps JSON objet attendu' };
+  if (Object.keys(corps).sort().join(',') !== 'ref,set_id') return { valide: false, erreur: 'corps : exactement { set_id, ref } attendu' };
+  const { set_id, ref } = corps;
+  if (typeof set_id !== 'string' || !SET_ID_PATTERN.test(set_id)) return { valide: false, erreur: 'set_id invalide' };
+  if (typeof ref !== 'string' || ref.length === 0 || ref.length > 256) return { valide: false, erreur: 'ref invalide (chaîne non vide attendue)' };
+  return { valide: true, set_id, ref };
+}
+// <<< VALIDATION validerDeclencheur`;
+
 function codeEntree() {
   return [
     ENTETE('déclencheur : { set_id, ref } extraits du corps du webhook, rien d\'autre.'),
-    `const SET_ID_PATTERN = new RegExp(${JSON.stringify(C.SET_ID_PATTERN.source)}, ${JSON.stringify(C.SET_ID_PATTERN.flags)});`,
+    VALIDER_DECLENCHEUR,
     UN_ITEM(NOEUDS.entree),
-    `const corps = unItem(null).body;
-if (!corps || typeof corps !== 'object' || Array.isArray(corps)) throw new Error('corps JSON objet attendu');
-if (Object.keys(corps).sort().join(',') !== 'ref,set_id') throw new Error('corps : exactement { set_id, ref } attendu');
-const { set_id, ref } = corps;
-if (typeof set_id !== 'string' || !SET_ID_PATTERN.test(set_id)) throw new Error('set_id invalide');
-if (typeof ref !== 'string' || ref.length === 0 || ref.length > 256) throw new Error('ref invalide (chaîne non vide attendue)');
-return [{ json: { set_id, ref } }];`,
+    `const v = validerDeclencheur(unItem(null).body);
+if (!v.valide) throw new Error(v.erreur); // appel direct (hors portier) avec le jeton interne seulement
+return [{ json: { set_id: v.set_id, ref: v.ref } }];`,
   ].join('\n\n');
+}
+
+// --- Portier (dette B) --------------------------------------------------------------------
+const NOEUDS_PORTIER = Object.freeze({
+  webhook: 'Webhook portier',
+  valider: 'Valider corps',
+  siValide: 'Corps valide ?',
+  refus: 'Repondre 400',
+  transmettre: 'Transmettre a la generation',
+  siAcceptee: 'Generation acceptee ?',
+  accepte: 'Repondre 202',
+  inconnu: 'Repondre 504',
+});
+
+function codeValiderCorps() {
+  return [
+    ENTETE('portier : valide { set_id, ref } SANS jamais lever d\'exception (un 400 n\'appelle rien).'),
+    VALIDER_DECLENCHEUR,
+    `const items = $input.all();
+const corps = items.length === 1 && items[0] && items[0].json ? items[0].json.body : undefined;
+const v = items.length === 1 ? validerDeclencheur(corps) : { valide: false, erreur: 'exactement une requête attendue' };
+return [{ json: v }];`,
+  ].join('\n\n');
+}
+
+function construireWorkflowPortier() {
+  const P = NOEUDS_PORTIER;
+  const repondre = (nom, code, corps) => ({
+    name: nom, type: 'n8n-nodes-base.respondToWebhook', typeVersion: 1.1,
+    parameters: { respondWith: 'json', responseBody: corps, options: { responseCode: code } },
+  });
+  const si = (nom, gauche, operateur, droite) => ({
+    name: nom, type: 'n8n-nodes-base.if', typeVersion: 2.2,
+    parameters: {
+      conditions: {
+        options: { caseSensitive: true, leftValue: '', typeValidation: 'strict', version: 2 },
+        conditions: [{ id: uuid(`${nom}:condition`), leftValue: gauche, rightValue: droite, operator: operateur }],
+        combinator: 'and',
+      },
+      options: {},
+    },
+  });
+  const VC = `$('${P.valider}').first().json`;
+  const noeuds = [
+    {
+      name: P.webhook, type: 'n8n-nodes-base.webhook', typeVersion: 2, webhookId: uuid('webhook-portier'),
+      credentials: { httpHeaderAuth: CONFIG.credentialPortier },
+      // Appel sans en-tête X-FONDA-Token valide : refusé par n8n. Réponse par les nœuds Respond.
+      parameters: { httpMethod: 'POST', path: CONFIG.cheminPortier, authentication: 'headerAuth', responseMode: 'responseNode', options: {} },
+    },
+    { name: P.valider, type: 'n8n-nodes-base.code', typeVersion: 2, parameters: { jsCode: codeValiderCorps() } },
+    si(P.siValide, '={{ $json.valide }}', { type: 'boolean', operation: 'true', singleValue: true }, ''),
+    repondre(P.refus, 400, '={{ JSON.stringify({ erreur: $json.erreur }) }}'),
+    {
+      name: P.transmettre, type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, retryOnFail: false,
+      // Erreurs de TRANSPORT (délai, connexion refusée) -> sortie d'erreur -> 504 ; tout statut
+      // HTTP sort par la sortie principale (neverError) avec statusCode (fullResponse).
+      onError: 'continueErrorOutput',
+      credentials: { httpHeaderAuth: CONFIG.credentialWebhook },
+      parameters: {
+        method: 'POST', url: CONFIG.urlGeneration,
+        authentication: 'genericCredentialType', genericAuthType: 'httpHeaderAuth',
+        sendBody: true, specifyBody: 'json',
+        // Corps construit EXPLICITEMENT : exactement { set_id, ref }, jamais $json.
+        jsonBody: `={{ JSON.stringify({ set_id: ${VC}.set_id, ref: ${VC}.ref }) }}`,
+        options: { response: { response: { fullResponse: true, neverError: true } }, timeout: 30000 },
+      },
+    },
+    si(P.siAcceptee, '={{ $json.statusCode }}', { type: 'number', operation: 'equals' }, 200),
+    repondre(P.accepte, 202, `={{ JSON.stringify({ set_id: ${VC}.set_id, ref: ${VC}.ref }) }}`),
+    repondre(P.inconnu, 504, '={{ JSON.stringify({ etat: \'inconnu\', consigne: \'observer, ne jamais renvoyer\' }) }}'),
+  ].map((n, i) => ({ id: uuid(`portier:${n.name}`), position: [i * 220, 0], ...n }));
+  const vers = (nom) => [{ node: nom, type: 'main', index: 0 }];
+  const connections = {
+    [P.webhook]: { main: [vers(P.valider)] },
+    [P.valider]: { main: [vers(P.siValide)] },
+    [P.siValide]: { main: [vers(P.transmettre), vers(P.refus)] },
+    [P.transmettre]: { main: [vers(P.siAcceptee), vers(P.inconnu)] },
+    [P.siAcceptee]: { main: [vers(P.accepte), vers(P.inconnu)] },
+  };
+  return {
+    name: CONFIG.nomPortier, nodes: noeuds, connections,
+    settings: { executionOrder: 'v1', saveDataSuccessExecution: 'all', saveDataErrorExecution: 'all', saveManualExecutions: true, timezone: 'Europe/Paris' },
+  };
 }
 
 function codeFixer() {
@@ -529,6 +629,6 @@ function construireWorkflow() {
   };
 }
 
-module.exports = { CONFIG, NOEUDS, MODULES, construireWorkflow, OUTILS };
+module.exports = { CONFIG, NOEUDS, MODULES, construireWorkflow, OUTILS, NOEUDS_PORTIER, construireWorkflowPortier, VALIDER_DECLENCHEUR };
 
-if (require.main === module) process.stdout.write(JSON.stringify(construireWorkflow(), null, 2) + '\n');
+if (require.main === module) process.stdout.write(JSON.stringify(process.argv.includes('--portier') ? construireWorkflowPortier() : construireWorkflow(), null, 2) + '\n');
