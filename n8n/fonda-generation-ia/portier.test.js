@@ -223,6 +223,7 @@ const reponsesCompletes = (journal) => ({
   ...reponsesGeneration(journal),
   [N.ia]: () => ({ statusCode: 200, body: FX.reponse_ia }),
   [N.deposer]: (q) => { const { metadonnees } = lireMultipart(q); return { statusCode: 200, body: { id: FX.fichier_drive_id, name: metadonnees.name, parents: metadonnees.parents, properties: metadonnees.properties } }; },
+  [N.relister]: () => ({ statusCode: 200, body: { files: [{ id: FX.fichier_drive_id, name: `${FX.set_id}.lot.json` }] } }),
 });
 const versBrute = (g, id) => ({
   id, workflowId: GEN.id, status: g.status, mode: 'webhook', startedAt: '2026-10-20T07:00:00.000Z', stoppedAt: '2026-10-20T07:00:05.000Z',

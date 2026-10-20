@@ -114,6 +114,8 @@ function reponsesNominales(sur = {}) {
     [N.existant]: () => ({ files: [] }),
     [N.ia]: () => FX.reponse_ia,
     [N.deposer]: (r) => { const { metadonnees } = lireMultipart(r); return { id: FX.fichier_drive_id, name: metadonnees.name, parents: metadonnees.parents, properties: metadonnees.properties }; },
+    // Relisting après dépôt : exactement le fichier déposé.
+    [N.relister]: () => ({ files: [{ id: FX.fichier_drive_id, name: `${FX.set_id}.lot.json`, properties: { fonda_set_id: FX.set_id, fonda_execution_id: FX.execution_id } }] }),
     ...sur,
   };
 }
@@ -451,6 +453,37 @@ describe('refus avant dépôt (aucun fichier candidat)', () => {
     const r = await executer(WF, { corps: CORPS, reponses: reponsesNominales({ [N.deposer]: () => ({ id: 'drv-lot', name: `${FX.set_id}.lot.json`, parents: [B.CONFIG.dossierCandidats], properties: { fonda_set_id: FX.set_id } }) }) });
     assert.equal(r.status, 'error');
     assert.equal(r.noeudErreur, N.sortie);
+  });
+  test('« Verifier unicite » : réémet À L\'IDENTIQUE la réponse du dépôt ; la sortie lit le dépôt PAR SON NOM', async () => {
+    const r = await executer(WF, { corps: CORPS, reponses: reponsesNominales() });
+    assert.equal(r.status, 'success', r.erreur);
+    assert.deepEqual(r.sorties[N.unicite], r.sorties[N.deposer]);
+    assert.match(noeud(N.sortie).parameters.jsCode, new RegExp(`unItem\\(${JSON.stringify(N.deposer).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\)`));
+  });
+  const apresDepot = [
+    ['doublon : 2 fichiers pour ce set_id', { files: [{ id: FX.fichier_drive_id }, { id: 'drv-autre' }] }, /doublon détecté/],
+    ['zéro fichier après un dépôt réussi', { files: [] }, /aucun fichier/],
+    ['plusieurs pages (nextPageToken)', { files: [{ id: FX.fichier_drive_id }], nextPageToken: 't' }, /plusieurs pages/],
+    ['recherche incomplète', { files: [{ id: FX.fichier_drive_id }], incompleteSearch: true }, /incomplète/],
+    ['fichier trouvé ≠ fichier déposé', { files: [{ id: 'drv-autre' }] }, /n'est pas celui déposé/],
+    ['réponse inexploitable', { erreur: 'x' }, /inexploitable/],
+  ];
+  for (const [nom, listing, motif] of apresDepot) {
+    test(`après dépôt — ${nom} -> erreur APRÈS dépôt (abandon côté signataire), jamais de sortie`, async () => {
+      const r = await executer(WF, { corps: CORPS, reponses: reponsesNominales({ [N.relister]: () => listing }) });
+      assert.equal(r.status, 'error');
+      assert.equal(r.noeudErreur, N.unicite);
+      assert.match(r.erreur, motif);
+      assert.ok(r.requetes[N.deposer], 'le dépôt a eu lieu');
+      assert.ok(!r.sorties[N.sortie]);
+    });
+  }
+  test('relisting : même requête que la recherche avant dépôt (nom OU propriété), avec incompleteSearch', () => {
+    const a = noeud(N.existant).parameters.queryParameters.parameters;
+    const b = noeud(N.relister).parameters.queryParameters.parameters;
+    assert.equal(b.find((x) => x.name === 'q').value, a.find((x) => x.name === 'q').value);
+    assert.equal(b.find((x) => x.name === 'fields').value, 'nextPageToken,incompleteSearch,files(id,name,properties)');
+    assert.notEqual(noeud(N.relister).retryOnFail, true);
   });
   test('code des nœuds sans Buffer, TextEncoder, crypto ni require réel (contexte nu)', async () => {
     const r = await executer(WF, { corps: CORPS, reponses: reponsesNominales(), contexteCode: {} });

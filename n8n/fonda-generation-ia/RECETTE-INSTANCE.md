@@ -112,6 +112,11 @@ Un **Restart** (bouton, ou `docker compose restart`) **ne recharge pas** l'envir
 
 > Point à confirmer : les menus exacts de hPanel dépendent du modèle d'installation choisi chez Hostinger. Les commandes Docker, elles, sont standard.
 
+## (c) Règles d'exploitation (dette C, à respecter à chaque fenêtre de génération)
+- **Jamais** de bouton « Retry » ni « Execute workflow » sur « BOX - FONDA Generation IA » ou sur son portier : une relance contourne le verrou de l'appelant et peut créer un doublon (le lot serait alors abandonné).
+- Les deux workflows ne sont **actifs que pendant la fenêtre** de génération : les activer juste avant `declencher-generation.js`, puis les désactiver après le dépôt observé.
+- Réponse « inconnu » (504, 500, délai dépassé) : **ne jamais renvoyer**. Lancer `declencher-generation.js --etat <set_id>`, puis `--liberer --motif` seulement si rien n'est observé après le délai de prudence.
+
 ## Bloc de CONSIGNATION (à remplir AVANT le premier vrai run)
 
 ```
