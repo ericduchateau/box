@@ -96,6 +96,10 @@ describe('portier : export, structure, jetons', () => {
     assert.equal(vPortier, B.VALIDER_DECLENCHEUR);
     assert.equal(vEntree, B.VALIDER_DECLENCHEUR);
   });
+  test('webhook de génération en accusé IMMÉDIAT (onReceived, défaut) : jamais lastNode ni responseNode', () => {
+    const m = noeud(GEN, N.webhook).parameters.responseMode;
+    assert.ok(m === undefined || m === 'onReceived', `responseMode ${m}`);
+  });
   test('le harnais de génération interdit toujours tout onError (workflow audité)', () => {
     assert.ok(GEN.nodes.every((n) => n.onError === undefined || n.onError === 'stopWorkflow'));
   });
@@ -225,6 +229,18 @@ const versBrute = (g, id) => ({
   workflowData: {}, data: { resultData: { runData: g.runData } },
 });
 
+// Accusé du webhook interne SELON SA CONFIGURATION (webhook-helpers n8n 2.6.3) : onReceived ->
+// 200 AVANT la fin de la génération ; lastNode/responseNode -> réponse à la fin seulement.
+function lancerGeneration(corps, reponses, executionId) {
+  const fin = executerGraphe(GEN, { corps, reponses, executionId });
+  const m = noeud(GEN, N.webhook).parameters.responseMode;
+  const immediat = m === undefined || m === 'onReceived';
+  return { fin, accuse: immediat ? Promise.resolve(accepter()) : fin.then(() => accepter()) };
+}
+// Porte : la génération reste SUSPENDUE (appel IA) jusqu'à ouverture explicite.
+function porte() { let ouvrir; const p = new Promise((r) => { ouvrir = r; }); return { p, ouvrir }; }
+const delai = (ms, v) => new Promise((r) => setTimeout(() => r(v), ms));
+
 describe('portier -> génération -> signataire', () => {
   const sansReservation = { schema: 'set-ids-journal/v1', lignes: [] };
   test('malformé : aucune exécution du workflow audité, aucun constat', async () => {
@@ -248,15 +264,37 @@ describe('portier -> génération -> signataire', () => {
     assert.ok(c2.liste.every((c) => c.issue === 'abandon'));
   });
   const avecReservation = { schema: 'set-ids-journal/v1', lignes: [{ set_id: FX.set_id, transition: 'reserve', le: '2026-10-20', ref: FX.ref }] };
-  test('génération lancée puis réponse PERDUE -> 504 « inconnu », la génération a bien tourné (ne jamais renvoyer)', async () => {
-    let g = null;
+  test('202 renvoyé PENDANT que la génération est encore suspendue (accusé immédiat), dépôt ensuite', async () => {
+    const pt = porte();
+    const reps = { ...reponsesCompletes(avecReservation), [N.ia]: async () => { await pt.p; return { statusCode: 200, body: FX.reponse_ia }; } };
+    let gen = null;
+    const r = await Promise.race([
+      portier(CORPS, async (q) => { gen = lancerGeneration(JSON.parse(q.jsonBody), reps, '709'); return gen.accuse; }),
+      delai(500, 'BLOQUÉ'),
+    ]);
+    assert.notEqual(r, 'BLOQUÉ', 'le portier attend la fin de la génération : accusé non immédiat');
+    assert.equal(r.reponseWebhook.code, 202);
+    let fini = false; gen.fin.then(() => { fini = true; });
+    await delai(10);
+    assert.equal(fini, false, 'la génération est encore en cours au moment du 202');
+    pt.ouvrir();
+    const g = await gen.fin;
+    assert.equal(g.status, 'success', g.erreur);
+    assert.ok(g.requetes[N.deposer], 'dépôt APRÈS le 202');
+  });
+  test('génération lancée puis réponse PERDUE -> 504 « inconnu » ; la génération dépose PLUS TARD (ne jamais renvoyer)', async () => {
+    const pt = porte();
+    const reps = { ...reponsesCompletes(avecReservation), [N.ia]: async () => { await pt.p; return { statusCode: 200, body: FX.reponse_ia }; } };
+    let gen = null;
     const r = await portier(CORPS, async (q) => {
-      g = await executerGraphe(GEN, { corps: JSON.parse(q.jsonBody), reponses: reponsesCompletes(avecReservation), executionId: '710' });
+      gen = lancerGeneration(JSON.parse(q.jsonBody), reps, '710');
       const e = new Error('socket hang up'); e.code = 'ECONNRESET'; throw e;
     });
     assert.equal(r.reponseWebhook.code, 504);
+    pt.ouvrir();
+    const g = await gen.fin;
     assert.equal(g.status, 'success', g.erreur);
-    assert.ok(g.requetes[N.deposer], 'candidat déposé malgré la réponse perdue');
+    assert.ok(g.requetes[N.deposer], 'candidat déposé APRÈS la réponse perdue');
   });
   test('tentative en erreur attribuable PUIS réussite : le signataire retient la réussite, la tentative est tolérée', async () => {
     const g1 = await executerGraphe(GEN, { corps: CORPS, reponses: reponsesGeneration({ schema: 'set-ids-journal/v1', lignes: [] }), executionId: '720' });
