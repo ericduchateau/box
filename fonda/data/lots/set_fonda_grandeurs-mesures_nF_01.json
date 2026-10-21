@@ -1,0 +1,116 @@
+{
+  "schema": "lot-fonda/v1",
+  "set_id": "set_fonda_grandeurs-mesures_nF_01",
+  "notion_id": "maths.grandeurs-mesures",
+  "palier": "nF",
+  "matiere": "Mathématiques",
+  "notion": "Maîtriser grandeurs, mesures et unités",
+  "niveau": "Fondamentaux — Final (abouti)",
+  "revue_carte_par_carte": true,
+  "nb_cartes": 6,
+  "date_creation": "2026-10-11",
+  "cartes": [
+    {
+      "item_id": "it01",
+      "numero": 1,
+      "question": "Un robinet mal fermé perd une goutte toutes les 2 secondes. Chaque goutte a un volume de 0,05 mL. Quel volume d'eau est perdu en 1 heure ?",
+      "reponse": "90 mL",
+      "difficulte": "moyen",
+      "palier": "nF",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "90 mL",
+        "90"
+      ],
+      "unite": "mL",
+      "contexte": "robinet-fuite-volume-mL",
+      "set_id": "set_fonda_grandeurs-mesures_nF_01",
+      "notion_id": "maths.grandeurs-mesures"
+    },
+    {
+      "item_id": "it02",
+      "numero": 2,
+      "question": "Pour un bac à fleurs, on dilue 15 mL d'engrais dans 2 L d'eau. Un jardinier doit traiter un grand bac nécessitant 10 L d'eau, avec la même proportion. Quelle quantité d'engrais doit-il utiliser ?",
+      "reponse": "75 mL",
+      "difficulte": "moyen",
+      "palier": "nF",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "75 mL",
+        "75"
+      ],
+      "unite": "mL",
+      "contexte": "engrais-dilution-jardin",
+      "set_id": "set_fonda_grandeurs-mesures_nF_01",
+      "notion_id": "maths.grandeurs-mesures"
+    },
+    {
+      "item_id": "it03",
+      "numero": 3,
+      "question": "Léo court 5 km en 20 minutes, puis 3 km en 10 minutes. Quelle est sa vitesse moyenne sur l'ensemble du parcours ?",
+      "reponse": "16 km/h",
+      "difficulte": "moyen",
+      "palier": "nF",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "16 km/h",
+        "16"
+      ],
+      "unite": "km/h",
+      "contexte": "course-vitesse-moyenne-deux-segments",
+      "set_id": "set_fonda_grandeurs-mesures_nF_01",
+      "notion_id": "maths.grandeurs-mesures"
+    },
+    {
+      "item_id": "it04",
+      "numero": 4,
+      "question": "Un réservoir cylindrique a une base de rayon 2 m et une hauteur de 3 m. L'ouverture du couvercle a un diamètre de 0,5 m. Quel volume d'eau peut contenir ce réservoir, arrondi à l'unité ?",
+      "reponse": "38 m³",
+      "difficulte": "difficile",
+      "palier": "nF",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "38 m³",
+        "38"
+      ],
+      "unite": "m³",
+      "contexte": "reservoir-cylindrique-volume",
+      "set_id": "set_fonda_grandeurs-mesures_nF_01",
+      "notion_id": "maths.grandeurs-mesures"
+    },
+    {
+      "item_id": "it05",
+      "numero": 5,
+      "question": "Un train part de Paris à 14h50 et arrive à Lyon à 17h05, après un arrêt technique de 15 minutes en cours de route. Quelle est la durée réelle de roulage, sans compter l'arrêt ?",
+      "reponse": "120 min",
+      "difficulte": "moyen",
+      "palier": "nF",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "120 min",
+        "120"
+      ],
+      "unite": "min",
+      "contexte": "train-arret-duree-trajet",
+      "set_id": "set_fonda_grandeurs-mesures_nF_01",
+      "notion_id": "maths.grandeurs-mesures"
+    },
+    {
+      "item_id": "it06",
+      "numero": 6,
+      "question": "Une pompe de chantier, qui coûte 450 €, remplit une citerne de 5 400 L à un débit constant de 90 L par minute. Combien de temps faut-il, en heures, pour remplir complètement la citerne ?",
+      "reponse": "1 h",
+      "difficulte": "difficile",
+      "palier": "nF",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "1 h",
+        "1"
+      ],
+      "unite": "h",
+      "contexte": "pompe-citerne-debit-constant",
+      "set_id": "set_fonda_grandeurs-mesures_nF_01",
+      "notion_id": "maths.grandeurs-mesures"
+    }
+  ]
+}

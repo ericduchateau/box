@@ -1,0 +1,78 @@
+# Vérification mécanique à chaque PR et à chaque push sur design/main
+# (CDC relecture FONDA §11, critique Codex R7) : G4 ne doit pas dépendre de
+# « quelqu'un a pensé à lancer les tests ». Cette CI ne fait QUE de la vérification
+# avec des données publiques (empreintes figées, liste blanche, signatures à clé
+# publique) : elle ne détient JAMAIS la clé privée RSA ni le jeton d'API n8n, qui
+# restent sur le Mac d'Éric. Aucun secret, aucun appel réseau sortant dans les tests.
+#
+# Pour que ce contrôle BLOQUE le merge : GitHub > Settings > Branches > règle de
+# protection sur `design` et `main` > « Require status checks to pass » > cocher
+# « tests (node --test) ». (Réglage du dépôt, à faire par Éric.)
+
+name: tests
+
+on:
+  pull_request:
+    branches: [design, main]
+  push:
+    branches: [design, main]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: tests (node --test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # Certains tests de non-régression lisent `git show main:…` / `design:…` :
+      # références locales créées depuis origin (sans toucher à la branche courante).
+      - name: Références main/design pour les tests de non-régression
+        run: |
+          for b in main design; do
+            if [ "$(git rev-parse --abbrev-ref HEAD)" != "$b" ]; then
+              git branch -f "$b" "origin/$b"
+            fi
+          done
+      # Référence du contrôle (§17) : le référentiel ARCHIVÉ d'une clôture signée est
+      # recherché sur le premier parent de design ET de cette référence (CDC v8.3 §20.12).
+      - name: node --test
+        env:
+          FONDA_REF_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: node --test
+      # Les contrôles des moteurs de correction (registre en ajout seul, fichiers jamais
+      # modifiés ni supprimés, SHA-256 = registre = SRI, continuité) ne sont plus lancés
+      # ici : le job `immuabilite` (contrôle requis sur design et main) les exécute via
+      # les fonctions de verifier-moteurs.js — une seule implémentation, une seule
+      # exécution.
+
+  # Immuabilité (CDC relecture annexe B §17) : tuple (empreinte, moteur) des lots
+  # publiés, règle 0 de M1, journal des set_id en ajout seul, retraits, MOTEURS
+  # (fonctions de verifier-moteurs.js) et continuité du premier parent. Même
+  # frontière que le job `tests` : vérification publique uniquement, aucun secret.
+  # Contrôle REQUIS dans les protections de `design` et `main` (annexe A, point 6).
+  immuabilite:
+    name: immuabilite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Référence locale design (autorité de l'historique de confiance)
+        run: |
+          if [ "$(git rev-parse --abbrev-ref HEAD)" != "design" ]; then
+            git branch -f design origin/design
+          fi
+      - name: verifier-immuabilite
+        env:
+          FONDA_REF_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: node fonda/scripts/verifier-immuabilite.js

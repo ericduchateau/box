@@ -657,3 +657,207 @@ a:hover { text-decoration: underline; }
   .hero__logo-box { width: 160px; }
   .section-title { font-size: 18px; }
 }
+
+/* ============================================
+   BOX-FONDA — thème sombre + logo/signature + switch
+   Additif uniquement : aucun token ni sélecteur BOX existant ci-dessus n'est
+   modifié. Portée : surface #fondaRoot (fonda/page/bootstrap.js, chantier T4)
+   + composant carte-reponse-produite.js (T2) + bouton .fonda-switch (navbar BOX,
+   lui reste en thème clair — il navigue, ne repeint rien en place).
+   Référence : docs/box-fonda-design/BRIEF.md.
+   ============================================ */
+
+:root {
+  --fonda-navy:   #1D2F4A;
+  --fonda-navy-2: #17263B;
+  --fonda-ink:    #FDFDFD;
+  --fonda-mut:    #9BAEC9;
+  --fonda-line:   #31496B;
+  --fonda-green:  #5BAE6C;
+  --fonda-green-d:#2E7D46;
+  --fonda-amber:  #E0A43B;
+  --fonda-red:    #C8403A;
+  --fonda-card:      #FDFDFD;
+  --fonda-card-ink:  #20314A;
+}
+
+body[data-theme="fonda"] {
+  background: var(--fonda-navy);
+  color: var(--fonda-ink);
+}
+
+/* Isolation BOX<->FONDA (relecture Codex #3) : la navbar BOX claire (dont le
+   bouton .fonda-switch lui-même) ne doit jamais rester visible par-dessus le
+   rendu FONDA sombre — sinon son logo (onclick="App.goHome()") permet de revenir
+   à BOX en conservant data-theme="fonda", et les deux rendus ne sont plus isolés. */
+body[data-theme="fonda"] .navbar { display: none; }
+
+#fondaRoot {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 28px 18px 48px;
+  font-family: var(--font);
+}
+
+/* Top-alignement FONDA (dette layout, chantier feat/box-fonda-layout) : #fondaRoot
+   est ajouté par JS À LA FIN du <body>, donc APRÈS le .footer. Or body est un flex
+   colonne en min-height:100vh et .footer a margin-top:auto : en FONDA (navbar et
+   écrans BOX masqués), le footer absorbait tout l'espace libre au-dessus de lui ->
+   grand vide navy en haut, barre collée au-dessus du contenu. order:-1 replace
+   visuellement #fondaRoot AVANT le footer (qui retrouve sa place en bas) ;
+   width:100% garde le centrage horizontal par max-width + margin auto. Scopé
+   body[data-theme="fonda"] : BOX clair n'est pas concerné. */
+body[data-theme="fonda"] #fondaRoot { order: -1; width: 100%; }
+
+/* Isolation BOX<->FONDA : le lien « Administration » du footer ouvre l'écran BOX de
+   suppression (App.showScreen('delete')) par-dessus la page élève FONDA. Masqué en
+   FONDA ; la ligne institutionnelle (« BOX — Collège… ») reste. Le lien seul est
+   masqué : la route ?action=delete reste atteignable par URL (dette d'isolation). */
+body[data-theme="fonda"] .footer a { display: none; }
+
+/* --- Lockup logo + signature (repris de docs/box-fonda-design/lockup-reference.html) --- */
+
+.fonda-lockup { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+.fonda-lockup--compact { gap: 10px; }
+.fonda-lockup .fonda-lockup__logo { height: 44px; width: auto; display: block; border-radius: 6px; }
+/* Structure EXACTE du lockup de référence (docs/box-fonda-design/lockup-reference.html)
+   — deux lignes "À FOND" / "FOND[A]!", jamais fusionnées sur une seule ligne
+   (relecture Codex #10 : la version précédente concatenait "FOND" deux fois sur
+   une ligne, donnant "ÀFONDFONDA!" au lieu du wordmark voulu). */
+.fonda-sign {
+  font-family: 'Poppins', sans-serif; font-weight: 800; line-height: .98;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-size: 20px;
+}
+.fonda-sign .l1, .fonda-sign .l2 { display: flex; align-items: center; }
+.fonda-sign .l1 { gap: .16em; }
+.fonda-sign .l2 { gap: .02em; }
+.fonda-sign .trav { color: var(--fonda-green); }
+.fonda-sign .fond { color: var(--fonda-ink); }
+.fonda-sign .card {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--fonda-ink); color: var(--fonda-navy); border-radius: .17em;
+  width: .9em; height: .9em; transform: rotate(-5deg);
+  box-shadow: 0 6px 14px rgba(0,0,0,.35); margin: 0 .03em;
+}
+.fonda-sign .bang { color: var(--fonda-green); margin-left: .08em; }
+
+.fonda-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 20px; flex-wrap: wrap; gap: 10px;
+}
+.fonda-header__back {
+  font-size: 13px; color: var(--fonda-mut); text-decoration: none; font-weight: 600;
+  border: 1px solid var(--fonda-line); border-radius: 999px; padding: 6px 14px;
+}
+.fonda-header__back:hover { color: var(--fonda-ink); border-color: var(--fonda-mut); }
+
+/* --- Switch (navbar BOX, thème clair — navigue vers ?fonda=1, ne repeint rien) --- */
+
+.fonda-switch {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--fonda-navy); color: var(--fonda-ink);
+  border: none; border-radius: 999px; padding: 7px 16px;
+  font-family: var(--font); font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.fonda-switch:hover { background: var(--fonda-navy-2); }
+
+/* --- Pages fonda/page/bootstrap.js : messages, listes de défis, sélecteur de niveau --- */
+
+.fonda-message {
+  color: var(--fonda-mut); font-size: 15px; line-height: 1.6;
+  background: var(--fonda-navy-2); border: 1px solid var(--fonda-line);
+  border-radius: 13px; padding: 18px 20px;
+}
+
+.fonda-niveau-picker { display: flex; flex-direction: column; gap: 14px; }
+.fonda-niveau-picker__titre { font-size: 15px; color: var(--fonda-mut); margin: 0; }
+.fonda-niveau-picker__grille { display: flex; flex-wrap: wrap; gap: 10px; }
+.fonda-niveau-picker__bouton {
+  display: inline-block; background: var(--fonda-navy-2); color: var(--fonda-ink);
+  border: 1px solid var(--fonda-line); border-radius: 12px; padding: 14px 22px;
+  font-family: var(--font); font-weight: 700; font-size: 16px; text-decoration: none;
+}
+.fonda-niveau-picker__bouton:hover { border-color: var(--fonda-mut); }
+
+.fonda-liens-niveau { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.fonda-lien-classe {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: var(--fonda-navy-2); border: 1px solid var(--fonda-line);
+  border-radius: 11px; padding: 12px 14px;
+}
+.fonda-lien-classe__grp { font-weight: 800; color: var(--fonda-ink); min-width: 48px; }
+.fonda-lien-classe__url { color: var(--fonda-mut); font-size: 13px; word-break: break-all; }
+.fonda-lien-classe button {
+  font-family: var(--font); font-weight: 700; font-size: 13px; cursor: pointer;
+  background: var(--fonda-green); color: #10371a; border: none; border-radius: 8px; padding: 6px 12px;
+}
+
+/* --- Carte réponse produite (T2, fonda/engine/carte-reponse-produite.js) --------- */
+/* Cible visuelle : docs/box-fonda-design/demo-reference.html (carte blanche sur navy). */
+
+.fonda-carte-reponse-produite {
+  background: var(--fonda-card); color: var(--fonda-card-ink);
+  border-radius: 18px; padding: 28px 28px 24px; box-shadow: 0 20px 50px rgba(0,0,0,.35);
+}
+.fonda-question { font-size: 21px; line-height: 1.42; font-weight: 500; margin: 0 0 20px; }
+.fonda-reponse-input {
+  width: 100%; font-family: var(--font); font-size: 17px; padding: 12px 14px;
+  border: 2px solid #8A8A8A; border-radius: 11px; color: var(--fonda-card-ink);
+  outline: none; box-sizing: border-box;
+}
+.fonda-reponse-input:focus { border-color: #3E73B5; }
+.fonda-valider {
+  margin-top: 12px; font-family: var(--font); font-weight: 700; font-size: 15px;
+  border: 0; border-radius: 11px; cursor: pointer; padding: 12px 20px;
+  background: var(--fonda-navy); color: #fff;
+}
+.fonda-valider:disabled { opacity: .5; cursor: default; }
+
+/* "Carte suivante" (chantier câblage) : accent vert distinct de "Valider" (navy),
+   même logique que .next dans docs/box-fonda-design/demo-reference.html. */
+.fonda-carte-suivante { background: var(--fonda-green); color: #10371a; }
+
+.fonda-feedback {
+  margin: 20px 0 0; border-radius: 13px; padding: 16px 18px 14px;
+}
+/* Piloté par data-reussite (booléen réel, compteCommeReussite), PAS data-statut :
+   "presque" compte faux en orthographe et doit s'afficher comme un échec, jamais
+   comme ✓ vert par réflexe sur le statut seul (relecture Codex #2). */
+.fonda-feedback[data-reussite="true"] { background: #E9F5EC; border: 1px solid #BEE2C6; }
+.fonda-feedback[data-reussite="false"] { background: #FBEAE8; border: 1px solid #F0C9C5; }
+
+.fonda-feedback__verdict { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 16px; margin: 0; }
+.fonda-feedback[data-reussite="true"] .fonda-feedback__verdict { color: var(--fonda-green-d); }
+.fonda-feedback[data-reussite="false"] .fonda-feedback__verdict { color: #B23A33; }
+
+.fonda-feedback__mark {
+  width: 24px; height: 24px; border-radius: 50%; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 14px;
+}
+.fonda-feedback[data-reussite="true"] .fonda-feedback__mark { background: var(--fonda-green); }
+.fonda-feedback[data-reussite="false"] .fonda-feedback__mark { background: var(--fonda-red); }
+
+.fonda-feedback__detail { margin-top: 10px; font-size: 14.5px; line-height: 1.5; color: #2B3B55; }
+.fonda-feedback__detail .fonda-feedback__lbl { font-size: 11px; font-weight: 700; color: #45526B; text-transform: uppercase; letter-spacing: .05em; display: block; margin-bottom: 2px; }
+
+.fonda-feedback__accept { margin-top: 8px; font-size: 13px; color: #45526B; }
+.fonda-feedback__accept code {
+  background: #EEF2F7; border-radius: 5px; padding: 2px 7px; font-family: var(--font);
+  color: #2B3B55; margin: 4px 4px 0 0; display: inline-block;
+}
+
+.fonda-feedback__profil { margin-top: 10px; font-size: 12px; color: #45526B; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; }
+
+.fonda-feedback__relecteur {
+  margin-top: 14px; display: flex; align-items: center; gap: 8px; font-size: 12.5px;
+  color: #45526B; border-top: 1px solid #E6EBF1; padding-top: 12px;
+}
+.fonda-feedback__relecteur .fonda-feedback__chk { color: var(--fonda-green); font-weight: 800; }
+
+@media (max-width: 480px) {
+  #fondaRoot { padding: 18px 14px 36px; }
+  .fonda-sign { font-size: 16px; }
+  .fonda-carte-reponse-produite { padding: 20px 20px 18px; }
+  .fonda-question { font-size: 18px; }
+}

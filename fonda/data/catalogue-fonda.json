@@ -1,0 +1,357 @@
+{
+  "schema": "catalogue-fonda/v1",
+  "lots": [
+    {
+      "set_id": "set_fonda_comprendre-consigne_nF_01",
+      "notion_id": "fr.comprendre-consigne",
+      "palier": "nF",
+      "fichier": "lots/set_fonda_comprendre-consigne_nF_01.json",
+      "item_ids": [
+        "it01",
+        "it02",
+        "it03",
+        "it04",
+        "it05",
+        "it06"
+      ],
+      "empreinte": "sha256:936b66da0abaa10b823c05bb13e6649754a9f4ba654986cc296c5cc8f087f6f1",
+      "moteur": {
+        "version": "v1",
+        "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+      },
+      "relecteur": {
+        "forme": "relue_par",
+        "nom_affiche": "Éric Duchateau",
+        "id": "eric"
+      },
+      "attestation": {
+        "type": "manuelle-historique",
+        "relecture_declaree": {
+          "date": "2026-10-11",
+          "relu_par": "eric",
+          "relecteur_attribue": "justine"
+        },
+        "atteste_par": "eric",
+        "attestation_le": "2026-10-13",
+        "selection": [
+          "it01",
+          "it02",
+          "it03",
+          "it04",
+          "it05",
+          "it06"
+        ],
+        "provenance": "Lot de validation T6b, relu carte par carte par Éric le 2026-10-11 (AVANCEMENT-archive.md, sections « Lot de validation T6b » à « Clôture du lot de validation »). Attestation déclarative d'Éric lors de la migration vers la chaîne FONDA séparée — ce n'est pas une preuve technique. Empreinte calculée sur le contenu au jour de la migration.",
+        "empreinte_attestee": "sha256:936b66da0abaa10b823c05bb13e6649754a9f4ba654986cc296c5cc8f087f6f1"
+      }
+    },
+    {
+      "set_id": "set_fonda_comprendre-consigne_nI_01",
+      "notion_id": "fr.comprendre-consigne",
+      "palier": "nI",
+      "fichier": "lots/set_fonda_comprendre-consigne_nI_01.json",
+      "item_ids": [
+        "it01",
+        "it02",
+        "it03",
+        "it04",
+        "it05",
+        "it06"
+      ],
+      "empreinte": "sha256:3e715f0e44d520de9ee7f01c218cf667551b8a7fff650c357b1f2bb88561e25d",
+      "moteur": {
+        "version": "v1",
+        "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+      },
+      "relecteur": {
+        "forme": "relue_par",
+        "nom_affiche": "Éric Duchateau",
+        "id": "eric"
+      },
+      "attestation": {
+        "type": "manuelle-historique",
+        "relecture_declaree": {
+          "date": "2026-10-11",
+          "relu_par": "eric",
+          "relecteur_attribue": "justine"
+        },
+        "atteste_par": "eric",
+        "attestation_le": "2026-10-13",
+        "selection": [
+          "it01",
+          "it02",
+          "it03",
+          "it04",
+          "it05",
+          "it06"
+        ],
+        "provenance": "Lot de validation T6b, relu carte par carte par Éric le 2026-10-11 (AVANCEMENT-archive.md, sections « Lot de validation T6b » à « Clôture du lot de validation »). Attestation déclarative d'Éric lors de la migration vers la chaîne FONDA séparée — ce n'est pas une preuve technique. Empreinte calculée sur le contenu au jour de la migration.",
+        "empreinte_attestee": "sha256:3e715f0e44d520de9ee7f01c218cf667551b8a7fff650c357b1f2bb88561e25d"
+      }
+    },
+    {
+      "set_id": "set_fonda_grandeurs-mesures_nF_01",
+      "notion_id": "maths.grandeurs-mesures",
+      "palier": "nF",
+      "fichier": "lots/set_fonda_grandeurs-mesures_nF_01.json",
+      "item_ids": [
+        "it01",
+        "it02",
+        "it03",
+        "it04",
+        "it05",
+        "it06"
+      ],
+      "empreinte": "sha256:efacb0c7953389c1cfdad3044c2767240a54b31f014f0371fc94d3a6db494d98",
+      "moteur": {
+        "version": "v1",
+        "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+      },
+      "relecteur": {
+        "forme": "relue_par",
+        "nom_affiche": "Éric Duchateau",
+        "id": "eric"
+      },
+      "attestation": {
+        "type": "manuelle-historique",
+        "relecture_declaree": {
+          "date": "2026-10-11",
+          "relu_par": "eric",
+          "relecteur_attribue": "eric"
+        },
+        "atteste_par": "eric",
+        "attestation_le": "2026-10-13",
+        "selection": [
+          "it01",
+          "it02",
+          "it03",
+          "it04",
+          "it05",
+          "it06"
+        ],
+        "provenance": "Lot de validation T6b, relu carte par carte par Éric le 2026-10-11 (AVANCEMENT-archive.md, sections « Lot de validation T6b » à « Clôture du lot de validation »). Attestation déclarative d'Éric lors de la migration vers la chaîne FONDA séparée — ce n'est pas une preuve technique. Empreinte calculée sur le contenu au jour de la migration.",
+        "empreinte_attestee": "sha256:efacb0c7953389c1cfdad3044c2767240a54b31f014f0371fc94d3a6db494d98"
+      }
+    },
+    {
+      "set_id": "set_fonda_grandeurs-mesures_nI_01",
+      "notion_id": "maths.grandeurs-mesures",
+      "palier": "nI",
+      "fichier": "lots/set_fonda_grandeurs-mesures_nI_01.json",
+      "item_ids": [
+        "it01",
+        "it02",
+        "it03",
+        "it04",
+        "it05",
+        "it06"
+      ],
+      "empreinte": "sha256:ac405cf81afba028839eee3aa28bbf3151c6244479c0ddd6d690511c7629f588",
+      "moteur": {
+        "version": "v1",
+        "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+      },
+      "relecteur": {
+        "forme": "relue_par",
+        "nom_affiche": "Éric Duchateau",
+        "id": "eric"
+      },
+      "attestation": {
+        "type": "manuelle-historique",
+        "relecture_declaree": {
+          "date": "2026-10-11",
+          "relu_par": "eric",
+          "relecteur_attribue": "eric"
+        },
+        "atteste_par": "eric",
+        "attestation_le": "2026-10-13",
+        "selection": [
+          "it01",
+          "it02",
+          "it03",
+          "it04",
+          "it05",
+          "it06"
+        ],
+        "provenance": "Lot de validation T6b, relu carte par carte par Éric le 2026-10-11 (AVANCEMENT-archive.md, sections « Lot de validation T6b » à « Clôture du lot de validation »). Attestation déclarative d'Éric lors de la migration vers la chaîne FONDA séparée — ce n'est pas une preuve technique. Empreinte calculée sur le contenu au jour de la migration.",
+        "empreinte_attestee": "sha256:ac405cf81afba028839eee3aa28bbf3151c6244479c0ddd6d690511c7629f588"
+      }
+    },
+    {
+      "set_id": "set_fonda_resolution-problemes_nF_01",
+      "notion_id": "maths.resolution-problemes",
+      "palier": "nF",
+      "fichier": "lots/set_fonda_resolution-problemes_nF_01.json",
+      "item_ids": [
+        "it01",
+        "it02",
+        "it03",
+        "it04",
+        "it05",
+        "it06"
+      ],
+      "empreinte": "sha256:53071653f943c8ce20a5a2f0a1da65eb73782a9c71b9db4517b7bf922f42d248",
+      "moteur": {
+        "version": "v1",
+        "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+      },
+      "relecteur": {
+        "forme": "relue_par",
+        "nom_affiche": "Éric Duchateau",
+        "id": "eric"
+      },
+      "attestation": {
+        "type": "manuelle-historique",
+        "relecture_declaree": {
+          "date": "2026-10-11",
+          "relu_par": "eric",
+          "relecteur_attribue": "eric"
+        },
+        "atteste_par": "eric",
+        "attestation_le": "2026-10-13",
+        "selection": [
+          "it01",
+          "it02",
+          "it03",
+          "it04",
+          "it05",
+          "it06"
+        ],
+        "provenance": "Lot de validation T6b, relu carte par carte par Éric le 2026-10-11 (AVANCEMENT-archive.md, sections « Lot de validation T6b » à « Clôture du lot de validation »). Attestation déclarative d'Éric lors de la migration vers la chaîne FONDA séparée — ce n'est pas une preuve technique. Empreinte calculée sur le contenu au jour de la migration. Modification pédagogique POSTÉRIEURE à la relecture, approuvée par Éric le 2026-10-12 (formes déclarées acceptées mais refusées par le correcteur) : it02 : forme « 40 livres » retirée ; it05 : forme « 8 victoires » retirée (reponses_acceptees).",
+        "empreinte_attestee": "sha256:53071653f943c8ce20a5a2f0a1da65eb73782a9c71b9db4517b7bf922f42d248"
+      }
+    },
+    {
+      "set_id": "set_fonda_resolution-problemes_nI_01",
+      "notion_id": "maths.resolution-problemes",
+      "palier": "nI",
+      "fichier": "lots/set_fonda_resolution-problemes_nI_01.json",
+      "item_ids": [
+        "it01",
+        "it02",
+        "it03",
+        "it04",
+        "it05",
+        "it06"
+      ],
+      "empreinte": "sha256:184b53a0b80d7931ec19a8ee278f4a7092347ff5f1c7fbc262eef0e986383c10",
+      "moteur": {
+        "version": "v1",
+        "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+      },
+      "relecteur": {
+        "forme": "relue_par",
+        "nom_affiche": "Éric Duchateau",
+        "id": "eric"
+      },
+      "attestation": {
+        "type": "manuelle-historique",
+        "relecture_declaree": {
+          "date": "2026-10-11",
+          "relu_par": "eric",
+          "relecteur_attribue": "eric"
+        },
+        "atteste_par": "eric",
+        "attestation_le": "2026-10-13",
+        "selection": [
+          "it01",
+          "it02",
+          "it03",
+          "it04",
+          "it05",
+          "it06"
+        ],
+        "provenance": "Lot de validation T6b, relu carte par carte par Éric le 2026-10-11 (AVANCEMENT-archive.md, sections « Lot de validation T6b » à « Clôture du lot de validation »). Attestation déclarative d'Éric lors de la migration vers la chaîne FONDA séparée — ce n'est pas une preuve technique. Empreinte calculée sur le contenu au jour de la migration. Modification pédagogique POSTÉRIEURE à la relecture, approuvée par Éric le 2026-10-12 (formes déclarées acceptées mais refusées par le correcteur) : it05 : forme « 2 bus » retirée de reponses_acceptees.",
+        "empreinte_attestee": "sha256:184b53a0b80d7931ec19a8ee278f4a7092347ff5f1c7fbc262eef0e986383c10"
+      }
+    },
+    {
+      "set_id": "set_fonda_inference-implicite_nF_01",
+      "notion_id": "fr.inference-implicite",
+      "palier": "nF",
+      "fichier": "lots/set_fonda_inference-implicite_nF_01.json",
+      "item_ids": [
+        "it01",
+        "it02",
+        "it03",
+        "it04",
+        "it05",
+        "it06"
+      ],
+      "empreinte": "sha256:75872849d37d3610cd556f0dfa2e952bf2e425bbb2ab5832b3aedd71d1d4b29b",
+      "moteur": {
+        "version": "v1",
+        "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+      },
+      "relecteur": {
+        "forme": "relue_par",
+        "nom_affiche": "Éric Duchateau",
+        "id": "eric"
+      },
+      "attestation": {
+        "type": "manuelle-historique",
+        "relecture_declaree": {
+          "date": "2026-10-11",
+          "relu_par": "eric",
+          "relecteur_attribue": "justine"
+        },
+        "atteste_par": "eric",
+        "attestation_le": "2026-10-13",
+        "selection": [
+          "it01",
+          "it02",
+          "it03",
+          "it04",
+          "it05",
+          "it06"
+        ],
+        "provenance": "Lot de validation T6b, relu carte par carte par Éric le 2026-10-11 (AVANCEMENT-archive.md, sections « Lot de validation T6b » à « Clôture du lot de validation »). Attestation déclarative d'Éric lors de la migration vers la chaîne FONDA séparée — ce n'est pas une preuve technique. Empreinte calculée sur le contenu au jour de la migration.",
+        "empreinte_attestee": "sha256:75872849d37d3610cd556f0dfa2e952bf2e425bbb2ab5832b3aedd71d1d4b29b"
+      }
+    },
+    {
+      "set_id": "set_fonda_inference-implicite_nI_01",
+      "notion_id": "fr.inference-implicite",
+      "palier": "nI",
+      "fichier": "lots/set_fonda_inference-implicite_nI_01.json",
+      "item_ids": [
+        "it01",
+        "it02",
+        "it03",
+        "it04",
+        "it05",
+        "it06"
+      ],
+      "empreinte": "sha256:f5d0faddffd8cb28c88b0ddb0b04cde8d9747f0fc72a44b9608beb1fdb4e2e0d",
+      "moteur": {
+        "version": "v1",
+        "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+      },
+      "relecteur": {
+        "forme": "relue_par",
+        "nom_affiche": "Éric Duchateau",
+        "id": "eric"
+      },
+      "attestation": {
+        "type": "manuelle-historique",
+        "relecture_declaree": {
+          "date": "2026-10-11",
+          "relu_par": "eric",
+          "relecteur_attribue": "justine"
+        },
+        "atteste_par": "eric",
+        "attestation_le": "2026-10-13",
+        "selection": [
+          "it01",
+          "it02",
+          "it03",
+          "it04",
+          "it05",
+          "it06"
+        ],
+        "provenance": "Lot de validation T6b, relu carte par carte par Éric le 2026-10-11 (AVANCEMENT-archive.md, sections « Lot de validation T6b » à « Clôture du lot de validation »). Attestation déclarative d'Éric lors de la migration vers la chaîne FONDA séparée — ce n'est pas une preuve technique. Empreinte calculée sur le contenu au jour de la migration.",
+        "empreinte_attestee": "sha256:f5d0faddffd8cb28c88b0ddb0b04cde8d9747f0fc72a44b9608beb1fdb4e2e0d"
+      }
+    }
+  ]
+}

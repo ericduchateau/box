@@ -1,0 +1,81 @@
+<!doctype html>
+<!--
+  Prévisualisation DEV UNIQUEMENT — pas chargée par l'app (ni index.html, ni
+  bootstrap.js ne la référencent), zéro impact prod. Sert à comparer visuellement
+  le VRAI composant fonda/engine/carte-reponse-produite.js (thème sombre appliqué,
+  chantier feat/box-fonda-theme-switch) au démonstrateur de référence
+  docs/box-fonda-design/demo-reference.html, pour les captures de la PR (BOX clair
+  déjà visible sur index.html ; FONDA sombre ci-dessous).
+
+  Données : fixtures synthétiques anonymes (AGENTS.md — jamais de donnée élève
+  réelle). Ouvrir ce fichier directement dans un navigateur (file://), pas besoin
+  de serveur.
+-->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prévisualisation — carte réponse produite (thème FONDA)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Poppins:wght@700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../css/style.css">
+<style>
+  /* Habillage minimal propre à cette page de dev, en plus de css/style.css */
+  body[data-theme="fonda"] { min-height: 100vh; padding: 28px 0; }
+  .preview-liste { display: flex; flex-direction: column; gap: 32px; max-width: 720px; margin: 0 auto; padding: 0 18px; }
+  .preview-carte-host { margin: 0 auto; }
+</style>
+</head>
+<body data-theme="fonda">
+  <div id="fondaRoot">
+    <div class="fonda-header">
+      <div class="fonda-lockup fonda-lockup--compact">
+        <img class="fonda-lockup__logo" src="../../img/box-logo.png" alt="BOX">
+        <span class="fonda-sign">
+          <span class="l1"><span class="trav">À</span><span class="fond">FOND</span></span>
+          <span class="l2"><span class="fond">FOND</span><span class="card">A</span><span class="bang">!</span></span>
+        </span>
+      </div>
+      <span class="fonda-header__back" style="pointer-events:none">Prévisualisation dev — mode fondamentaux</span>
+    </div>
+  </div>
+
+  <div class="preview-liste">
+    <div class="preview-carte-host" id="carte1"></div>
+    <div class="preview-carte-host" id="carte2"></div>
+    <div class="preview-carte-host" id="carte3"></div>
+  </div>
+
+  <!-- Page de prévisualisation locale : moteur chargé directement (le front élève,
+       lui, passe par obtenirMoteur : registre moteurs.json + SRI). -->
+  <script src="../engine/moteur-correction-v1.js"></script>
+  <script src="../engine/carte-reponse-produite.js"></script>
+  <script>
+    // Fixtures synthétiques anonymes — mêmes notions que les lots de calibration
+    // T6b (fonda/data/lots-fonda-calibration/), reprises ici pour la démo visuelle.
+    const moteur = FondaMoteurs.v1.creerMoteur();
+    const montrer = (id, { relecteur, ...carte }) => FondaCarteReponseProduite.montrerCarteReponseProduite(
+      document.getElementById(id),
+      { moteur, carte: moteur.preparerCarte(carte), badge: { forme: 'relue_et_validee', nom_affiche: relecteur } },
+    );
+    montrer('carte1', {
+      question: 'On connaît « hypotension » (tension trop basse) et « thermomètre » (qui mesure la chaleur). Que signifie le plus probablement « hypothermie » ?',
+      profil_correction: 'sens',
+      reponses_acceptees: ['température trop basse', 'corps trop froid', 'chaleur du corps trop basse'],
+      relecteur: 'Justine Leblanc',
+    });
+    montrer('carte2', {
+      question: 'Un cycliste roule à 18 km/h pendant 30 minutes. Quelle distance parcourt-il ?',
+      profil_correction: 'numerique',
+      reponses_acceptees: ['9 km', '9'],
+      unite: 'km',
+      relecteur: 'Éric Duchateau',
+    });
+    montrer('carte3', {
+      question: 'Parmi ces trois fractions, laquelle est égale à 0,75 ? A) 3/4 B) 2/3 C) 4/5',
+      profil_correction: 'exact',
+      reponses_acceptees: ['A'],
+      relecteur: 'Éric Duchateau',
+    });
+  </script>
+</body>
+</html>

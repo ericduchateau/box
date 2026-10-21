@@ -1,0 +1,76 @@
+{
+  "schema": "lot-fonda/v1",
+  "set_id": "set_fonda_nombres-fractions-relatifs_nF_01",
+  "notion_id": "maths.nombres-fractions-relatifs",
+  "palier": "nF",
+  "matiere": "Mathématiques",
+  "notion": "Maîtriser nombres, fractions et relatifs",
+  "niveau": "Fondamentaux — Final (abouti)",
+  "revue_carte_par_carte": false,
+  "nb_cartes": 4,
+  "date_creation": "2026-10-10",
+  "cartes": [
+    {
+      "item_id": "it01",
+      "numero": 1,
+      "question": "Dans une classe de 24 élèves, 18 viennent au collège à vélo. Quelle fraction, écrite sous sa forme la plus simple, représente la part d'élèves venant à vélo ?",
+      "reponse": "3/4",
+      "difficulte": "moyen",
+      "palier": "nF",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "3/4"
+      ],
+      "contexte": "proportion-eleves-velo",
+      "set_id": "set_fonda_nombres-fractions-relatifs_nF_01",
+      "notion_id": "maths.nombres-fractions-relatifs"
+    },
+    {
+      "item_id": "it02",
+      "numero": 2,
+      "question": "Un congélateur enregistre ces températures pendant la nuit : 22h : -3°C ; 23h : -7°C ; minuit : -5°C ; 1h : -9°C. Quel est l'écart, en degrés, entre la température la plus haute et la température la plus basse de cette nuit ?",
+      "reponse": "6°C",
+      "difficulte": "difficile",
+      "palier": "nF",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "6°C",
+        "6"
+      ],
+      "unite": "°C",
+      "contexte": "congelateur-temperatures-nuit",
+      "set_id": "set_fonda_nombres-fractions-relatifs_nF_01",
+      "notion_id": "maths.nombres-fractions-relatifs"
+    },
+    {
+      "item_id": "it03",
+      "numero": 3,
+      "question": "Dans une course de relais, le premier coureur parcourt 3/4 km, le deuxième 5/6 km et le troisième 7/12 km. Entre quels deux entiers consécutifs se situe la distance totale parcourue par l'équipe ? A) 1 et 2  B) 2 et 3  C) 3 et 4",
+      "reponse": "B",
+      "difficulte": "difficile",
+      "palier": "nF",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "B"
+      ],
+      "contexte": "course-relais-fractions",
+      "set_id": "set_fonda_nombres-fractions-relatifs_nF_01",
+      "notion_id": "maths.nombres-fractions-relatifs"
+    },
+    {
+      "item_id": "it04",
+      "numero": 4,
+      "question": "Dans un jeu vidéo, Max part de 0 point. Il obtient un bonus de 12 points, subit ensuite une pénalité de 20 points, puis reçoit un nouveau bonus de 5 points. Quel est son score final ?",
+      "reponse": "-3",
+      "difficulte": "moyen",
+      "palier": "nF",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "-3"
+      ],
+      "contexte": "jeu-video-score-max",
+      "set_id": "set_fonda_nombres-fractions-relatifs_nF_01",
+      "notion_id": "maths.nombres-fractions-relatifs"
+    }
+  ]
+}

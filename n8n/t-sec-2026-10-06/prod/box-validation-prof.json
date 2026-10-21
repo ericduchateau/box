@@ -1,0 +1,476 @@
+{
+  "id": "PGnB14t4JJ0j7HKn",
+  "name": "BOX - Validation Prof",
+  "active": true,
+  "nodes": [
+    {
+      "id": "wh_val",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "path": "box-validate",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "box-validate-wh-001"
+    },
+    {
+      "id": "extract_params",
+      "name": "Extraire parametres",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const query = $input.first().json.query || {};\nconst fileId = query.file_id || '';\nconst code = query.code || '';\n\nif (!fileId || !code) {\n  return [{ json: { valid: false, error: 'Parametres manquants (file_id ou code)' } }];\n}\n\nreturn [{ json: { valid: true, file_id: fileId, code: code } }];"
+      }
+    },
+    {
+      "id": "if_params",
+      "name": "Params OK ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "resp_err_params",
+      "name": "Repondre Erreur Params",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        200
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<html><body style=\"font-family:sans-serif;text-align:center;padding:40px\"><h2 style=\"color:#dc2626\">Erreur</h2><p>{{ $json.error }}</p></body></html>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "gd_dl_flashcard",
+      "name": "Download Flashcards",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        720,
+        -100
+      ],
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.file_id }}"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "cukxQDNwWIqOAK02",
+          "name": "Google Drive la bonne!"
+        }
+      }
+    },
+    {
+      "id": "parse_and_verify",
+      "name": "Verifier code",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        -100
+      ],
+      "parameters": {
+        "jsCode": "const query = $('Extraire parametres').first().json;\nconst buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst flashcards = JSON.parse(buffer.toString('utf-8'));\n\nif (flashcards.code_suppression !== query.code) {\n  return [{ json: { verified: false, error: 'Code de validation invalide' } }];\n}\n\n// T-SEC (2026-10-06) : un jeu Box-FONDA (type === \"fonda\") DOIT etre relu carte par\n// carte via box-select avant publication - ce lien historique (validation en bloc)\n// ne peut plus le publier. Condition en LISTE BLANCHE POSITIVE : on ne refuse QUE si\n// type vaut EXACTEMENT \"fonda\" ET que revue_carte_par_carte n'est pas exactement\n// true. Un champ absent, une valeur differente, ou un ancien jeu sans aucun des deux\n// champs -> jamais refuse, publie comme avant (regle d'or : en cas de doute, laisser\n// passer). Les jeux BOX ordinaires ne sont PAS concernes par ce controle.\nif (flashcards.type === 'fonda' && flashcards.revue_carte_par_carte !== true) {\n  return [{ json: {\n    verified: false,\n    error: 'Ce jeu Box-FONDA doit etre relu carte par carte via le lien de selection recu par email, pas valide en bloc depuis cet ancien lien.',\n  } }];\n}\n\nreturn [{ json: {\n  verified: true,\n  id: flashcards.id,\n  matiere: flashcards.matiere,\n  niveau: flashcards.niveau,\n  notion: flashcards.notion,\n  prof_nom: flashcards.prof_nom,\n  prof_email: flashcards.prof_email,\n  // T-SEC (2026-10-06, 4e passe) : nb_cartes GARANTI numerique, jamais une chaine\n  // lue telle quelle depuis le fichier Drive - sinon son interpolation non echappee\n  // dans les pages/emails pourrait vehiculer du HTML. Array.isArray() avant .length\n  // (pas juste 'truthy') pour aussi se proteger d'un fichier malforme.\n  nb_cartes: Number.isFinite(flashcards.nb_cartes) ? flashcards.nb_cartes : (Array.isArray(flashcards.cartes) ? flashcards.cartes.length : 0),\n  date_creation: flashcards.date_creation,\n  drive_file_id: query.file_id\n} }];"
+      }
+    },
+    {
+      "id": "if_verified",
+      "name": "Code OK ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1200,
+        -100
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c2",
+              "leftValue": "={{ $json.verified }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "resp_err_code",
+      "name": "Repondre Erreur Code",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1440,
+        100
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<html><body style=\"font-family:sans-serif;text-align:center;padding:40px\"><h2 style=\"color:#dc2626\">Erreur</h2><p>{{ $json.error }}</p></body></html>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "gd_dl_cat",
+      "name": "Download Catalogue",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1440,
+        -200
+      ],
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1AmmMsO3nh4h0GQ0I5XzIqWG_zHA9wopa"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "cukxQDNwWIqOAK02",
+          "name": "Google Drive la bonne!"
+        }
+      }
+    },
+    {
+      "id": "maj_cat",
+      "name": "MAJ Catalogue",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        -200
+      ],
+      "parameters": {
+        "jsCode": "const setData = $('Verifier code').first().json;\n\n// Lire le catalogue existant\nlet catalogue;\ntry {\n  const buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\n  let parsed = JSON.parse(buffer.toString('utf-8'));\n  if (typeof parsed === 'string') parsed = JSON.parse(parsed);\n  if (typeof parsed === 'object' && Array.isArray(parsed.sets)) {\n    catalogue = parsed;\n  } else {\n    catalogue = { last_updated: '', total_sets: 0, sets: [] };\n  }\n} catch (e) {\n  catalogue = { last_updated: '', total_sets: 0, sets: [] };\n}\n\n// Verifier que le set n'est pas deja dans le catalogue\nif (catalogue.sets.some(s => s.id === setData.id)) {\n  return [{ json: { already_published: true, notion: setData.notion } }];\n}\n\n// Ajouter la nouvelle entree\ncatalogue.sets.push({\n  id: setData.id,\n  matiere: setData.matiere,\n  niveau: setData.niveau,\n  notion: setData.notion,\n  prof_nom: setData.prof_nom,\n  nb_cartes: setData.nb_cartes,\n  date_creation: setData.date_creation,\n  drive_file_id: setData.drive_file_id\n});\n\ncatalogue.total_sets = catalogue.sets.length;\ncatalogue.last_updated = new Date().toISOString();\n\nreturn [{ json: {\n  catalogue_json: JSON.stringify(catalogue, null, 2),\n  notion: setData.notion,\n  already_published: false\n} }];"
+      }
+    },
+    {
+      "id": "upload_cat",
+      "name": "Upload Catalogue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1920,
+        -200
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://www.googleapis.com/upload/drive/v3/files/1AmmMsO3nh4h0GQ0I5XzIqWG_zHA9wopa?uploadType=media",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.catalogue_json }}",
+        "options": {}
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "cukxQDNwWIqOAK02",
+          "name": "Google Drive la bonne!"
+        }
+      }
+    },
+    {
+      "id": "resp_ok",
+      "name": "Repondre OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2400,
+        -380
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "prep_conf_email",
+      "name": "Preparer Email Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        20
+      ],
+      "parameters": {
+        "jsCode": "const data = $('Verifier code').first().json;\n\nfunction escapeHtml(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#39;');\n}\n\n// T-SEC (2026-10-06, 3e passe) : balayage complet de l'echappement HTML - email en\n// emailType 'html', donc TOUT champ texte libre doit etre echappe ici aussi, pas\n// seulement dans les pages de relecture. studentUrl echappe par uniformite (meme si\n// data.id est de forme generee cote serveur).\nconst studentUrl = escapeHtml(`https://ericduchateau.github.io/box/?set=${data.id}`);\n\nconst emailHtml = `<div style=\"font-family:sans-serif;max-width:600px;margin:0 auto\">\n  <h2 style=\"color:#16a34a\">&#9989; Vos fiches sont publiees et accessibles aux eleves !</h2>\n  <p>\n    <strong>Notion :</strong> ${escapeHtml(data.notion)}<br>\n    <strong>Matiere :</strong> ${escapeHtml(data.matiere)} &mdash; ${escapeHtml(data.niveau)}<br>\n    <strong>Nombre de fiches :</strong> ${data.nb_cartes}\n  </p>\n  <hr>\n  <h3>&#128279; Lien direct a partager avec vos eleves :</h3>\n  <div style=\"background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;margin:16px 0\">\n    <p style=\"margin:0 0 8px 0;font-size:13px;color:#64748b\">Copiez ce lien dans votre cahier de texte numerique :</p>\n    <p style=\"margin:0 0 12px 0;background:white;border:1px solid #dbeafe;border-radius:4px;padding:10px;font-family:monospace;word-break:break-all;font-size:14px;font-weight:bold\">${studentUrl}</p>\n    <a href=\"${studentUrl}\" style=\"color:#2563eb;font-size:14px\">Ouvrir les fiches &rarr;</a>\n  </div>\n  <p style=\"color:#64748b;font-size:12px\">Ce lien ouvrira directement le jeu de fiches <strong>${escapeHtml(data.notion)}</strong> pour vos eleves, sans passer par le catalogue.</p>\n</div>`;\n\nreturn [{ json: {\n  prof_email: data.prof_email,\n  notion: data.notion,\n  nb_cartes: data.nb_cartes,\n  email_html: emailHtml\n} }];"
+      }
+    },
+    {
+      "id": "gmail_conf",
+      "name": "Email Confirmation Prof",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        20
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "iIgjFF3qL44wl8uE",
+          "name": "Gmail n8n iazimut2026"
+        }
+      },
+      "parameters": {
+        "operation": "send",
+        "sendTo": "={{ $json.prof_email }}",
+        "subject": "={{ 'BOX ✅ \"' + $json.notion + '\" — ' + $json.nb_cartes + ' fiches publiees et accessibles aux élèves' }}",
+        "emailType": "html",
+        "message": "={{ $json.email_html }}"
+      }
+    },
+    {
+      "id": "prep_page_succes",
+      "name": "Preparer Page Succes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        -380
+      ],
+      "parameters": {
+        "jsCode": "const data = $('Verifier code').first().json;\n\nfunction escapeHtml(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#39;');\n}\n\n// T-SEC (2026-10-06, 3e passe) : notion/studentUrl echappes - signale par la 3e\n// critique Codex (page de l'ancien lien box-validate, oubliee dans la 1re passe\n// d'echappement qui ne visait que box-select).\nconst studentUrl = escapeHtml('https://ericduchateau.github.io/box/?set=' + data.id);\n\nconst html = `<html>\n<body style=\"font-family:sans-serif;text-align:center;padding:60px\">\n  <div style=\"max-width:540px;margin:0 auto\">\n    <h2 style=\"color:#16a34a\">&#9989; Fiches publi\\u00e9es !</h2>\n    <p style=\"font-size:18px\">Les fiches <strong>${escapeHtml(data.notion)}</strong> (${data.nb_cartes} fiches) sont maintenant accessibles aux \\u00e9l\\u00e8ves.</p>\n    <div style=\"background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;margin:24px 0;text-align:left\">\n      <p style=\"margin:0 0 8px 0;font-weight:bold;color:#1e40af\">&#128279; Lien \\u00e0 partager avec vos \\u00e9l\\u00e8ves :</p>\n      <p style=\"margin:0 0 10px 0;background:white;border:1px solid #dbeafe;border-radius:4px;padding:10px;font-family:monospace;word-break:break-all;font-size:13px\">${studentUrl}</p>\n      <p style=\"margin:0;color:#16a34a;font-size:13px\">&#128231; Ce lien vous a aussi \\u00e9t\\u00e9 envoy\\u00e9 par email.</p>\n    </div>\n    <p style=\"margin-top:24px\"><a href=\"https://ericduchateau.github.io/box/\" style=\"color:#2563eb\">Aller sur la page BOX &rarr;</a></p>\n  </div>\n</body>\n</html>`;\n\nreturn [{ json: { html } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extraire parametres",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraire parametres": {
+      "main": [
+        [
+          {
+            "node": "Params OK ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Params OK ?": {
+      "main": [
+        [
+          {
+            "node": "Download Flashcards",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Repondre Erreur Params",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Flashcards": {
+      "main": [
+        [
+          {
+            "node": "Verifier code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verifier code": {
+      "main": [
+        [
+          {
+            "node": "Code OK ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code OK ?": {
+      "main": [
+        [
+          {
+            "node": "Download Catalogue",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Repondre Erreur Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Catalogue": {
+      "main": [
+        [
+          {
+            "node": "MAJ Catalogue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MAJ Catalogue": {
+      "main": [
+        [
+          {
+            "node": "Upload Catalogue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Catalogue": {
+      "main": [
+        [
+          {
+            "node": "Preparer Email Confirmation",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Preparer Page Succes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparer Email Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Email Confirmation Prof",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparer Page Succes": {
+      "main": [
+        [
+          {
+            "node": "Repondre OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "pinData": null
+}

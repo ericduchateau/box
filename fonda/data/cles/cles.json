@@ -1,0 +1,11 @@
+[
+  {
+    "cle_id": "eric-2026",
+    "fichier": "cles/eric-2026.pem",
+    "sha256_pem": "9d0c5f66a2811b2ec060ce1a1e5ca56c35ecebd3a1650203e773368d0ef3cee9",
+    "algorithme": "RSA-SHA256-PKCS1v15",
+    "valide_du": "2026-10-15T00:00:00.000Z",
+    "valide_au": "2030-10-15T00:00:00.000Z",
+    "revoquee_le": null
+  }
+]

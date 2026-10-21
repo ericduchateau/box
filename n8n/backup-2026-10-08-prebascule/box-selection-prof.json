@@ -1,0 +1,968 @@
+{
+  "id": "HdDyacN45SPMyZoJ",
+  "name": "BOX - Selection Prof",
+  "active": true,
+  "nodes": [
+    {
+      "id": "wh_select",
+      "name": "Webhook Select",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "box-select",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "box-select-wh-001"
+    },
+    {
+      "id": "extract_get",
+      "name": "Extraire parametres",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const query = $input.first().json.query || {};\nconst fileId = query.file_id || '';\nconst code = query.code || '';\n\nif (!fileId || !code) {\n  return [{ json: { valid: false, error: 'Parametres manquants (file_id ou code)' } }];\n}\n\nreturn [{ json: { valid: true, file_id: fileId, code: code } }];"
+      }
+    },
+    {
+      "id": "if_params_get",
+      "name": "Params OK ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "resp_err_params_get",
+      "name": "Repondre Erreur Params",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        200
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<html><body style=\"font-family:sans-serif;text-align:center;padding:40px\"><h2 style=\"color:#dc2626\">Erreur</h2><p>{{ $json.error }}</p></body></html>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "gd_dl_get",
+      "name": "Download Flashcards",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        720,
+        -100
+      ],
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.file_id }}"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "cukxQDNwWIqOAK02",
+          "name": "Google Drive la bonne!"
+        }
+      }
+    },
+    {
+      "id": "build_page",
+      "name": "Construire page selection",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        -100
+      ],
+      "parameters": {
+        "jsCode": "const query = $('Extraire parametres').first().json;\nconst buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst flashcards = JSON.parse(buffer.toString('utf-8'));\n\nif (flashcards.code_suppression !== query.code) {\n  return [{ json: { verified: false, error: 'Code invalide' } }];\n}\n\nconst cartes = flashcards.cartes || [];\nfunction diffColor(d) { return d === 'facile' ? '#16a34a' : d === 'moyen' ? '#d97706' : '#dc2626'; }\n\nlet cardsHtml = '';\nfor (const c of cartes) {\n  cardsHtml += `<label style=\"display:block;border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px;margin-bottom:10px;cursor:pointer\">\n    <div style=\"display:flex;align-items:flex-start;gap:12px\">\n      <input type=\"checkbox\" name=\"cartes\" value=\"${c.numero}\" checked class=\"carte-checkbox\" style=\"margin-top:4px;width:18px;height:18px;flex:0 0 auto\">\n      <div style=\"flex:1\">\n        <div style=\"color:${diffColor(c.difficulte)};font-size:11px;font-weight:bold;text-transform:uppercase;margin-bottom:4px\">${c.difficulte || ''}</div>\n        <div style=\"font-weight:bold;margin-bottom:4px\">Q${c.numero} : ${c.question}</div>\n        <div style=\"color:#475569;font-size:14px\">${c.reponse}</div>\n      </div>\n    </div>\n  </label>`;\n}\n\nconst html = `<html>\n<head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"></head>\n<body style=\"font-family:sans-serif;background:#f8fafc;margin:0;padding:24px\">\n  <div style=\"max-width:640px;margin:0 auto\">\n    <h2 style=\"margin-bottom:4px\">BOX &mdash; Choisissez les cartes a publier</h2>\n    <p style=\"color:#64748b;margin-top:0\">${flashcards.matiere} &mdash; ${flashcards.niveau} &mdash; ${flashcards.notion}</p>\n    <div style=\"margin:16px 0\">\n      <button type=\"button\" onclick=\"document.querySelectorAll('.carte-checkbox').forEach(c=>c.checked=true)\" style=\"background:#e2e8f0;border:none;border-radius:6px;padding:8px 14px;margin-right:8px;cursor:pointer\">Tout selectionner</button>\n      <button type=\"button\" onclick=\"document.querySelectorAll('.carte-checkbox').forEach(c=>c.checked=false)\" style=\"background:#e2e8f0;border:none;border-radius:6px;padding:8px 14px;cursor:pointer\">Tout deselectionner</button>\n    </div>\n    <form method=\"POST\" action=\"https://n8n.srv868991.hstgr.cloud/webhook/box-select-confirm\">\n      <input type=\"hidden\" name=\"file_id\" value=\"${query.file_id}\">\n      <input type=\"hidden\" name=\"code\" value=\"${query.code}\">\n      ${cardsHtml}\n      <button type=\"submit\" style=\"background:#16a34a;color:white;border:none;border-radius:8px;padding:14px 32px;font-size:16px;font-weight:bold;cursor:pointer;width:100%;margin-top:8px\">Publier la selection</button>\n    </form>\n    <p style=\"color:#94a3b8;font-size:12px;text-align:center;margin-top:16px\">Decochez une carte pour l'exclure. Si vous decochez tout, rien ne sera publie.</p>\n  </div>\n</body>\n</html>`;\n\nreturn [{ json: { verified: true, html } }];"
+      }
+    },
+    {
+      "id": "if_code_get",
+      "name": "Code OK ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1200,
+        -100
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c2",
+              "leftValue": "={{ $json.verified }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "resp_err_code_get",
+      "name": "Repondre Erreur Code",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1440,
+        100
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<html><body style=\"font-family:sans-serif;text-align:center;padding:40px\"><h2 style=\"color:#dc2626\">Erreur</h2><p>{{ $json.error }}</p></body></html>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "resp_page_select",
+      "name": "Repondre Page Selection",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1440,
+        -200
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "wh_select_confirm",
+      "name": "Webhook Select Confirm",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        500
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "box-select-confirm",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "box-select-confirm-wh-001"
+    },
+    {
+      "id": "extract_post",
+      "name": "Extraire parametres Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        500
+      ],
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || {};\nconst fileId = body.file_id || '';\nconst code = body.code || '';\nlet selected = body.cartes;\nif (selected === undefined || selected === null || selected === '') selected = [];\nif (!Array.isArray(selected)) selected = [selected];\nselected = selected.map(n => parseInt(n, 10)).filter(n => !isNaN(n));\n\nif (!fileId || !code) {\n  return [{ json: { valid: false, error: 'Parametres manquants' } }];\n}\n\nreturn [{ json: { valid: true, file_id: fileId, code: code, selected: selected } }];"
+      }
+    },
+    {
+      "id": "if_params_post",
+      "name": "Params OK ? Confirmation",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        480,
+        500
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "resp_err_params_post",
+      "name": "Repondre Erreur Params Confirmation",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        700
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<html><body style=\"font-family:sans-serif;text-align:center;padding:40px\"><h2 style=\"color:#dc2626\">Erreur</h2><p>{{ $json.error }}</p></body></html>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "gd_dl_post",
+      "name": "Download Flashcards Confirmation",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        720,
+        400
+      ],
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.file_id }}"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "cukxQDNwWIqOAK02",
+          "name": "Google Drive la bonne!"
+        }
+      }
+    },
+    {
+      "id": "verify_filter",
+      "name": "Verifier et filtrer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        400
+      ],
+      "parameters": {
+        "jsCode": "const query = $('Extraire parametres Confirmation').first().json;\nconst buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst flashcards = JSON.parse(buffer.toString('utf-8'));\n\nif (flashcards.code_suppression !== query.code) {\n  return [{ json: { verified: false, error: 'Code invalide' } }];\n}\n\nconst allCartes = flashcards.cartes || [];\nconst selectedSet = new Set(query.selected);\nconst kept = allCartes.filter(c => selectedSet.has(c.numero));\nconst removedCount = allCartes.length - kept.length;\n\nreturn [{ json: {\n  verified: true,\n  empty: kept.length === 0,\n  file_id: query.file_id,\n  code: query.code,\n  id: flashcards.id,\n  matiere: flashcards.matiere,\n  niveau: flashcards.niveau,\n  notion: flashcards.notion,\n  prof_nom: flashcards.prof_nom,\n  prof_email: flashcards.prof_email,\n  date_creation: flashcards.date_creation,\n  cartes_json: JSON.stringify({ ...flashcards, cartes: kept, nb_cartes: kept.length }),\n  nb_cartes: kept.length,\n  removed_count: removedCount\n} }];"
+      }
+    },
+    {
+      "id": "if_code_post",
+      "name": "Code OK ? Confirmation",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1200,
+        400
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c2",
+              "leftValue": "={{ $json.verified }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "resp_err_code_post",
+      "name": "Repondre Erreur Code Confirmation",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1440,
+        620
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<html><body style=\"font-family:sans-serif;text-align:center;padding:40px\"><h2 style=\"color:#dc2626\">Erreur</h2><p>{{ $json.error }}</p></body></html>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "if_empty",
+      "name": "Vide ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1440,
+        400
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c3",
+              "leftValue": "={{ $json.empty }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "gd_delete_post",
+      "name": "Supprimer fichier",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1680,
+        550
+      ],
+      "parameters": {
+        "resource": "file",
+        "operation": "deleteFile",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.file_id }}"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "cukxQDNwWIqOAK02",
+          "name": "Google Drive la bonne!"
+        }
+      }
+    },
+    {
+      "id": "resp_rejet_post",
+      "name": "Repondre Rejet",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1920,
+        550
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<html><head><meta http-equiv=\"refresh\" content=\"3;url=https://ericduchateau.github.io/box/\"></head><body style=\"font-family:sans-serif;text-align:center;padding:60px\"><div style=\"max-width:500px;margin:0 auto\"><h2 style=\"color:#f59e0b\">Aucune carte selectionnee</h2><p style=\"font-size:18px\">Les fiches <strong>{{ $('Verifier et filtrer').item.json.notion }}</strong> n'ont pas ete publiees.</p><p style=\"color:#64748b\">Redirection vers la page BOX dans 3 secondes...</p></div></body></html>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "upload_filtered",
+      "name": "Upload Flashcards Filtrees",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        250
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://www.googleapis.com/upload/drive/v3/files/{{ $json.file_id }}?uploadType=media",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.cartes_json }}",
+        "options": {}
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "cukxQDNwWIqOAK02",
+          "name": "Google Drive la bonne!"
+        }
+      }
+    },
+    {
+      "id": "gd_dl_cat_post",
+      "name": "Download Catalogue",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1920,
+        250
+      ],
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1AmmMsO3nh4h0GQ0I5XzIqWG_zHA9wopa"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "cukxQDNwWIqOAK02",
+          "name": "Google Drive la bonne!"
+        }
+      }
+    },
+    {
+      "id": "maj_cat_post",
+      "name": "MAJ Catalogue",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        250
+      ],
+      "parameters": {
+        "jsCode": "const setData = $('Verifier et filtrer').first().json;\n\nlet catalogue;\ntry {\n  const buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\n  let parsed = JSON.parse(buffer.toString('utf-8'));\n  if (typeof parsed === 'string') parsed = JSON.parse(parsed);\n  if (typeof parsed === 'object' && Array.isArray(parsed.sets)) {\n    catalogue = parsed;\n  } else {\n    catalogue = { last_updated: '', total_sets: 0, sets: [] };\n  }\n} catch (e) {\n  catalogue = { last_updated: '', total_sets: 0, sets: [] };\n}\n\nif (catalogue.sets.some(s => s.id === setData.id)) {\n  return [{ json: { already_published: true, notion: setData.notion } }];\n}\n\ncatalogue.sets.push({\n  id: setData.id,\n  matiere: setData.matiere,\n  niveau: setData.niveau,\n  notion: setData.notion,\n  prof_nom: setData.prof_nom,\n  nb_cartes: setData.nb_cartes,\n  date_creation: setData.date_creation,\n  drive_file_id: setData.file_id\n});\n\ncatalogue.total_sets = catalogue.sets.length;\ncatalogue.last_updated = new Date().toISOString();\n\nreturn [{ json: {\n  catalogue_json: JSON.stringify(catalogue, null, 2),\n  notion: setData.notion,\n  already_published: false\n} }];"
+      }
+    },
+    {
+      "id": "if_already_pub",
+      "name": "Deja publie ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2400,
+        250
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c4",
+              "leftValue": "={{ $json.already_published }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "upload_cat_post",
+      "name": "Upload Catalogue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2400,
+        450
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://www.googleapis.com/upload/drive/v3/files/1AmmMsO3nh4h0GQ0I5XzIqWG_zHA9wopa?uploadType=media",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.catalogue_json }}",
+        "options": {}
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "cukxQDNwWIqOAK02",
+          "name": "Google Drive la bonne!"
+        }
+      }
+    },
+    {
+      "id": "prep_email_post",
+      "name": "Preparer Email Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2680,
+        120
+      ],
+      "parameters": {
+        "jsCode": "const data = $('Verifier et filtrer').first().json;\nconst studentUrl = `https://ericduchateau.github.io/box/?set=${data.id}`;\nconst removedLine = data.removed_count > 0\n  ? `<p style=\"color:#d97706;font-size:13px\">${data.removed_count} carte(s) retiree(s) lors de votre relecture &mdash; ${data.nb_cartes} carte(s) publiee(s) au total.</p>`\n  : '';\n\nconst emailHtml = `<div style=\"font-family:sans-serif;max-width:600px;margin:0 auto\">\n  <h2 style=\"color:#16a34a\">&#9989; Vos fiches sont publiees et accessibles aux eleves !</h2>\n  <p>\n    <strong>Notion :</strong> ${data.notion}<br>\n    <strong>Matiere :</strong> ${data.matiere} &mdash; ${data.niveau}<br>\n    <strong>Nombre de fiches :</strong> ${data.nb_cartes}\n  </p>\n  ${removedLine}\n  <hr>\n  <h3>&#128279; Lien direct a partager avec vos eleves :</h3>\n  <div style=\"background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;margin:16px 0\">\n    <p style=\"margin:0 0 8px 0;font-size:13px;color:#64748b\">Copiez ce lien dans votre cahier de texte numerique :</p>\n    <p style=\"margin:0 0 12px 0;background:white;border:1px solid #dbeafe;border-radius:4px;padding:10px;font-family:monospace;word-break:break-all;font-size:14px;font-weight:bold\">${studentUrl}</p>\n    <a href=\"${studentUrl}\" style=\"color:#2563eb;font-size:14px\">Ouvrir les fiches &rarr;</a>\n  </div>\n  <p style=\"color:#64748b;font-size:12px\">Ce lien ouvrira directement le jeu de fiches <strong>${data.notion}</strong> pour vos eleves, sans passer par le catalogue.</p>\n</div>`;\n\nreturn [{ json: { prof_email: data.prof_email, notion: data.notion, nb_cartes: data.nb_cartes, email_html: emailHtml } }];"
+      }
+    },
+    {
+      "id": "gmail_conf_post",
+      "name": "Email Confirmation Prof",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        2920,
+        120
+      ],
+      "parameters": {
+        "operation": "send",
+        "sendTo": "={{ $json.prof_email }}",
+        "subject": "={{ 'BOX ✅ \"' + $json.notion + '\" — ' + $json.nb_cartes + ' fiches publiees et accessibles aux élèves' }}",
+        "emailType": "html",
+        "message": "={{ $json.email_html }}"
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "iIgjFF3qL44wl8uE",
+          "name": "Gmail n8n iazimut2026"
+        }
+      }
+    },
+    {
+      "id": "prep_page_post",
+      "name": "Preparer Page Succes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2680,
+        400
+      ],
+      "parameters": {
+        "jsCode": "const data = $('Verifier et filtrer').first().json;\nconst studentUrl = 'https://ericduchateau.github.io/box/?set=' + data.id;\nconst removedLine = data.removed_count > 0\n  ? `<p style=\\\"margin:8px 0 0;color:#d97706;font-size:13px\\\">${data.removed_count} carte(s) retiree(s) lors de votre relecture.</p>`\n  : '';\n\nconst html = `<html>\n<body style=\"font-family:sans-serif;text-align:center;padding:60px\">\n  <div style=\"max-width:540px;margin:0 auto\">\n    <h2 style=\"color:#16a34a\">&#9989; Fiches publiees !</h2>\n    <p style=\"font-size:18px\">Les fiches <strong>${data.notion}</strong> (${data.nb_cartes} cartes) sont maintenant accessibles aux eleves.</p>\n    ${removedLine}\n    <div style=\"background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;margin:24px 0;text-align:left\">\n      <p style=\"margin:0 0 8px 0;font-weight:bold;color:#1e40af\">&#128279; Lien a partager avec vos eleves :</p>\n      <p style=\"margin:0 0 10px 0;background:white;border:1px solid #dbeafe;border-radius:4px;padding:10px;font-family:monospace;word-break:break-all;font-size:13px\">${studentUrl}</p>\n      <p style=\"margin:0;color:#16a34a;font-size:13px\">&#128231; Ce lien vous a aussi ete envoye par email.</p>\n    </div>\n    <p style=\"margin-top:24px\"><a href=\"https://ericduchateau.github.io/box/\" style=\"color:#2563eb\">Aller sur la page BOX &rarr;</a></p>\n  </div>\n</body>\n</html>`;\n\nreturn [{ json: { html } }];"
+      }
+    },
+    {
+      "id": "resp_ok_post",
+      "name": "Repondre OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2920,
+        400
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Select": {
+      "main": [
+        [
+          {
+            "node": "Extraire parametres",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraire parametres": {
+      "main": [
+        [
+          {
+            "node": "Params OK ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Params OK ?": {
+      "main": [
+        [
+          {
+            "node": "Download Flashcards",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Repondre Erreur Params",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Flashcards": {
+      "main": [
+        [
+          {
+            "node": "Construire page selection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Construire page selection": {
+      "main": [
+        [
+          {
+            "node": "Code OK ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code OK ?": {
+      "main": [
+        [
+          {
+            "node": "Repondre Page Selection",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Repondre Erreur Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Select Confirm": {
+      "main": [
+        [
+          {
+            "node": "Extraire parametres Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraire parametres Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Params OK ? Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Params OK ? Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Download Flashcards Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Repondre Erreur Params Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Flashcards Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Verifier et filtrer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verifier et filtrer": {
+      "main": [
+        [
+          {
+            "node": "Code OK ? Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code OK ? Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Vide ?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Repondre Erreur Code Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vide ?": {
+      "main": [
+        [
+          {
+            "node": "Supprimer fichier",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upload Flashcards Filtrees",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supprimer fichier": {
+      "main": [
+        [
+          {
+            "node": "Repondre Rejet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Flashcards Filtrees": {
+      "main": [
+        [
+          {
+            "node": "Download Catalogue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Catalogue": {
+      "main": [
+        [
+          {
+            "node": "MAJ Catalogue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MAJ Catalogue": {
+      "main": [
+        [
+          {
+            "node": "Deja publie ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deja publie ?": {
+      "main": [
+        [
+          {
+            "node": "Preparer Email Confirmation",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Preparer Page Succes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upload Catalogue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Catalogue": {
+      "main": [
+        [
+          {
+            "node": "Preparer Email Confirmation",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Preparer Page Succes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparer Email Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Email Confirmation Prof",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparer Page Succes": {
+      "main": [
+        [
+          {
+            "node": "Repondre OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "pinData": null
+}

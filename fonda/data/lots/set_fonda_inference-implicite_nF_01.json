@@ -1,0 +1,118 @@
+{
+  "schema": "lot-fonda/v1",
+  "set_id": "set_fonda_inference-implicite_nF_01",
+  "notion_id": "fr.inference-implicite",
+  "palier": "nF",
+  "matiere": "Français",
+  "notion": "Comprendre l'implicite et faire une inférence",
+  "niveau": "Fondamentaux — Final (abouti)",
+  "revue_carte_par_carte": true,
+  "nb_cartes": 6,
+  "date_creation": "2026-10-11",
+  "cartes": [
+    {
+      "item_id": "it01",
+      "numero": 1,
+      "question": "Dans son carnet, un explorateur note que l'air devient difficile à respirer, que les sapins ont disparu depuis longtemps et que seule une mousse rase recouvre les rochers. Où se trouve-t-il probablement ?",
+      "reponse": "en haute montagne",
+      "difficulte": "moyen",
+      "palier": "nF",
+      "profil_correction": "sens",
+      "reponses_acceptees": [
+        "en haute montagne",
+        "haute montagne",
+        "en altitude",
+        "au sommet d'une montagne",
+        "montagne"
+      ],
+      "contexte": "carnet-explorateur-altitude",
+      "set_id": "set_fonda_inference-implicite_nF_01",
+      "notion_id": "fr.inference-implicite"
+    },
+    {
+      "item_id": "it02",
+      "numero": 2,
+      "question": "Léa passe devant le magasin de jouets chaque matin. Depuis trois semaines, les volets restent baissés même en journée, les étagères visibles par la vitrine sont presque vides, et hier un camion est venu emporter les dernières caisses. Que peut-on déduire de ce magasin ?",
+      "reponse": "il a fermé",
+      "difficulte": "moyen",
+      "palier": "nF",
+      "profil_correction": "sens",
+      "reponses_acceptees": [
+        "il a fermé",
+        "fermé",
+        "fermeture définitive",
+        "le magasin a fermé"
+      ],
+      "contexte": "magasin-jouets-vide",
+      "set_id": "set_fonda_inference-implicite_nF_01",
+      "notion_id": "fr.inference-implicite"
+    },
+    {
+      "item_id": "it03",
+      "numero": 3,
+      "question": "Dans sa lettre, Grand-mère écrit qu'elle a sorti les bûches de la remise, qu'elle a cousu une doublure chaude dans son manteau, et que les hirondelles ont quitté le jardin. Quelle saison approche ?",
+      "reponse": "l'hiver",
+      "difficulte": "facile",
+      "palier": "nF",
+      "profil_correction": "sens",
+      "reponses_acceptees": [
+        "l'hiver",
+        "hiver"
+      ],
+      "contexte": "lettre-grand-mere-hiver",
+      "set_id": "set_fonda_inference-implicite_nF_01",
+      "notion_id": "fr.inference-implicite"
+    },
+    {
+      "item_id": "it04",
+      "numero": 4,
+      "question": "« Tu as encore oublié ton cahier de texte, c'est la troisième fois cette semaine ! Range tes affaires avant de partir, et ce soir on vérifiera ton sac ensemble avant le dîner. » Quel est le lien le plus probable entre ces deux personnes ? A) deux camarades de classe B) un parent et son enfant C) deux professeurs",
+      "reponse": "B",
+      "difficulte": "difficile",
+      "palier": "nF",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "B"
+      ],
+      "contexte": "dialogue-parent-enfant-cahier",
+      "set_id": "set_fonda_inference-implicite_nF_01",
+      "notion_id": "fr.inference-implicite"
+    },
+    {
+      "item_id": "it05",
+      "numero": 5,
+      "question": "Sur le plan de travail, il reste de la farine éparpillée, un rouleau à pâtisserie posé de travers, et une forte odeur de cannelle flotte encore dans la cuisine deux heures après. Qu'a-t-on probablement préparé ?",
+      "reponse": "une pâtisserie à la cannelle",
+      "difficulte": "moyen",
+      "palier": "nF",
+      "profil_correction": "sens",
+      "reponses_acceptees": [
+        "une pâtisserie",
+        "un gâteau",
+        "une pâtisserie à la cannelle",
+        "des gâteaux à la cannelle"
+      ],
+      "contexte": "cuisine-residus-patisserie",
+      "set_id": "set_fonda_inference-implicite_nF_01",
+      "notion_id": "fr.inference-implicite"
+    },
+    {
+      "item_id": "it06",
+      "numero": 6,
+      "question": "Le ciel s'était assombri si brusquement que Camille alluma la lampe du salon. Dans la rue, les enfants rentraient de l'école en courant, leurs cartables sur le dos, pressés d'éviter l'averse. À quel moment de la journée se déroule cette scène ?",
+      "reponse": "après-midi",
+      "difficulte": "difficile",
+      "palier": "nF",
+      "profil_correction": "sens",
+      "reponses_acceptees": [
+        "après-midi",
+        "fin d'après-midi",
+        "sortie des classes",
+        "après l'école"
+      ],
+      "contexte": "ciel-sombre-sortie-ecole",
+      "set_id": "set_fonda_inference-implicite_nF_01",
+      "notion_id": "fr.inference-implicite"
+    }
+  ]
+}

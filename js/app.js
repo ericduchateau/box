@@ -22,6 +22,10 @@ const App = {
 
   init() {
     const params = new URLSearchParams(window.location.search);
+    // Mode Box-FONDA (T4) : uniquement si ?fonda=1, sinon ce "if" est le SEUL octet
+    // de différence avec le comportement d'avant — aucun script FONDA n'est chargé,
+    // rien d'autre n'est exécuté. Toute la logique réelle vit dans /fonda/.
+    if (params.get('fonda') === '1') { this.initFonda(); return; }
     if (params.get('action') === 'delete') { this.showScreen('delete'); return; }
     this.initKeyboard();
     this.initTouch();
@@ -33,7 +37,76 @@ const App = {
     this.loadCatalogue();
   },
 
+  // Chargement conditionnel : zéro <script>/<link> statique pointant vers /fonda/
+  // dans index.html, donc zéro requête réseau en plus quand le flag est absent.
+  // Poppins (signature FONDA uniquement) injecté ici pour la même raison (relecture
+  // Codex #7) : BOX clair n'a jamais eu besoin de cette police, le lien statique
+  // dans <head> l'aurait chargée sur CHAQUE page BOX, flag absent ou pas.
+  initFonda() {
+    document.body.dataset.theme = 'fonda';
+    const font = document.createElement('link');
+    font.rel = 'stylesheet';
+    font.href = 'https://fonts.googleapis.com/css2?family=Poppins:wght@700;800&display=swap';
+    document.head.appendChild(font);
+    // État de chargement IMMÉDIAT (relecture Codex PR #2, #5 puis v2 #1) : jamais
+    // d'écran vide entre le masquage de BOX et le premier rendu de bootstrap.js (qui
+    // réutilise ce même #fondaRoot), et un retour BOX disponible DÈS l'attente. Le
+    // délai vit ICI, en amont du script qui peut ne jamais arriver : bootstrap.js
+    // signale sa prise en charge (window.FondaBootstrapActif, posé à la fin de son
+    // évaluation) ; sans ce signal -> message d'indisponibilité, que ce soit par
+    // erreur réseau (onerror), par erreur d'évaluation (onload sans signal) ou par
+    // requête pendante (délai).
+    const racine = document.createElement('div');
+    racine.id = 'fondaRoot';
+    const attente = document.createElement('p');
+    attente.className = 'fonda-message';
+    attente.textContent = 'Chargement…';
+    const retour = document.createElement('a');
+    retour.className = 'fonda-header__back';
+    retour.href = window.location.pathname;
+    retour.textContent = '← Retour à BOX';
+    racine.appendChild(attente);
+    racine.appendChild(retour);
+    document.body.appendChild(racine);
+
+    let echec = false;
+    const indisponible = () => {
+      if (echec || window.FondaBootstrapActif) return;
+      echec = true;
+      attente.textContent = 'Le mode FONDA est indisponible pour le moment — réessaie plus tard.';
+    };
+    const s = document.createElement('script');
+    s.src = 'fonda/page/bootstrap.js?v=3';
+    s.onerror = indisponible;
+    s.onload = indisponible; // sans effet si bootstrap.js a bien pris la main
+    setTimeout(indisponible, App.DELAI_BOOTSTRAP_MS);
+    document.head.appendChild(s);
+  },
+
+  DELAI_BOOTSTRAP_MS: 20000,
+
+  // Switch BOX -> FONDA (navbar, thème clair) : navigation plein-rechargement vers
+  // ?fonda=1&page=niveau, jamais un repaint de l'écran courant (BOX reste 100%
+  // inchangé, cf. docs/box-fonda-design/BRIEF.md §1/§2). Réutilise le dernier niveau
+  // choisi (localStorage, écrit par fonda/page/bootstrap.js au retour vers BOX) s'il
+  // existe, sinon atterrit sur le sélecteur de niveau (zéro donnée inventée).
+  goFonda() {
+    let niveau = null;
+    try { niveau = localStorage.getItem('box_fonda_niveau'); } catch { niveau = null; }
+    const params = new URLSearchParams();
+    params.set('fonda', '1');
+    params.set('page', 'niveau');
+    if (niveau) params.set('niveau', niveau);
+    window.location.href = window.location.pathname + '?' + params.toString();
+  },
+
   showScreen(name) {
+    // Isolation BOX<->FONDA (durcissement, pas une sécurité : /box-delete est public,
+    // seul le code de suppression protège) : en thème FONDA, l'écran BOX de
+    // suppression n'est jamais affiché — couvre le lien « Administration » du footer
+    // même si le CSS qui le masque ne charge pas, et un appel direct. BOX clair
+    // (data-theme vide) : chemin inchangé.
+    if (name === 'delete' && document.body.dataset.theme === 'fonda') return;
     ['Menu', 'Review', 'Done', 'Delete', 'Error'].forEach(s => {
       const el = document.getElementById('screen' + s);
       if (el) el.style.display = 'none';
@@ -47,6 +120,15 @@ const App = {
   goHome() {
     this.currentSet = null; this.isFlipped = false;
     if (this.timerInterval) { clearInterval(this.timerInterval); this.timerInterval = null; }
+    // Isolation défensive FONDA -> BOX (relecture Codex #3) : la navbar BOX est
+    // masquée en thème FONDA (css/style.css, body[data-theme="fonda"] .navbar), donc
+    // ce chemin n'est normalement plus cliquable depuis la page FONDA — mais si on y
+    // revient quand même (historique navigateur, futur appel direct), on nettoie le
+    // thème et le #fondaRoot injecté plutôt que de laisser les deux rendus se
+    // chevaucher.
+    document.body.dataset.theme = '';
+    const fondaRoot = document.getElementById('fondaRoot');
+    if (fondaRoot) fondaRoot.remove();
     window.history.pushState({}, '', window.location.pathname);
     this.loadCatalogue();
   },
@@ -530,5 +612,11 @@ const App = {
   esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; },
   formatDate(s) { try { return new Date(s).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }); } catch { return s; } }
 };
+
+// Ajouté pour T4 (tests de non-régression en Node) : en <script> classique (navigateur,
+// pas de `module`), cette ligne ne fait RIEN — `const App` reste visible via le script
+// scope partagé du document, exactement comme avant (les onclick="App.xxx()" inline
+// fonctionnaient déjà sans ça). Zéro changement de comportement en production.
+if (typeof module !== 'undefined' && module.exports) { module.exports = App; }
 
 document.addEventListener('DOMContentLoaded', () => App.init());

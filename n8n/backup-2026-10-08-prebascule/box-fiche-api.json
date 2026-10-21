@@ -1,0 +1,130 @@
+{
+  "id": "LiswcNFCh5UiYuwc",
+  "name": "BOX - Fiche API",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "path": "box-set",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "wh_set",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "586c459c-b7f5-46da-820d-2d5622e91dbb"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.query.file_id }}"
+        },
+        "options": {}
+      },
+      "id": "gd_set",
+      "name": "Download Fiche",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        240,
+        0
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "cukxQDNwWIqOAK02",
+          "name": "Google Drive la bonne!"
+        }
+      },
+      "notes": "Telecharge le fichier JSON de la fiche depuis Google Drive. Le file_id est passe en query param par le frontend."
+    },
+    {
+      "parameters": {
+        "jsCode": "const buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst fiche = JSON.parse(buffer.toString('utf-8'));\n\n// Retirer les champs sensibles avant envoi au frontend\ndelete fiche.prof_email;\ndelete fiche.code_suppression;\n\nreturn [{ json: fiche }];"
+      },
+      "id": "code_set",
+      "name": "Parse et nettoyer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "GET, OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "id": "resp_set",
+      "name": "Repondre",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Download Fiche",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Fiche": {
+      "main": [
+        [
+          {
+            "node": "Parse et nettoyer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse et nettoyer": {
+      "main": [
+        [
+          {
+            "node": "Repondre",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "pinData": {}
+}

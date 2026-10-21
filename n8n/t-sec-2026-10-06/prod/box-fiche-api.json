@@ -1,0 +1,128 @@
+{
+  "id": "LiswcNFCh5UiYuwc",
+  "name": "BOX - Fiche API",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": { "path": "box-set", "responseMode": "responseNode", "options": {} },
+      "id": "wh_set",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "586c459c-b7f5-46da-820d-2d5622e91dbb"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": { "__rl": true, "mode": "id", "value": "1AmmMsO3nh4h0GQ0I5XzIqWG_zHA9wopa" },
+        "options": {}
+      },
+      "id": "gd_catalogue",
+      "name": "Download Catalogue",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [240, 0],
+      "credentials": { "googleDriveOAuth2Api": { "id": "cukxQDNwWIqOAK02", "name": "Google Drive la bonne!" } },
+      "notes": "T-SEC (2026-10-06) : verifie que le fichier demande figure bien au catalogue avant de le servir — /box-set ne doit plus exposer un contenu candidate (non encore valide) a qui connait juste son file_id."
+    },
+    {
+      "parameters": {
+        "jsCode": "const fileId = $('Webhook').first().json.query.file_id || '';\n\nlet catalogue;\ntry {\n  const buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\n  let parsed = JSON.parse(buffer.toString('utf-8'));\n  if (typeof parsed === 'string') parsed = JSON.parse(parsed);\n  catalogue = (parsed && Array.isArray(parsed.sets)) ? parsed : { sets: [] };\n} catch (e) {\n  catalogue = { sets: [] };\n}\n\nconst publie = fileId !== '' && catalogue.sets.some((s) => s.drive_file_id === fileId);\n\nreturn [{ json: { file_id: fileId, publie } }];"
+      },
+      "id": "code_verif_pub",
+      "name": "Verifier publication",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "version": 2, "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "combinator": "and",
+          "conditions": [{ "id": "c1", "leftValue": "={{ $json.publie }}", "rightValue": true, "operator": { "type": "boolean", "operation": "equals" } }]
+        },
+        "options": {}
+      },
+      "id": "if_publie",
+      "name": "Publie ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [720, 0]
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": { "__rl": true, "mode": "id", "value": "={{ $json.file_id }}" },
+        "options": {}
+      },
+      "id": "gd_set",
+      "name": "Download Fiche",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [960, -100],
+      "credentials": { "googleDriveOAuth2Api": { "id": "cukxQDNwWIqOAK02", "name": "Google Drive la bonne!" } },
+      "notes": "Telecharge le fichier JSON de la fiche depuis Google Drive. Le file_id est passe en query param par le frontend."
+    },
+    {
+      "parameters": {
+        "jsCode": "const buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst fiche = JSON.parse(buffer.toString('utf-8'));\n\n// Retirer les champs sensibles avant envoi au frontend\ndelete fiche.prof_email;\ndelete fiche.code_suppression;\ndelete fiche.review_token; // T-SEC (2026-10-07) : jeton anti-CSRF de la relecture, jamais public\n\nreturn [{ json: fiche }];"
+      },
+      "id": "code_set",
+      "name": "Parse et nettoyer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, -100]
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              { "name": "Access-Control-Allow-Origin", "value": "*" },
+              { "name": "Access-Control-Allow-Methods", "value": "GET, OPTIONS" }
+            ]
+          }
+        }
+      },
+      "id": "resp_set",
+      "name": "Repondre",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1440, -100]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"error\": \"Fiche non publiee ou introuvable.\" } }}",
+        "options": {
+          "responseCode": 404,
+          "responseHeaders": {
+            "entries": [
+              { "name": "Access-Control-Allow-Origin", "value": "*" },
+              { "name": "Access-Control-Allow-Methods", "value": "GET, OPTIONS" }
+            ]
+          }
+        }
+      },
+      "id": "resp_non_publie",
+      "name": "Repondre Non Publiee",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [960, 200],
+      "notes": "T-SEC (2026-10-06, corrige en 2e passe) : responseCode doit etre dans options.responseCode (collection), pas un parametre de 1er niveau - sinon le node Respond to Webhook l'ignore et renvoie 200 avec le corps d'erreur dedans. 404 si le file_id demande n'est pas (encore) au catalogue — empeche de lire une candidate avant validation en connaissant juste son file_id."
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Download Catalogue", "type": "main", "index": 0 }]] },
+    "Download Catalogue": { "main": [[{ "node": "Verifier publication", "type": "main", "index": 0 }]] },
+    "Verifier publication": { "main": [[{ "node": "Publie ?", "type": "main", "index": 0 }]] },
+    "Publie ?": { "main": [[{ "node": "Download Fiche", "type": "main", "index": 0 }], [{ "node": "Repondre Non Publiee", "type": "main", "index": 0 }]] },
+    "Download Fiche": { "main": [[{ "node": "Parse et nettoyer", "type": "main", "index": 0 }]] },
+    "Parse et nettoyer": { "main": [[{ "node": "Repondre", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "callerPolicy": "workflowsFromSameOwner", "availableInMCP": false },
+  "staticData": null,
+  "pinData": {}
+}

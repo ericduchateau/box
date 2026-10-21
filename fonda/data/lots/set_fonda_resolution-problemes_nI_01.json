@@ -1,0 +1,116 @@
+{
+  "schema": "lot-fonda/v1",
+  "set_id": "set_fonda_resolution-problemes_nI_01",
+  "notion_id": "maths.resolution-problemes",
+  "palier": "nI",
+  "matiere": "Mathématiques",
+  "notion": "Résoudre un problème à plusieurs étapes",
+  "niveau": "Fondamentaux — Initial (accessible)",
+  "revue_carte_par_carte": true,
+  "nb_cartes": 6,
+  "date_creation": "2026-10-11",
+  "cartes": [
+    {
+      "item_id": "it01",
+      "numero": 1,
+      "question": "Léa achète un carnet à 3,50 € et un stylo à 1,20 €. Elle paie avec un billet de 10 €. Quelle somme lui rend-on ?",
+      "reponse": "5,30 €",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "5,30 €",
+        "5,30",
+        "5.30 €",
+        "5.30"
+      ],
+      "unite": "€",
+      "contexte": "achat-papeterie-monnaie",
+      "set_id": "set_fonda_resolution-problemes_nI_01",
+      "notion_id": "maths.resolution-problemes"
+    },
+    {
+      "item_id": "it02",
+      "numero": 2,
+      "question": "Un cycliste parcourt 12 km le matin et 8 km l'après-midi, chaque jour, pendant 3 jours. Quelle distance totale parcourt-il sur ces 3 jours ?",
+      "reponse": "60 km",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "60 km",
+        "60"
+      ],
+      "unite": "km",
+      "contexte": "cycliste-distance-trois-jours",
+      "set_id": "set_fonda_resolution-problemes_nI_01",
+      "notion_id": "maths.resolution-problemes"
+    },
+    {
+      "item_id": "it03",
+      "numero": 3,
+      "question": "Une recette pour 4 personnes nécessite 200 g de farine. Quelle quantité de farine faut-il pour préparer cette recette pour 10 personnes ?",
+      "reponse": "500 g",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "500 g",
+        "500"
+      ],
+      "unite": "g",
+      "contexte": "recette-farine-proportion",
+      "set_id": "set_fonda_resolution-problemes_nI_01",
+      "notion_id": "maths.resolution-problemes"
+    },
+    {
+      "item_id": "it04",
+      "numero": 4,
+      "question": "Il y a 5 ans, Marc avait 8 ans. Quel âge aura-t-il dans 10 ans ?",
+      "reponse": "23 ans",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "23 ans",
+        "23"
+      ],
+      "unite": "ans",
+      "contexte": "age-marc-dans-dix-ans",
+      "set_id": "set_fonda_resolution-problemes_nI_01",
+      "notion_id": "maths.resolution-problemes"
+    },
+    {
+      "item_id": "it05",
+      "numero": 5,
+      "question": "Une classe de 28 élèves part en sortie. Chaque bus peut transporter 24 élèves. Combien de bus faut-il réserver au minimum ?",
+      "reponse": "2",
+      "difficulte": "difficile",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "2"
+      ],
+      "contexte": "sortie-scolaire-bus",
+      "set_id": "set_fonda_resolution-problemes_nI_01",
+      "notion_id": "maths.resolution-problemes"
+    },
+    {
+      "item_id": "it06",
+      "numero": 6,
+      "question": "Lundi, la température était de 5°C. Elle a augmenté de 3°C le mardi, puis diminué de 2°C le mercredi. Quelle température fait-il mercredi ?",
+      "reponse": "6°C",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "6°C",
+        "6"
+      ],
+      "unite": "°C",
+      "contexte": "temperature-trois-jours",
+      "set_id": "set_fonda_resolution-problemes_nI_01",
+      "notion_id": "maths.resolution-problemes"
+    }
+  ]
+}

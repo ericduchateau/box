@@ -1,0 +1,143 @@
+{
+  "id": "PQhg6g4vsfC3KHRN",
+  "name": "BOX - Rejet Prof",
+  "active": true,
+  "nodes": [
+    {
+      "id": "wh_rej",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "parameters": { "path": "box-reject", "responseMode": "responseNode", "options": {} },
+      "webhookId": "box-reject-wh-001"
+    },
+    {
+      "id": "extract",
+      "name": "Extraire parametres",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 0],
+      "parameters": {
+        "jsCode": "const query = $input.first().json.query || {};\nconst fileId = query.file_id || '';\nconst code = query.code || '';\n\nif (!fileId || !code) {\n  return [{ json: { valid: false, error: 'Parametres manquants' } }];\n}\n\nreturn [{ json: { valid: true, file_id: fileId, code: code } }];"
+      }
+    },
+    {
+      "id": "if_ok",
+      "name": "Params OK ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [480, 0],
+      "parameters": {
+        "conditions": {
+          "options": { "version": 2, "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "combinator": "and",
+          "conditions": [{ "id": "c1", "leftValue": "={{ $json.valid }}", "rightValue": true, "operator": { "type": "boolean", "operation": "equals" } }]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "resp_err",
+      "name": "Repondre Erreur",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [720, 200],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<html><body style=\"font-family:sans-serif;text-align:center;padding:40px\"><h2 style=\"color:#dc2626\">Erreur</h2><p>{{ $json.error }}</p></body></html>",
+        "options": { "responseHeaders": { "entries": [{ "name": "Content-Type", "value": "text/html; charset=utf-8" }] } }
+      }
+    },
+    {
+      "id": "gd_dl",
+      "name": "Download Flashcards",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [720, -100],
+      "parameters": { "operation": "download", "fileId": { "__rl": true, "mode": "id", "value": "={{ $json.file_id }}" }, "options": {} },
+      "credentials": { "googleDriveOAuth2Api": { "id": "cukxQDNwWIqOAK02", "name": "Google Drive la bonne!" } }
+    },
+    {
+      "id": "verify",
+      "name": "Verifier code",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, -100],
+      "parameters": {
+        "jsCode": "const query = $('Extraire parametres').first().json;\nconst buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst flashcards = JSON.parse(buffer.toString('utf-8'));\n\nif (flashcards.code_suppression !== query.code) {\n  return [{ json: { verified: false, error: 'Code invalide' } }];\n}\n\nreturn [{ json: { verified: true, file_id: query.file_id, notion: flashcards.notion } }];"
+      }
+    },
+    {
+      "id": "if_code",
+      "name": "Code OK ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1200, -100],
+      "parameters": {
+        "conditions": {
+          "options": { "version": 2, "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "combinator": "and",
+          "conditions": [{ "id": "c2", "leftValue": "={{ $json.verified }}", "rightValue": true, "operator": { "type": "boolean", "operation": "equals" } }]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "resp_err_code",
+      "name": "Repondre Erreur Code",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1440, 100],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<html><body style=\"font-family:sans-serif;text-align:center;padding:40px\"><h2 style=\"color:#dc2626\">Erreur</h2><p>{{ $json.error }}</p></body></html>",
+        "options": { "responseHeaders": { "entries": [{ "name": "Content-Type", "value": "text/html; charset=utf-8" }] } }
+      }
+    },
+    {
+      "id": "gd_delete",
+      "name": "Supprimer fichier",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [1440, -200],
+      "parameters": {
+        "resource": "file",
+        "operation": "deleteFile",
+        "fileId": { "__rl": true, "mode": "id", "value": "={{ $json.file_id }}" },
+        "options": {}
+      },
+      "credentials": { "googleDriveOAuth2Api": { "id": "cukxQDNwWIqOAK02", "name": "Google Drive la bonne!" } }
+    },
+    {
+      "id": "resp_ok",
+      "name": "Repondre OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1680, -200],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<html><head><meta http-equiv=\"refresh\" content=\"3;url=https://ericduchateau.github.io/box/\"></head><body style=\"font-family:sans-serif;text-align:center;padding:60px\"><div style=\"max-width:500px;margin:0 auto\"><h2 style=\"color:#f59e0b\">&#128465; Fiches rejetees</h2><p style=\"font-size:18px\">Les fiches <strong>{{ $('Verifier code').item.json.notion }}</strong> ont ete supprimees.</p><p style=\"color:#64748b\">Redirection vers la page BOX dans 3 secondes...</p></div></body></html>",
+        "options": { "responseHeaders": { "entries": [{ "name": "Content-Type", "value": "text/html; charset=utf-8" }] } }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Extraire parametres", "type": "main", "index": 0 }]] },
+    "Extraire parametres": { "main": [[{ "node": "Params OK ?", "type": "main", "index": 0 }]] },
+    "Params OK ?": { "main": [[{ "node": "Download Flashcards", "type": "main", "index": 0 }], [{ "node": "Repondre Erreur", "type": "main", "index": 0 }]] },
+    "Download Flashcards": { "main": [[{ "node": "Verifier code", "type": "main", "index": 0 }]] },
+    "Verifier code": { "main": [[{ "node": "Code OK ?", "type": "main", "index": 0 }]] },
+    "Code OK ?": { "main": [[{ "node": "Supprimer fichier", "type": "main", "index": 0 }], [{ "node": "Repondre Erreur Code", "type": "main", "index": 0 }]] },
+    "Supprimer fichier": { "main": [[{ "node": "Repondre OK", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "pinData": null
+}

@@ -1,0 +1,303 @@
+{
+  "updatedAt": "2026-10-20T19:46:28.485Z",
+  "createdAt": "2026-10-20T19:38:21.216Z",
+  "id": "MkYrdhgTo52nA3av",
+  "name": "BOX - FONDA Generation IA (portier)",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "3e5bac56-0a88-4d58-af87-e3d876cb0fa3",
+      "position": [
+        0,
+        0
+      ],
+      "name": "Webhook portier",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "webhookId": "a9aa17e6-4867-4299-afa0-ca6cb133ccfc",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "sdVd72oXHCWhIxTd",
+          "name": "FONDA Portier Token"
+        }
+      },
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "box-fonda-generation-ia-portier",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "96375fe7-615b-41f0-ab72-296111555b40",
+      "position": [
+        220,
+        0
+      ],
+      "name": "Valider corps",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "// FONDA — portier : valide { set_id, ref } SANS jamais lever d'exception (un 400 n'appelle rien).\n// GÉNÉRÉ par n8n/fonda-generation-ia/construire-workflow.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\n// >>> VALIDATION validerDeclencheur (commune portier / entrée)\nconst SET_ID_PATTERN = new RegExp(\"^set_fonda_[a-z0-9-]+_n[IF]_\\\\d{2}$\", \"\");\nfunction validerDeclencheur(corps) {\n  if (!corps || typeof corps !== 'object' || Array.isArray(corps)) return { valide: false, erreur: 'corps JSON objet attendu' };\n  if (Object.keys(corps).sort().join(',') !== 'ref,set_id') return { valide: false, erreur: 'corps : exactement { set_id, ref } attendu' };\n  const { set_id, ref } = corps;\n  if (typeof set_id !== 'string' || !SET_ID_PATTERN.test(set_id)) return { valide: false, erreur: 'set_id invalide' };\n  if (typeof ref !== 'string' || ref.length === 0 || ref.length > 256) return { valide: false, erreur: 'ref invalide (chaîne non vide attendue)' };\n  return { valide: true, set_id, ref };\n}\n// <<< VALIDATION validerDeclencheur\n\nconst items = $input.all();\nconst corps = items.length === 1 && items[0] && items[0].json ? items[0].json.body : undefined;\nconst v = items.length === 1 ? validerDeclencheur(corps) : { valide: false, erreur: 'exactement une requête attendue' };\nreturn [{ json: v }];"
+      }
+    },
+    {
+      "id": "b85e5756-9629-4eda-adf6-e124920828f9",
+      "position": [
+        440,
+        0
+      ],
+      "name": "Corps valide ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "3619c1c6-0833-4ed7-a896-21614a8cc139",
+              "leftValue": "={{ $json.valide }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "c01fdceb-713c-485b-a8c2-7ba88771c882",
+      "position": [
+        660,
+        0
+      ],
+      "name": "Repondre 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ erreur: $json.erreur }) }}",
+        "options": {
+          "responseCode": 400
+        }
+      }
+    },
+    {
+      "id": "abeaf39b-4d56-42d2-a49b-f085c613a0e0",
+      "position": [
+        880,
+        0
+      ],
+      "name": "Transmettre a la generation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": false,
+      "onError": "continueErrorOutput",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "GfnXr5hYrYgC5RwA",
+          "name": "FONDA Webhook Token"
+        }
+      },
+      "parameters": {
+        "method": "POST",
+        "url": "https://n8n.srv868991.hstgr.cloud/webhook/box-fonda-generation-ia",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ set_id: $('Valider corps').first().json.set_id, ref: $('Valider corps').first().json.ref }) }}",
+        "options": {
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "81f59532-a474-4d59-ac26-ae994ebb60a3",
+      "position": [
+        1100,
+        0
+      ],
+      "name": "Generation acceptee ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "34dcfc6e-b3ec-47b8-ad7b-5cfe5aeefd62",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 200,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "e832e275-0b5f-4804-aa91-ce013845e84d",
+      "position": [
+        1320,
+        0
+      ],
+      "name": "Repondre 202",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ set_id: $('Valider corps').first().json.set_id, ref: $('Valider corps').first().json.ref }) }}",
+        "options": {
+          "responseCode": 202
+        }
+      }
+    },
+    {
+      "id": "d5470b49-995d-426d-ac4d-e9f5baedb909",
+      "position": [
+        1540,
+        0
+      ],
+      "name": "Repondre 504",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ etat: 'inconnu', consigne: 'observer, ne jamais renvoyer' }) }}",
+        "options": {
+          "responseCode": 504
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook portier": {
+      "main": [
+        [
+          {
+            "node": "Valider corps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valider corps": {
+      "main": [
+        [
+          {
+            "node": "Corps valide ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Corps valide ?": {
+      "main": [
+        [
+          {
+            "node": "Transmettre a la generation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Repondre 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transmettre a la generation": {
+      "main": [
+        [
+          {
+            "node": "Generation acceptee ?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Repondre 504",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generation acceptee ?": {
+      "main": [
+        [
+          {
+            "node": "Repondre 202",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Repondre 504",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "timezone": "Europe/Paris",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "5a51ef8d-01a1-417a-850c-c315ac44bcd9",
+  "activeVersionId": null,
+  "versionCounter": 2,
+  "triggerCount": 0,
+  "tags": [],
+  "activeVersion": null
+}
