@@ -1,2 +1,7 @@
 notice-box.md
 .DS_Store
+
+# Secrets locaux : jamais dans ce dépôt PUBLIC
+n8n/secrets-2026-10-13/
+n8n/secrets*
+*.priv.pem
