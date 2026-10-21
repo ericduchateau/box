@@ -1,5 +1,5 @@
 {
-  "description": "Fixture SYNTHÉTIQUE (CDC v8.3 §20.3) : exécutions du workflow de génération au format de l'API publique n8n (includeData). Les valeurs entre << >> sont substituées par les tests (empreintes et identifiants dépendent du lot de test). Le modèle est un snapshot Sonnet daté REPRÉSENTATIF, À CONFIRMER à la recette §20.8 (champ model d'un vrai appel capturé sur l'instance).",
+  "description": "Fixture SYNTHÉTIQUE (CDC v8.3 §20.3) : exécutions du workflow de génération au format de l'API publique n8n (includeData). Les valeurs entre << >> sont substituées par les tests (empreintes et identifiants dépendent du lot de test). Le modèle est claude-sonnet-5-5, snapshot Sonnet sans date (≥ 4.6), autorisé à la recette §20.8 (sonde, exécution n8n 279792).",
   "modele": "claude-sonnet-5-5",
   "reussie": {
     "id": 501, "workflowId": "wfGen", "status": "success", "mode": "webhook",
