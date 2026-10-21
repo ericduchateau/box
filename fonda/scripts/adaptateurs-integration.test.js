@@ -164,6 +164,44 @@ describe('parcours complet (sans non-retour réel)', () => {
   test('--diagnostic : référentiel archivé introuvable -> candidat_non_conforme', async () => {
     assert.equal((await diag({ referentielArchive: async () => { throw new Error('introuvable'); } })).etat, 'candidat_non_conforme');
   });
+  test('r2 #1 : lot au JSON invalide (mêmes octets aux deux lectures) -> candidat_non_conforme, jamais prêt', async () => {
+    const d = await diag({ drive: { ...t.drive, lireLotGenere: async () => ({ ...(await t.drive.lireLotGenere()), octets: Buffer.from('{ pas du json') }) } });
+    assert.equal(d.etat, 'candidat_non_conforme', JSON.stringify(d.applicables));
+    assert.match(String(d.detail), /JSON invalide/);
+  });
+  test('r2 #2 : lot lu d\'un AUTRE fichier que le listé, ou modifié après la génération -> candidat_non_conforme', async () => {
+    const autre = await diag({ drive: { ...t.drive, lireLotGenere: async () => ({ ...(await t.drive.lireLotGenere()), id: 'drv-autre', modifie_le: '2026-10-20T09:00:00.000Z' }) } });
+    assert.equal(autre.etat, 'candidat_non_conforme');
+    assert.match(String(autre.detail), /fichier candidat listé|candidat_fichier_id/);
+    const tard = '2026-10-20T09:00:00.000Z';
+    const apres = await diag({ drive: { ...t.drive, listerCandidats: async () => ({ incompleteSearch: false, fichiers: [{ ...t.fichier, modifie_le: tard }] }), lireLotGenere: async () => ({ ...(await t.drive.lireLotGenere()), modifie_le: tard }) } });
+    assert.equal(apres.etat, 'candidat_non_conforme');
+    assert.match(String(apres.detail), /APRÈS la fin/);
+    const ecart = await diag({ drive: { ...t.drive, listerCandidats: async () => ({ incompleteSearch: false, fichiers: [{ ...t.fichier, modifie_le: '2026-10-20T07:00:30.000Z' }] }) } });
+    assert.equal(ecart.etat, 'candidat_non_conforme');
+  });
+  test('r2 #3 : relecteur attribué ≠ « eric » (fonction RÉELLE du signataire) -> relecteur_non_local, jamais prêt', async () => {
+    const vrai = SC.relecteurDeLaGeneration;
+    let appels = 0;
+    SC.relecteurDeLaGeneration = async (...a) => { appels += 1; assert.equal(await vrai(...a), 'eric'); return 'justine'; };
+    try {
+      const d = await diag();
+      assert.equal(appels, 1, 'le diagnostic passe par la fonction du signataire');
+      assert.equal(d.etat, 'relecteur_non_local');
+      assert.ok(!d.applicables.some((x) => /^pret_/.test(x.etat)));
+    } finally { SC.relecteurDeLaGeneration = vrai; }
+  });
+  test('r2 #7 : --saisir interrompue (fin d\'entrée) -> code ≠ 0, AUCUNE décision figée', async () => {
+    const avant = process.exitCode; const err = console.error; let msg = '';
+    console.error = (m) => { msg += m; };
+    let n = 0;
+    try {
+      await CLI.main(['--saisir', SET], { sources: t.sources(), afficher: () => {}, saisir: async () => { n += 1; if (n === 1) return 'garder'; throw new A.SaisieInterrompue('saisie interrompue (fin d\'entrée) : aucune décision figée'); } });
+      assert.equal(process.exitCode, 1);
+    } finally { console.error = err; process.exitCode = avant; }
+    assert.match(msg, /fin d'entrée/);
+    assert.deepEqual(await t.sources().decisionsLocales(SET), []);
+  });
   test('--saisir : décision figée ; la fabrique PAR DÉFAUT fournit la saisie au terminal', async () => {
     const parDefaut = await A.dependancesSaisie(SET, { sources: t.sources() });
     assert.equal(parDefaut.saisir, A.saisirTerminal);
@@ -192,6 +230,13 @@ describe('parcours complet (sans non-retour réel)', () => {
     const r3 = await diag({ api: enVol });
     assert.equal(r3.etat, 'generation_en_cours');
     assert.ok(!r3.applicables.some((x) => x.etat === 'pret_pour_cloture'), 'jamais prêt pour la clôture pendant une exécution en vol');
+  });
+  test('r2 #4 : deux décisions figées ne différant que par le nonce -> decision_non_conforme', async () => {
+    const f = (await t.sources().decisionsLocales(SET))[0];
+    const dec = JSON.parse(f.octets.toString('utf8'));
+    const d = await diag({ decisionsLocales: async () => [f, { nom: 'decision-2.json', octets: Buffer.from(JSON.stringify({ ...dec, nonce: `${dec.nonce}x` })) }] });
+    assert.equal(d.etat, 'decision_non_conforme', JSON.stringify(d.applicables));
+    assert.match(String(d.detail), /distinctes/);
   });
   test('décision d\'un AUTRE set_id, empreinte relue discordante, illisible -> decision_non_conforme', async () => {
     const dec = (await t.sources().decisionsLocales(SET)).map((f) => JSON.parse(f.octets.toString('utf8')))[0];
@@ -225,6 +270,11 @@ describe('parcours complet (sans non-retour réel)', () => {
   });
   test('--diagnostic : signe', async () => {
     assert.equal((await CLI.executer({ commande: '--diagnostic', setId: SET }, { sources: t.sources() })).etat, 'signe');
+  });
+  test('r2 #5 : marqueur .signature SANS pièces vérifiées -> signature_interrompue, jamais signe', async () => {
+    const d = await diag({ verifier: async () => { throw new Error('pièces absentes ou invalides'); } });
+    assert.equal(d.etat, 'signature_interrompue');
+    assert.ok(!d.applicables.some((x) => x.etat === 'signe'));
   });
   test('--extraire-publication (SANS secret réseau) : vérification complète ; relance = succès sans écriture', async () => {
     const o = sansSecret();

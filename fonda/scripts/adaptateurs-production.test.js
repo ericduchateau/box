@@ -245,20 +245,22 @@ describe('témoin d\'incidents (option a)', () => {
     const git = (a) => execFileSync('git', a, { cwd: racine, stdio: ['ignore', 'pipe', 'ignore'] });
     const s = A.sourcesLecture({ api: {}, drive: {}, dossier: d, racine, git });
     assert.deepEqual(await s.attestationsCatalogue(), [], 'catalogue actuel : 8 historiques, aucune clôture signée');
-    const C = require('../engine/catalogue.js');
-    const historique = Object.keys(C.HISTORIQUES_FIGES)[0];
-    const avec = (cat) => A.attestationsDuCatalogue({ git: (a) => (a[0] === 'show' ? Buffer.from(JSON.stringify(cat)) : git(a)), cles: s.cles, registre: s.registre, modelesAutorises: [], resoudre: s.resoudre });
-    const v1 = (lots) => ({ schema: 'catalogue-fonda/v1', lots });
+    const reel = JSON.parse(git(['show', 'origin/design:fonda/data/catalogue-fonda.json']).toString('utf8'));
+    const avec = (cat) => A.attestationsDuCatalogue({ git: (a) => (a[0] === 'show' && /catalogue-fonda/.test(a[1]) ? Buffer.from(JSON.stringify(cat)) : git(a)), cles: s.cles, registre: s.registre, modelesAutorises: [], resoudre: s.resoudre });
+    const modif = (f) => { const c = JSON.parse(JSON.stringify(reel)); f(c.lots[0]); return c; };
     const cas = [
       [{}, /forme catalogue-fonda\/v1/], [{ lots: [] }, /forme/], [{ schema: 'catalogue-fonda/v1', lots: {} }, /forme/],
-      [v1([{ set_id: SET, attestation: { type: 'cloture-signee', charge: {}, signature: 'x' } }]), /non vérifiée/],
-      [v1([{ set_id: SET, attestation: { type: 'autre' } }]), /type inattendu/],
-      [v1([{ set_id: SET }]), /type inattendu/],
-      [v1([{ set_id: SET, attestation: { type: 'manuelle-historique' } }]), /hors des 8 lots figés/],
-      [v1([{ set_id: historique, attestation: { type: 'manuelle-historique', charge: { incidents_connus: [{ id: 'i' }] } } }]), /porteuse d'une charge/],
+      // historique réduit au type, ou valeur figée altérée : refusé par le validateur RÉEL du catalogue
+      [{ ...reel, lots: [{ set_id: reel.lots[0].set_id, attestation: { type: 'manuelle-historique' } }] }, /non conforme/],
+      [modif((e) => { e.empreinte = `sha256:${'0'.repeat(64)}`; }), /non conforme/],
+      [modif((e) => { e.moteur = { version: 'v1', sha256: '0'.repeat(64) }; }), /non conforme/],
+      [modif((e) => { e.relecteur = { forme: 'relue_par', nom_affiche: 'Autre', id: 'autre' }; }), /non conforme/],
+      [modif((e) => { e.attestation.charge = { incidents_connus: [{ id: 'i' }] }; }), /non conforme|porteuse d'une charge/],
+      [modif((e) => { e.attestation = { type: 'cloture-signee', charge: {}, signature: 'x' }; }), /non conforme|non vérifiée/],
+      [modif((e) => { e.attestation = { type: 'autre' }; }), /non conforme|type inattendu/],
     ];
-    for (const [cat, motif] of cas) await assert.rejects(avec(cat), motif, JSON.stringify(cat));
-    assert.deepEqual(await avec(v1([{ set_id: historique, attestation: { type: 'manuelle-historique' } }]))(), []);
+    for (const [cat, motif] of cas) await assert.rejects(avec(cat), motif, JSON.stringify(cat).slice(0, 200));
+    assert.deepEqual(await avec(reel)(), [], 'catalogue réel : accepté, rien à citer');
   });
 });
 
@@ -351,6 +353,14 @@ describe('sources : options injectables et séparation des secrets', () => {
     assert.equal(l.api, undefined);
     assert.equal(l.drive, undefined);
     assert.throws(() => A.sourcesLecture({ racine, dossier: tmp('clo-'), dossierCles: vide }), /n8n-signataire\.cle illisible/);
+  });
+});
+
+describe('saisie au terminal (r2 #7)', () => {
+  test('fin d\'entrée -> REFUS explicite (SaisieInterrompue), jamais une chaîne vide ; réponse normale transmise', async () => {
+    const { Readable, PassThrough } = require('stream');
+    await assert.rejects(A.saisirTerminal('garder / ecarter : ', { entree: Readable.from([]), sortie: new PassThrough() }), (e) => e instanceof A.SaisieInterrompue && /fin d'entrée/.test(e.message));
+    assert.equal(await A.saisirTerminal('q : ', { entree: Readable.from(['garder\n']), sortie: new PassThrough() }), 'garder');
   });
 });
 

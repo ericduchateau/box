@@ -311,6 +311,11 @@ function attestationsDuCatalogue({ git, cles, registre, modelesAutorises, resoud
   return async () => {
     const cat = JSON.parse(lireADesign(git, 'fonda/data/catalogue-fonda.json').toString('utf8'));
     if (!cat || cat.schema !== C.SCHEMA_CATALOGUE || !Array.isArray(cat.lots)) throw new ErreurAdaptateur('catalogue publié : forme catalogue-fonda/v1 attendue');
+    // Validation COMPLÈTE par le validateur réel du catalogue (catalogue.js, celui de la CI) :
+    // champs, entrées historiques comparées à leurs valeurs figées (empreinte, moteur, badge).
+    const ref = JSON.parse(lireADesign(git, 'fonda/data/referentiel.json').toString('utf8'));
+    const vc = C.validerCatalogue(cat, ref);
+    if (!vc.valide) throw new ErreurAdaptateur(`catalogue publié non conforme : ${vc.erreurs.join(' ; ')}`);
     const out = [];
     for (const e of cat.lots) {
       const a = e && e.attestation;
@@ -448,14 +453,16 @@ async function moteurDeLaGeneration(setId, s) {
   return { version: m.version, sha256: m.sha256 };
 }
 
-// Saisie au terminal (une ligne par question). Fin d'entrée -> null (refus en amont).
-async function saisirTerminal(question) {
+// Saisie au terminal (une ligne par question). Fin d'entrée (EOF, Ctrl-D) -> REFUS explicite :
+// la saisie s'arrête (code ≠ 0), aucune décision n'est figée ; jamais une chaîne vide redemandée.
+class SaisieInterrompue extends Error {}
+async function saisirTerminal(question, { entree = process.stdin, sortie = process.stdout } = {}) {
   const readline = require('readline');
-  return new Promise((resolve) => {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve, reject) => {
+    const rl = readline.createInterface({ input: entree, output: sortie });
     let repondu = false;
     rl.question(question, (r) => { repondu = true; rl.close(); resolve(r); });
-    rl.on('close', () => { if (!repondu) resolve(''); });
+    rl.on('close', () => { if (!repondu) reject(new SaisieInterrompue('saisie interrompue (fin d\'entrée) : aucune décision figée')); });
   });
 }
 const ES_TERMINAL = (o) => ({ horloge: o.horloge, saisir: o.saisir || saisirTerminal, afficher: o.afficher || ((t) => process.stdout.write(`${t}\n`)) });
@@ -525,6 +532,7 @@ function dependancesDeclenchement(o = {}) {
 }
 
 module.exports = {
+  SaisieInterrompue,
   incidentMalforme, saisirTerminal, sourcesLocales,
   ErreurAdaptateur, apiN8n, jetonCompteService, driveLecture, journalGit, fsProduction, decisionsLocales, verifierPieces, dossierDuLot,
   lireRegistreStrict, projectionIncident, temoinIncidents, attestationsDuCatalogue, registreIncidents, initialiser, tracesDUsage,

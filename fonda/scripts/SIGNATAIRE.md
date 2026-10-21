@@ -28,14 +28,19 @@ Dossier de clôture : `~/FONDA-clotures/` (hors dépôt, hors Dropbox).
 ## États du diagnostic
 
 Le diagnostic rapporte le **premier** état applicable dans l'ordre ci-dessous :
-- d'abord les anomalies : `non_initialise`, `acces_ko`, `incident_ouvert`, `observation_contradictoire`, `generation_en_cours`, `doublon`, `generation_incoherente`, `candidat_non_conforme`, `decision_non_conforme` ;
+- d'abord les anomalies : `non_initialise`, `acces_ko`, `incident_ouvert`, `observation_contradictoire`, `generation_en_cours`, `doublon`, `signature_interrompue`, `generation_incoherente`, `candidat_non_conforme`, `relecteur_non_local`, `decision_non_conforme` ;
 - puis l'avancement, du plus avancé au moins avancé : `signe`, `pret_pour_cloture`, `decision_figee`, `pret_pour_saisie`, `generation_echouee`, `aucune_generation`.
 
 Précisions :
 - recherche Drive incomplète (`incompleteSearch`) → `acces_ko` ;
 - génération réussie sans candidat, ou candidat sans génération → `generation_incoherente` (jamais `aucune_generation`, réservé au cas où il n'y a ni l'une ni l'autre) ;
 - le lot est lu deux fois (octets, id, date de modification) : s'il change entre les deux → `candidat_non_conforme` ; idem si le référentiel archivé ne se résout pas ;
-- décision illisible, d'un autre `set_id`, ou dont l'empreinte relue ne correspond pas au lot → `decision_non_conforme`.
+- lot au JSON invalide, lu dans un autre fichier que celui listé, ou daté après la fin de génération → `candidat_non_conforme` (mêmes contrôles que le signataire) ;
+- relecteur attribué autre que « eric » (fonction `relecteurDeLaGeneration` du signataire) → `relecteur_non_local` ;
+- décision illisible, d'un autre `set_id`, dont l'empreinte relue ne correspond pas au lot, ou deux décisions aux octets distincts → `decision_non_conforme` ;
+- `signe` exige que les pièces d'un dossier `<set_id>-<code>` se vérifient ; le marqueur `.signature` seul (écrit avant la signature) → `signature_interrompue`.
+
+`--saisir` : une fin d'entrée au terminal (Ctrl-D) arrête la saisie sur un refus (code ≠ 0), sans figer de décision.
 
 `--initialiser` et `--extraire-publication` n'utilisent que les sources **locales** (dépôt, git, dossier de clôture) : ils ne lisent aucun secret réseau. L'extraction exige que l'attestation porte le `set_id` demandé et que le dossier s'appelle exactement `<set_id>-<code_confirmation>`.
 

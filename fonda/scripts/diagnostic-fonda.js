@@ -10,6 +10,7 @@
 
 'use strict';
 
+const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const SC = require('./signer-cloture.js');
@@ -17,7 +18,7 @@ const L = require('./liaison-generation.js');
 const C = require('../engine/catalogue.js');
 
 const ANOMALIES = ['non_initialise', 'acces_ko', 'incident_ouvert', 'observation_contradictoire', 'generation_en_cours', 'doublon',
-  'generation_incoherente', 'candidat_non_conforme', 'decision_non_conforme'];
+  'signature_interrompue', 'generation_incoherente', 'candidat_non_conforme', 'relecteur_non_local', 'decision_non_conforme'];
 const PROGRESSION = ['signe', 'pret_pour_cloture', 'decision_figee', 'pret_pour_saisie', 'generation_echouee', 'aucune_generation'];
 const ORDRE = [...ANOMALIES, ...PROGRESSION];
 const EN_VOL = ['new', 'running', 'waiting'];
@@ -86,11 +87,23 @@ async function diagnostiquer(setId, s) {
     const c2 = new L.Constats();
     const vf = L.examinerFichiers({ setId, fichiers: cand.v.fichiers, constats: c2 });
     const { retenue } = L.classerExecutions({ setId, examinees, complet, vueFichiers: vf, constats: c2 });
-    const stable = lotAvant.ok && lotApres.ok && lotAvant.v && lotApres.v && Buffer.from(lotAvant.v.octets).equals(Buffer.from(lotApres.v.octets))
-      && lotAvant.v.id === lotApres.v.id && lotAvant.v.modifie_le === lotApres.v.modifie_le;
-    if (!stable) c2.ajouter('abandon', 'lot généré illisible ou modifié pendant l\'observation');
-    lot = stable ? lireJson(lotAvant.v.octets) : null;
-    if (lot && (!C.validerLot(lot).valide || lot.set_id !== setId)) { c2.ajouter('abandon', 'lot généré non conforme'); lot = null; }
+    const av = lotAvant.ok ? lotAvant.v : null;
+    const ap = lotApres.ok ? lotApres.v : null;
+    const stable = !!av && !!ap && Buffer.from(av.octets).equals(Buffer.from(ap.octets)) && av.id === ap.id;
+    if (!stable) c2.ajouter('abandon', 'lot généré absent, illisible ou modifié pendant l\'observation');
+    // Mêmes contrôles d'identité que le signataire (signer-cloture.js, lot source) : dates des
+    // deux lectures ET du fichier listé identiques, aucune postérieure à la fin de génération ;
+    // fichier lu = fichier listé ; nom exact.
+    const fichierVu = vf.fichier || fichiersDuLot[0];
+    const dates = [av, ap, fichierVu].filter(Boolean).map((x) => SC.normaliserDate(x.modifie_le));
+    if (dates.some((d) => d === null) || new Set(dates).size > 1) c2.ajouter('abandon', 'lot généré : dates de modification illisibles ou différentes entre lectures et listing');
+    else if (generation.x.stoppedAt && dates.some((d) => d > generation.x.stoppedAt)) c2.ajouter('abandon', 'lot généré modifié APRÈS la fin de l\'exécution de génération');
+    if ([av, ap].some((x) => x && fichierVu && x.id !== fichierVu.id)) c2.ajouter('abandon', 'lot généré lu ≠ fichier candidat listé');
+    if ([av, ap].some((x) => x && x.nom !== `${setId}.lot.json`)) c2.ajouter('abandon', `fichier lu : nom ≠ ${setId}.lot.json`);
+    lot = stable ? lireJson(av.octets) : null;
+    if (stable && lot === undefined) { c2.ajouter('incident', 'lot généré illisible (JSON invalide)'); lot = null; }
+    const dec = C.decomposerSetId(setId);
+    if (lot && (!C.validerLot(lot).valide || lot.set_id !== setId || !dec || lot.palier !== dec.palier || C.slugDeNotion(lot.notion_id) !== dec.slug)) { c2.ajouter('abandon', 'lot généré non conforme'); lot = null; }
     if (lot) {
       const nuls = L.nullsExplicites(lot);
       if (nuls.length) c2.ajouter('abandon', `null explicite dans le lot : ${nuls.join(', ')}`);
@@ -102,17 +115,31 @@ async function diagnostiquer(setId, s) {
       if (so.ok) { const r = await essayer(() => s.journal(so.json.journal_commit)); if (r.ok) jc = r.v; else c2.ajouter('temporaire', 'journal illisible'); }
       sortie = L.rapprocher({ setId, retenue, fichier: vf.fichier, brute: details.get(retenue.x.id), workflowId: s.workflowGeneration, journalCommit: jc, registre: s.registre, modelesAutorises: s.modelesAutorises, lotSource: lot, empreintes, constats: c2 });
     }
+    if (sortie && [av, ap].some((x) => x && x.id !== sortie.candidat_fichier_id)) c2.ajouter('abandon', 'fichier lu : identifiant ≠ candidat_fichier_id de la génération');
     if (sortie) {
       const r = await essayer(() => s.referentielArchive(sortie.referentiel_version));
       if (!r.ok || `sha256:${shaHex(Buffer.from(r.v))}` !== sortie.referentiel_version) c2.ajouter('abandon', 'référentiel archivé introuvable ou ≠ referentiel_version');
     }
-    if (c2.liste.length === 0 && jc !== L.INDISPONIBLE && sortie) pretSaisie = true;
-    else marquer('candidat_non_conforme', c2.liste.map((c) => `${c.issue} : ${c.raison}`).join(' ; ') || 'rapprochement impossible');
+    if (c2.liste.length === 0 && jc !== L.INDISPONIBLE && sortie) {
+      // Relecteur attribué : la fonction RÉELLE de la saisie locale (signer-cloture.js,
+      // relecteurDeLaGeneration) ; saisie et clôture locales réservées à « eric » (§20.6).
+      const r = await essayer(() => SC.relecteurDeLaGeneration(setId, { api: s.api, config: { workflowGeneration: s.workflowGeneration }, referentielArchive: s.referentielArchive }));
+      if (!r.ok) marquer('candidat_non_conforme', `relecteur attribué non déterminable : ${r.e.message}`);
+      else if (r.v !== 'eric') marquer('relecteur_non_local', `relecteur attribué « ${r.v} » : saisie et clôture locales réservées à « eric » (§20.6)`);
+      else pretSaisie = true;
+    } else marquer('candidat_non_conforme', c2.liste.map((c) => `${c.issue} : ${c.raison}`).join(' ; ') || 'rapprochement impossible');
   }
   if (pretSaisie) marquer('pret_pour_saisie');
 
-  // Décision figée : lue, réconciliée contre le lot (§20.5), unicité (§10 A).
-  if (SC.existeSurDisque(path.join(s.dossier, `${setId}.signature`))) marquer('signe');
+  // Signé : SEULEMENT si les pièces d'un dossier canonique <set_id>-<code> se vérifient
+  // (signature, chemin, instantané) ; le marqueur, écrit AVANT la signature, ne suffit pas.
+  if (SC.existeSurDisque(path.join(s.dossier, `${setId}.signature`))) {
+    const dossiers = SC.existeSurDisque(s.dossier) ? fs.readdirSync(s.dossier).filter((n) => n.startsWith(`${setId}-`)) : [];
+    let verifie = false;
+    for (const n of dossiers) if ((await essayer(() => s.verifier(path.join(s.dossier, n), setId))).ok) verifie = true;
+    if (verifie) marquer('signe');
+    else marquer('signature_interrompue', `marqueur ${setId}.signature sans pièces signées vérifiées : tentative de clôture interrompue (abandon du set_id)`);
+  }
   const dl = await essayer(() => s.decisionsLocales(setId));
   if (!dl.ok) marquer('acces_ko', `décisions locales : ${dl.e.message}`);
   const lus = dl.ok ? dl.v.map((f) => lireJson(f.octets)) : [];
@@ -121,6 +148,8 @@ async function diagnostiquer(setId, s) {
     if (lus.some((d) => d === undefined || !SC.decisionConforme(d))) defauts.push('décision illisible ou non conforme à decision-fonda/v1');
     else {
       for (const d of lus) if (d.set_id !== setId || d.generation !== 0 || d.hash_formulaire !== 'saisie-locale') defauts.push('décision : set_id, generation = 0 ou hash_formulaire « saisie-locale » non respectés');
+      // Même règle que le signataire : deux décisions figées aux OCTETS distincts = conflit.
+      if (new Set(dl.v.map((f) => Buffer.from(f.octets).toString('hex'))).size > 1) defauts.push('deux décisions figées distinctes pour ce set_id : conflit');
       for (const e of L.unicite(lus)) defauts.push(`unicité : ${e}`);
       if (lot && empreintes) {
         const empreintePubliee = async (gardees) => C.calculerEmpreinte(SC.lotPublie(lot, { selection: gardees }), sha);
