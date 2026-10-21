@@ -39,20 +39,25 @@ async function executer(args, o = {}) {
     execFileSync('git', ['fetch', '--quiet', 'origin', 'design'], { cwd: o.racine || path.join(__dirname, '..', '..'), stdio: 'inherit' });
     return { actualise: 'origin/design' };
   }
+  // Commandes LOCALES : aucun secret réseau requis.
+  if (args.commande === '--initialiser') return (o.sources || A.sourcesLocales(o)).initialiser();
+  if (args.commande === '--extraire-publication') {
+    const l = o.sources || A.sourcesLocales(o);
+    const dl = A.dossierDuLot(l.dossier, args.setId);
+    const { lot } = await l.verifier(dl, args.setId); // lot DEMANDÉ, chemin canonique, signature complète
+    return ecrireLotRelu(path.join(dl, 'lot-relu.json'), `${JSON.stringify(lot, null, 2)}\n`);
+  }
   const s = o.sources || A.sourcesLecture(o);
-  if (args.commande === '--initialiser') return s.initialiser();
   if (args.commande === '--diagnostic') {
     const D = require('./diagnostic-fonda.js');
     return args.setId ? D.diagnostiquer(args.setId, s) : D.diagnostiquerAcces(s);
   }
   if (args.commande === '--saisir') {
+    // saisir/afficher : terminal par défaut (adaptateurs), injectables pour les tests.
     const SC = require('./signer-cloture.js');
     return SC.saisirDecisionLocale(args.setId, await A.dependancesSaisie(args.setId, { ...o, sources: s }));
   }
-  // --extraire-publication : vérification COMPLÈTE des pièces signées, puis dérivation.
-  const dl = A.dossierDuLot(s.dossier, args.setId);
-  const { lot } = await s.verifier(dl);
-  return ecrireLotRelu(path.join(dl, 'lot-relu.json'), `${JSON.stringify(lot, null, 2)}\n`);
+  throw new A.ErreurAdaptateur(`commande non prise en charge : ${args.commande}`);
 }
 
 async function main(argv, o = {}) {

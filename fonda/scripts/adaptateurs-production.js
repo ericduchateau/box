@@ -214,10 +214,13 @@ function dossierDuLot(dossier, setId) {
   return path.join(dossier, noms[0]);
 }
 // -> { attestation, instantane, lot, entree } ; lève si quoi que ce soit ne concorde pas.
-async function verifierPieces(dossierLot, { cles, registre, modelesAutorises, resoudre }) {
+async function verifierPieces(dossierLot, { cles, registre, modelesAutorises, resoudre }, setIdAttendu = null) {
   const attestation = JSON.parse(fs.readFileSync(path.join(dossierLot, 'attestation.json'), 'utf8'));
   const ch = attestation && attestation.charge;
   if (!ch || typeof ch !== 'object') throw new ErreurAdaptateur('attestation sans charge');
+  // Pièces rattachées au lot DEMANDÉ et à leur chemin CANONIQUE <set_id>-<code_confirmation>.
+  if (setIdAttendu !== null && ch.set_id !== setIdAttendu) throw new ErreurAdaptateur(`attestation de ${ch.set_id}, pas de ${setIdAttendu}`);
+  if (path.basename(dossierLot) !== `${ch.set_id}-${ch.code_confirmation}`) throw new ErreurAdaptateur(`dossier ${path.basename(dossierLot)} ≠ chemin canonique ${ch.set_id}-${ch.code_confirmation}`);
   const octetsInst = fs.readFileSync(path.join(dossierLot, 'instantane.json'));
   if (sha256Hex(octetsInst) !== ch.sha256_instantane) throw new ErreurAdaptateur('SHA-256(instantane.json) ≠ charge.sha256_instantane');
   const inst = JSON.parse(octetsInst.toString('utf8'));
@@ -242,9 +245,38 @@ function lireRegistreStrict(p) {
     if (!i || typeof i !== 'object' || Array.isArray(i) || typeof i.id !== 'string' || !i.id) throw new ErreurAdaptateur('registre des incidents : élément sans id');
     if (ids.has(i.id)) throw new ErreurAdaptateur(`registre des incidents : id en double (${i.id})`);
     ids.add(i.id);
+    const erreur = incidentMalforme(i);
+    if (erreur) throw new ErreurAdaptateur(`registre des incidents : ${i.id} : ${erreur} (format CDC §10 B)`);
   }
   return liste;
 }
+// Format CDC §10 B, mêmes contraintes que le signataire (signer-cloture.js, incidents) :
+// ouvert -> { id, nature, detecte_le, statut: 'ouvert', resolu_le: null, preuve_resolution: null,
+// periode: { debut, fin } } ; résolu -> dates normalisables, fin = resolu_le, debut ≤ fin,
+// detecte_le ≤ resolu_le, preuve non vide. Renvoie le défaut, ou null.
+function incidentMalforme(i) {
+  const d = (v) => (v === null ? null : SC.normaliserDate(v));
+  const attendues = ['detecte_le', 'id', 'nature', 'periode', 'preuve_resolution', 'resolu_le', 'statut'];
+  if (Object.keys(i).sort().join() !== attendues.join()) return `champs attendus exactement ${attendues.join(', ')}`;
+  if (typeof i.nature !== 'string' || !i.nature.trim()) return 'nature vide';
+  if (!d(i.detecte_le)) return 'detecte_le invalide';
+  if (!i.periode || typeof i.periode !== 'object' || Array.isArray(i.periode) || Object.keys(i.periode).sort().join() !== 'debut,fin') return 'periode { debut, fin } attendue';
+  if (i.periode.debut !== null && !d(i.periode.debut)) return 'periode.debut invalide';
+  if (i.statut === 'ouvert') {
+    if (i.resolu_le !== null || i.preuve_resolution !== null || i.periode.fin !== null) return 'incident ouvert : resolu_le, preuve_resolution et periode.fin doivent valoir null';
+    return null;
+  }
+  if (i.statut !== 'resolu') return 'statut ∈ { ouvert, resolu }';
+  const resolu = d(i.resolu_le);
+  const fin = i.periode.fin === null ? null : d(i.periode.fin);
+  const debut = i.periode.debut === null ? null : d(i.periode.debut);
+  if (!resolu || !fin || fin !== resolu) return 'résolu : periode.fin = resolu_le exigés';
+  if (debut !== null && debut > fin) return 'periode.debut > periode.fin';
+  if (d(i.detecte_le) > resolu) return 'detecte_le > resolu_le';
+  if (typeof i.preuve_resolution !== 'string' || !i.preuve_resolution.trim()) return 'preuve_resolution vide';
+  return null;
+}
+
 // Projection COMPLÈTE d'un incident signé, dates normalisées comme le signataire.
 function projectionIncident(i) {
   const d = (v) => (v === null || v === undefined ? null : SC.normaliserDate(v));
@@ -262,7 +294,7 @@ function temoinIncidents({ dossier, verifier, attestationsCatalogue }) {
     for (const n of SC.existeSurDisque(dossier) ? fs.readdirSync(dossier) : []) {
       const dl = path.join(dossier, n);
       if (!/^set_fonda_[a-z0-9-]+_n[IF]_\d{2}-[0-9a-f]{16}$/.test(n) || !SC.existeSurDisque(path.join(dl, 'attestation.json'))) continue;
-      const { attestation } = await verifier(dl);
+      const { attestation } = await verifier(dl); // signature + chemin canonique
       for (const i of attestation.charge.incidents_connus || []) citer(i, `local ${n}`);
     }
     for (const { entree, charge } of await attestationsCatalogue()) for (const i of charge.incidents_connus || []) citer(i, `catalogue ${entree.set_id}`);
@@ -278,10 +310,15 @@ function temoinIncidents({ dossier, verifier, attestationsCatalogue }) {
 function attestationsDuCatalogue({ git, cles, registre, modelesAutorises, resoudre }) {
   return async () => {
     const cat = JSON.parse(lireADesign(git, 'fonda/data/catalogue-fonda.json').toString('utf8'));
+    if (!cat || cat.schema !== C.SCHEMA_CATALOGUE || !Array.isArray(cat.lots)) throw new ErreurAdaptateur('catalogue publié : forme catalogue-fonda/v1 attendue');
     const out = [];
-    for (const e of cat.lots || []) {
+    for (const e of cat.lots) {
       const a = e && e.attestation;
-      if (a && a.type === 'manuelle-historique') continue;
+      if (a && a.type === 'manuelle-historique') {
+        // Seulement les 8 historiques figés, SANS charge (rien à citer).
+        if (!Object.prototype.hasOwnProperty.call(C.HISTORIQUES_FIGES, e.set_id) || 'charge' in a) throw new ErreurAdaptateur(`catalogue : ${e.set_id} : « manuelle-historique » hors des 8 lots figés, ou porteuse d'une charge`);
+        continue;
+      }
       if (!a || a.type !== S.TYPE) throw new ErreurAdaptateur(`catalogue : ${e && e.set_id} : attestation de type inattendu`);
       const es = PL.verifierClotureDuCatalogue(e, { resoudre, cles, registre, modelesAutorises });
       if (es.length) throw new ErreurAdaptateur(`catalogue : ${e.set_id} : attestation non vérifiée (${es.join(' ; ')})`);
@@ -359,21 +396,21 @@ async function preparerSignataire({ dossierCles = DOSSIER_CLES, cleId = CLE_ID, 
 function lireSecret(dossierCles, nom) {
   try { return fs.readFileSync(path.join(dossierCles, nom), 'utf8').trim(); } catch (e) { throw new ErreurAdaptateur(`secret ${nom} illisible dans ${dossierCles} (${e.code || e.message})`); }
 }
-function sourcesLecture(o = {}) {
+// Sources LOCALES (dépôt, git, dossier de clôture) : aucun secret réseau. --initialiser et
+// --extraire-publication n'utilisent que celles-ci.
+function sourcesLocales(o = {}) {
   const racine = o.racine || RACINE_DEPOT;
   const dossier = o.dossier || DOSSIER_CLOTURE;
   const dossierCles = o.dossierCles || DOSSIER_CLES;
   const git = o.git || ((args) => execFileSync('git', args, { cwd: racine, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }));
-  const api = o.api || apiN8n({ cle: lireSecret(dossierCles, 'n8n-signataire.cle'), fetch: o.fetch });
-  const drive = o.drive || driveLecture({ jeton: jetonCompteService({ cle: JSON.parse(lireSecret(dossierCles, 'drive-compte-service.json')), fetch: o.fetch }), fetch: o.fetch });
   const cles = o.cles || S.chargerCles(JSON.parse(fs.readFileSync(path.join(racine, 'fonda/data/cles/cles.json'), 'utf8')), (f) => fs.readFileSync(path.join(racine, 'fonda/data', f), 'utf8'));
   const registre = JSON.parse(fs.readFileSync(path.join(racine, 'fonda/engine/moteurs.json'), 'utf8'));
   const modelesAutorises = S.lireModelesAutorises(fs.readFileSync(path.join(racine, 'fonda/data/modeles-autorises.json'), 'utf8')); // TEXTE du fichier
   const resoudre = (version) => RA.resoudreReferentiel({ version, refs: [REF_CONFIANCE], racine, git });
-  const verifier = (dl) => verifierPieces(dl, { cles, registre, modelesAutorises, resoudre });
+  const verifier = (dl, setIdAttendu = null) => verifierPieces(dl, { cles, registre, modelesAutorises, resoudre }, setIdAttendu);
   const attestationsCatalogue = attestationsDuCatalogue({ git, cles, registre, modelesAutorises, resoudre });
   return {
-    racine, dossier, dossierCles, git, api, drive, cles, registre, modelesAutorises, resoudre, verifier, attestationsCatalogue,
+    racine, dossier, dossierCles, git, cles, registre, modelesAutorises, resoudre, verifier, attestationsCatalogue,
     workflowGeneration: o.workflowGeneration || WORKFLOW_GENERATION,
     journal: journalGit({ git }),
     referentielArchive: RA.referentielArchiveGit({ refs: [REF_CONFIANCE], racine, git }), // -> OCTETS
@@ -383,6 +420,13 @@ function sourcesLecture(o = {}) {
     fs: o.fs || fsProduction,
     horloge: o.horloge || (() => new Date()),
   };
+}
+// Sources de LECTURE complètes : locales + n8n + Drive (secrets de ~/.fonda-cles).
+function sourcesLecture(o = {}) {
+  const l = sourcesLocales(o);
+  const api = o.api || apiN8n({ url: o.urlN8n || URL_N8N, cle: lireSecret(l.dossierCles, 'n8n-signataire.cle'), fetch: o.fetch });
+  const drive = o.drive || driveLecture({ dossier: o.dossierDrive || DOSSIER_CANDIDATS, jeton: jetonCompteService({ cle: JSON.parse(lireSecret(l.dossierCles, 'drive-compte-service.json')), fetch: o.fetch }), fetch: o.fetch });
+  return { ...l, api, drive };
 }
 
 // Moteur DESCRIPTEUR de la génération de ce set_id (unique exécution réussie), rapproché du registre.
@@ -404,7 +448,17 @@ async function moteurDeLaGeneration(setId, s) {
   return { version: m.version, sha256: m.sha256 };
 }
 
-const ES_TERMINAL = (o) => ({ horloge: o.horloge, saisir: o.saisir, afficher: o.afficher || ((t) => process.stdout.write(`${t}\n`)) });
+// Saisie au terminal (une ligne par question). Fin d'entrée -> null (refus en amont).
+async function saisirTerminal(question) {
+  const readline = require('readline');
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    let repondu = false;
+    rl.question(question, (r) => { repondu = true; rl.close(); resolve(r); });
+    rl.on('close', () => { if (!repondu) resolve(''); });
+  });
+}
+const ES_TERMINAL = (o) => ({ horloge: o.horloge, saisir: o.saisir || saisirTerminal, afficher: o.afficher || ((t) => process.stdout.write(`${t}\n`)) });
 
 // saisirDecisionLocale (signer-cloture.js:270) : config { dossier, workflowGeneration }, api,
 // drive.lireLotGenere, referentielArchive (octets), moteur (descripteur), registre, fs, horloge, saisir, afficher.
@@ -471,6 +525,7 @@ function dependancesDeclenchement(o = {}) {
 }
 
 module.exports = {
+  incidentMalforme, saisirTerminal, sourcesLocales,
   ErreurAdaptateur, apiN8n, jetonCompteService, driveLecture, journalGit, fsProduction, decisionsLocales, verifierPieces, dossierDuLot,
   lireRegistreStrict, projectionIncident, temoinIncidents, attestationsDuCatalogue, registreIncidents, initialiser, tracesDUsage,
   preparerSignataire, sourcesLecture, moteurDeLaGeneration, dependancesSaisie, dependancesCloture, dependancesDeclenchement,

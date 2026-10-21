@@ -164,8 +164,23 @@ describe('disque et registre des incidents', () => {
     const d = tmp('reg-');
     const p = path.join(d, 'incidents.json');
     for (const t of ['null', '{}', '[1]', '[{"id":""}]', '[{"id":"a"},{"id":"a"}]', 'x']) { fs.writeFileSync(p, t); assert.throws(() => A.lireRegistreStrict(p), /registre/, t); }
-    fs.writeFileSync(p, '[{"id":"a"}]');
-    assert.deepEqual(A.lireRegistreStrict(p), [{ id: 'a' }]);
+    const ok = { id: 'a', nature: 'n', detecte_le: '2026-01-01T10:00:00.000Z', statut: 'resolu', resolu_le: '2026-01-02T10:00:00.000Z', preuve_resolution: 'p', periode: { debut: null, fin: '2026-01-02T10:00:00.000Z' } };
+    const ouvert = { ...ok, id: 'b', statut: 'ouvert', resolu_le: null, preuve_resolution: null, periode: { debut: '2026-01-01T09:00:00.000Z', fin: null } };
+    fs.writeFileSync(p, JSON.stringify([ok, ouvert]));
+    assert.deepEqual(A.lireRegistreStrict(p).map((i) => i.id), ['a', 'b']);
+  });
+  test('registre : format CDC §10 B exigé (clés exactes, ouvert/résolu cohérents, dates ordonnées)', () => {
+    const p = path.join(tmp('reg-'), 'incidents.json');
+    const ok = { id: 'a', nature: 'n', detecte_le: '2026-01-01T10:00:00.000Z', statut: 'resolu', resolu_le: '2026-01-02T10:00:00.000Z', preuve_resolution: 'p', periode: { debut: '2026-01-01T09:00:00.000Z', fin: '2026-01-02T10:00:00.000Z' } };
+    const sans = (k) => { const o = { ...ok }; delete o[k]; return o; };
+    const mauvais = [
+      { id: 'a' }, sans('nature'), { ...ok, en_trop: 1 }, { ...ok, nature: ' ' }, { ...ok, detecte_le: 'hier' },
+      { ...ok, statut: 'clos' }, { ...ok, periode: { debut: null } }, { ...ok, periode: { ...ok.periode, fin: '2026-01-03T10:00:00.000Z' } },
+      { ...ok, periode: { debut: '2026-01-03T00:00:00.000Z', fin: ok.resolu_le } }, { ...ok, detecte_le: '2026-01-03T00:00:00.000Z' }, { ...ok, preuve_resolution: '' },
+      { ...ok, statut: 'ouvert' }, { ...ok, statut: 'ouvert', resolu_le: null, preuve_resolution: null },
+    ];
+    for (const m of mauvais) { fs.writeFileSync(p, JSON.stringify([m])); assert.throws(() => A.lireRegistreStrict(p), /§10 B|sans id/, JSON.stringify(m)); }
+    assert.equal(A.incidentMalforme(ok), null);
   });
   test('incidents() : non initialisé, registre perdu -> erreurs ORDINAIRES (refus temporaire côté signataire, pas d\'incident)', async () => {
     const d = tmp('reg-');
@@ -230,11 +245,20 @@ describe('témoin d\'incidents (option a)', () => {
     const git = (a) => execFileSync('git', a, { cwd: racine, stdio: ['ignore', 'pipe', 'ignore'] });
     const s = A.sourcesLecture({ api: {}, drive: {}, dossier: d, racine, git });
     assert.deepEqual(await s.attestationsCatalogue(), [], 'catalogue actuel : 8 historiques, aucune clôture signée');
-    for (const att of [{ type: 'cloture-signee', charge: {}, signature: 'x' }, { type: 'autre' }]) {
-      const gitFaux = (a) => (a[0] === 'show' ? Buffer.from(JSON.stringify({ lots: [{ set_id: SET, attestation: att }] })) : git(a));
-      const ac = A.attestationsDuCatalogue({ git: gitFaux, cles: s.cles, registre: s.registre, modelesAutorises: [], resoudre: s.resoudre });
-      await assert.rejects(ac, /catalogue/);
-    }
+    const C = require('../engine/catalogue.js');
+    const historique = Object.keys(C.HISTORIQUES_FIGES)[0];
+    const avec = (cat) => A.attestationsDuCatalogue({ git: (a) => (a[0] === 'show' ? Buffer.from(JSON.stringify(cat)) : git(a)), cles: s.cles, registre: s.registre, modelesAutorises: [], resoudre: s.resoudre });
+    const v1 = (lots) => ({ schema: 'catalogue-fonda/v1', lots });
+    const cas = [
+      [{}, /forme catalogue-fonda\/v1/], [{ lots: [] }, /forme/], [{ schema: 'catalogue-fonda/v1', lots: {} }, /forme/],
+      [v1([{ set_id: SET, attestation: { type: 'cloture-signee', charge: {}, signature: 'x' } }]), /non vérifiée/],
+      [v1([{ set_id: SET, attestation: { type: 'autre' } }]), /type inattendu/],
+      [v1([{ set_id: SET }]), /type inattendu/],
+      [v1([{ set_id: SET, attestation: { type: 'manuelle-historique' } }]), /hors des 8 lots figés/],
+      [v1([{ set_id: historique, attestation: { type: 'manuelle-historique', charge: { incidents_connus: [{ id: 'i' }] } } }]), /porteuse d'une charge/],
+    ];
+    for (const [cat, motif] of cas) await assert.rejects(avec(cat), motif, JSON.stringify(cat));
+    assert.deepEqual(await avec(v1([{ set_id: historique, attestation: { type: 'manuelle-historique' } }]))(), []);
   });
 });
 
@@ -298,6 +322,35 @@ describe('fabriques : EXACTEMENT ce que consomment saisie et clôture', () => {
     assert.equal(typeof d.referentielArchive, 'function');
     const api2 = { ...api, lireExecution: async () => exec({ moteur: { version: reg.version, sha256: '0'.repeat(64) } }) };
     await assert.rejects(() => A.dependancesSaisie(SET, { sources: { ...s, api: api2 } }), /registre/);
+  });
+});
+
+describe('sources : options injectables et séparation des secrets', () => {
+  const racine = path.join(__dirname, '..', '..');
+  test('urlN8n et dossierDrive injectables : les requêtes partent vers les cibles données', async () => {
+    const dc = tmp('cles-');
+    const { privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+    fs.writeFileSync(path.join(dc, 'n8n-signataire.cle'), 'cle-test\n');
+    fs.writeFileSync(path.join(dc, 'drive-compte-service.json'), JSON.stringify({ type: 'service_account', client_email: 'sa@x.iam', private_key: privateKey.export({ type: 'pkcs8', format: 'pem' }), token_uri: 'https://oauth2.example/token' }));
+    const f = faux([
+      [/oauth2/, () => ({ json: { access_token: 't', expires_in: 3600 } })],
+      [/^https:\/\/n8n\.test\.invalid\//, () => ({ json: { data: [], nextCursor: null } })],
+      [/files\/autre-dossier\?/, () => ({ json: { id: 'autre-dossier', mimeType: 'application/vnd.google-apps.folder', trashed: false } })],
+      [/files\?/, () => ({ json: { files: [] } })],
+    ]);
+    const s = A.sourcesLecture({ racine, dossier: tmp('clo-'), dossierCles: dc, fetch: f, urlN8n: 'https://n8n.test.invalid', dossierDrive: 'autre-dossier' });
+    await s.api.listerExecutions({ workflowId: A.WORKFLOW_GENERATION });
+    await s.drive.listerCandidats();
+    assert.ok(f.appels.some((a) => a.url.startsWith('https://n8n.test.invalid/')));
+    assert.ok(f.appels.some((a) => /'autre-dossier' in parents/.test(decodeURIComponent(a.url.replace(/\+/g, ' ')))));
+    assert.ok(!f.appels.some((a) => /srv868991|1Ir-iJGZ/.test(a.url)), 'aucune cible de production');
+  });
+  test('sourcesLocales : aucun secret réseau lu ; sourcesLecture : secret absent -> erreur explicite', () => {
+    const vide = tmp('cles-');
+    const l = A.sourcesLocales({ racine, dossier: tmp('clo-'), dossierCles: vide });
+    assert.equal(l.api, undefined);
+    assert.equal(l.drive, undefined);
+    assert.throws(() => A.sourcesLecture({ racine, dossier: tmp('clo-'), dossierCles: vide }), /n8n-signataire\.cle illisible/);
   });
 });
 
