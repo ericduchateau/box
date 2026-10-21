@@ -41,7 +41,7 @@ CDC relecture v8.3, §20.14 étape 4. Le workflow est **complet**, **créé INAC
 | 5–7 | Lire journal, referentiel, moteurs | API GitHub `contents/<chemin>?ref=<journal_commit>` (dépôt public) : **octets exacts** du blob en base64, décodés et hachés en JS pur |
 | 8 | Chercher candidat existant | Drive `candidats/` : aucun fichier de ce nom ni de `fonda_set_id`, sinon arrêt |
 | 9 | Preparer generation | réservation `(set_id, ref)` à l'état `reserve` au commit consigné ; notion exclue → arrêt ; `referentiel_version` = SHA-256 des octets lus ; moteur = dernier du registre = moteur embarqué ; requête **G3** |
-| 10 | Appel Sonnet | HTTP `api.anthropic.com/v1/messages`, credential `anthropicApi` par id (`YnhTnSOc1u7S99Q7`), modèle **épinglé** `claude-sonnet-5-5-20261001` (à confirmer §20.8), sans nouvel essai ni repli |
+| 10 | Appel Sonnet | HTTP `api.anthropic.com/v1/messages`, credential `anthropicApi` par id (`YnhTnSOc1u7S99Q7`), modèle **épinglé** `claude-sonnet-5-5` (snapshot sans date ≥ 4.6, CDC r8 ; confirmé par la sonde §20.8 : exécution n8n `279792` du 2026-10-21, champ `model` de la réponse = `claude-sonnet-5-5`), sans nouvel essai ni repli |
 | 11 | Construire lot | `modele` = champ `model` **de la réponse** (≠ épinglé → arrêt) ; même chaîne que le générateur local (tri par le correcteur, candidates, `deposerEnRelecture`, `construireLotFonda`) ; aucun null explicite ; empreintes ; corps multipart |
 | 12 | Deposer candidat | Drive `candidats/<set_id>.lot.json`, `properties` publiques `{ fonda_set_id, fonda_execution_id }` posées à la création, sans nouvel essai |
 | 13 | **FONDA Sortie generation** | `generation-fonda/v1` : tous les champs relus par `rapprocher` |

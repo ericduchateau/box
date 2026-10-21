@@ -365,15 +365,21 @@ describe('exécution-fixture : conforme au contrat du signataire', async () => {
     assert.deepEqual(constats.liste, []);
     assert.deepEqual(s, sortie);
   });
-  test('le signataire refuse un modèle hors liste autorisée (liste vide jusqu\'à §20.8)', async () => {
+  test('liste autorisée (§20.8, exécution n8n 279792) : le modèle épinglé du workflow est accepté ; hors liste -> refusé', async () => {
+    const autorises = require('../../fonda/data/modeles-autorises.json').generation_fonda;
+    assert.deepEqual(autorises, [B.CONFIG.modele], 'liste autorisée = modèle épinglé du workflow');
+    const constatsModele = (modelesAutorises) => {
     const b = brute(r);
     const constats = new L.Constats();
     const x = { id: b.id, workflowId: WF.id, status: 'success', startedAt: FX.startedAt, stoppedAt: FX.stoppedAt };
     const { examinees, complet } = L.examinerExecutions({ executions: [x], details: new Map([[x.id, b]]), constats, normaliserDate: (d) => d });
     const vueFichiers = L.examinerFichiers({ setId: FX.set_id, fichiers: [{ id: FX.fichier_drive_id, nom: metadonnees.name, properties: metadonnees.properties, proprietesLisibles: true }], constats });
     const { retenue } = L.classerExecutions({ setId: FX.set_id, examinees, complet, vueFichiers, constats });
-    L.rapprocher({ setId: FX.set_id, retenue, fichier: vueFichiers.fichier, brute: b, workflowId: WF.id, journalCommit: { surPremierParent: true, journal: JOURNAL }, registre: JSON.parse(MOTEURS), modelesAutorises: require('../../fonda/data/modeles-autorises.json').generation_fonda, lotSource: lot, empreintes: null, constats });
-    assert.ok(constats.liste.some((c) => /liste autorisée/.test(c.raison)));
+    L.rapprocher({ setId: FX.set_id, retenue, fichier: vueFichiers.fichier, brute: b, workflowId: WF.id, journalCommit: { surPremierParent: true, journal: JOURNAL }, registre: JSON.parse(MOTEURS), modelesAutorises, lotSource: lot, empreintes: null, constats });
+    return constats.liste.filter((c) => /liste autorisée/.test(c.raison));
+    };
+    assert.deepEqual(constatsModele(autorises), []);
+    assert.ok(constatsModele(['claude-sonnet-4-6']).length > 0);
   });
   test('pinData non vide dans l\'export -> le signataire abandonne (garde-fou du contrat)', async () => {
     const b = brute(r, { ...WF, pinData: FIXTURE.pinData });
