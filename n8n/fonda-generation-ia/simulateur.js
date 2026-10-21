@@ -25,7 +25,7 @@ function evaluer(valeur, ctx) {
     return vm.runInNewContext(`(${valeur.slice(3, -2)})`, { $: ctx.$, $json: ctx.$json });
   }
   if (Array.isArray(valeur)) return valeur.map((v) => evaluer(v, ctx));
-  if (valeur && typeof valeur === 'object') return Object.fromEntries(Object.entries(valeur).map(([k, v]) => [k, evaluer(v, ctx)]));
+  if (valeur && typeof valeur === 'object') return Object.fromEntries(Object.entries(valeur).map(([k, v]) => [k, k === "pagination" ? v : evaluer(v, ctx)])) // pagination : évaluée page par page ($response);
   return valeur;
 }
 
@@ -42,6 +42,27 @@ function conditionVraie(c, ctx) {
     return g === c.rightValue;
   }
   throw new Error(`opérateur IF non simulé : ${JSON.stringify(op)}`);
+}
+
+// Pagination HttpRequestV3 (« updateAParameterInEachRequest ») : une requête par page, le
+// paramètre suivant évalué sur $response, arrêt quand completeExpression est vraie ou à
+// maxRequests (limitPagesFetched). Renvoie la liste des corps de page (un item par page).
+async function pages(noeud, requete, appeler) {
+  const pg = noeud.parameters.options && noeud.parameters.options.pagination && noeud.parameters.options.pagination.pagination;
+  if (!pg || pg.paginationMode === 'off') return null;
+  if (pg.paginationMode !== 'updateAParameterInEachRequest' || pg.paginationCompleteWhen !== 'other') throw new Error('mode de pagination non simulé');
+  const corps = [];
+  let extra = {};
+  for (let k = 0; ; k += 1) {
+    const rep = await appeler({ ...requete, pagination: extra });
+    corps.push(rep);
+    const $response = { body: rep, statusCode: 200 };
+    const fini = vm.runInNewContext(`(${pg.completeExpression.slice(3, -2)})`, { $response });
+    if (fini || (pg.limitPagesFetched && k + 1 >= pg.maxRequests)) break;
+    extra = {};
+    for (const p of pg.parameters.parameters) extra[p.name] = vm.runInNewContext(`(${p.value.slice(3, -2)})`, { $response });
+  }
+  return corps;
 }
 
 // reponses : { [nom de nœud HTTP]: async (requête évaluée) -> { statusCode, body } | lève }.
@@ -92,7 +113,10 @@ async function executerGraphe(wf, { corps, entetes = {}, reponses = {}, executio
         } catch (e) {
           if (n.onError === 'continueErrorOutput') { parSortie = [null, [{ json: { error: { message: e.message } } }]]; rep = null; } else throw e;
         }
-        if (rep) parSortie = [[{ json: json(opt.fullResponse ? { statusCode: rep.statusCode, headers: {}, body: rep.body } : rep.body) }], null];
+        if (rep && n.parameters.options && n.parameters.options.pagination) {
+          const corps = await pages(n, requete, async (q) => (await reponses[n.name](q)).body);
+          parSortie = [corps.map((b) => ({ json: json(b) })), null];
+        } else if (rep) parSortie = [[{ json: json(opt.fullResponse ? { statusCode: rep.statusCode, headers: {}, body: rep.body } : rep.body) }], null];
       } else throw new Error(`type de nœud non simulé : ${n.type}`);
     } catch (e) {
       const modeNoeud = depart.parameters && depart.parameters.responseMode === 'responseNode';
@@ -108,4 +132,4 @@ async function executerGraphe(wf, { corps, entetes = {}, reponses = {}, executio
   return { status: 'success', runData, requetes, sorties, reponseWebhook };
 }
 
-module.exports = { executerGraphe, evaluer };
+module.exports = { executerGraphe, evaluer, pages };

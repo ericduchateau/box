@@ -15,12 +15,13 @@ CDC relecture v8.3, §20.14 étape 4. Le workflow est **complet**, **créé INAC
 
   Harnais : `portier.test.js`, simulateur `simulateur.js`.
 - **Dette C : RÉDUITE, PAS CLOSE (D5)** (plan étape 5, lot 4). Ni Drive ni n8n n'offrent de création atomique. Le **garant** reste l'abandon du signataire sur doublon. Les dispositifs en place :
-  - **appelant unique** `fonda/scripts/declencher-generation.js` (verrou `verrou-generation.js`) :
-    - contrôles en lecture **avant** tout verrou : réservation, aucun fichier local (`setIdsExistants`), aucune exécution n8n, aucun candidat **pour ce set_id** ;
-    - puis verrou O_EXCL en journal ajout seul, avec les états `envoi`, `accepte` (terminal), `refuse`, `inconnu` et `libere`, et une exclusion commune avec relecture après acquisition ;
-    - **un seul POST**, jamais de nouvel essai. `--etat` observe, `--liberer --motif` libère (consigné, après le délai de prudence) et `--reparer` reprend un verrou orphelin ou une ligne tronquée sans rien effacer ;
-    - les adaptateurs de production de la CLI arrivent au lot 5 ;
-  - **côté workflow audité** : « Relister candidat » puis « Verifier unicite » **après** le dépôt. Exactement un fichier pour ce set_id, celui déposé ; sinon erreur visible. La réponse du dépôt est réémise, et « FONDA Sortie generation » la lit **par son nom**.
+  - **appelant unique** `fonda/scripts/declencher-generation.js` (logique dans `verrou-generation.js`) :
+    - chaque commande s'exécute sous le **verrou noyau** de son set_id (`/usr/bin/lockf -t 0`, libéré par le noyau même après un `kill -9`). Un verrou orphelin est impossible, et une commande concurrente échoue aussitôt (code 75) ;
+    - contrôles en lecture **avant toute écriture** : réservation, aucun fichier local (`setIdsExistants`), aucune exécution n8n, aucun candidat **pour ce set_id**. Les observations sont des entiers explicites, sinon refus ;
+    - journal en ajout seul, écrit **en entier** puis `fsync`, lu **sur les octets**. États : `envoi`, `accepte` (terminal), `refuse`, `inconnu`, `libere` ; les événements administratifs (`reparation`) sont séparés ;
+    - **un seul POST**, jamais de nouvel essai. `--etat` observe ; `--liberer --motif` libère après le délai de prudence (horloge supposée stable ; un événement daté dans le futur est refusé) ; `--reparer` complète une ligne tronquée et désigne le fragment par son index et le SHA-256 de ses octets bruts, sans rien effacer ;
+    - les adaptateurs de production arrivent au lot 5 ;
+  - **côté workflow audité** : « Relister candidat » (**pagination complète** : `pageToken`, 50 pages au plus) puis « Verifier unicite » **après** le dépôt. Toutes les pages sont agrégées, et `incompleteSearch` sur une page quelconque fait refuser. Il faut exactement un fichier pour ce set_id, celui déposé ; sinon erreur visible. La réponse du dépôt est réémise, et « FONDA Sortie generation » la lit **par son nom**.
 - **Restrictions d'exploitation (obligatoires)** :
   - **jamais** de « Retry » ni d'« Execute » manuel sur le portier ou la génération ;
   - `retryOnFail` faux partout (vérifié par les harnais) ;
