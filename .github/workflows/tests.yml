@@ -25,6 +25,18 @@ jobs:
     name: tests (node --test)
     runs-on: ubuntu-latest
     steps:
+      # Modèle de branches (AGENTS.md) : main = production, mise à jour UNIQUEMENT par une
+      # PR de mise en production design -> main. Toute autre source vers main est refusée
+      # (incident #28 : une branche de travail fusionnée dans main y a amené tout design).
+      - name: Garde-fou — PR vers main seulement depuis design
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        env:
+          SOURCE: ${{ github.head_ref }}
+        run: |
+          if [ "$SOURCE" != "design" ]; then
+            echo "PR vers main refusée : source « $SOURCE » ≠ design (toute PR de travail cible design)."
+            exit 1
+          fi
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0

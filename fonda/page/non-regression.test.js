@@ -243,6 +243,12 @@ describe('non-régression — index.html : zéro référence statique à /fonda/
 // objectivement leur comportement plutôt que de le supposer identique.
 const vm = require('node:vm');
 
+// RÉFÉRENCE FIGÉE « BOX pur » : 31fcd25 (2026-10-05), parent du premier merge FONDA ; son
+// front (js/, index.html, css/) est identique à 7ea4f28, dernier main BOX pur. On ne compare
+// plus à `main` VIVANT : la PR #28 (2026-10-21) a fusionné tout design dans main, dont le
+// app.js connaît depuis ?fonda=1 — la comparaison « avant FONDA » n'aurait plus de sens.
+const REF_BOX_PUR = '31fcd256917d04ca33761f0dabf3d6dbc219e23e';
+
 function executerInitViaVM(sourceJS, search) {
   const appels = [];
   const docFactice = {
@@ -278,7 +284,7 @@ describe('non-régression STRICTE — isolation totale des deux chemins (return 
   });
 
   test('comparaison directe avec main : séquence d\'appels IDENTIQUE pour tout usage BOX normal (aucun ?fonda)', () => {
-    const sourceMain = execFileSync('git', ['show', 'main:js/app.js'], { cwd: REPO_ROOT, encoding: 'utf-8' });
+    const sourceMain = execFileSync('git', ['show', `${REF_BOX_PUR}:js/app.js`], { cwd: REPO_ROOT, encoding: 'utf-8' });
     const sourceActuelle = fs.readFileSync(APP_JS_PATH, 'utf-8');
 
     for (const search of ['', '?set=box_test01', '?action=delete']) {
@@ -290,7 +296,7 @@ describe('non-régression STRICTE — isolation totale des deux chemins (return 
   });
 
   test('main ne connaît même pas ?fonda=1 : la comparaison ne vaut QUE pour les usages BOX normaux, jamais pour le mode FONDA lui-même', () => {
-    const sourceMain = execFileSync('git', ['show', 'main:js/app.js'], { cwd: REPO_ROOT, encoding: 'utf-8' });
+    const sourceMain = execFileSync('git', ['show', `${REF_BOX_PUR}:js/app.js`], { cwd: REPO_ROOT, encoding: 'utf-8' });
     const resultatMain = executerInitViaVM(sourceMain, '?fonda=1');
     // Sur main, "fonda" n'est reconnu par aucune branche -> tombe dans le chemin
     // normal (loadCatalogue), par définition puisque le mode FONDA n'existe pas là.
