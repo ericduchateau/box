@@ -15,8 +15,8 @@
 // Une commande concurrente échoue aussitôt (code 75).
 // Jamais de nouvel essai automatique : 202 -> accepte ; 400 -> refuse (nouvel appel possible) ;
 // toute autre issue (504, 500, délai, rupture) -> inconnu : OBSERVER, ne jamais renvoyer.
-// Adaptateurs de PRODUCTION (lecture n8n/Drive/git, envoi au portier, jeton) : lot 5 — d'ici
-// là, la CLI refuse avant toute lecture.
+// Adaptateurs de PRODUCTION (lecture n8n/Drive/git, envoi au portier, jeton) :
+// adaptateurs-production.js (lot 5).
 
 'use strict';
 
@@ -50,9 +50,10 @@ async function executer({ commande, setId, ref, motif }, deps) {
   return V.reparer(setId, deps);
 }
 
-// Fabrique de production : livrée au lot 5 (adaptateurs-production.js).
+// Fabrique de production (lot 5) : lectures n8n/Drive/git et envoi au PORTIER (jeton de
+// l'appelant lu dans ~/.fonda-cles/portier.jeton, jamais affiché).
 function dependancesProduction() {
-  throw new V.RefusVerrou('adaptateurs de production non livrés (plan étape 5, lot 5) : aucune commande possible');
+  return require('./adaptateurs-production.js').dependancesDeclenchement();
 }
 
 // Verrou noyau pris PAR CE PROCESSUS pour toute sa durée (descripteur volontairement jamais

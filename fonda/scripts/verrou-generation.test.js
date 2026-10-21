@@ -302,10 +302,11 @@ describe('CLI', () => {
     assert.throws(() => D.analyserArguments([SET]), /usage/);
     assert.throws(() => D.analyserArguments(['--retry', SET]), /option inconnue/);
   });
-  test('sans adaptateurs de production (lot 5) : refus (le verrou est pris puis rendu, aucune lecture)', { skip: !lockfDisponible && 'lockf absent' }, () => {
+  test('production sans secrets (~/.fonda-cles vide) : refus AVANT toute lecture réseau, rien écrit au journal', { skip: !lockfDisponible && 'lockf absent' }, () => {
     const d = fs.mkdtempSync(path.join(os.tmpdir(), 'verrous-c-'));
     const r = spawnSync(process.execPath, [path.join(__dirname, 'declencher-generation.js'), SET, REF], { encoding: 'utf8', env: { ...process.env, HOME: d } });
     assert.equal(r.status, 1);
-    assert.match(r.stderr, /lot 5/);
+    assert.match(r.stderr, /secret n8n-signataire\.cle illisible/);
+    assert.ok(!fs.existsSync(path.join(d, 'FONDA-clotures', 'verrous', `${SET}.generation`)), 'journal jamais créé');
   });
 });
