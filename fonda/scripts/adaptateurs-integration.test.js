@@ -169,6 +169,13 @@ describe('parcours complet (sans non-retour réel)', () => {
     assert.equal(d.etat, 'candidat_non_conforme', JSON.stringify(d.applicables));
     assert.match(String(d.detail), /JSON invalide/);
   });
+  test('r3 : contenus JSON valides mais « faux » (null, false, 0, "") -> candidat_non_conforme, jamais prêt', async () => {
+    for (const texte of ['null', 'false', '0', '""']) {
+      const d = await diag({ drive: { ...t.drive, lireLotGenere: async () => ({ ...(await t.drive.lireLotGenere()), octets: Buffer.from(texte) }) } });
+      assert.equal(d.etat, 'candidat_non_conforme', `${texte} : ${JSON.stringify(d.applicables)}`);
+      assert.ok(!d.applicables.some((x) => /^pret_/.test(x.etat)), texte);
+    }
+  });
   test('r2 #2 : lot lu d\'un AUTRE fichier que le listé, ou modifié après la génération -> candidat_non_conforme', async () => {
     const autre = await diag({ drive: { ...t.drive, lireLotGenere: async () => ({ ...(await t.drive.lireLotGenere()), id: 'drv-autre', modifie_le: '2026-10-20T09:00:00.000Z' }) } });
     assert.equal(autre.etat, 'candidat_non_conforme');

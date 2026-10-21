@@ -101,9 +101,11 @@ async function diagnostiquer(setId, s) {
     if ([av, ap].some((x) => x && fichierVu && x.id !== fichierVu.id)) c2.ajouter('abandon', 'lot généré lu ≠ fichier candidat listé');
     if ([av, ap].some((x) => x && x.nom !== `${setId}.lot.json`)) c2.ajouter('abandon', `fichier lu : nom ≠ ${setId}.lot.json`);
     lot = stable ? lireJson(av.octets) : null;
-    if (stable && lot === undefined) { c2.ajouter('incident', 'lot généré illisible (JSON invalide)'); lot = null; }
     const dec = C.decomposerSetId(setId);
-    if (lot && (!C.validerLot(lot).valide || lot.set_id !== setId || !dec || lot.palier !== dec.palier || C.slugDeNotion(lot.notion_id) !== dec.slug)) { c2.ajouter('abandon', 'lot généré non conforme'); lot = null; }
+    if (stable && lot === undefined) { c2.ajouter('incident', 'lot généré illisible (JSON invalide)'); lot = null; }
+    // Tout contenu décodé est validé, valeurs JSON « fausses » comprises (null, false, 0, "") :
+    // comme le signataire, qui valide chaque contenu lu sans condition.
+    else if (stable && (!C.validerLot(lot).valide || lot.set_id !== setId || !dec || lot.palier !== dec.palier || C.slugDeNotion(lot.notion_id) !== dec.slug)) { c2.ajouter('abandon', 'lot généré non conforme'); lot = null; }
     if (lot) {
       const nuls = L.nullsExplicites(lot);
       if (nuls.length) c2.ajouter('abandon', `null explicite dans le lot : ${nuls.join(', ')}`);
