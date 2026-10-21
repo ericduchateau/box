@@ -88,6 +88,63 @@ function clesDuDepot() {
 }
 
 /**
+ * Étapes 1 à 3 de la publication, PARTAGÉES avec l'extraction locale du signataire
+ * (signataire-cli.js --extraire-publication) : aucune règle n'est recodée ailleurs.
+ *   1. référentiel ARCHIVÉ de la charge (§20.12) ;
+ *   2. attestation vérifiée EN ENTIER contre l'entrée construite depuis le lot (entreeDepuisLot) ;
+ *   3. garde-fous pédagogiques du MOTEUR de la charge authentifiée.
+ * Ne consulte AUCUN état de publication (catalogue, journal, fichiers).
+ * @returns {Promise<{ok:true, entree}|{ok:false, erreurs:string[]}>}
+ */
+async function entreeDepuisLot(lot, attestation, sha256Hex) {
+  const charge = (attestation && attestation.charge) || {};
+  const moteurCharge = charge.moteur || {};
+  return {
+    set_id: lot.set_id,
+    notion_id: lot.notion_id,
+    palier: lot.palier,
+    fichier: `lots/${lot.set_id}.json`,
+    item_ids: lot.cartes.map((c) => c.item_id),
+    empreinte: await C.calculerEmpreinte(lot, sha256Hex),
+    moteur: { version: moteurCharge.version, sha256: moteurCharge.sha256 },
+    relecteur: charge.badge,
+    attestation,
+  };
+}
+
+async function verifierLotEtAttestation({ lot, attestation, referentielArchive, sha256Hex, cles, modelesAutorises, registre = lireRegistre() }) {
+  const erreurs = [];
+  // 1. Référentiel ARCHIVÉ de la charge (§20.12) : le relecteur attribué est vérifié
+  //    contre CETTE version, jamais contre le référentiel courant. Sans résolveur ->
+  //    refus (jamais de contrôle du relecteur sauté).
+  const charge = attestation.charge || {};
+  if (typeof referentielArchive !== 'function') return { ok: false, erreurs: ['résolveur de référentiel archivé absent : refus'] };
+  const ra = await referentielArchive(charge.referentiel_version);
+  if (!ra || ra.ok !== true || !ra.referentiel || typeof ra.referentiel !== 'object') return { ok: false, erreurs: [`référentiel archivé : ${(ra && ra.raison) || 'introuvable'}`] };
+
+  // 2. Attestation vérifiée EN ENTIER (forme -> clé -> signature -> valeurs -> dépôt)
+  //    AVANT toute exécution de code pédagogique : le moteur n'est chargé qu'une fois
+  //    la charge authentifiée et son moteur rapproché du registre.
+  const entree = await entreeDepuisLot(lot, attestation, sha256Hex);
+  const es = S.verifierAttestationSignee(attestation, { entree, registre, referentiel: ra.referentiel, cles, modelesAutorises });
+  if (es.length) return { ok: false, erreurs: es };
+
+  // 3. Garde-fous pédagogiques du MOTEUR DU LOT (celui de la charge authentifiée).
+  let m;
+  try { m = chargerMoteurNode(entree.moteur.version, entree.moteur.sha256); } catch (e) { return { ok: false, erreurs: [`moteur de la charge : ${e.message}`] }; }
+  lot.cartes.forEach((c) => {
+    const v0 = m.valider(c);
+    if (!v0.valide) erreurs.push(`${c.item_id} : carte refusée par le moteur ${entree.moteur.version} (${v0.raisons.join(', ')})`);
+    const r1 = m.outils.verifierReponseOr(c);
+    if (!r1.ok) erreurs.push(`${c.item_id} : ${r1.raison}`);
+    const r2 = m.outils.verifierFormesAcceptees(c);
+    if (!r2.ok) erreurs.push(`${c.item_id} : ${r2.raison}`);
+  });
+  if (erreurs.length) return { ok: false, erreurs };
+  return { ok: true, entree };
+}
+
+/**
  * Pure (hors SHA-256, clés et résolveur de référentiel injectés). Ne lit ni n'écrit aucun fichier.
  *   referentiel        : référentiel COURANT (validité du catalogue résultant) ;
  *   referentielArchive : (version) -> { ok, referentiel } | { ok: false, raison } (§20.12) ;
@@ -118,44 +175,10 @@ async function preparerPublication({ lot, attestation, catalogue, referentiel, r
   const vj2 = J.validerJournal(nouveauJournal);
   if (!vj2.valide) return { ok: false, erreurs: vj2.erreurs.map((e) => `journal après publie : ${e}`) };
 
-  // 1. Référentiel ARCHIVÉ de la charge (§20.12) : le relecteur attribué est vérifié
-  //    contre CETTE version, jamais contre le référentiel courant. Sans résolveur ->
-  //    refus (jamais de contrôle du relecteur sauté).
-  const charge = attestation.charge || {};
-  if (typeof referentielArchive !== 'function') return { ok: false, erreurs: ['résolveur de référentiel archivé absent : refus'] };
-  const ra = await referentielArchive(charge.referentiel_version);
-  if (!ra || ra.ok !== true || !ra.referentiel || typeof ra.referentiel !== 'object') return { ok: false, erreurs: [`référentiel archivé : ${(ra && ra.raison) || 'introuvable'}`] };
-
-  // 2. Attestation vérifiée EN ENTIER (forme -> clé -> signature -> valeurs -> dépôt)
-  //    AVANT toute exécution de code pédagogique : le moteur n'est chargé qu'une fois
-  //    la charge authentifiée et son moteur rapproché du registre.
-  const empreinte = await C.calculerEmpreinte(lot, sha256Hex);
-  const moteurCharge = charge.moteur || {};
-  const entree = {
-    set_id: lot.set_id,
-    notion_id: lot.notion_id,
-    palier: lot.palier,
-    fichier,
-    item_ids: lot.cartes.map((c) => c.item_id),
-    empreinte,
-    moteur: { version: moteurCharge.version, sha256: moteurCharge.sha256 },
-    relecteur: charge.badge,
-    attestation,
-  };
-  const es = S.verifierAttestationSignee(attestation, { entree, registre, referentiel: ra.referentiel, cles, modelesAutorises });
-  if (es.length) return { ok: false, erreurs: es };
-
-  // 3. Garde-fous pédagogiques du MOTEUR DU LOT (celui de la charge authentifiée).
-  let m;
-  try { m = chargerMoteurNode(entree.moteur.version, entree.moteur.sha256); } catch (e) { return { ok: false, erreurs: [`moteur de la charge : ${e.message}`] }; }
-  lot.cartes.forEach((c) => {
-    const v0 = m.valider(c);
-    if (!v0.valide) erreurs.push(`${c.item_id} : carte refusée par le moteur ${entree.moteur.version} (${v0.raisons.join(', ')})`);
-    const r1 = m.outils.verifierReponseOr(c);
-    if (!r1.ok) erreurs.push(`${c.item_id} : ${r1.raison}`);
-    const r2 = m.outils.verifierFormesAcceptees(c);
-    if (!r2.ok) erreurs.push(`${c.item_id} : ${r2.raison}`);
-  });
+  // 1-3. Lot + attestation vérifiés (fonction PARTAGÉE avec l'extraction locale du signataire).
+  const va = await verifierLotEtAttestation({ lot, attestation, referentielArchive, sha256Hex, cles, modelesAutorises, registre });
+  if (!va.ok) return { ok: false, erreurs: va.erreurs };
+  const { entree } = va;
   if (erreurs.length) return { ok: false, erreurs };
   const nouveau = { ...catalogue, lots: [...catalogue.lots, entree] };
   const vc = C.validerCatalogue(nouveau, referentiel);
@@ -413,6 +436,6 @@ async function main() {
   }
 }
 
-module.exports = { preparerPublication, clesDuDepot, publier, environnement, verifierClotureDuCatalogue, Refus };
+module.exports = { preparerPublication, verifierLotEtAttestation, entreeDepuisLot, clesDuDepot, publier, environnement, verifierClotureDuCatalogue, Refus };
 
 if (require.main === module) main();
