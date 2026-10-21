@@ -106,17 +106,19 @@ async function executerGraphe(wf, { corps, entetes = {}, reponses = {}, executio
         let rep;
         try {
           if (!reponses[n.name]) throw new Error(`réponse simulée absente pour ${n.name}`);
-          rep = await reponses[n.name](requete);
+          if (n.parameters.options && n.parameters.options.pagination) {
+            // TOUS les appels passent par pages() (aucune réponse jetée : relecture Codex r2).
+            const corps = await pages(n, requete, async (q) => (await reponses[n.name](q)).body);
+            parSortie = [corps.map((b) => ({ json: json(b) })), null];
+            rep = null;
+          } else rep = await reponses[n.name](requete);
           const suivre = !(n.parameters.options && n.parameters.options.redirect && n.parameters.options.redirect.redirect && n.parameters.options.redirect.redirect.followRedirects === false);
-          for (let k = 0; suivre && rep.statusCode >= 300 && rep.statusCode < 400 && k < 21; k += 1) rep = await reponses[n.name]({ ...requete, url: (rep.headers || {}).location });
-          if (!opt.neverError && rep.statusCode >= 400) throw new Error(`HTTP ${rep.statusCode}`);
+          for (let k = 0; rep && suivre && rep.statusCode >= 300 && rep.statusCode < 400 && k < 21; k += 1) rep = await reponses[n.name]({ ...requete, url: (rep.headers || {}).location });
+          if (rep && !opt.neverError && rep.statusCode >= 400) throw new Error(`HTTP ${rep.statusCode}`);
         } catch (e) {
           if (n.onError === 'continueErrorOutput') { parSortie = [null, [{ json: { error: { message: e.message } } }]]; rep = null; } else throw e;
         }
-        if (rep && n.parameters.options && n.parameters.options.pagination) {
-          const corps = await pages(n, requete, async (q) => (await reponses[n.name](q)).body);
-          parSortie = [corps.map((b) => ({ json: json(b) })), null];
-        } else if (rep) parSortie = [[{ json: json(opt.fullResponse ? { statusCode: rep.statusCode, headers: {}, body: rep.body } : rep.body) }], null];
+        if (rep) parSortie = [[{ json: json(opt.fullResponse ? { statusCode: rep.statusCode, headers: {}, body: rep.body } : rep.body) }], null];
       } else throw new Error(`type de nœud non simulé : ${n.type}`);
     } catch (e) {
       const modeNoeud = depart.parameters && depart.parameters.responseMode === 'responseNode';

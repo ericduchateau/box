@@ -16,7 +16,7 @@ CDC relecture v8.3, §20.14 étape 4. Le workflow est **complet**, **créé INAC
   Harnais : `portier.test.js`, simulateur `simulateur.js`.
 - **Dette C : RÉDUITE, PAS CLOSE (D5)** (plan étape 5, lot 4). Ni Drive ni n8n n'offrent de création atomique. Le **garant** reste l'abandon du signataire sur doublon. Les dispositifs en place :
   - **appelant unique** `fonda/scripts/declencher-generation.js` (logique dans `verrou-generation.js`) :
-    - chaque commande s'exécute sous le **verrou noyau** de son set_id (`/usr/bin/lockf -t 0`, libéré par le noyau même après un `kill -9`). Un verrou orphelin est impossible, et une commande concurrente échoue aussitôt (code 75) ;
+    - chaque commande s'exécute sous le **verrou noyau** de son set_id, **tenu par le processus Node lui-même** (`lockf` en mode descripteur, sans superviseur séparé), libéré par le noyau même après un `kill -9`. Un verrou orphelin est impossible, et une commande concurrente échoue aussitôt (code 75) ;
     - contrôles en lecture **avant toute écriture** : réservation, aucun fichier local (`setIdsExistants`), aucune exécution n8n, aucun candidat **pour ce set_id**. Les observations sont des entiers explicites, sinon refus ;
     - journal en ajout seul, écrit **en entier** puis `fsync`, lu **sur les octets**. États : `envoi`, `accepte` (terminal), `refuse`, `inconnu`, `libere` ; les événements administratifs (`reparation`) sont séparés ;
     - **un seul POST**, jamais de nouvel essai. `--etat` observe ; `--liberer --motif` libère après le délai de prudence (horloge supposée stable ; un événement daté dans le futur est refusé) ; `--reparer` complète une ligne tronquée et désigne le fragment par son index et le SHA-256 de ses octets bruts, sans rien effacer ;

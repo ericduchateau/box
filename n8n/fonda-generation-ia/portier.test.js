@@ -297,6 +297,20 @@ describe('portier -> génération -> signataire', () => {
     assert.equal(g.status, 'success', g.erreur);
     assert.ok(g.requetes[N.deposer], 'candidat déposé APRÈS la réponse perdue');
   });
+  test('relisting paginé simulé : la PREMIÈRE page est prise en compte (doublon en page 1 -> erreur)', async () => {
+    let n = 0;
+    const reps = { ...reponsesCompletes(avecReservation), [N.relister]: (q) => {
+      n += 1;
+      return q.pagination && q.pagination.pageToken
+        ? { statusCode: 200, body: { files: [{ id: FX.fichier_drive_id }] } }
+        : { statusCode: 200, body: { files: [{ id: FX.fichier_drive_id }, { id: 'drv-autre' }], nextPageToken: 'p2' } };
+    } };
+    const g = await executerGraphe(GEN, { corps: CORPS, reponses: reps, executionId: '730' });
+    assert.equal(g.status, 'error');
+    assert.equal(g.noeudErreur, N.unicite);
+    assert.match(g.erreur, /doublon/);
+    assert.equal(n, 2, 'exactement deux appels (pas de première réponse jetée)');
+  });
   test('tentative en erreur attribuable PUIS réussite : le signataire retient la réussite, la tentative est tolérée', async () => {
     const g1 = await executerGraphe(GEN, { corps: CORPS, reponses: reponsesGeneration({ schema: 'set-ids-journal/v1', lignes: [] }), executionId: '720' });
     const g2 = await executerGraphe(GEN, { corps: CORPS, reponses: reponsesCompletes(avecReservation), executionId: '721' });

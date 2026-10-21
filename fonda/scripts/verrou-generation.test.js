@@ -225,7 +225,7 @@ describe('processus réels (lockf)', { skip: !lockfDisponible && 'lockf absent' 
   };
   const posts = (b) => (fs.existsSync(b.trace) ? fs.readFileSync(b.trace, 'utf8').trim().split('\n').length : 0);
 
-  test('nominal : la CLI se relance sous lockf, un POST, accepte', () => {
+  test('nominal : verrou noyau pris PAR le processus de commande, un POST, accepte', () => {
     const b = base();
     const r = enfant({ argv: [SET, REF], verrous: b.verrous, trace: b.trace });
     assert.equal(r.status, 0, r.stderr);
@@ -248,11 +248,23 @@ describe('processus réels (lockf)', { skip: !lockfDisponible && 'lockf absent' 
     assert.equal(posts(b), 1);
     assert.equal(V.lireEtat(SET, b.verrous).etat, 'accepte');
   });
-  test('kill -9 du détenteur APRÈS « envoi » : le noyau libère le verrou ; état ENVOI sans résultat, aucun renvoi', async () => {
+  test('aucun superviseur : pendant la détention, AUCUN processus lockf ne survit (le verrou est tenu par Node lui-même)', async () => {
+    const b = base();
+    const premier = enfant({ argv: [SET, REF], verrous: b.verrous, trace: b.trace, barriere: { pret: b.pret, go: b.go } }, { attendre: false });
+    try {
+      await attendreFichier(b.pret);
+      const ps = spawnSync('ps', ['-A', '-o', 'pid=,ppid=,command='], { encoding: 'utf8' }).stdout;
+      assert.ok(!ps.split('\n').some((l) => /\/usr\/bin\/lockf/.test(l) && l.trim().split(/\s+/)[1] === String(premier.pid)), 'aucun lockf enfant vivant');
+      assert.equal(enfant({ argv: ['--etat', SET], verrous: b.verrous, trace: b.trace }).status, D.OCCUPE, 'verrou bien tenu');
+      fs.writeFileSync(b.go, '');
+      await new Promise((r) => premier.on('exit', r));
+    } finally { tuerGroupe(premier); }
+  });
+  test('kill -9 du SEUL processus de commande APRÈS « envoi » : verrou libéré ; ENVOI sans résultat, aucun renvoi', async () => {
     const b = base();
     const premier = enfant({ argv: [SET, REF], verrous: b.verrous, trace: b.trace, barriere: { pret: b.pret, go: b.go } }, { attendre: false });
     await attendreFichier(b.pret);
-    tuerGroupe(premier);
+    process.kill(premier.pid, 'SIGKILL'); // le processus seul, pas son groupe
     await new Promise((r) => premier.on('exit', r));
     assert.equal(V.lireEtat(SET, b.verrous).etat, 'envoi');
     const relance = enfant({ argv: [SET, REF], verrous: b.verrous, trace: b.trace });
