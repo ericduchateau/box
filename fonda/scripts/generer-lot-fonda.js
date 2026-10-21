@@ -29,7 +29,7 @@
 // Usage — RÉSERVATION EN DEUX TEMPS (journal des identifiants, CDC §6) :
 //   1. Réserver (aucun appel réseau) : ajoute au journal LOCAL une ligne « reserve »
 //      par palier, avec une ref unique ; puis commit + PR vers design.
-//        node fonda/scripts/generer-lot-fonda.js --reserver <notion_id> [<notion_id> ...]
+//        node fonda/scripts/generer-lot-fonda.js --reserver <notion_id> [<notion_id> ...] [--palier nI|nF]
 //   2. Après fusion sur design (git fetch) : générer le candidat d'UN set_id réservé.
 //      Le journal lu est celui de origin/design (autorité) ; la ligne « reserve » de
 //      ce set_id doit porter EXACTEMENT la ref donnée, sinon arrêt avant tout appel.
@@ -584,8 +584,26 @@ async function genererLotPourNotionPalier({ notion, palier, nCartes, contextesAu
   return { ok: true, candidats, rejets, corrections };
 }
 
+// Arguments de la CLI (pur, testé) : --palier CONSOMME sa valeur (lot 4 bis, D4).
+function analyserArgumentsCli(argv) {
+  const args = [...argv];
+  let palier;
+  const i = args.indexOf('--palier');
+  if (i >= 0) {
+    palier = args[i + 1];
+    if (palier === undefined || palier.startsWith('--')) throw new Error('--palier : valeur nI ou nF attendue');
+    if (palier !== 'nI' && palier !== 'nF') throw new Error(`--palier : « ${palier} » inconnu (nI ou nF)`);
+    args.splice(i, 2);
+    if (args.includes('--palier')) throw new Error('--palier : option en double');
+    if (!args.includes('--reserver')) throw new Error('--palier : seulement avec --reserver');
+  }
+  return { args, palier };
+}
+
 async function main() {
-  const args = process.argv.slice(2);
+  let args;
+  let palierDemande;
+  try { ({ args, palier: palierDemande } = analyserArgumentsCli(process.argv.slice(2))); } catch (e) { console.log(`Réservation refusée : ${e.message}`); process.exitCode = 1; return; }
   const nArg = args.find((a) => a.startsWith('--n='));
   const nCartes = nArg ? parseInt(nArg.slice(4), 10) : 6;
   const setIdArg = (args.find((a) => a.startsWith('--set-id=')) || '').slice(9);
@@ -594,7 +612,7 @@ async function main() {
   const notionIdsDemandes = args.filter((a) => !a.startsWith('--'));
 
   if (!reserver && !setIdArg) {
-    console.log('Usage :\n  node fonda/scripts/generer-lot-fonda.js --reserver <notion_id> [<notion_id> ...]\n  ANTHROPIC_API_KEY=... node fonda/scripts/generer-lot-fonda.js --set-id=<set_id> --ref=<ref> [--n=6]');
+    console.log('Usage :\n  node fonda/scripts/generer-lot-fonda.js --reserver <notion_id> [<notion_id> ...] [--palier nI|nF]\n  ANTHROPIC_API_KEY=... node fonda/scripts/generer-lot-fonda.js --set-id=<set_id> --ref=<ref> [--n=6]');
     process.exitCode = 1;
     return;
   }
@@ -615,7 +633,8 @@ async function main() {
     const le = new Date().toISOString().slice(0, 10);
     const nouvelles = [];
     for (const notion of referentiel.notions.filter((n) => notionIdsDemandes.includes(n.id))) {
-      for (const palier of notion.paliers) {
+      if (palierDemande && !notion.paliers.includes(palierDemande)) { console.log(`Réservation refusée : palier ${palierDemande} non prévu pour ${notion.id}`); process.exitCode = 1; return; }
+      for (const palier of notion.paliers.filter((p) => !palierDemande || p === palierDemande)) {
         const courant = { schema: journal.schema, lignes: [...journal.lignes, ...nouvelles] };
         const id = prochainSetIdReserve(notion.id, palier, setIdsExistants(courant));
         nouvelles.push(Journal.ligneReservation(courant, id, le, nouvelleRef(le)));
@@ -696,6 +715,7 @@ async function genererReserve({ setId, ref, nCartes, referentiel }, deps = {}) {
 }
 
 module.exports = {
+  analyserArgumentsCli,
   estNotionExclue,
   NOTIONS_EXCLUES_FIGURES,
   construirePrompt,

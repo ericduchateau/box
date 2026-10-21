@@ -886,6 +886,8 @@ function evaluerPage({ setId, candidatEnv, clotures, confirmations, listeDecisio
 // CLI : la garde maîtresse s'applique avant toute lecture de secret ou appel réseau.
 async function main() {
   const setId = process.argv[2];
+  // Commandes outillées (lot 5) : jamais la clôture. La clôture ci-dessous reste sous la garde.
+  if (typeof setId === 'string' && setId.startsWith('--')) { await require('./signataire-cli.js').main(process.argv.slice(2)); return; }
   try {
     await cloturer(setId, { rattachement: undefined });
   } catch (e) {
