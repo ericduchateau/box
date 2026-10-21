@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-10-20T19:38:21.382Z",
+  "updatedAt": "2026-10-21T08:05:55.760Z",
   "createdAt": "2026-10-20T06:17:10.843Z",
   "id": "vrqgtS5kQMvP9Ok5",
   "name": "BOX - FONDA Generation IA",
@@ -321,16 +321,88 @@
       }
     },
     {
-      "id": "d5991099-4747-494a-a112-c1d992a9db6c",
+      "id": "3ba19436-27bf-4aee-a42c-28159bb1127b",
       "position": [
         2640,
+        0
+      ],
+      "name": "Relister candidat",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "cukxQDNwWIqOAK02",
+          "name": "Google Drive la bonne!"
+        }
+      },
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ \"'1Ir-iJGZoSk5_FmJ9dnf_PM-NEBZWyn8d' in parents and trashed = false and (name = '\" + $('FONDA Entree generation').first().json.set_id + \".lot.json' or properties has { key='fonda_set_id' and value='\" + $('FONDA Entree generation').first().json.set_id + \"' })\" }}"
+            },
+            {
+              "name": "fields",
+              "value": "nextPageToken,incompleteSearch,files(id,name,properties)"
+            },
+            {
+              "name": "pageSize",
+              "value": "100"
+            }
+          ]
+        },
+        "options": {
+          "pagination": {
+            "pagination": {
+              "paginationMode": "updateAParameterInEachRequest",
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "qs",
+                    "name": "pageToken",
+                    "value": "={{ $response.body.nextPageToken }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.nextPageToken }}",
+              "limitPagesFetched": true,
+              "maxRequests": 50
+            }
+          },
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "76363baa-23c6-410f-a96e-88656eddacfd",
+      "position": [
+        2860,
+        0
+      ],
+      "name": "Verifier unicite",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "// FONDA — unicité après dépôt : exactement UN candidat pour ce set_id, celui déposé.\n// GÉNÉRÉ par n8n/fonda-generation-ia/construire-workflow.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('Verifier unicite : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nconst depot = unItem(\"Deposer candidat\");\n// Une page par item (pagination n8n) : agrégation de TOUTES les pages.\nconst pages = $input.all().map((it) => it && it.json);\nif (pages.length === 0 || pages.some((p) => !p || !Array.isArray(p.files))) throw new Error('relisting candidats/ : réponse inexploitable');\nif (pages.some((p) => p.incompleteSearch === true)) throw new Error('relisting candidats/ : recherche incomplète');\nif (pages[pages.length - 1].nextPageToken) throw new Error('relisting candidats/ : pagination non terminée (limite de pages atteinte)');\nconst listing = { files: [].concat(...pages.map((p) => p.files)) };\nif (listing.files.length === 0) throw new Error('relisting candidats/ : aucun fichier alors qu\\'un dépôt vient de réussir (incohérence)');\nif (listing.files.length > 1) throw new Error('doublon détecté : ' + listing.files.length + ' fichiers candidats pour ce set_id');\nif (listing.files[0].id !== depot.id) throw new Error('relisting candidats/ : le fichier trouvé n\\'est pas celui déposé');\nreturn [{ json: depot }];"
+      }
+    },
+    {
+      "id": "d5991099-4747-494a-a112-c1d992a9db6c",
+      "position": [
+        3080,
         0
       ],
       "name": "FONDA Sortie generation",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "parameters": {
-        "jsCode": "// FONDA — sortie generation-fonda/v1, relue par le signataire (liaison-generation.rapprocher).\n// GÉNÉRÉ par n8n/fonda-generation-ia/construire-workflow.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nconst CONFIG = {\n  \"dossierCandidats\": \"1Ir-iJGZoSk5_FmJ9dnf_PM-NEBZWyn8d\"\n};\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('FONDA Sortie generation : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nconst prep = unItem(\"Construire lot\");\nconst fichier = unItem(null);\nconst attendu = prep.depot;\nif (typeof fichier.id !== 'string' || !fichier.id) throw new Error('dépôt Drive : identifiant absent');\nif (fichier.name !== attendu.nom) throw new Error('dépôt Drive : nom ≠ ' + attendu.nom);\nif (!Array.isArray(fichier.parents) || fichier.parents.length !== 1 || fichier.parents[0] !== CONFIG.dossierCandidats) throw new Error('dépôt Drive : dossier ≠ candidats/');\nconst p = fichier.properties;\nif (!p || typeof p !== 'object' || Object.keys(p).sort().join(',') !== 'fonda_execution_id,fonda_set_id'\n  || p.fonda_set_id !== attendu.properties.fonda_set_id || p.fonda_execution_id !== attendu.properties.fonda_execution_id) {\n  throw new Error('dépôt Drive : properties ≠ { fonda_set_id, fonda_execution_id } attendues');\n}\nconst sortie = { ...prep.generation, candidat_fichier_id: fichier.id };\nconst CHAMPS = 'schema,set_id,ref,notion_id,palier,moteur,referentiel_version,journal_commit,modele,empreinte_pedagogique,empreinte_complete,candidat_fichier_id';\nif (Object.keys(sortie).join(',') !== CHAMPS) throw new Error('sortie : champs ≠ generation-fonda/v1');\nreturn [{ json: sortie }];"
+        "jsCode": "// FONDA — sortie generation-fonda/v1, relue par le signataire (liaison-generation.rapprocher).\n// GÉNÉRÉ par n8n/fonda-generation-ia/construire-workflow.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nconst CONFIG = {\n  \"dossierCandidats\": \"1Ir-iJGZoSk5_FmJ9dnf_PM-NEBZWyn8d\"\n};\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('FONDA Sortie generation : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nconst prep = unItem(\"Construire lot\");\n// Réponse du dépôt lue PAR SON NOM (et non l'entrée immédiate, qui vient de « Verifier unicite »).\nconst fichier = unItem(\"Deposer candidat\");\nconst attendu = prep.depot;\nif (typeof fichier.id !== 'string' || !fichier.id) throw new Error('dépôt Drive : identifiant absent');\nif (fichier.name !== attendu.nom) throw new Error('dépôt Drive : nom ≠ ' + attendu.nom);\nif (!Array.isArray(fichier.parents) || fichier.parents.length !== 1 || fichier.parents[0] !== CONFIG.dossierCandidats) throw new Error('dépôt Drive : dossier ≠ candidats/');\nconst p = fichier.properties;\nif (!p || typeof p !== 'object' || Object.keys(p).sort().join(',') !== 'fonda_execution_id,fonda_set_id'\n  || p.fonda_set_id !== attendu.properties.fonda_set_id || p.fonda_execution_id !== attendu.properties.fonda_execution_id) {\n  throw new Error('dépôt Drive : properties ≠ { fonda_set_id, fonda_execution_id } attendues');\n}\nconst sortie = { ...prep.generation, candidat_fichier_id: fichier.id };\nconst CHAMPS = 'schema,set_id,ref,notion_id,palier,moteur,referentiel_version,journal_commit,modele,empreinte_pedagogique,empreinte_complete,candidat_fichier_id';\nif (Object.keys(sortie).join(',') !== CHAMPS) throw new Error('sortie : champs ≠ generation-fonda/v1');\nreturn [{ json: sortie }];"
       }
     }
   ],
@@ -460,6 +532,28 @@
       "main": [
         [
           {
+            "node": "Relister candidat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Relister candidat": {
+      "main": [
+        [
+          {
+            "node": "Verifier unicite",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verifier unicite": {
+      "main": [
+        [
+          {
             "node": "FONDA Sortie generation",
             "type": "main",
             "index": 0
@@ -481,9 +575,9 @@
   "staticData": null,
   "meta": null,
   "pinData": {},
-  "versionId": "39c01493-b035-43ea-ba8b-c7925e0f6102",
+  "versionId": "734f423a-5d49-4970-b8a5-7439077f280e",
   "activeVersionId": null,
-  "versionCounter": 6,
+  "versionCounter": 8,
   "triggerCount": 0,
   "tags": [],
   "activeVersion": null

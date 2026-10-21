@@ -25,7 +25,7 @@ function evaluer(valeur, ctx) {
     return vm.runInNewContext(`(${valeur.slice(3, -2)})`, { $: ctx.$, $json: ctx.$json });
   }
   if (Array.isArray(valeur)) return valeur.map((v) => evaluer(v, ctx));
-  if (valeur && typeof valeur === 'object') return Object.fromEntries(Object.entries(valeur).map(([k, v]) => [k, evaluer(v, ctx)]));
+  if (valeur && typeof valeur === 'object') return Object.fromEntries(Object.entries(valeur).map(([k, v]) => [k, k === "pagination" ? v : evaluer(v, ctx)])) // pagination : évaluée page par page ($response);
   return valeur;
 }
 
@@ -42,6 +42,27 @@ function conditionVraie(c, ctx) {
     return g === c.rightValue;
   }
   throw new Error(`opérateur IF non simulé : ${JSON.stringify(op)}`);
+}
+
+// Pagination HttpRequestV3 (« updateAParameterInEachRequest ») : une requête par page, le
+// paramètre suivant évalué sur $response, arrêt quand completeExpression est vraie ou à
+// maxRequests (limitPagesFetched). Renvoie la liste des corps de page (un item par page).
+async function pages(noeud, requete, appeler) {
+  const pg = noeud.parameters.options && noeud.parameters.options.pagination && noeud.parameters.options.pagination.pagination;
+  if (!pg || pg.paginationMode === 'off') return null;
+  if (pg.paginationMode !== 'updateAParameterInEachRequest' || pg.paginationCompleteWhen !== 'other') throw new Error('mode de pagination non simulé');
+  const corps = [];
+  let extra = {};
+  for (let k = 0; ; k += 1) {
+    const rep = await appeler({ ...requete, pagination: extra });
+    corps.push(rep);
+    const $response = { body: rep, statusCode: 200 };
+    const fini = vm.runInNewContext(`(${pg.completeExpression.slice(3, -2)})`, { $response });
+    if (fini || (pg.limitPagesFetched && k + 1 >= pg.maxRequests)) break;
+    extra = {};
+    for (const p of pg.parameters.parameters) extra[p.name] = vm.runInNewContext(`(${p.value.slice(3, -2)})`, { $response });
+  }
+  return corps;
 }
 
 // reponses : { [nom de nœud HTTP]: async (requête évaluée) -> { statusCode, body } | lève }.
@@ -85,10 +106,20 @@ async function executerGraphe(wf, { corps, entetes = {}, reponses = {}, executio
         let rep;
         try {
           if (!reponses[n.name]) throw new Error(`réponse simulée absente pour ${n.name}`);
-          rep = await reponses[n.name](requete);
+          if (n.parameters.options && n.parameters.options.pagination) {
+            // TOUS les appels passent par pages() (aucune réponse jetée : relecture Codex r2).
+            // Traitement HTTP commun appliqué à CHAQUE page (statut d'erreur -> exception).
+            const corps = await pages(n, requete, async (q) => {
+              const r = await reponses[n.name](q);
+              if (!opt.neverError && r.statusCode >= 400) throw new Error(`HTTP ${r.statusCode}`);
+              return r.body;
+            });
+            parSortie = [corps.map((b) => ({ json: json(b) })), null];
+            rep = null;
+          } else rep = await reponses[n.name](requete);
           const suivre = !(n.parameters.options && n.parameters.options.redirect && n.parameters.options.redirect.redirect && n.parameters.options.redirect.redirect.followRedirects === false);
-          for (let k = 0; suivre && rep.statusCode >= 300 && rep.statusCode < 400 && k < 21; k += 1) rep = await reponses[n.name]({ ...requete, url: (rep.headers || {}).location });
-          if (!opt.neverError && rep.statusCode >= 400) throw new Error(`HTTP ${rep.statusCode}`);
+          for (let k = 0; rep && suivre && rep.statusCode >= 300 && rep.statusCode < 400 && k < 21; k += 1) rep = await reponses[n.name]({ ...requete, url: (rep.headers || {}).location });
+          if (rep && !opt.neverError && rep.statusCode >= 400) throw new Error(`HTTP ${rep.statusCode}`);
         } catch (e) {
           if (n.onError === 'continueErrorOutput') { parSortie = [null, [{ json: { error: { message: e.message } } }]]; rep = null; } else throw e;
         }
@@ -108,4 +139,4 @@ async function executerGraphe(wf, { corps, entetes = {}, reponses = {}, executio
   return { status: 'success', runData, requetes, sorties, reponseWebhook };
 }
 
-module.exports = { executerGraphe, evaluer };
+module.exports = { executerGraphe, evaluer, pages };

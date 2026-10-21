@@ -67,6 +67,8 @@ const NOEUDS = Object.freeze({
   ia: 'Appel Sonnet',
   construire: 'Construire lot',
   deposer: 'Deposer candidat',
+  relister: 'Relister candidat',
+  unicite: 'Verifier unicite',
   sortie: L.NOEUD_SORTIE,
 });
 
@@ -509,13 +511,35 @@ return [{ json: { generation, depot: { nom, properties, frontiere, corps } } }];
   ].join('\n\n');
 }
 
+// Dette C (plan étape 5, lot 4) : détection APRÈS dépôt. Ne rend pas la création atomique
+// (aucune primitive Drive) ; rend un doublon VISIBLE dans n8n (le signataire l'abandonne de
+// toute façon). Réémet À L'IDENTIQUE la réponse de « Deposer candidat ».
+function codeUnicite() {
+  return [
+    ENTETE('unicité après dépôt : exactement UN candidat pour ce set_id, celui déposé.'),
+    UN_ITEM(NOEUDS.unicite),
+    `const depot = unItem(${JSON.stringify(NOEUDS.deposer)});
+// Une page par item (pagination n8n) : agrégation de TOUTES les pages.
+const pages = $input.all().map((it) => it && it.json);
+if (pages.length === 0 || pages.some((p) => !p || !Array.isArray(p.files))) throw new Error('relisting candidats/ : réponse inexploitable');
+if (pages.some((p) => p.incompleteSearch === true)) throw new Error('relisting candidats/ : recherche incomplète');
+if (pages[pages.length - 1].nextPageToken) throw new Error('relisting candidats/ : pagination non terminée (limite de pages atteinte)');
+const listing = { files: [].concat(...pages.map((p) => p.files)) };
+if (listing.files.length === 0) throw new Error('relisting candidats/ : aucun fichier alors qu\\'un dépôt vient de réussir (incohérence)');
+if (listing.files.length > 1) throw new Error('doublon détecté : ' + listing.files.length + ' fichiers candidats pour ce set_id');
+if (listing.files[0].id !== depot.id) throw new Error('relisting candidats/ : le fichier trouvé n\\'est pas celui déposé');
+return [{ json: depot }];`,
+  ].join('\n\n');
+}
+
 function codeSortie() {
   return [
     ENTETE('sortie generation-fonda/v1, relue par le signataire (liaison-generation.rapprocher).'),
     `const CONFIG = ${JSON.stringify({ dossierCandidats: CONFIG.dossierCandidats }, null, 2)};`,
     UN_ITEM(NOEUDS.sortie),
     `const prep = unItem(${JSON.stringify(NOEUDS.construire)});
-const fichier = unItem(null);
+// Réponse du dépôt lue PAR SON NOM (et non l'entrée immédiate, qui vient de « Verifier unicite »).
+const fichier = unItem(${JSON.stringify(NOEUDS.deposer)});
 const attendu = prep.depot;
 if (typeof fichier.id !== 'string' || !fichier.id) throw new Error('dépôt Drive : identifiant absent');
 if (fichier.name !== attendu.nom) throw new Error('dépôt Drive : nom ≠ ' + attendu.nom);
@@ -550,6 +574,34 @@ const fichierHttp = (nom, fichier) => ({
   },
 });
 
+// Candidats de CE set_id dans candidats/, par nom OU par propriété fonda_set_id.
+// Pagination n8n (HttpRequestV3) : un item PAR PAGE, page suivante via pageToken, arrêt quand
+// nextPageToken est absent, au plus 50 pages (au-delà, la dernière page porte encore un jeton :
+// « Verifier unicite » le détecte et refuse).
+const PAGINATION_DRIVE = { pagination: {
+  paginationMode: 'updateAParameterInEachRequest',
+  parameters: { parameters: [{ type: 'qs', name: 'pageToken', value: '={{ $response.body.nextPageToken }}' }] },
+  paginationCompleteWhen: 'other',
+  completeExpression: '={{ !$response.body.nextPageToken }}',
+  limitPagesFetched: true,
+  maxRequests: 50,
+} };
+const listingCandidats = (nom, champs, pagine = false) => ({
+  name: nom, type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2,
+  credentials: { googleDriveOAuth2Api: CONFIG.credentialDrive },
+  parameters: {
+    url: 'https://www.googleapis.com/drive/v3/files',
+    authentication: 'predefinedCredentialType', nodeCredentialType: 'googleDriveOAuth2Api',
+    sendQuery: true,
+    queryParameters: { parameters: [
+      { name: 'q', value: `={{ "'${CONFIG.dossierCandidats}' in parents and trashed = false and (name = '" + $('${NOEUDS.entree}').first().json.set_id + ".lot.json' or properties has { key='fonda_set_id' and value='" + $('${NOEUDS.entree}').first().json.set_id + "' })" }}` },
+      { name: 'fields', value: champs },
+      { name: 'pageSize', value: '100' },
+    ] },
+    options: pagine ? { pagination: PAGINATION_DRIVE, timeout: 30000 } : { timeout: 30000 },
+  },
+});
+
 function construireWorkflow() {
   const moteur = moteurEmbarque();
   const noeuds = [
@@ -574,21 +626,7 @@ function construireWorkflow() {
     fichierHttp(NOEUDS.journal, 'fonda/data/set_ids-journal.json'),
     fichierHttp(NOEUDS.referentiel, 'fonda/data/referentiel.json'),
     fichierHttp(NOEUDS.moteurs, 'fonda/engine/moteurs.json'),
-    {
-      name: NOEUDS.existant, type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2,
-      credentials: { googleDriveOAuth2Api: CONFIG.credentialDrive },
-      parameters: {
-        url: 'https://www.googleapis.com/drive/v3/files',
-        authentication: 'predefinedCredentialType', nodeCredentialType: 'googleDriveOAuth2Api',
-        sendQuery: true,
-        queryParameters: { parameters: [
-          { name: 'q', value: `={{ "'${CONFIG.dossierCandidats}' in parents and trashed = false and (name = '" + $('${NOEUDS.entree}').first().json.set_id + ".lot.json' or properties has { key='fonda_set_id' and value='" + $('${NOEUDS.entree}').first().json.set_id + "' })" }}` },
-          { name: 'fields', value: 'nextPageToken,files(id,name,properties)' },
-          { name: 'pageSize', value: '100' },
-        ] },
-        options: { timeout: 30000 },
-      },
-    },
+    listingCandidats(NOEUDS.existant, 'nextPageToken,files(id,name,properties)'),
     { name: NOEUDS.preparer, type: 'n8n-nodes-base.code', typeVersion: 2, parameters: { jsCode: codePreparer(moteur) } },
     {
       name: NOEUDS.ia, type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, retryOnFail: false,
@@ -617,6 +655,8 @@ function construireWorkflow() {
         options: { timeout: 60000 },
       },
     },
+    listingCandidats(NOEUDS.relister, 'nextPageToken,incompleteSearch,files(id,name,properties)', true),
+    { name: NOEUDS.unicite, type: 'n8n-nodes-base.code', typeVersion: 2, parameters: { jsCode: codeUnicite() } },
     { name: NOEUDS.sortie, type: 'n8n-nodes-base.code', typeVersion: 2, parameters: { jsCode: codeSortie() } },
   ].map((n, i) => ({ id: uuid(n.name), position: [i * 220, 0], ...n }));
   const connections = {};

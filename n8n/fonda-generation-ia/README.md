@@ -14,6 +14,18 @@ CDC relecture v8.3, §20.14 étape 4. Le workflow est **complet**, **créé INAC
     - sur une copie, ou pendant la première fenêtre active, un appel **direct** au webhook de génération avec le jeton du portier reçoit **403/401** : la frontière interne refuse le jeton de l'appelant.
 
   Harnais : `portier.test.js`, simulateur `simulateur.js`.
+- **Dette C : RÉDUITE, PAS CLOSE (D5)** (plan étape 5, lot 4). Ni Drive ni n8n n'offrent de création atomique. Le **garant** reste l'abandon du signataire sur doublon. Les dispositifs en place :
+  - **appelant unique** `fonda/scripts/declencher-generation.js` (logique dans `verrou-generation.js`) :
+    - chaque commande s'exécute sous le **verrou noyau** de son set_id, **tenu par le processus Node lui-même** (`lockf` en mode descripteur, sans superviseur séparé), libéré par le noyau même après un `kill -9`. Un verrou orphelin est impossible, et une commande concurrente échoue aussitôt (code 75) ;
+    - contrôles en lecture **avant toute écriture** : réservation, aucun fichier local (`setIdsExistants`), aucune exécution n8n, aucun candidat **pour ce set_id**. Les observations sont des entiers explicites, sinon refus ;
+    - journal en ajout seul, écrit **en entier** puis `fsync`, lu **sur les octets**. États : `envoi`, `accepte` (terminal), `refuse`, `inconnu`, `libere` ; les événements administratifs (`reparation`) sont séparés ;
+    - **un seul POST**, jamais de nouvel essai. `--etat` observe ; `--liberer --motif` libère après le délai de prudence (horloge supposée stable ; un événement daté dans le futur est refusé) ; `--reparer` complète une ligne tronquée et désigne le fragment par son index et le SHA-256 de ses octets bruts, sans rien effacer ;
+    - les adaptateurs de production arrivent au lot 5 ;
+  - **côté workflow audité** : « Relister candidat » (**pagination complète** : `pageToken`, 50 pages au plus) puis « Verifier unicite » **après** le dépôt. Toutes les pages sont agrégées, et `incompleteSearch` sur une page quelconque fait refuser. Il faut exactement un fichier pour ce set_id, celui déposé ; sinon erreur visible. La réponse du dépôt est réémise, et « FONDA Sortie generation » la lit **par son nom**.
+- **Restrictions d'exploitation (obligatoires)** :
+  - **jamais** de « Retry » ni d'« Execute » manuel sur le portier ou la génération ;
+  - `retryOnFail` faux partout (vérifié par les harnais) ;
+  - portier et génération **actifs uniquement pendant une fenêtre de génération**, désactivés ensuite.
 - **workflowId de l'instance : `vrqgtS5kQMvP9Ok5`.** C'est l'identifiant à épingler dans `config.workflowGeneration` à l'étape 5.
 - Artefact relu : `box-fonda-generation-ia.json`, **export exact** du live (`GET /api/v1/workflows/vrqgtS5kQMvP9Ok5`, identique à `n8n_get_workflow`), indenté à 2 espaces. On retire **un seul** champ, `shared` : ce sont les métadonnées du propriétaire, qui contiennent son adresse e-mail, interdite dans le dépôt public. Après toute modification live, ré-exporter et committer : le diff git doit refléter l'état réel.
 - Le JSON est **construit** par `construire-workflow.js` à partir du dépôt. Les nœuds Code embarquent, à l'identique, `catalogue.js`, `journal-set-ids.js`, `generation.js`, `moteur-correction-v1.js` et `canonique.js`, ainsi que les fonctions pures de `generer-lot-fonda.js`, `moteurs.js` et `liaison-generation.js`. **Ne jamais éditer les nœuds Code dans l'interface** : on modifie le dépôt, on reconstruit, on met à jour le live, on ré-exporte.

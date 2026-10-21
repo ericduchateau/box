@@ -26,6 +26,7 @@ const G = require('../../fonda/scripts/generer-lot-fonda.js');
 const Gen = require('../../fonda/engine/generation.js');
 const V = require('../../fonda/engine/canonique-vecteurs.json');
 const FIXTURE = require('../../fonda/scripts/fixtures/execution-generation.json');
+const { pages } = require('./simulateur.js');
 
 const FX = FIXTURE.workflow_ia;
 const N = B.NOEUDS;
@@ -53,7 +54,7 @@ function evaluer(valeur, ctx) {
     return vm.runInNewContext(`(${valeur.slice(3, -2)})`, { $: ctx.$, $json: ctx.$json });
   }
   if (Array.isArray(valeur)) return valeur.map((v) => evaluer(v, ctx));
-  if (valeur && typeof valeur === 'object') return Object.fromEntries(Object.entries(valeur).map(([k, v]) => [k, evaluer(v, ctx)]));
+  if (valeur && typeof valeur === 'object') return Object.fromEntries(Object.entries(valeur).map(([k, v]) => [k, k === "pagination" ? v : evaluer(v, ctx)])) // pagination : évaluée page par page ($response);
   return valeur;
 }
 const json = (v) => JSON.parse(JSON.stringify(v));
@@ -81,7 +82,8 @@ async function executer(wf, { corps, reponses, executionId = FX.execution_id, co
         const requete = evaluer(courant.parameters, { $, $json: entree[0].json });
         requetes[courant.name] = requete;
         if (!reponses[courant.name]) throw new Error(`réponse simulée absente pour ${courant.name}`);
-        items = [{ json: json(await reponses[courant.name](requete)) }];
+        const paginees = await pages(courant, requete, reponses[courant.name]);
+        items = paginees ? paginees.map((b) => ({ json: json(b) })) : [{ json: json(await reponses[courant.name](requete)) }];
       } else throw new Error(`type de nœud non simulé : ${courant.type}`);
     } catch (e) {
       return { status: 'error', noeudErreur: courant.name, erreur: e.message, runData, requetes, sorties };
@@ -114,6 +116,8 @@ function reponsesNominales(sur = {}) {
     [N.existant]: () => ({ files: [] }),
     [N.ia]: () => FX.reponse_ia,
     [N.deposer]: (r) => { const { metadonnees } = lireMultipart(r); return { id: FX.fichier_drive_id, name: metadonnees.name, parents: metadonnees.parents, properties: metadonnees.properties }; },
+    // Relisting après dépôt : exactement le fichier déposé.
+    [N.relister]: () => ({ files: [{ id: FX.fichier_drive_id, name: `${FX.set_id}.lot.json`, properties: { fonda_set_id: FX.set_id, fonda_execution_id: FX.execution_id } }] }),
     ...sur,
   };
 }
@@ -451,6 +455,54 @@ describe('refus avant dépôt (aucun fichier candidat)', () => {
     const r = await executer(WF, { corps: CORPS, reponses: reponsesNominales({ [N.deposer]: () => ({ id: 'drv-lot', name: `${FX.set_id}.lot.json`, parents: [B.CONFIG.dossierCandidats], properties: { fonda_set_id: FX.set_id } }) }) });
     assert.equal(r.status, 'error');
     assert.equal(r.noeudErreur, N.sortie);
+  });
+  test('« Verifier unicite » : réémet À L\'IDENTIQUE la réponse du dépôt ; la sortie lit le dépôt PAR SON NOM', async () => {
+    const r = await executer(WF, { corps: CORPS, reponses: reponsesNominales() });
+    assert.equal(r.status, 'success', r.erreur);
+    assert.deepEqual(r.sorties[N.unicite], r.sorties[N.deposer]);
+    assert.match(noeud(N.sortie).parameters.jsCode, new RegExp(`unItem\\(${JSON.stringify(N.deposer).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\)`));
+  });
+  const apresDepot = [
+    ['doublon : 2 fichiers pour ce set_id', { files: [{ id: FX.fichier_drive_id }, { id: 'drv-autre' }] }, /doublon détecté/],
+    ['zéro fichier après un dépôt réussi', { files: [] }, /aucun fichier/],
+    ['pagination non terminée (jeton encore présent à la 50e page)', { files: [], nextPageToken: 't' }, /pagination non terminée/],
+    ['recherche incomplète', { files: [{ id: FX.fichier_drive_id }], incompleteSearch: true }, /incomplète/],
+    ['doublon réparti sur deux pages', (q) => (q.pagination.pageToken ? { files: [{ id: 'drv-autre' }] } : { files: [{ id: FX.fichier_drive_id }], nextPageToken: 'p2' }), /doublon détecté/],
+    ['recherche incomplète signalée en PAGE 2 seulement', (q) => (q.pagination.pageToken ? { files: [], incompleteSearch: true } : { files: [{ id: FX.fichier_drive_id }], nextPageToken: 'p2' }), /incomplète/],
+    ['fichier trouvé ≠ fichier déposé', { files: [{ id: 'drv-autre' }] }, /n'est pas celui déposé/],
+    ['réponse inexploitable', { erreur: 'x' }, /inexploitable/],
+  ];
+  for (const [nom, listing, motif] of apresDepot) {
+    test(`après dépôt — ${nom} -> erreur APRÈS dépôt (abandon côté signataire), jamais de sortie`, async () => {
+      const r = await executer(WF, { corps: CORPS, reponses: reponsesNominales({ [N.relister]: typeof listing === 'function' ? listing : () => listing }) });
+      assert.equal(r.status, 'error');
+      assert.equal(r.noeudErreur, N.unicite);
+      assert.match(r.erreur, motif);
+      assert.ok(r.requetes[N.deposer], 'le dépôt a eu lieu');
+      assert.ok(!r.sorties[N.sortie]);
+    });
+  }
+  test('relisting PAGINÉ : un seul candidat réparti sur plusieurs pages (pages vides incluses) -> succès, pas d\'abandon', async () => {
+    let n = 0;
+    const r = await executer(WF, { corps: CORPS, reponses: reponsesNominales({ [N.relister]: (q) => {
+      n += 1;
+      if (!q.pagination.pageToken) return { files: [], nextPageToken: 'p2' };
+      if (q.pagination.pageToken === 'p2') return { files: [], nextPageToken: 'p3' };
+      return { files: [{ id: FX.fichier_drive_id }] };
+    } }) });
+    assert.equal(r.status, 'success', r.erreur);
+    assert.equal(n, 3, 'trois pages demandées');
+  });
+  test('relisting : pagination n8n réelle (pageToken, arrêt sans nextPageToken, 50 pages au plus)', () => {
+    const pg = noeud(N.relister).parameters.options.pagination.pagination;
+    assert.deepEqual(pg, { paginationMode: 'updateAParameterInEachRequest', parameters: { parameters: [{ type: 'qs', name: 'pageToken', value: '={{ $response.body.nextPageToken }}' }] }, paginationCompleteWhen: 'other', completeExpression: '={{ !$response.body.nextPageToken }}', limitPagesFetched: true, maxRequests: 50 });
+  });
+  test('relisting : même requête que la recherche avant dépôt (nom OU propriété), avec incompleteSearch', () => {
+    const a = noeud(N.existant).parameters.queryParameters.parameters;
+    const b = noeud(N.relister).parameters.queryParameters.parameters;
+    assert.equal(b.find((x) => x.name === 'q').value, a.find((x) => x.name === 'q').value);
+    assert.equal(b.find((x) => x.name === 'fields').value, 'nextPageToken,incompleteSearch,files(id,name,properties)');
+    assert.notEqual(noeud(N.relister).retryOnFail, true);
   });
   test('code des nœuds sans Buffer, TextEncoder, crypto ni require réel (contexte nu)', async () => {
     const r = await executer(WF, { corps: CORPS, reponses: reponsesNominales(), contexteCode: {} });

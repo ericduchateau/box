@@ -223,6 +223,7 @@ const reponsesCompletes = (journal) => ({
   ...reponsesGeneration(journal),
   [N.ia]: () => ({ statusCode: 200, body: FX.reponse_ia }),
   [N.deposer]: (q) => { const { metadonnees } = lireMultipart(q); return { statusCode: 200, body: { id: FX.fichier_drive_id, name: metadonnees.name, parents: metadonnees.parents, properties: metadonnees.properties } }; },
+  [N.relister]: () => ({ statusCode: 200, body: { files: [{ id: FX.fichier_drive_id, name: `${FX.set_id}.lot.json` }] } }),
 });
 const versBrute = (g, id) => ({
   id, workflowId: GEN.id, status: g.status, mode: 'webhook', startedAt: '2026-10-20T07:00:00.000Z', stoppedAt: '2026-10-20T07:00:05.000Z',
@@ -296,6 +297,33 @@ describe('portier -> génération -> signataire', () => {
     assert.equal(g.status, 'success', g.erreur);
     assert.ok(g.requetes[N.deposer], 'candidat déposé APRÈS la réponse perdue');
   });
+  test('relisting paginé simulé : la PREMIÈRE page est prise en compte (doublon en page 1 -> erreur)', async () => {
+    let n = 0;
+    const reps = { ...reponsesCompletes(avecReservation), [N.relister]: (q) => {
+      n += 1;
+      return q.pagination && q.pagination.pageToken
+        ? { statusCode: 200, body: { files: [{ id: FX.fichier_drive_id }] } }
+        : { statusCode: 200, body: { files: [{ id: FX.fichier_drive_id }, { id: 'drv-autre' }], nextPageToken: 'p2' } };
+    } };
+    const g = await executerGraphe(GEN, { corps: CORPS, reponses: reps, executionId: '730' });
+    assert.equal(g.status, 'error');
+    assert.equal(g.noeudErreur, N.unicite);
+    assert.match(g.erreur, /doublon/);
+    assert.equal(n, 2, 'exactement deux appels (pas de première réponse jetée)');
+  });
+  for (const [nom, page503] of [['première page', 1], ['page suivante', 2]]) {
+    test(`relisting paginé simulé : erreur HTTP 503 en ${nom} -> échec dans « Relister candidat » (jamais un succès)`, async () => {
+      let n = 0;
+      const reps = { ...reponsesCompletes(avecReservation), [N.relister]: () => {
+        n += 1;
+        if (n === page503) return { statusCode: 503, body: { files: [{ id: FX.fichier_drive_id }] } };
+        return n === 1 ? { statusCode: 200, body: { files: [], nextPageToken: 'p2' } } : { statusCode: 200, body: { files: [{ id: FX.fichier_drive_id }] } };
+      } };
+      const g = await executerGraphe(GEN, { corps: CORPS, reponses: reps, executionId: '731' });
+      assert.equal(g.status, 'error');
+      assert.equal(g.noeudErreur, N.relister);
+    });
+  }
   test('tentative en erreur attribuable PUIS réussite : le signataire retient la réussite, la tentative est tolérée', async () => {
     const g1 = await executerGraphe(GEN, { corps: CORPS, reponses: reponsesGeneration({ schema: 'set-ids-journal/v1', lignes: [] }), executionId: '720' });
     const g2 = await executerGraphe(GEN, { corps: CORPS, reponses: reponsesCompletes(avecReservation), executionId: '721' });
