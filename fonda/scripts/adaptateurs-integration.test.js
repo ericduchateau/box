@@ -260,6 +260,13 @@ describe('parcours complet (sans non-retour réel)', () => {
     await assert.rejects(() => A.preparerSignataire({ dossierCles: t.cles, cleId: CLE_ID, cles, lirePhrase: async () => null }), /annulée/);
     assert.ok(!fs.existsSync(path.join(t.dossier, `${SET}.signature`)));
   });
+  test('cloturerSaisieLocale SANS injection : le VRAI cloturer est appelé par défaut (garde franchie, refus precondition sur la liste G5 vide), zéro signature', async () => {
+    let phrases = 0;
+    await assert.rejects(SC.cloturerSaisieLocale(SET, { sources: { ...t.sources(), modelesAutorises: [] }, cleId: CLE_ID, lirePhrase: async () => { phrases += 1; return PHRASE; } }),
+      (e) => /config\.modelesAutorises/.test(e.message) && e.issue === 'precondition');
+    assert.equal(phrases, 1, 'clé préparée (avant cloturer)');
+    assert.ok(!fs.existsSync(path.join(t.dossier, `${SET}.signature`)), 'aucun marqueur : refus avant toute signature');
+  });
   test('clôture de PRODUCTION (cloturerSaisieLocale) : rattachement transmis = RATTACHEMENT_SAISIE_LOCALE, clé préparée AVANT cloturer, attestation v2 signée', async () => {
     let affiche = '';
     const ordre = [];
