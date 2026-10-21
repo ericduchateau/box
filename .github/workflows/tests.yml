@@ -32,9 +32,11 @@ jobs:
         if: github.event_name == 'pull_request' && github.base_ref == 'main'
         env:
           SOURCE: ${{ github.head_ref }}
+          DEPOT_SOURCE: ${{ github.event.pull_request.head.repo.full_name }}
+          DEPOT: ${{ github.repository }}
         run: |
-          if [ "$SOURCE" != "design" ]; then
-            echo "PR vers main refusée : source « $SOURCE » ≠ design (toute PR de travail cible design)."
+          if [ "$SOURCE" != "design" ] || [ "$DEPOT_SOURCE" != "$DEPOT" ]; then
+            echo "PR vers main refusée : source « $DEPOT_SOURCE:$SOURCE » ≠ $DEPOT:design (toute PR de travail cible design)."
             exit 1
           fi
       - uses: actions/checkout@v4
