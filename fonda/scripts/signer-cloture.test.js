@@ -25,7 +25,7 @@ const REF_VERSION = `sha256:${crypto.createHash('sha256').update(OCTETS_REF).dig
 const REFERENTIEL = JSON.parse(OCTETS_REF.toString('utf8'));
 const CATALOGUE = require('../data/catalogue-fonda.json');
 const FIXTURE = require('./fixtures/execution-generation.json');
-const MODELE = FIXTURE.modele; // snapshot Sonnet daté REPRÉSENTATIF — à confirmer à la recette §20.8
+const MODELE = FIXTURE.modele; // claude-sonnet-5-5 : modèle autorisé (snapshot sans date ≥ 4.6 ; sonde §20.8, exécution n8n 279792)
 const COMMIT = 'c0ffee'.padEnd(40, '0');
 const copie = (o) => JSON.parse(JSON.stringify(o));
 const sha = C.sha256WebCrypto();
@@ -186,17 +186,18 @@ describe('aller-retour v2 : signer -> attestation-signee vérifie -> publier-lot
     const r = await publication(sc.publie, enveloppe);
     assert.equal(r.ok, true, JSON.stringify(r.erreurs));
   });
-  test('modèle SANS DATE (claude-sonnet-5-5, sonde §20.8 du 2026-10-21) autorisé : clôture complète, modèle gravé, signature vérifiée, publiable', async () => {
-    const SANS_DATE = 'claude-sonnet-5-5';
+  // Le parcours nominal utilise désormais claude-sonnet-5-5 (sans date) ; ce scénario garde
+  // la forme DATÉE (format historique, toujours recevable) couverte de bout en bout.
+  test('modèle DATÉ (format historique) autorisé : clôture complète, modèle gravé, signature vérifiée, publiable', async () => {
+    const DATE = 'claude-sonnet-5-5-20261001';
     const sc = await scenario({ source: 'saisie_locale', modifier: (c) => {
-      c.gen[501] = JSON.parse(JSON.stringify(c.gen[501]).split(MODELE).join(SANS_DATE));
-      c.deps.config.modelesAutorises = [SANS_DATE];
+      c.gen[501] = JSON.parse(JSON.stringify(c.gen[501]).split(`"${MODELE}"`).join(`"${DATE}"`));
+      c.deps.config.modelesAutorises = [DATE];
     } });
-    assert.ok(!JSON.stringify(sc.gen[501]).includes(MODELE), 'plus aucune trace du modèle daté dans l\'exécution');
     const { enveloppe } = await cloturer(sc.setId, sc.deps);
     assert.equal(sc.etat.signatures, 1);
-    assert.equal(enveloppe.charge.generation.modele, SANS_DATE);
-    const pub = await publication(sc.publie, enveloppe, [SANS_DATE]); // signature + invariants + liste (verifierAttestationSignee complet)
+    assert.equal(enveloppe.charge.generation.modele, DATE);
+    const pub = await publication(sc.publie, enveloppe, [DATE]); // signature + invariants + liste (verifierAttestationSignee complet)
     assert.equal(pub.ok, true, JSON.stringify(pub.erreurs));
     assert.equal((await publication(sc.publie, enveloppe, [MODELE])).ok, false, 'hors liste -> non publiable');
   });
@@ -259,7 +260,7 @@ describe('aller-retour v2 : signer -> attestation-signee vérifie -> publier-lot
   });
   test('journal illisible : les autres lignes de la table restent évaluées (modèle interdit -> abandon)', async () => {
     const sc = await scenario({ source: 'saisie_locale', modifier: ({ gen, deps }) => {
-      gen[501].data.resultData.runData['FONDA Sortie generation'][0].data.main[0][0].json.modele = 'claude-sonnet-5-5';
+      gen[501].data.resultData.runData['FONDA Sortie generation'][0].data.main[0][0].json.modele = 'claude-sonnet-4-6'; // hors liste autorisée
       deps.journal = async () => { throw new Error('git indisponible'); };
     } });
     await sansSignature(sc, /∉ liste autorisée/, 'abandon');
@@ -271,7 +272,7 @@ describe('aller-retour v2 : signer -> attestation-signee vérifie -> publier-lot
   });
   test('Drive candidats/ illisible : la table reste évaluée (modèle interdit -> abandon)', async () => {
     const sc = await scenario({ source: 'saisie_locale', modifier: ({ gen, deps }) => {
-      gen[501].data.resultData.runData['FONDA Sortie generation'][0].data.main[0][0].json.modele = 'claude-sonnet-5-5';
+      gen[501].data.resultData.runData['FONDA Sortie generation'][0].data.main[0][0].json.modele = 'claude-sonnet-4-6'; // hors liste autorisée
       deps.drive.listerCandidats = async () => { throw new Error('Drive 503'); };
     } });
     await sansSignature(sc, /∉ liste autorisée/, 'abandon');
@@ -357,7 +358,7 @@ describe('§20.2–20.3 liaison de génération : chaque violation -> refus clas
     ['réservation absente du journal au commit', ({ journal }) => { journal.lignes[0].ref = 'autre-ref-1234'; }, /réservation de ce set_id avec cette ref/, 'abandon'],
     ['set_id déjà publié au commit consigné', ({ journal, valeurs }) => { journal.lignes.push({ set_id: valeurs.SET_ID, transition: 'publie', le: '2026-10-17', ref: `${valeurs.REF}:publie` }); }, /état « reserve »/, 'abandon'],
     ['moteur ≠ registre', sortie((s) => { s.moteur.sha256 = '0'.repeat(64); }), /registre/, 'abandon'],
-    ['modèle hors liste épinglée (alias, autre version)', sortie((s) => { s.modele = 'claude-sonnet-5-5'; }), /∉ liste autorisée épinglée/, 'abandon'],
+    ['modèle hors liste épinglée (alias, autre version)', sortie((s) => { s.modele = 'claude-sonnet-4-6'; }), /∉ liste autorisée épinglée/, 'abandon'],
     ['empreinte pédagogique ≠ lot lu', sortie((s) => { s.empreinte_pedagogique = `sha256:${'0'.repeat(64)}`; }), /empreinte_pedagogique/, 'abandon'],
     ['empreinte complète ≠ lot lu', sortie((s) => { s.empreinte_complete = `sha256:${'0'.repeat(64)}`; }), /empreinte_complete/, 'abandon'],
     ['candidat_fichier_id ≠ fichier lu', sortie((s) => { s.candidat_fichier_id = 'drv-autre'; }), /candidat_fichier_id/, 'abandon'],
@@ -804,7 +805,7 @@ describe('critique Codex r5 : contenus multiples du lot, examen non exhaustif', 
     await sansSignature(sc, /≠ webhook/, 'abandon');
   });
   test('workflowData absent ET modèle interdit dans la sortie : la table reste évaluée -> abandon', async () => {
-    const sc = await scenario({ source: 'saisie_locale', modifier: ({ gen }) => { delete gen[501].workflowData; gen[501].data.resultData.runData['FONDA Sortie generation'][0].data.main[0][0].json.modele = 'claude-sonnet-5-5'; } });
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ gen }) => { delete gen[501].workflowData; gen[501].data.resultData.runData['FONDA Sortie generation'][0].data.main[0][0].json.modele = 'claude-sonnet-4-6'; } });
     await sansSignature(sc, /∉ liste autorisée/, 'abandon');
   });
   test('examen non exhaustif, génération du lot conforme : jamais de signature (refus temporaire)', async () => {
@@ -877,7 +878,7 @@ describe('critique Codex r8 : identité du fichier effectivement lu', () => {
 describe('§20.13 amendement r6 : règle d\'observation incomplète', () => {
   test('(a) lecture en panne + anomalie déterminable sur ses propres données -> l\'issue FINE se déclenche (abandon)', async () => {
     const sc = await scenario({ source: 'saisie_locale', modifier: ({ gen, deps }) => {
-      gen[501].data.resultData.runData['FONDA Sortie generation'][0].data.main[0][0].json.modele = 'claude-sonnet-5-5';
+      gen[501].data.resultData.runData['FONDA Sortie generation'][0].data.main[0][0].json.modele = 'claude-sonnet-4-6'; // hors liste autorisée
       deps.drive.listerCandidats = async () => { throw new Error('Drive 503'); };
     } });
     const err = await sansSignature(sc, /∉ liste autorisée/, 'abandon');

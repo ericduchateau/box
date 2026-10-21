@@ -12,7 +12,7 @@ const S = require('./attestation-signee.js');
 const REGISTRE = require('../engine/moteurs.json');
 const REFERENTIEL = require('../data/referentiel.json');
 const MOTEUR = { version: 'v1', sha256: REGISTRE[0].sha256 };
-const MODELE = 'claude-sonnet-5-5-20261001'; // représentatif — à confirmer à la recette §20.8
+const MODELE = 'claude-sonnet-5-5'; // modèle autorisé (sonde §20.8, exécution n8n 279792)
 const copie = (o) => JSON.parse(JSON.stringify(o));
 const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 3072 });
 const PEM = publicKey.export({ type: 'spki', format: 'pem' });

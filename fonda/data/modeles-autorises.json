@@ -1,4 +1,6 @@
 {
   "schema": "modeles-autorises/v1",
-  "generation_fonda": []
+  "generation_fonda": [
+    "claude-sonnet-5-5"
+  ]
 }
