@@ -905,12 +905,21 @@ function analyserArgumentsCloture(argv) {
 }
 
 // Clôture de PRODUCTION en saisie locale : dépendances du lot 5, clé de signature préparée
-// (phrase de passe au terminal) AVANT cloturer, rattachement « poison ».
+// (phrase de passe au terminal) AVANT cloturer, rattachement « poison ». Elle se valide
+// ELLE-MÊME (appel direct compris) AVANT toute lecture de source, de secret ou de clé :
+// set_id invalide, source demandée ≠ saisie_locale ou rattachement fourni -> refus explicite,
+// jamais une coercition silencieuse. `o.cloturer` : injection de TEST uniquement (la
+// production ne le fournit jamais : défaut = le vrai cloturer).
 async function cloturerSaisieLocale(setId, o = {}) {
+  if (typeof setId !== 'string' || !C.SET_ID_PATTERN.test(setId)) refuser('set_id invalide', 'precondition');
+  const demandees = [['source', o.source], ['config.source', o.config && o.config.source]].filter(([, v]) => v !== undefined);
+  for (const [nom, v] of demandees) if (v !== 'saisie_locale') refuser(`${nom} « ${v} » refusée : seule « saisie_locale » est levée (lot 7)`, 'precondition');
+  if (o.rattachement !== undefined) refuser('rattachement fourni par l\'appelant refusé : la saisie locale utilise RATTACHEMENT_SAISIE_LOCALE', 'precondition');
   const A = require('./adaptateurs-production.js');
   const sources = o.sources || A.sourcesLecture(o);
   const signer = await A.preparerSignataire({ dossierCles: sources.dossierCles, cleId: o.cleId, cles: sources.cles, lirePhrase: o.lirePhrase });
-  return cloturer(setId, A.dependancesCloture({ ...o, sources, signer, rattachement: RATTACHEMENT_SAISIE_LOCALE }));
+  const fermer = o.cloturer || cloturer;
+  return fermer(setId, A.dependancesCloture({ ...o, sources, signer, rattachement: RATTACHEMENT_SAISIE_LOCALE }));
 }
 
 async function main(argv = process.argv.slice(2), production = cloturerSaisieLocale) {

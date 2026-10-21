@@ -15,7 +15,7 @@ const fsN = require('fs');
 const C = require('../engine/catalogue.js');
 const S = require('./attestation-signee.js');
 const L = require('./liaison-generation.js');
-const { cloturer, saisirDecisionLocale, normaliserDate, RATTACHEMENT_SAISIE_LOCALE, analyserArgumentsCloture, main: mainCloture } = require('./signer-cloture.js');
+const { cloturer, saisirDecisionLocale, normaliserDate, RATTACHEMENT_SAISIE_LOCALE, analyserArgumentsCloture, cloturerSaisieLocale, main: mainCloture } = require('./signer-cloture.js');
 const { preparerPublication } = require('./publier-lot.js');
 
 const REGISTRE = require('../engine/moteurs.json');
@@ -196,17 +196,40 @@ describe('garde maîtresse (lot 7 : levée pour saisie_locale SEULE)', () => {
       assert.deepEqual(appels, ['set_fonda_grandeurs-mesures_nI_02']);
     } finally { console.error = err; console.log = log; process.exitCode = avant; }
   });
-  test('CLI réelle : page_relecture refusée sans lire aucun secret ; saisie_locale sans secrets -> échec à la lecture du secret, AVANT toute phrase de passe', () => {
+  test('cloturerSaisieLocale appelée DIRECTEMENT : set_id invalide, source ≠ saisie_locale, rattachement fourni -> refus precondition AVANT sources, secret, phrase et cloturer', async () => {
+    const vide = require('fs').mkdtempSync(path.join(require('os').tmpdir(), 'cles-vides-'));
+    try {
+      const espions = [];
+      const o = (sur) => ({ dossierCles: vide, dossier: vide, lirePhrase: async () => { espions.push('phrase'); return 'x'; }, cloturer: async () => { espions.push('cloturer'); }, ...sur });
+      for (const [setId, sur, motif] of [
+        ['pas-un-set-id', {}, /set_id invalide/],
+        [undefined, {}, /set_id invalide/],
+        ['set_fonda_grandeurs-mesures_nI_02', { source: 'page_relecture' }, /source « page_relecture » refusée/],
+        ['set_fonda_grandeurs-mesures_nI_02', { config: { source: 'page_relecture' } }, /config\.source « page_relecture » refusée/],
+        ['set_fonda_grandeurs-mesures_nI_02', { source: 'saisie_locale', config: { source: 'n8n' } }, /config\.source « n8n » refusée/],
+        ['set_fonda_grandeurs-mesures_nI_02', { rattachement: () => null }, /rattachement fourni par l'appelant refusé/],
+      ]) {
+        await assert.rejects(cloturerSaisieLocale(setId, o(sur)), (e) => motif.test(e.message) && e.issue === 'precondition', JSON.stringify(sur));
+      }
+      assert.deepEqual(espions, [], 'ni phrase de passe ni cloturer');
+      // Contrôle : sans refus, l'échec suivant est bien la lecture des SECRETS (sources), pas la clé.
+      await assert.rejects(cloturerSaisieLocale('set_fonda_grandeurs-mesures_nI_02', o({ source: 'saisie_locale' })), /secret n8n-signataire\.cle illisible/);
+      assert.deepEqual(espions, []);
+    } finally { require('fs').rmSync(vide, { recursive: true, force: true }); }
+  });
+  test('CLI réelle (environnement réduit à PATH + HOME vide, délai 30 s) : page_relecture refusée sans lire aucun secret ; saisie_locale sans secrets -> échec à la lecture du secret, AVANT toute phrase de passe', () => {
     const vide = require('fs').mkdtempSync(path.join(require('os').tmpdir(), 'home-vide-'));
-    const cli = (...a) => require('child_process').spawnSync(process.execPath, [path.join(__dirname, 'signer-cloture.js'), ...a], { encoding: 'utf8', env: { ...process.env, HOME: vide }, input: '' });
-    const page = cli('set_fonda_grandeurs-mesures_nI_02', '--source', 'page_relecture');
-    assert.equal(page.status, 1);
-    assert.match(page.stderr, /source « page_relecture » refusée/);
-    const locale = cli('set_fonda_grandeurs-mesures_nI_02');
-    assert.equal(locale.status, 1);
-    assert.match(locale.stderr, /secret n8n-signataire\.cle illisible/);
-    assert.doesNotMatch(locale.stdout + locale.stderr, /Phrase de passe/);
-    assert.deepEqual(require('fs').readdirSync(vide), [], 'rien écrit dans le HOME');
+    try {
+      const cli = (...a) => require('child_process').spawnSync(process.execPath, [path.join(__dirname, 'signer-cloture.js'), ...a], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: vide }, input: '', timeout: 30000 });
+      const page = cli('set_fonda_grandeurs-mesures_nI_02', '--source', 'page_relecture');
+      assert.equal(page.status, 1, page.stderr);
+      assert.match(page.stderr, /source « page_relecture » refusée/);
+      const locale = cli('set_fonda_grandeurs-mesures_nI_02');
+      assert.equal(locale.status, 1, locale.stderr);
+      assert.match(locale.stderr, /secret n8n-signataire\.cle illisible/);
+      assert.doesNotMatch(locale.stdout + locale.stderr, /Phrase de passe/);
+      assert.deepEqual(require('fs').readdirSync(vide), [], 'rien écrit dans le HOME');
+    } finally { require('fs').rmSync(vide, { recursive: true, force: true }); }
   });
 });
 

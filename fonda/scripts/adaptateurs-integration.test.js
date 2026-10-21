@@ -9,8 +9,8 @@
 //     dossier de clés temporaire ; liste de modèles de test ;
 //   - génération : l'EXPORT du workflow audité exécuté par le simulateur (réponses HTTP
 //     simulées) ; n8n et Drive servis par des transports simulés à partir de cette exécution.
-// Parcours : --initialiser -> --diagnostic -> --saisir -> --diagnostic -> clôture (rattachement
-// DE TEST) -> --extraire-publication -> publier-lot --dry-run puis publication dans la copie ->
+// Parcours : --initialiser -> --diagnostic -> --saisir -> --diagnostic -> clôture de PRODUCTION
+// (cloturerSaisieLocale, rattachement « poison » du lot 7) -> --extraire-publication -> publier-lot --dry-run puis publication dans la copie ->
 // extraction relancée APRÈS publication. Puis essais négatifs.
 // Usage : node --test fonda/scripts/adaptateurs-integration.test.js
 
@@ -260,13 +260,19 @@ describe('parcours complet (sans non-retour réel)', () => {
     await assert.rejects(() => A.preparerSignataire({ dossierCles: t.cles, cleId: CLE_ID, cles, lirePhrase: async () => null }), /annulée/);
     assert.ok(!fs.existsSync(path.join(t.dossier, `${SET}.signature`)));
   });
-  test('clôture de PRODUCTION (cloturerSaisieLocale : deps du lot 5, clé préparée avant, rattachement « poison ») : attestation v2 signée', async () => {
+  test('clôture de PRODUCTION (cloturerSaisieLocale) : rattachement transmis = RATTACHEMENT_SAISIE_LOCALE, clé préparée AVANT cloturer, attestation v2 signée', async () => {
     let affiche = '';
+    const ordre = [];
+    let depsVues = null;
     const r = await SC.cloturerSaisieLocale(SET, {
-      sources: t.sources(), cleId: CLE_ID, lirePhrase: async () => PHRASE,
+      sources: t.sources(), cleId: CLE_ID, lirePhrase: async () => { ordre.push('phrase'); return PHRASE; },
+      cloturer: async (setId, deps) => { ordre.push('cloturer'); depsVues = deps; return SC.cloturer(setId, deps); }, // espion autour du VRAI cloturer
       saisir: async (q) => (/Code/.test(q) ? /CODE DE CONFIRMATION : ([0-9a-f]{16})/.exec(affiche)[1] : 'oui'),
       afficher: (x) => { affiche += x; },
     });
+    assert.deepEqual(ordre, ['phrase', 'cloturer'], 'clé préparée avant cloturer');
+    assert.equal(depsVues.rattachement, SC.RATTACHEMENT_SAISIE_LOCALE, 'le poison est branché');
+    assert.equal(depsVues.config.source, 'saisie_locale');
     t.dossierLot = r.dossierLot;
     assert.equal(r.enveloppe.charge.source_decisions, 'saisie_locale');
     assert.deepEqual(r.enveloppe.charge.incidents_connus.map((i) => i.id), ['inc-ancien'], 'incident résolu cité par la charge signée');
