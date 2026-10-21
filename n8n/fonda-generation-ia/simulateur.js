@@ -108,7 +108,12 @@ async function executerGraphe(wf, { corps, entetes = {}, reponses = {}, executio
           if (!reponses[n.name]) throw new Error(`réponse simulée absente pour ${n.name}`);
           if (n.parameters.options && n.parameters.options.pagination) {
             // TOUS les appels passent par pages() (aucune réponse jetée : relecture Codex r2).
-            const corps = await pages(n, requete, async (q) => (await reponses[n.name](q)).body);
+            // Traitement HTTP commun appliqué à CHAQUE page (statut d'erreur -> exception).
+            const corps = await pages(n, requete, async (q) => {
+              const r = await reponses[n.name](q);
+              if (!opt.neverError && r.statusCode >= 400) throw new Error(`HTTP ${r.statusCode}`);
+              return r.body;
+            });
             parSortie = [corps.map((b) => ({ json: json(b) })), null];
             rep = null;
           } else rep = await reponses[n.name](requete);
