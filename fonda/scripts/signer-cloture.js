@@ -1,14 +1,18 @@
 // Signature LOCALE de clôture d'un lot FONDA (CDC relecture §3, §5, §9, §10, §11,
 // §11 bis) — script exécuté sur le Mac d'Éric, jamais en CI ni dans n8n.
 //
-// ═══ GARDE MAÎTRESSE (fail-closed, §11 bis) ═══════════════════════════════════════
-// Ce script REFUSE DE SIGNER tant que le CONTRAT DE RATTACHEMENT d'une exécution n8n
-// à un lot (set_id, type de sortie, nonce) n'est pas défini et relu. Ce contrat
-// appartient au chantier des workflows (chantier 5) ; en attendant, aucune fonction
-// de rattachement n'est fournie en production : `rattachement` absent => REFUS avant
-// toute autre opération. Les tests injectent un rattachement « de test » (synthétique)
-// — il ne doit JAMAIS servir à une vraie signature. La première vraie signature
-// attend le chantier des workflows.
+// ═══ GARDE MAÎTRESSE (fail-closed, §11 bis) — LEVÉE AU LOT 7 POUR « saisie_locale » SEULE ═══
+// `cloturer` REFUSE DE SIGNER sans fonction `rattachement` (exécution n8n <-> lot) :
+// cette garde est INCHANGÉE. Le contrat de rattachement du parcours page n'est toujours
+// pas défini ; il n'est consommé que par evaluerPage, sous `if (page)`.
+// Depuis le lot 7 (plan étape 5), main() :
+//   - n'accepte que la source « saisie_locale » : toute autre source, dont
+//     « page_relecture », est refusée AVANT tout appel réseau et toute lecture de clé ;
+//   - fournit RATTACHEMENT_SAISIE_LOCALE, une fonction « poison » qui lève un refus
+//     « precondition » si elle est appelée : jamais en saisie locale, et aucune
+//     signature page ne peut en résulter.
+// Les tests injectent un rattachement « de test » (synthétique) pour le parcours page —
+// il ne doit JAMAIS servir à une vraie signature.
 // ═══════════════════════════════════════════════════════════════════════════════════
 //
 // Charge produite : attestation-cloture/v2 (CDC v8.3 §20.9), deux sources de décisions :
@@ -883,13 +887,39 @@ function evaluerPage({ setId, candidatEnv, clotures, confirmations, listeDecisio
   return { decisions, derniere, duLot, revoqueLe, fenetre: creeLe && revoqueLe && creeLe <= revoqueLe ? { debut: creeLe, fin: revoqueLe } : null };
 }
 
-// CLI : la garde maîtresse s'applique avant toute lecture de secret ou appel réseau.
-async function main() {
-  const setId = process.argv[2];
-  // Commandes outillées (lot 5) : jamais la clôture. La clôture ci-dessous reste sous la garde.
-  if (typeof setId === 'string' && setId.startsWith('--')) { await require('./signataire-cli.js').main(process.argv.slice(2)); return; }
+// Lot 7 : rattachement de la SAISIE LOCALE. Jamais consommé en saisie locale ; s'il
+// l'était (parcours page), il refuse : le contrat page reste non défini.
+const RATTACHEMENT_SAISIE_LOCALE = () => refuser('parcours page_relecture non défini : rattachement exécution n8n <-> lot absent (seule la saisie_locale est levée, lot 7)', 'precondition');
+
+// CLI de clôture : signer-cloture.js <set_id> [--source saisie_locale]. Arguments, source
+// et set_id contrôlés AVANT toute lecture de secret, appel réseau ou clé.
+function analyserArgumentsCloture(argv) {
+  const a = [...argv];
+  let source = 'saisie_locale';
+  const i = a.indexOf('--source');
+  if (i >= 0) { source = a[i + 1]; a.splice(i, 2); }
+  if (a.length !== 1 || a[0].startsWith('--')) refuser('usage : signer-cloture.js <set_id> [--source saisie_locale]', 'precondition');
+  if (source !== 'saisie_locale') refuser(`source « ${source} » refusée : seule « saisie_locale » est levée (lot 7) ; le parcours page_relecture attend son contrat de rattachement`, 'precondition');
+  if (!C.SET_ID_PATTERN.test(a[0])) refuser('set_id invalide', 'precondition');
+  return { setId: a[0], source };
+}
+
+// Clôture de PRODUCTION en saisie locale : dépendances du lot 5, clé de signature préparée
+// (phrase de passe au terminal) AVANT cloturer, rattachement « poison ».
+async function cloturerSaisieLocale(setId, o = {}) {
+  const A = require('./adaptateurs-production.js');
+  const sources = o.sources || A.sourcesLecture(o);
+  const signer = await A.preparerSignataire({ dossierCles: sources.dossierCles, cleId: o.cleId, cles: sources.cles, lirePhrase: o.lirePhrase });
+  return cloturer(setId, A.dependancesCloture({ ...o, sources, signer, rattachement: RATTACHEMENT_SAISIE_LOCALE }));
+}
+
+async function main(argv = process.argv.slice(2), production = cloturerSaisieLocale) {
+  // Commandes outillées (lot 5) : jamais la clôture.
+  if (typeof argv[0] === 'string' && argv[0].startsWith('--')) { await require('./signataire-cli.js').main(argv); return; }
   try {
-    await cloturer(setId, { rattachement: undefined });
+    const { setId } = analyserArgumentsCloture(argv);
+    const r = await production(setId);
+    console.log(`✓ ${setId} clôturé : ${r.dossierLot}`);
   } catch (e) {
     console.error(`✗ ${e.message}`);
     process.exitCode = 1;
@@ -907,6 +937,7 @@ function existeSurDisque(p) {
 module.exports = {
   existeSurDisque, cloturer, saisirDecisionLocale, Refus, normaliserDate, projeterRecapitulatif, rendreRecapitulatif, decisionConforme, lotPublie,
   choisirBadge, verifierDossierLocal, observer, evaluerPage, relecteurDeLaGeneration, NOM_DECISION_LOCALE,
+  RATTACHEMENT_SAISIE_LOCALE, analyserArgumentsCloture, cloturerSaisieLocale, main,
 };
 
 if (require.main === module) main();

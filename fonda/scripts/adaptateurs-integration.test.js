@@ -260,16 +260,13 @@ describe('parcours complet (sans non-retour réel)', () => {
     await assert.rejects(() => A.preparerSignataire({ dossierCles: t.cles, cleId: CLE_ID, cles, lirePhrase: async () => null }), /annulée/);
     assert.ok(!fs.existsSync(path.join(t.dossier, `${SET}.signature`)));
   });
-  test('clôture (rattachement DE TEST) : attestation v2 signée et revérifiée', async () => {
-    const s = t.sources();
-    const signer = await A.preparerSignataire({ dossierCles: t.cles, cleId: CLE_ID, cles: s.cles, lirePhrase: async () => PHRASE });
+  test('clôture de PRODUCTION (cloturerSaisieLocale : deps du lot 5, clé préparée avant, rattachement « poison ») : attestation v2 signée', async () => {
     let affiche = '';
-    const deps = A.dependancesCloture({
-      sources: s, signer, cleId: CLE_ID, rattachement: () => null,
+    const r = await SC.cloturerSaisieLocale(SET, {
+      sources: t.sources(), cleId: CLE_ID, lirePhrase: async () => PHRASE,
       saisir: async (q) => (/Code/.test(q) ? /CODE DE CONFIRMATION : ([0-9a-f]{16})/.exec(affiche)[1] : 'oui'),
       afficher: (x) => { affiche += x; },
     });
-    const r = await SC.cloturer(SET, deps);
     t.dossierLot = r.dossierLot;
     assert.equal(r.enveloppe.charge.source_decisions, 'saisie_locale');
     assert.deepEqual(r.enveloppe.charge.incidents_connus.map((i) => i.id), ['inc-ancien'], 'incident résolu cité par la charge signée');

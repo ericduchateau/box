@@ -15,7 +15,7 @@ const fsN = require('fs');
 const C = require('../engine/catalogue.js');
 const S = require('./attestation-signee.js');
 const L = require('./liaison-generation.js');
-const { cloturer, saisirDecisionLocale, normaliserDate } = require('./signer-cloture.js');
+const { cloturer, saisirDecisionLocale, normaliserDate, RATTACHEMENT_SAISIE_LOCALE, analyserArgumentsCloture, main: mainCloture } = require('./signer-cloture.js');
 const { preparerPublication } = require('./publier-lot.js');
 
 const REGISTRE = require('../engine/moteurs.json');
@@ -147,20 +147,66 @@ const sansSignature = async (sc, motif, issue) => {
   return err;
 };
 
-describe('garde maîtresse (NON levée — étape 5)', () => {
-  test('sans contrat de rattachement : refus AVANT toute opération, zéro signature, zéro appel', async () => {
+describe('garde maîtresse (lot 7 : levée pour saisie_locale SEULE)', () => {
+  test('cloturer sans fonction de rattachement : refus AVANT toute opération, zéro signature, zéro appel (garde INCHANGÉE)', async () => {
     for (const source of ['page_relecture', 'saisie_locale']) {
       const sc = await scenario({ source });
       delete sc.deps.rattachement;
-      await assert.rejects(cloturer(sc.setId, sc.deps), /rattachement.*NON DÉFINI/);
+      await assert.rejects(cloturer(sc.setId, sc.deps), (e) => /rattachement.*NON DÉFINI/.test(e.message) && e.issue === 'precondition');
       assert.equal(sc.etat.signatures, 0);
       assert.deepEqual(sc.etat.appels, []);
     }
   });
-  test('CLI : main() refuse (rattachement absent en production)', () => {
-    const r = require('child_process').spawnSync(process.execPath, [path.join(__dirname, 'signer-cloture.js'), 'set_fonda_grandeurs-mesures_nI_02'], { encoding: 'utf8' });
-    assert.equal(r.status, 1);
-    assert.match(r.stderr, /NON DÉFINI/);
+  test('saisie_locale avec le rattachement « poison » de production : clôture COMPLÈTE (il n\'est jamais appelé)', async () => {
+    const sc = await scenario({ source: 'saisie_locale' });
+    let appele = 0;
+    sc.deps.rattachement = (...a) => { appele += 1; return RATTACHEMENT_SAISIE_LOCALE(...a); };
+    const { enveloppe } = await cloturer(sc.setId, sc.deps);
+    assert.equal(enveloppe.charge.source_decisions, 'saisie_locale');
+    assert.equal(sc.etat.signatures, 1);
+    assert.equal(appele, 0, 'jamais consommé en saisie locale');
+    assert.equal((await publication(sc.publie, enveloppe)).ok, true);
+  });
+  test('page_relecture avec le rattachement « poison » : refus precondition, ZÉRO signature', async () => {
+    const sc = await scenario();
+    sc.deps.rattachement = RATTACHEMENT_SAISIE_LOCALE;
+    const err = await sansSignature(sc, /parcours page_relecture non défini/, 'precondition');
+    assert.ok(err);
+  });
+  test('analyserArgumentsCloture : saisie_locale par défaut ; toute autre source, set_id invalide ou arguments en trop -> refus precondition', () => {
+    assert.deepEqual(analyserArgumentsCloture(['set_fonda_grandeurs-mesures_nI_02']), { setId: 'set_fonda_grandeurs-mesures_nI_02', source: 'saisie_locale' });
+    assert.deepEqual(analyserArgumentsCloture(['set_fonda_grandeurs-mesures_nI_02', '--source', 'saisie_locale']).source, 'saisie_locale');
+    for (const argv of [['set_fonda_grandeurs-mesures_nI_02', '--source', 'page_relecture'], ['set_fonda_grandeurs-mesures_nI_02', '--source'], ['set_fonda_grandeurs-mesures_nI_02', '--source', 'n8n'],
+      ['pas-un-set-id'], [], ['set_fonda_grandeurs-mesures_nI_02', 'en-trop']]) {
+      assert.throws(() => analyserArgumentsCloture(argv), (e) => e.issue === 'precondition', JSON.stringify(argv));
+    }
+  });
+  test('main : page_relecture refusée AVANT la production (ni réseau, ni secret, ni clé) ; saisie_locale -> production appelée', async () => {
+    const appels = [];
+    const production = async (setId) => { appels.push(setId); return { dossierLot: '/tmp/x' }; };
+    const avant = process.exitCode; const err = console.error; const log = console.log; let sortie = '';
+    console.error = (m) => { sortie += m; }; console.log = () => {};
+    try {
+      await mainCloture(['set_fonda_grandeurs-mesures_nI_02', '--source', 'page_relecture'], production);
+      assert.equal(process.exitCode, 1);
+      assert.deepEqual(appels, []);
+      assert.match(sortie, /seule « saisie_locale » est levée/);
+      process.exitCode = avant;
+      await mainCloture(['set_fonda_grandeurs-mesures_nI_02'], production);
+      assert.deepEqual(appels, ['set_fonda_grandeurs-mesures_nI_02']);
+    } finally { console.error = err; console.log = log; process.exitCode = avant; }
+  });
+  test('CLI réelle : page_relecture refusée sans lire aucun secret ; saisie_locale sans secrets -> échec à la lecture du secret, AVANT toute phrase de passe', () => {
+    const vide = require('fs').mkdtempSync(path.join(require('os').tmpdir(), 'home-vide-'));
+    const cli = (...a) => require('child_process').spawnSync(process.execPath, [path.join(__dirname, 'signer-cloture.js'), ...a], { encoding: 'utf8', env: { ...process.env, HOME: vide }, input: '' });
+    const page = cli('set_fonda_grandeurs-mesures_nI_02', '--source', 'page_relecture');
+    assert.equal(page.status, 1);
+    assert.match(page.stderr, /source « page_relecture » refusée/);
+    const locale = cli('set_fonda_grandeurs-mesures_nI_02');
+    assert.equal(locale.status, 1);
+    assert.match(locale.stderr, /secret n8n-signataire\.cle illisible/);
+    assert.doesNotMatch(locale.stdout + locale.stderr, /Phrase de passe/);
+    assert.deepEqual(require('fs').readdirSync(vide), [], 'rien écrit dans le HOME');
   });
 });
 
