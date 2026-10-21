@@ -349,7 +349,7 @@ async function cloturer(setId, deps) {
   const { config, api, drive, rattachement } = deps;
   if (!C.SET_ID_PATTERN.test(setId || '')) refuser('set_id invalide', 'precondition');
   if (!S.SOURCES.includes(config.source)) refuser(`config.source : ${S.SOURCES.join(' | ')} attendu`, 'precondition');
-  if (!S.modelesValides(config.modelesAutorises)) refuser('config.modelesAutorises : liste épinglée d\'identifiants Sonnet DATÉS requise (G5, §20.8) — aucun repli', 'precondition');
+  if (!S.modelesValides(config.modelesAutorises)) refuser('config.modelesAutorises : liste épinglée d\'identifiants Sonnet épinglés requise (G5, §20.8) — aucun repli', 'precondition');
   if (typeof config.workflowGeneration !== 'string' || !config.workflowGeneration) refuser('config.workflowGeneration : workflow de génération épinglé requis', 'precondition');
   verifierDossierLocal(config.dossier, deps.fs && deps.fs.realpath);
   const page = config.source === 'page_relecture';
