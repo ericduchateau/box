@@ -222,20 +222,37 @@ function invariantsValeurV1(ch) {
   return e;
 }
 
-// G5 (§20.8) : identifiant Sonnet DATÉ (jamais un alias flottant) ; liste épinglée,
-// identique dans le nœud n8n et ici. À CONFIRMER à la recette §20.8 (champ model d'un
-// vrai appel capturé sur l'instance).
+// G5 (§20.8) : identifiant Sonnet ÉPINGLÉ (snapshot à poids fixes, jamais un alias
+// flottant) ; liste épinglée, identique dans le nœud n8n et ici. Deux formes :
+//  - DATÉE (format inchangé) : claude-sonnet-…-AAAAMMJJ ;
+//  - SANS DATE, génération ≥ 4.6 seulement : d'après la doc Anthropic (Models overview,
+//    vérifiée le 2026-10-21), « every Claude model ID is a pinned snapshot, including the
+//    dateless IDs used from the 4.6 generation on » (ex. claude-sonnet-5-5). Avant la 4.6,
+//    un identifiant sans date (claude-sonnet-4-5, claude-sonnet-4-0) est un ALIAS qui pointe
+//    vers un identifiant daté : refusé.
+// La vraie épingle reste la liste curée modeles-autorises.json ; le signataire grave le
+// champ model de la RÉPONSE, toujours un snapshot épinglé.
 const MODELE_DATE = /^claude-sonnet-[a-z0-9-]*\d{8}$/;
+const MODELE_SANS_DATE = /^claude-sonnet-(0|[1-9]\d*)(?:-(0|[1-9]\d*))?$/;
+function modeleEpingle(m) {
+  if (typeof m !== 'string') return false;
+  if (MODELE_DATE.test(m)) return true;
+  const v = MODELE_SANS_DATE.exec(m);
+  if (!v) return false;
+  const majeure = Number(v[1]);
+  const mineure = v[2] === undefined ? 0 : Number(v[2]);
+  return majeure > 4 || (majeure === 4 && mineure >= 6);
+}
 function modelesValides(liste) {
-  return Array.isArray(liste) && liste.length > 0 && liste.every((m) => typeof m === 'string' && MODELE_DATE.test(m)) && new Set(liste).size === liste.length;
+  return Array.isArray(liste) && liste.length > 0 && liste.every(modeleEpingle) && new Set(liste).size === liste.length;
 }
 // Lecture stricte de fonda/data/modeles-autorises.json : { schema, generation_fonda: [] }.
 function lireModelesAutorises(texte) {
   let o;
   try { o = JSON.parse(texte); } catch { throw new Error('modeles-autorises.json : JSON invalide'); }
   if (!o || typeof o !== 'object' || Array.isArray(o) || Object.keys(o).sort().join() !== 'generation_fonda,schema' || o.schema !== 'modeles-autorises/v1'
-    || !Array.isArray(o.generation_fonda) || !o.generation_fonda.every((m) => typeof m === 'string' && MODELE_DATE.test(m))) {
-    throw new Error('modeles-autorises.json : { schema: "modeles-autorises/v1", generation_fonda: [identifiants Sonnet datés] } attendu');
+    || !Array.isArray(o.generation_fonda) || !o.generation_fonda.every(modeleEpingle)) {
+    throw new Error('modeles-autorises.json : { schema: "modeles-autorises/v1", generation_fonda: [identifiants Sonnet épinglés] } attendu');
   }
   return o.generation_fonda;
 }
@@ -264,7 +281,7 @@ function invariantsValeurV2(ch, { modelesAutorises } = {}) {
   if (!/^sha256:[0-9a-f]{64}$/.test(g.empreinte_complete)) e.push('generation.empreinte_complete : sha256:<64 hex> attendu');
   if (!/^[0-9a-f]{40}$/.test(g.journal_commit)) e.push('generation.journal_commit : 40 hex attendus');
   if (!/^sha256:[0-9a-f]{64}$/.test(ch.referentiel_version)) e.push('referentiel_version : sha256:<64 hex> attendu');
-  if (!modelesValides(modelesAutorises)) e.push('liste des modèles autorisés absente, vide ou non datée : charge v2 non vérifiable (G5, §20.8)');
+  if (!modelesValides(modelesAutorises)) e.push('liste des modèles autorisés absente, vide ou non épinglée : charge v2 non vérifiable (G5, §20.8)');
   else if (!modelesAutorises.includes(g.modele)) e.push(`generation.modele « ${g.modele} » ∉ modèles autorisés épinglés (G5)`);
   // Chronologie commune
   if (communes.every(([, v]) => dateSignee(v))) croissant(e, 'commune', [datesGeneration[0], datesGeneration[1], datesGeneration[2], datesGeneration[3], communes[4], communes[5], communes[6]]);
@@ -355,5 +372,5 @@ function verifierAttestationSignee(enveloppe, { entree, registre, referentiel, c
 
 module.exports = {
   TYPE, ALGORITHME, CONTRATS_CHARGE, SOURCES, chargerCles, recevabilite, invariantsValeur, invariantsDepot, verifierAttestationSignee, dateSignee,
-  lireModelesAutorises, modelesValides,
+  lireModelesAutorises, modelesValides, modeleEpingle,
 };

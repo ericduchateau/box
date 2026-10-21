@@ -479,7 +479,7 @@ describe('§20.6 saisie locale : décisions figées', () => {
 describe('configuration G5 et sources', () => {
   for (const [libelle, f, motif] of [
     ['liste des modèles vide', (c) => { c.modelesAutorises = []; }, /G5/],
-    ['alias non daté dans la liste', (c) => { c.modelesAutorises = ['claude-sonnet-5-5']; }, /DATÉS/],
+    ['alias pré-4.6 (non épinglé) dans la liste', (c) => { c.modelesAutorises = ['claude-sonnet-4-5']; }, /G5/],
     ['source inconnue', (c) => { c.source = 'n8n'; }, /config.source/],
     ['workflow de génération non épinglé', (c) => { c.workflowGeneration = ''; }, /workflow de génération/],
   ]) {
