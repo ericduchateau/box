@@ -132,10 +132,10 @@ async function scenario(x = {}) {
 
 // Publication (§20.11, §20.12) : journal de HEAD + réservation ; référentiel ARCHIVÉ.
 const JOURNAL = require('../data/set_ids-journal.json');
-async function publication(publie, enveloppe) {
+async function publication(publie, enveloppe, modelesAutorises = [MODELE]) {
   const journal = { schema: JOURNAL.schema, lignes: [...copie(JOURNAL.lignes), { set_id: publie.set_id, transition: 'reserve', le: '2026-10-17', ref: `test-2026-10-17:${publie.set_id}` }] };
   const referentielArchive = async (v) => (v === enveloppe.charge.referentiel_version && v === REF_VERSION ? { ok: true, referentiel: REFERENTIEL } : { ok: false, raison: 'introuvable' });
-  return preparerPublication({ lot: publie, attestation: enveloppe, catalogue: copie(CATALOGUE), referentiel: REFERENTIEL, referentielArchive, journal, le: '2026-10-21T09:00:00.000Z', sha256Hex: sha, cles: CLES, modelesAutorises: [MODELE] });
+  return preparerPublication({ lot: publie, attestation: enveloppe, catalogue: copie(CATALOGUE), referentiel: REFERENTIEL, referentielArchive, journal, le: '2026-10-21T09:00:00.000Z', sha256Hex: sha, cles: CLES, modelesAutorises });
 }
 const sansSignature = async (sc, motif, issue) => {
   const err = await cloturer(sc.setId, sc.deps).then(() => null, (e) => e);
@@ -185,6 +185,20 @@ describe('aller-retour v2 : signer -> attestation-signee vérifie -> publier-lot
     assert.deepEqual(ch.badge, { forme: 'relue_et_validee', nom_affiche: 'Relectrice de test', id: 'justine' });
     const r = await publication(sc.publie, enveloppe);
     assert.equal(r.ok, true, JSON.stringify(r.erreurs));
+  });
+  test('modèle SANS DATE (claude-sonnet-5-5, sonde §20.8 du 2026-10-21) autorisé : clôture complète, modèle gravé, signature vérifiée, publiable', async () => {
+    const SANS_DATE = 'claude-sonnet-5-5';
+    const sc = await scenario({ source: 'saisie_locale', modifier: (c) => {
+      c.gen[501] = JSON.parse(JSON.stringify(c.gen[501]).split(MODELE).join(SANS_DATE));
+      c.deps.config.modelesAutorises = [SANS_DATE];
+    } });
+    assert.ok(!JSON.stringify(sc.gen[501]).includes(MODELE), 'plus aucune trace du modèle daté dans l\'exécution');
+    const { enveloppe } = await cloturer(sc.setId, sc.deps);
+    assert.equal(sc.etat.signatures, 1);
+    assert.equal(enveloppe.charge.generation.modele, SANS_DATE);
+    const pub = await publication(sc.publie, enveloppe, [SANS_DATE]); // signature + invariants + liste (verifierAttestationSignee complet)
+    assert.equal(pub.ok, true, JSON.stringify(pub.erreurs));
+    assert.equal((await publication(sc.publie, enveloppe, [MODELE])).ok, false, 'hors liste -> non publiable');
   });
   test('page_relecture, auto-confirmation (relecteur = Éric) : publiable', async () => {
     const sc = await scenario({ maths: true });

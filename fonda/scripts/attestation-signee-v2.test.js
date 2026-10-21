@@ -77,16 +77,19 @@ describe('G5 (§20.8) : modèle épinglé (daté, ou sans date en génération �
       assert.match(verifier(charge('saisie_locale'), { modelesAutorises }).join(), /modèles autorisés absente, vide ou non épinglée/, JSON.stringify(modelesAutorises));
     }
   });
-  test('modeleEpingle : daté (format inchangé) ou sans date ≥ 4.6 acceptés ; alias pré-4.6, autres familles, chaînes quelconques refusés', () => {
-    for (const m of ['claude-sonnet-5-5', 'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-sonnet-4-5-20250929', 'claude-sonnet-4-20250514', 'claude-sonnet-5-5-20261001']) assert.equal(S.modeleEpingle(m), true, m);
-    for (const m of ['claude-sonnet-4-5', 'claude-sonnet-4-0', 'claude-sonnet-4', 'claude-sonnet-3-7', 'claude-haiku-5-5', 'claude-opus-5-5', 'claude-haiku-4-5-20251001',
-      'claude-sonnet-5-5-latest', 'claude-sonnet-05-5', 'claude-sonnet-5-5 ', ' claude-sonnet-5-5', 'Claude-sonnet-5-5', 'claude-sonnet-', 'claude-sonnet', 'gpt-5', '', 'x', null, undefined, 55, ['claude-sonnet-5-5']]) {
+  test('modeleEpingle : daté (format inchangé) ou sans date majeure[-mineure] acceptés ; alias pré-4.6 (denylist), autres familles, chaînes quelconques refusés', () => {
+    for (const m of ['claude-sonnet-5-5', 'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-sonnet-10', 'claude-sonnet-4-10', 'claude-sonnet-12-34', 'claude-sonnet-6-0',
+      'claude-sonnet-4-5-20250929', 'claude-sonnet-4-20250514', 'claude-sonnet-5-5-20261001']) assert.equal(S.modeleEpingle(m), true, m);
+    for (const m of [...S.ALIAS_PRE_46, 'claude-haiku-5-5', 'claude-opus-5-5', 'claude-haiku-4-5-20251001',
+      'claude-sonnet-5-05', 'claude-sonnet-05-5', 'claude-sonnet-05', 'claude-sonnet-0-5', 'claude-sonnet-5-5-5', 'claude-sonnet-5-5-latest', 'claude-sonnet-latest',
+      'claude-sonnet-5-5 ', ' claude-sonnet-5-5', 'Claude-sonnet-5-5', 'claude-sonnet-', 'claude-sonnet', 'gpt-5', '', 'x', null, undefined, 55, ['claude-sonnet-5-5']]) {
       assert.equal(S.modeleEpingle(m), false, JSON.stringify(m));
     }
+    assert.deepEqual([...S.ALIAS_PRE_46].sort(), ['claude-sonnet-3-5', 'claude-sonnet-3-7', 'claude-sonnet-4', 'claude-sonnet-4-0', 'claude-sonnet-4-1', 'claude-sonnet-4-5']);
   });
   test('charge v2 avec claude-sonnet-5-5 (sans date) dans la liste -> vérifiée', () => {
     const ch = charge('saisie_locale'); ch.generation.modele = 'claude-sonnet-5-5';
-    assert.deepEqual(verifier(ch, { modelesAutorises: ['claude-sonnet-5-5'] }).filter((x) => /modèle/.test(x)), []);
+    assert.deepEqual(verifier(ch, { modelesAutorises: ['claude-sonnet-5-5'] }), []);
   });
   test('modèle de la charge hors liste -> refus', () => {
     const ch = charge('saisie_locale'); ch.generation.modele = 'claude-sonnet-5-5-20260101';

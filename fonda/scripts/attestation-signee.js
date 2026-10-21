@@ -225,23 +225,20 @@ function invariantsValeurV1(ch) {
 // G5 (§20.8) : identifiant Sonnet ÉPINGLÉ (snapshot à poids fixes, jamais un alias
 // flottant) ; liste épinglée, identique dans le nœud n8n et ici. Deux formes :
 //  - DATÉE (format inchangé) : claude-sonnet-…-AAAAMMJJ ;
-//  - SANS DATE, génération ≥ 4.6 seulement : d'après la doc Anthropic (Models overview,
-//    vérifiée le 2026-10-21), « every Claude model ID is a pinned snapshot, including the
-//    dateless IDs used from the 4.6 generation on » (ex. claude-sonnet-5-5). Avant la 4.6,
-//    un identifiant sans date (claude-sonnet-4-5, claude-sonnet-4-0) est un ALIAS qui pointe
-//    vers un identifiant daté : refusé.
-// La vraie épingle reste la liste curée modeles-autorises.json ; le signataire grave le
-// champ model de la RÉPONSE, toujours un snapshot épinglé.
+//  - SANS DATE, convention Anthropic majeure[-mineure] (claude-sonnet-5, claude-sonnet-5-5) :
+//    « every Claude model ID is a pinned snapshot, including the dateless IDs used from the
+//    4.6 generation on » (Models overview ; Model IDs and versioning, vérifié le 2026-10-21).
+// Aucun seuil de version dans le motif (fragile) : la vraie épingle est la liste curée
+// modeles-autorises.json, et le signataire grave le champ model de la RÉPONSE, toujours un
+// snapshot épinglé. Filet contre une liste mal remplie : DENYLIST explicite des alias
+// sans date ANTÉRIEURS à la 4.6 (pointeurs vers un identifiant daté) — documentée au CDC r8.
 const MODELE_DATE = /^claude-sonnet-[a-z0-9-]*\d{8}$/;
-const MODELE_SANS_DATE = /^claude-sonnet-(0|[1-9]\d*)(?:-(0|[1-9]\d*))?$/;
+const MODELE_SANS_DATE = /^claude-sonnet-[1-9]\d*(?:-(?:0|[1-9]\d*))?$/;
+const ALIAS_PRE_46 = Object.freeze(['claude-sonnet-3-5', 'claude-sonnet-3-7', 'claude-sonnet-4', 'claude-sonnet-4-0', 'claude-sonnet-4-1', 'claude-sonnet-4-5']);
 function modeleEpingle(m) {
   if (typeof m !== 'string') return false;
   if (MODELE_DATE.test(m)) return true;
-  const v = MODELE_SANS_DATE.exec(m);
-  if (!v) return false;
-  const majeure = Number(v[1]);
-  const mineure = v[2] === undefined ? 0 : Number(v[2]);
-  return majeure > 4 || (majeure === 4 && mineure >= 6);
+  return MODELE_SANS_DATE.test(m) && !ALIAS_PRE_46.includes(m);
 }
 function modelesValides(liste) {
   return Array.isArray(liste) && liste.length > 0 && liste.every(modeleEpingle) && new Set(liste).size === liste.length;
@@ -372,5 +369,5 @@ function verifierAttestationSignee(enveloppe, { entree, registre, referentiel, c
 
 module.exports = {
   TYPE, ALGORITHME, CONTRATS_CHARGE, SOURCES, chargerCles, recevabilite, invariantsValeur, invariantsDepot, verifierAttestationSignee, dateSignee,
-  lireModelesAutorises, modelesValides, modeleEpingle,
+  lireModelesAutorises, modelesValides, modeleEpingle, ALIAS_PRE_46,
 };
