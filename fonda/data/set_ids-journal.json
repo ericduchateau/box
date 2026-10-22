@@ -150,6 +150,18 @@
       "transition": "reserve",
       "le": "2026-10-22",
       "ref": "2026-10-22-57246f198f36"
+    },
+    {
+      "set_id": "set_fonda_nombres-fractions-relatifs_nI_02",
+      "transition": "abandonne",
+      "le": "2026-10-22",
+      "ref": "2026-10-22-57246f198f36:abandonne"
+    },
+    {
+      "set_id": "set_fonda_nombres-fractions-relatifs_nI_03",
+      "transition": "reserve",
+      "le": "2026-10-22",
+      "ref": "2026-10-22-f6304506bfc7"
     }
   ]
 }
