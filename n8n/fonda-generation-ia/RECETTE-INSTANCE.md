@@ -135,15 +135,15 @@ Cette recette prouve l'**accès** du signataire (n8n, Drive, git, registre des i
 ## Bloc de CONSIGNATION (à remplir AVANT le premier vrai run)
 
 ```
-Date de vérification (avec fuseau) : ____-__-__ __:__ (Europe/Paris)
-Vérifié par                        : ______________________
+Date de vérification (avec fuseau) : (a) 2026-10-22 (Europe/Paris, heure non relevée) ; (b) ____-__-__ __:__
+Vérifié par                        : (a) Éric (observation seule, rien modifié) ; (b) ______________________
 
-(a) Workflow vrqgtS5kQMvP9Ok5 — valeurs OBSERVÉES dans Settings
-  Save failed production executions     : __________
-  Save successful production executions : __________
-  Save manual executions                : __________
-  Save execution progress               : __________
-  Actif ?                               : __________ (attendu : Inactive jusqu'à §20.8)
+(a) Workflow vrqgtS5kQMvP9Ok5 — valeurs OBSERVÉES dans Settings          [CONSIGNÉ, conforme]
+  Save failed production executions     : Save   (= saveDataErrorExecution: all)
+  Save successful production executions : Save   (= saveDataSuccessExecution: all)
+  Save manual executions                : Save   (= saveManualExecutions: true)
+  Save execution progress               : Save   (= saveExecutionProgress: true)
+  Actif ?                               : Inactive (attendu : Inactive jusqu'à la fenêtre du lot 8)
 
 (b) Instance — identification (b1)
   Projet / service n8n / service base   : __________ / __________ / __________
