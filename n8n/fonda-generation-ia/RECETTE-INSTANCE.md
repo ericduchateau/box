@@ -117,6 +117,21 @@ Un **Restart** (bouton, ou `docker compose restart`) **ne recharge pas** l'envir
 - Les deux workflows ne sont **actifs que pendant la fenêtre** de génération : les activer juste avant `declencher-generation.js`, puis les désactiver après le dépôt observé.
 - Réponse « inconnu » (504, 500, délai dépassé) : **ne jamais renvoyer**. Lancer `declencher-generation.js --etat <set_id>`, puis `--liberer --motif` seulement si rien n'est observé après le délai de prudence.
 
+## Recette d'ACCÈS du signataire (lot 7 du plan étape 5) — consignée
+
+Faite par Éric sur son Mac le **2026-10-22**, contre l'instance réelle, avec les commandes en lecture seule du signataire (`fonda/scripts/SIGNATAIRE.md`).
+
+| Commande | Résultat | Attendu |
+|---|---|---|
+| `node fonda/scripts/signer-cloture.js --diagnostic` | `{ initialise: true, n8n: true, drive: true, git: true, registre: true }` | tout à `true` (**acces_ok**) |
+| `node fonda/scripts/signer-cloture.js --diagnostic set_fonda_nombres-fractions-relatifs_nI_01` | `{ etat: "aucune_generation", detail: true }` | `aucune_generation` |
+
+Secrets en place dans `~/.fonda-cles/` (hors dépôt, jamais affichés) :
+- `n8n-signataire.cle` : clé d'API n8n, utilisée en lecture ;
+- `drive-compte-service.json` : compte de service **dédié** au signataire, portée `drive.readonly`, partagé en **lecteur** sur le dossier candidats (`1Ir-iJGZoSk5_FmJ9dnf_PM-NEBZWyn8d`).
+
+Cette recette prouve l'**accès** du signataire (n8n, Drive, git, registre des incidents initialisé). Elle **ne remplace pas** le bloc ci-dessous, qui consigne la **conservation des exécutions** : réglages du workflow (a) et purge automatique désactivée (b).
+
 ## Bloc de CONSIGNATION (à remplir AVANT le premier vrai run)
 
 ```
