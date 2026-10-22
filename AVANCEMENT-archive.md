@@ -529,3 +529,15 @@ PR #1 (`feat/box-fonda-theme-switch` → `design`, commit `5ea01ba`) relue par C
 1. **Régénérer la clé API Anthropic** (scripts locaux + nœud `Claude API` de `BOX - Generation Flashcards`).
 2. **Codes de suppression et emails commités** : les 16 lots de `fonda/data/lots-fonda-calibration/` contiennent `code_suppression` (+ `prof_email`) en clair dans un dépôt public ; le workflow `fonda-generation` recopie le code du JSON fourni -> publier ces fichiers tels quels les rendrait supprimables par quiconque lit GitHub. Plan du chantier « secrets hors du dépôt » proposé le 2026-10-12 (non exécuté) : générateur sans code/email, retrait des champs des 16 fichiers, historique Git (inerte si nouveaux codes à la publication), retrait de l'orpheline `box_7e7tcooh`.
 3. Vraie adresse de la relectrice de français (`fonda/data/destinataires.json`).
+
+## (Archivé le 2026-10-22 depuis AVANCEMENT.md)
+### Étape 2 : moteur de correction élève (M1) — **mergée** (PR #8, `1a1af9f`, 2026-10-14)
+- `fonda/engine/moteur-correction-v1.js` : corps du correcteur = **octets bruts** de a418881 (test sans normalisation) + couche moteur (`creerMoteur()` : valider, preparerCarte, demarrer, soumettre, echec → résultat pédagogique complet, outils). Registre global `FondaMoteurs` non réassignable. `correction.js` = façade Node.
+- `moteurs.json` (sha256 + SRI) ; `bootstrap.js::obtenirMoteur` (concordance registre avant tout chargement, cache par clé, SRI, origine connue, `instance.version`) ; entrée résolue avant chargement ; échec → « pas disponible ».
+- `carte-reponse-produite.js` purement présentationnel `{ moteur, carte, badge, onResultat }` ; E1–E4 appliqués, tests révisés marqués « RÉVISÉ Ex ».
+- **M1** : `moteur: { version: "v1", sha256 }` + badge `{ forme: "relue_par", nom_affiche: "Éric Duchateau", id: "eric" }` sur les 8 entrées historiques, empreintes inchangées ; figés dans `catalogue.js` (`MOTEUR_HISTORIQUE`, `BADGE_HISTORIQUE`).
+- Générateur / publication / CI valident avec **le moteur du lot** ; profils et bornes d'arrondi sortis de `validerLot` (seulement `moteur.valider`). CI : moteurs immuables (`verifier-moteurs.js`) ; **règle 0 de M1** transférée à `verifier-immuabilite.js` (étape 3, chantier 3 — fait), les deux exécutés par le job requis `immuabilite`.
+- Critique Codex (6 points) corrigée : règle 0, règles pédagogiques hors catalogue, frontière DOM → `moteur.echec`, purge du cache sur tout échec, octets bruts, différentiel sur le vrai composant a418881. Re-review Codex : 5/6 corrigés, point 1 complété (parcours sans simplification d’historique, lecture illisible = échec) ; 2e re-review ciblée : « propre pour merge ».
+- Preuves : `node --test` 598/598 (1 skip) ; différentiels ancien/nouveau (correcteur et composant a418881 réellement exécutés, frontières d'exception comprises ; mutations détectées) ; navigateur réel (Chrome 155) : 8 lots parcourus, SRI altérée bloquée ; BOX clair 0 pixel de différence vs design.
+- Changement visible voulu (CDC §12) : badge « Fiche relue par Éric Duchateau » (avant : « Fiche relue et validée par … avant publication. »).
+
