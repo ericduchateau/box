@@ -135,8 +135,8 @@ Cette recette prouve l'**accès** du signataire (n8n, Drive, git, registre des i
 ## Bloc de CONSIGNATION (à remplir AVANT le premier vrai run)
 
 ```
-Date de vérification (avec fuseau) : (a) 2026-10-22 (Europe/Paris, heure non relevée) ; (b) ____-__-__ __:__
-Vérifié par                        : (a) Éric (observation seule, rien modifié) ; (b) ______________________
+Date de vérification (avec fuseau) : (a) 2026-10-22 (Europe/Paris, heure non relevée) ; (b) 2026-10-22 ~14:17 (Europe/Paris, vacances : aucun usage BOX)
+Vérifié par                        : (a) Éric (observation seule, rien modifié) ; (b) Éric, sur le VPS srv868991
 
 (a) Workflow vrqgtS5kQMvP9Ok5 — valeurs OBSERVÉES dans Settings          [CONSIGNÉ, conforme]
   Save failed production executions     : Save   (= saveDataErrorExecution: all)
@@ -145,33 +145,43 @@ Vérifié par                        : (a) Éric (observation seule, rien modifi
   Save execution progress               : Save   (= saveExecutionProgress: true)
   Actif ?                               : Inactive (attendu : Inactive jusqu'à la fenêtre du lot 8)
 
-(b) Instance — identification (b1)
-  Projet / service n8n / service base   : __________ / __________ / __________
-  Dossier de travail                    : __________
-  Fichier(s) Compose (ordre)            : __________
-  Fichier(s) d'environnement            : __________ (ou « .env par défaut »)
-  Contexte = production (b2.0) ?        : oui / non (non → ARRÊT)
-  ID conteneur n8n AVANT                : __________
-  ImageID AVANT (sha256)                : __________
-  printenv AVANT                        : __________
-  Montage /home/node/.n8n (b1.4)        : volume / dossier hôte → __________
-  Montage données base (b1.4)           : volume / dossier hôte / sans base → __________
+(b) Instance — identification (b1)                                       [CONSIGNÉ]
+  Projet / service n8n / service base   : root / n8n / aucun (SQLite sur le volume n8n)
+  Dossier de travail                    : /root
+  Fichier(s) Compose (ordre)            : /root/docker-compose.yml
+  Fichier(s) d'environnement            : .env par défaut (auto-chargé)
+  Contexte = production (b2.0) ?        : oui — aucune variable injectée hors Compose (N8N_HOST/PORT/PROTOCOL,
+                                          NODE_ENV, WEBHOOK_URL, GENERIC_TIMEZONE + défauts Docker) ;
+                                          N8N_ENCRYPTION_KEY absente de l'environnement (clé sur le volume)
+  ID conteneur n8n AVANT                : a35b5a6c…
+  ImageID AVANT (sha256)                : sha256:5fd65c3d…c22e12
+  printenv AVANT                        : vide (variable non définie → purge ACTIVE par défaut : NON conforme)
+  Montage /home/node/.n8n (b1.4)        : volume → n8n_data
+  Montage données base (b1.4)           : sans base (SQLite sur le volume n8n_data)
 
   [ ] DÉJÀ CONFORME (printenv AVANT = false) → recréation inutile ; champs ci-dessous : « sans objet »
+      → non : recréation effectuée (ci-dessous)
 
-(b) Instance — recréation (b2 à b4)       [sans objet si déjà conforme]
-  Valeur initiale si variable existante : __________ (ou « absente »)
-  Copies exactes .avant-prune-*         : __________
-  Instantané VPS (heure)                : __________
-  diff compose-avant / apres : 1 seule ligne (service n8n) ? oui / non
-  Image figée (b2.5) ImageID identique ? oui / non
-  Recréé le (heure, fuseau)             : __________ (up -d --no-deps --no-build --pull never)
-  ID conteneur n8n APRÈS                : __________ (≠ AVANT ?)
-  ImageID APRÈS = AVANT                 : oui / non
-  printenv APRÈS                        : __________ (attendu : exactement false)
-  EXECUTIONS_DATA_MAX_AGE / PRUNE_MAX_COUNT : __________ / __________
-  Contrôles BOX : 9 actifs oui/non ; pas d'erreur nouvelle oui/non ; catalogue répond oui/non
-  Retour arrière effectué ?             : non / oui (préciser)
+(b) Instance — recréation (b2 à b4)                                      [CONSIGNÉ]
+  Modification                          : ajout de « - EXECUTIONS_DATA_PRUNE=false » au service n8n
+                                          de /root/docker-compose.yml
+  Valeur initiale si variable existante : absente
+  Copies exactes .avant-prune-*         : docker-compose.yml.avant-prune-20261022 + .env.avant-prune-20261022
+  Instantané VPS (heure)                : snapshot hPanel pris avant l'opération (heure non relevée)
+  diff compose-avant / apres : 1 seule ligne (service n8n) ? oui — diff -U0 de « docker compose config »
+                                          avant/après = un seul ajout EXECUTIONS_DATA_PRUNE: "false"
+  Image figée (b2.5) ImageID identique ? oui — « config --images » = docker.n8n.io/n8nio/n8n, sha256:5fd65c3d…c22e12
+  Recréé le (heure, fuseau)             : 2026-10-22 ~14:17 Europe/Paris (up -d --no-deps --no-build --pull never n8n)
+  ID conteneur n8n APRÈS                : d9d9106c… (≠ AVANT : oui)
+  ImageID APRÈS = AVANT                 : oui (sha256:5fd65c3d…c22e12)
+  printenv APRÈS                        : false
+  EXECUTIONS_DATA_MAX_AGE / PRUNE_MAX_COUNT : sans objet / sans objet (purge désactivée)
+  Contrôles BOX : 9 actifs oui (Published / Active) ; pas d'erreur nouvelle oui (n8n OK, aucune exécution
+                  pendant l'opération ; workflows FONDA inactifs) ; catalogue répond : oui (site élève : toutes les fiches s'affichent, 2026-10-22)
+  Retour arrière effectué ?             : non
 
-Conclusion (cocher)       : [ ] conforme  [ ] non conforme → pas de vrai run
+(b5) Capacité au moment de l'opération  : 12,8 % de 47 Go (purge désactivée pour TOUTE l'instance :
+                                          surveillance mensuelle selon (b5))
+
+Conclusion (cocher)       : [x] conforme  [ ] non conforme → pas de vrai run
 ```
