@@ -337,7 +337,12 @@ describe('verifierFormesAcceptees — chaque forme déclarée doit passer son pr
 
 describe('chaque lot PUBLIÉ (catalogue-fonda.json) repasse TOUS les garde-fous du générateur', () => {
   const LOTS = require('../data/catalogue-fonda.json').lots.map((e) => e.fichier);
-  test('le catalogue publie bien 8 lots', () => assert.equal(LOTS.length, 8));
+  test('le catalogue publie exactement les lots « publie » du journal (8 historiques + clôtures signées)', () => {
+    const J = require('../engine/journal-set-ids.js');
+    const etats = J.validerJournal(require('../data/set_ids-journal.json')).etats;
+    assert.equal(LOTS.length, [...etats.values()].filter((e) => e === 'publie').length);
+    assert.ok(LOTS.length >= 8);
+  });
   for (const f of LOTS) {
     test(f, () => {
       const lot = require('../data/' + f);
