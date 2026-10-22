@@ -162,6 +162,12 @@
       "transition": "reserve",
       "le": "2026-10-22",
       "ref": "2026-10-22-f6304506bfc7"
+    },
+    {
+      "set_id": "set_fonda_nombres-fractions-relatifs_nI_03",
+      "transition": "publie",
+      "le": "2026-10-22T15:33:13.788Z",
+      "ref": "2026-10-22-f6304506bfc7:publie"
     }
   ]
 }
