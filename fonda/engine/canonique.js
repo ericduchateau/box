@@ -267,12 +267,37 @@ var FondaCanonique = (function () {
     if (!dp || dp.value !== proto) return false;
     return /\{\s*\[native code\]\s*\}\s*$/.test(Function.prototype.toString.call(d.value));
   }
-  function estObjetDeDonnees(v) {
+  function estObjetDeDonneesStrict(v) {
     if (v === null || typeof v !== 'object' || Array.isArray(v)) return false;
     var proto = Object.getPrototypeOf(v);
     if (proto !== null && !estObjectPrototype(proto)) return false;
     return !aUneMarque(v);
   }
+  // BI-MODE (correctif runtime n8n, lot 8) : le moteur de code de n8n NEUTRALISE la
+  // lecture de prototype (Object.getPrototypeOf = () => ({}), accesseur __proto__
+  // absent — vérifié dans le vrai moteur, sonde 279808) : le contrôle strict y refuse
+  // TOUT objet. Détection UNE seule fois, au chargement :
+  //   - prototype LISIBLE (Node : signataire, CI, publication, front) -> contrôle STRICT
+  //     ci-dessus, INCHANGÉ ;
+  //   - prototype NEUTRALISÉ (n8n) -> REPLI STRUCTUREL : objet non tableau, étiquette
+  //     interne « [object Object] », aucune marque Map/Set/Date. Plus large (une instance
+  //     de classe y passerait) mais sans effet sur la preuve : le texte canonique d'une
+  //     donnée acceptée est le MÊME dans les deux modes (lecture par descripteur, clés du
+  //     contrat, accesseurs et champs inconnus refusés dans les deux), et le signataire,
+  //     sous Node en mode strict, RECALCULE lui-même les empreintes depuis le fichier.
+  var PROTOTYPE_LISIBLE = (function () {
+    try {
+      return Object.getPrototypeOf(Object.create(null)) === null
+        && Object.getPrototypeOf(Object.prototype) === null
+        && Object.getPrototypeOf({}) === Object.prototype;
+    } catch (e) { return false; }
+  })();
+  function estObjetDeDonneesRepli(v) {
+    if (v === null || typeof v !== 'object' || Array.isArray(v)) return false;
+    if (Object.prototype.toString.call(v) !== '[object Object]') return false;
+    return !aUneMarque(v);
+  }
+  var estObjetDeDonnees = PROTOTYPE_LISIBLE ? estObjetDeDonneesStrict : estObjetDeDonneesRepli;
 
   // Phase 1 : copie VALIDÉE (données fraîches, clés dans l'ordre du contrat).
   function copier(valeur, schema, chemin) {
@@ -387,6 +412,8 @@ var FondaCanonique = (function () {
     contrats: function () { return Object.keys(CONTRATS).filter(function (n) { return CONTRATS[n] !== null; }); },
     contratsIncomplets: function () { return Object.keys(CONTRATS).filter(function (n) { return CONTRATS[n] === null; }); },
     _utf8: utf8,
+    // Mode du contrôle d'objet retenu au chargement (diagnostic, tests) : 'strict' | 'repli'.
+    _mode: PROTOTYPE_LISIBLE ? 'strict' : 'repli',
   });
 })();
 

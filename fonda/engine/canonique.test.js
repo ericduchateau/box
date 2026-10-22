@@ -292,3 +292,38 @@ describe('mutations de copie détectées par le banc partagé', () => {
     });
   }
 });
+
+// Bi-mode (correctif runtime n8n, lot 8) : détection UNIQUE au chargement ; strict sous Node,
+// repli structurel seulement si la lecture de prototype est NEUTRALISÉE (moteur n8n).
+describe('bi-mode : détection du moteur de code n8n (prototype neutralisé)', () => {
+  const vmB = require('node:vm');
+  const sourceK = require('node:fs').readFileSync(require('node:path').join(__dirname, 'canonique.js'), 'utf8');
+  const charger = (preambule) => vmB.runInNewContext(`${preambule}\nvar module = { exports: {} };\n${sourceK}\n;module.exports`, {});
+  const PREAMBULE = require('../../n8n/fonda-generation-ia/simulateur.js').PREAMBULE_N8N;
+  test('Node (require) : mode STRICT ; contexte vm nu : STRICT', () => {
+    assert.equal(require('./canonique.js')._mode, 'strict');
+    assert.equal(charger('')._mode, 'strict');
+  });
+  test('préambule n8n complet : mode REPLI (jamais strict par erreur sous n8n)', () => {
+    assert.equal(charger(PREAMBULE)._mode, 'repli');
+  });
+  test('neutralisation PARTIELLE ou getPrototypeOf qui lève : REPLI (en cas de doute, jamais strict sur un prototype faux)', () => {
+    for (const pre of ['Object.getPrototypeOf = () => ({});', 'Object.getPrototypeOf = () => null;', 'Object.getPrototypeOf = () => { throw new Error("x"); };',
+      'const g = Object.getPrototypeOf; Object.getPrototypeOf = (o) => (o === null ? null : g(o) === null ? {} : g(o));',
+      'const g = Object.getPrototypeOf; Object.getPrototypeOf = (o) => (o !== Object.prototype && g(o) === null ? {} : g(o));']) {
+      assert.equal(charger(pre)._mode, 'repli', pre);
+    }
+  });
+  test('STRICT sous Node : instance de classe et prototype personnalisé REFUSÉS (inchangé) ; REPLI : texte canonique IDENTIQUE pour les données JSON', () => {
+    const K = require('./canonique.js');
+    class X { constructor() { this.version = 'v1'; this.sha256 = 'a'; } }
+    assert.throws(() => K.hexContrat('moteur-fonda/v1', new X()), /objet de données attendu/);
+    assert.throws(() => K.hexContrat('moteur-fonda/v1', Object.assign(Object.create({ p: 1 }), { version: 'v1', sha256: 'a' })), /objet de données attendu/);
+    const R = charger(PREAMBULE);
+    for (const v of ['{"version":"v1","sha256":"ab"}', '{"sha256":"ab","version":"v1"}']) assert.equal(R.hexContrat('moteur-fonda/v1', JSON.parse(v)), K.hexContrat('moteur-fonda/v1', JSON.parse(v)));
+    // Repli : objets exotiques à clés valides refusés par l'étiquette interne (Promise) ou les marques.
+    const exotique = vmB.runInNewContext('Object.assign(Promise.resolve(), { version: "v1", sha256: "a" })', {});
+    assert.throws(() => R.hexContrat('moteur-fonda/v1', exotique), /objet de données attendu/);
+    assert.throws(() => R.hexContrat('moteur-fonda/v1', vmB.runInNewContext('Object.assign(new Map(), { version: "v1", sha256: "a" })', {})), /objet de données attendu/);
+  });
+});

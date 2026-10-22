@@ -15,6 +15,21 @@
 
 'use strict';
 
+// PRÉAMBULE du moteur de code n8n (lot 8, exécution 279807), appliqué avant CHAQUE nœud
+// Code : copie de createVmExecutableCode() de @n8n/task-runner (protection anti-pollution)
+// et retrait de l'accesseur __proto__ constaté dans le vrai moteur (sonde 279808). Sans
+// lui, le harnais exécutait les nœuds dans un vm « normal » et a laissé passer deux
+// blocages (clone vide par defineProperty neutralisé ; canonique refusant tout objet).
+const PREAMBULE_N8N = [
+  'Object.getPrototypeOf = () => ({});',
+  'Reflect.getPrototypeOf = () => ({});',
+  'Object.setPrototypeOf = () => false;',
+  'Reflect.setPrototypeOf = () => false;',
+  'Object.defineProperty = () => ({});',
+  'Object.defineProperties = () => ({});',
+  'delete Object.prototype.__proto__;',
+].join('\n');
+
 const vm = require('vm');
 
 const json = (v) => JSON.parse(JSON.stringify(v));
@@ -87,7 +102,7 @@ async function executerGraphe(wf, { corps, entetes = {}, reponses = {}, executio
       else if (n.type === 'n8n-nodes-base.webhook') parSortie = [[{ json: { headers: entetes, params: {}, query: {}, body: corps } }]];
       else if (n.type === 'n8n-nodes-base.code') {
         const $input = { all: () => entree, first: () => entree[0] };
-        const fn = vm.runInNewContext(`(async function () {\n${n.parameters.jsCode}\n})`, { $input, $, $execution: { id: executionId }, ...contexteCode });
+        const fn = vm.runInNewContext(`${PREAMBULE_N8N}\n(async function () {\n${n.parameters.jsCode}\n})`, { $input, $, $execution: { id: executionId }, ...contexteCode });
         parSortie = [json(await fn())];
       } else if (n.type === 'n8n-nodes-base.if') {
         const ctx = { $, $json: entree[0].json };
@@ -139,4 +154,5 @@ async function executerGraphe(wf, { corps, entetes = {}, reponses = {}, executio
   return { status: 'success', runData, requetes, sorties, reponseWebhook };
 }
 
-module.exports = { executerGraphe, evaluer, pages };
+module.exports = {
+  PREAMBULE_N8N, executerGraphe, evaluer, pages };
