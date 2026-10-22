@@ -15,6 +15,38 @@
 
 'use strict';
 
+// PRÉAMBULE du moteur de code n8n (lot 8, exécution 279807), appliqué avant CHAQUE nœud
+// Code. RECONSTITUTION (non verbatim) de createVmExecutableCode() de @n8n/task-runner,
+// branche MASTER (packages/@n8n/task-runner/src/js-task-runner/js-task-runner.ts) — PAS la
+// version 2.6.3 de l'instance, non récupérée. Les comportements critiques pour FONDA sont
+// confirmés EMPIRIQUEMENT dans le vrai moteur 2.6.3 (sondes 279808 et 279809) :
+// defineProperty/getPrototypeOf neutralisés, accesseur __proto__ ABSENT (retiré ici aussi),
+// structuredClone absent. Sans ce préambule, le harnais exécutait les nœuds dans un vm
+// « normal » et a laissé passer deux blocages (clone vide ; canonique refusant tout objet).
+const PREAMBULE_N8N = [
+  'globalThis.global = globalThis;',
+  // Lecture et modification de prototype neutralisées.
+  'Object.getPrototypeOf = () => ({});',
+  'Reflect.getPrototypeOf = () => ({});',
+  'Object.setPrototypeOf = () => false;',
+  'Reflect.setPrototypeOf = () => false;',
+  // Error verrouillé (contournement par prepareStackTrace), AVANT la neutralisation de defineProperty.
+  'delete Error.prepareStackTrace;',
+  'delete Error.captureStackTrace;',
+  'Object.defineProperty(Error, "prepareStackTrace", { configurable: false, writable: false, value: undefined });',
+  'Object.defineProperty(Error, "captureStackTrace", { configurable: false, writable: false, value: undefined });',
+  // Définition de propriétés neutralisée.
+  'Object.defineProperty = () => ({});',
+  'Object.defineProperties = () => ({});',
+  // Constructeurs natifs gelés (liste amont : Object, Function, Array, Promise, Map, Set, JSON,
+  // Math, Reflect, tableaux typés, etc.).
+  '[Object, Function, Array, String, Number, Boolean, RegExp, Error, TypeError, RangeError, SyntaxError, Date, Promise, Map, Set, WeakMap, WeakSet, Symbol, JSON, Math, Reflect,'
+    + ' ArrayBuffer, DataView, Int8Array, Uint8Array, Uint8ClampedArray, Int16Array, Uint16Array, Int32Array, Uint32Array, Float32Array, Float64Array, BigInt64Array, BigUint64Array]'
+    + '.forEach((c) => { try { Object.freeze(c); } catch (e) {} });',
+  // Constaté dans le vrai moteur 2.6.3 (sonde 279808) : accesseur __proto__ absent.
+  'delete Object.prototype.__proto__;',
+].join('\n');
+
 const vm = require('vm');
 
 const json = (v) => JSON.parse(JSON.stringify(v));
@@ -87,7 +119,7 @@ async function executerGraphe(wf, { corps, entetes = {}, reponses = {}, executio
       else if (n.type === 'n8n-nodes-base.webhook') parSortie = [[{ json: { headers: entetes, params: {}, query: {}, body: corps } }]];
       else if (n.type === 'n8n-nodes-base.code') {
         const $input = { all: () => entree, first: () => entree[0] };
-        const fn = vm.runInNewContext(`(async function () {\n${n.parameters.jsCode}\n})`, { $input, $, $execution: { id: executionId }, ...contexteCode });
+        const fn = vm.runInNewContext(`${PREAMBULE_N8N}\n(async function () {\n${n.parameters.jsCode}\n})`, { $input, $, $execution: { id: executionId }, ...contexteCode });
         parSortie = [json(await fn())];
       } else if (n.type === 'n8n-nodes-base.if') {
         const ctx = { $, $json: entree[0].json };
@@ -139,4 +171,5 @@ async function executerGraphe(wf, { corps, entetes = {}, reponses = {}, executio
   return { status: 'success', runData, requetes, sorties, reponseWebhook };
 }
 
-module.exports = { executerGraphe, evaluer, pages };
+module.exports = {
+  PREAMBULE_N8N, executerGraphe, evaluer, pages };
