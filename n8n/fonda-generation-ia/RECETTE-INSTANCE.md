@@ -177,7 +177,7 @@ Vérifié par                        : (a) Éric (observation seule, rien modifi
   printenv APRÈS                        : false
   EXECUTIONS_DATA_MAX_AGE / PRUNE_MAX_COUNT : sans objet / sans objet (purge désactivée)
   Contrôles BOX : 9 actifs oui (Published / Active) ; pas d'erreur nouvelle oui (n8n OK, aucune exécution
-                  pendant l'opération ; workflows FONDA inactifs) ; catalogue répond : non relevé
+                  pendant l'opération ; workflows FONDA inactifs) ; catalogue répond : oui (site élève : toutes les fiches s'affichent, 2026-10-22)
   Retour arrière effectué ?             : non
 
 (b5) Capacité au moment de l'opération  : 12,8 % de 47 Go (purge désactivée pour TOUTE l'instance :
