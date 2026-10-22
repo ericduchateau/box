@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-10-21T16:33:29.226Z",
+  "updatedAt": "2026-10-22T14:28:49.450Z",
   "createdAt": "2026-10-20T06:17:10.843Z",
   "id": "vrqgtS5kQMvP9Ok5",
   "name": "BOX - FONDA Generation IA",
@@ -575,10 +575,10 @@
   "staticData": null,
   "meta": null,
   "pinData": {},
-  "versionId": "63848cda-e1ba-4ee8-82ee-11a3b1e17b76",
+  "versionId": "8b6df872-6699-424f-8484-91bb67d98c3c",
   "activeVersionId": null,
-  "versionCounter": 9,
-  "triggerCount": 0,
+  "versionCounter": 13,
+  "triggerCount": 1,
   "tags": [],
   "activeVersion": null
 }
