@@ -16,17 +16,34 @@
 'use strict';
 
 // PRÉAMBULE du moteur de code n8n (lot 8, exécution 279807), appliqué avant CHAQUE nœud
-// Code : copie de createVmExecutableCode() de @n8n/task-runner (protection anti-pollution)
-// et retrait de l'accesseur __proto__ constaté dans le vrai moteur (sonde 279808). Sans
-// lui, le harnais exécutait les nœuds dans un vm « normal » et a laissé passer deux
-// blocages (clone vide par defineProperty neutralisé ; canonique refusant tout objet).
+// Code. RECONSTITUTION (non verbatim) de createVmExecutableCode() de @n8n/task-runner,
+// branche MASTER (packages/@n8n/task-runner/src/js-task-runner/js-task-runner.ts) — PAS la
+// version 2.6.3 de l'instance, non récupérée. Les comportements critiques pour FONDA sont
+// confirmés EMPIRIQUEMENT dans le vrai moteur 2.6.3 (sondes 279808 et 279809) :
+// defineProperty/getPrototypeOf neutralisés, accesseur __proto__ ABSENT (retiré ici aussi),
+// structuredClone absent. Sans ce préambule, le harnais exécutait les nœuds dans un vm
+// « normal » et a laissé passer deux blocages (clone vide ; canonique refusant tout objet).
 const PREAMBULE_N8N = [
+  'globalThis.global = globalThis;',
+  // Lecture et modification de prototype neutralisées.
   'Object.getPrototypeOf = () => ({});',
   'Reflect.getPrototypeOf = () => ({});',
   'Object.setPrototypeOf = () => false;',
   'Reflect.setPrototypeOf = () => false;',
+  // Error verrouillé (contournement par prepareStackTrace), AVANT la neutralisation de defineProperty.
+  'delete Error.prepareStackTrace;',
+  'delete Error.captureStackTrace;',
+  'Object.defineProperty(Error, "prepareStackTrace", { configurable: false, writable: false, value: undefined });',
+  'Object.defineProperty(Error, "captureStackTrace", { configurable: false, writable: false, value: undefined });',
+  // Définition de propriétés neutralisée.
   'Object.defineProperty = () => ({});',
   'Object.defineProperties = () => ({});',
+  // Constructeurs natifs gelés (liste amont : Object, Function, Array, Promise, Map, Set, JSON,
+  // Math, Reflect, tableaux typés, etc.).
+  '[Object, Function, Array, String, Number, Boolean, RegExp, Error, TypeError, RangeError, SyntaxError, Date, Promise, Map, Set, WeakMap, WeakSet, Symbol, JSON, Math, Reflect,'
+    + ' ArrayBuffer, DataView, Int8Array, Uint8Array, Uint8ClampedArray, Int16Array, Uint16Array, Int32Array, Uint32Array, Float32Array, Float64Array, BigInt64Array, BigUint64Array]'
+    + '.forEach((c) => { try { Object.freeze(c); } catch (e) {} });',
+  // Constaté dans le vrai moteur 2.6.3 (sonde 279808) : accesseur __proto__ absent.
   'delete Object.prototype.__proto__;',
 ].join('\n');
 

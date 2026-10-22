@@ -285,6 +285,10 @@ var FondaCanonique = (function () {
   //     donnée acceptée est le MÊME dans les deux modes (lecture par descripteur, clés du
   //     contrat, accesseurs et champs inconnus refusés dans les deux), et le signataire,
   //     sous Node en mode strict, RECALCULE lui-même les empreintes depuis le fichier.
+  //     LIMITE CONNUE du repli (relecture Codex) : Object.prototype.toString lit
+  //     Symbol.toStringTag ; un accesseur sur cette clé (propre ou hérité) s'EXÉCUTE donc
+  //     une fois avant le refus de l'objet (jamais en mode strict). Sans conséquence pour le
+  //     nœud n8n, dont les entrées sont des données JSON ; le contrôle est gardé.
   var PROTOTYPE_LISIBLE = (function () {
     try {
       return Object.getPrototypeOf(Object.create(null)) === null

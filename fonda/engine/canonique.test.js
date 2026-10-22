@@ -326,4 +326,15 @@ describe('bi-mode : détection du moteur de code n8n (prototype neutralisé)', (
     assert.throws(() => R.hexContrat('moteur-fonda/v1', exotique), /objet de données attendu/);
     assert.throws(() => R.hexContrat('moteur-fonda/v1', vmB.runInNewContext('Object.assign(new Map(), { version: "v1", sha256: "a" })', {})), /objet de données attendu/);
   });
+  test('LIMITE DOCUMENTÉE du repli : un accesseur Symbol.toStringTag s\'exécute UNE fois puis l\'objet est refusé ; en strict, jamais exécuté', () => {
+    const R = charger(PREAMBULE);
+    const K = require('./canonique.js');
+    const fabriquer = () => { const etat = { lectures: 0 }; const o = { version: 'v1', sha256: 'a', get [Symbol.toStringTag]() { etat.lectures += 1; return 'Autre'; } }; return { o, etat }; };
+    const r = fabriquer();
+    assert.throws(() => R.hexContrat('moteur-fonda/v1', r.o), /canonique :/);
+    assert.equal(r.etat.lectures, 1, 'repli : exécuté une fois avant refus');
+    const k = fabriquer();
+    assert.throws(() => K.hexContrat('moteur-fonda/v1', k.o), /canonique :/);
+    assert.equal(k.etat.lectures, 0, 'strict : jamais exécuté');
+  });
 });
