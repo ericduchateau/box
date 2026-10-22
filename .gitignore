@@ -1,2 +1,6 @@
 notice-box.md
 .DS_Store
+
+# Secrets locaux : jamais dans ce dépôt PUBLIC (un « git add -A » ne doit pas pouvoir les exposer)
+n8n/secrets*
+*.priv.pem
