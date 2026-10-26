@@ -152,3 +152,26 @@ describe('aucun secret ni coordonnée dans les données FONDA du dépôt public'
     });
   }
 });
+
+// Plage _90–_99 RÉSERVÉE aux set_id FICTIFS des tests (lot 8 : la vraie réservation de
+// set_fonda_grandeurs-mesures_nI_02 heurtait des scénarios de test qui l'utilisaient comme
+// numéro fictif). Aucun set_id RÉEL ne doit jamais y entrer : la séquence réelle s'arrête
+// donc à _89 par (notion, palier) — élargir la plage des tests plutôt que d'y empiéter.
+describe('plage _90–_99 réservée aux set_id fictifs des tests', () => {
+  const PLAGE_TESTS = /_n[IF]_9\d$/;
+  const G = require('../scripts/generer-lot-fonda.js');
+  const J = require('../engine/journal-set-ids.js');
+  test('aucun set_id réel dans la plage réservée : journal RÉEL, catalogue RÉEL, fichiers de calibration et lots publiés', () => {
+    const journal = J.lireJournalTexte(fs.readFileSync(path.join(DATA, 'set_ids-journal.json'), 'utf8'));
+    const sources = {
+      journal: journal.lignes.map((l) => l.set_id),
+      catalogue: CATALOGUE.lots.map((e) => e.set_id),
+      'calibration + lots publiés (setIdsExistants)': G.setIdsExistants(null),
+    };
+    for (const [source, ids] of Object.entries(sources)) {
+      const fautifs = [...new Set(ids.filter((id) => PLAGE_TESTS.test(id)))];
+      assert.deepEqual(fautifs, [], `set_id réel dans la plage réservée aux tests (${source}) : ${fautifs.join(', ')}`);
+    }
+    assert.ok(sources.journal.length > 0 && sources.catalogue.length > 0, 'sources réelles non vides');
+  });
+});

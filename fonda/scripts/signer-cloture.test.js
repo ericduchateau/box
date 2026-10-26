@@ -53,7 +53,7 @@ function instancier(gabarit, valeurs) {
 async function scenario(x = {}) {
   const source = x.source || 'page_relecture';
   const maths = x.maths || source === 'saisie_locale';
-  const setId = maths ? 'set_fonda_grandeurs-mesures_nI_02' : 'set_fonda_comprendre-consigne_nI_02';
+  const setId = maths ? 'set_fonda_grandeurs-mesures_nI_92' : 'set_fonda_comprendre-consigne_nI_92';
   const lot = lotSource(maths ? 'set_fonda_grandeurs-mesures_nI_01' : 'set_fonda_comprendre-consigne_nI_01', setId);
   const ref = `test-2026-10-17:${setId}`;
   const ids = lot.cartes.map((c) => c.item_id);
@@ -81,7 +81,7 @@ async function scenario(x = {}) {
     ],
     wfClot: [{ id: 20, workflowId: 'wfClot', status: 'success', startedAt: '2026-10-20T07:58:00.000Z', stoppedAt: '2026-10-20T08:00:00.000Z' }],
   };
-  const rattachements = { 10: { set_id: setId, type: 'decision', nonce: 'n10' }, 2: { set_id: setId, type: 'decision', nonce: 'n2' }, 30: { set_id: 'set_fonda_lexique_nI_02', type: 'decision', nonce: 'nx' }, 20: { set_id: setId, type: 'cloture', nonce: null } };
+  const rattachements = { 10: { set_id: setId, type: 'decision', nonce: 'n10' }, 2: { set_id: setId, type: 'decision', nonce: 'n2' }, 30: { set_id: 'set_fonda_lexique_nI_92', type: 'decision', nonce: 'nx' }, 20: { set_id: setId, type: 'cloture', nonce: null } };
   const fichiers = [
     { nom: `${setId}-n10.json`, modifie_le: '2026-10-19T17:00:01.500Z', contenu: decision('n10') },
     { nom: `${setId}-n2.json`, modifie_le: '2026-10-19T17:00:02.500Z', contenu: decision('n2') },
@@ -174,10 +174,10 @@ describe('garde maîtresse (lot 7 : levée pour saisie_locale SEULE)', () => {
     assert.ok(err);
   });
   test('analyserArgumentsCloture : saisie_locale par défaut ; toute autre source, set_id invalide ou arguments en trop -> refus precondition', () => {
-    assert.deepEqual(analyserArgumentsCloture(['set_fonda_grandeurs-mesures_nI_02']), { setId: 'set_fonda_grandeurs-mesures_nI_02', source: 'saisie_locale' });
-    assert.deepEqual(analyserArgumentsCloture(['set_fonda_grandeurs-mesures_nI_02', '--source', 'saisie_locale']).source, 'saisie_locale');
-    for (const argv of [['set_fonda_grandeurs-mesures_nI_02', '--source', 'page_relecture'], ['set_fonda_grandeurs-mesures_nI_02', '--source'], ['set_fonda_grandeurs-mesures_nI_02', '--source', 'n8n'],
-      ['pas-un-set-id'], [], ['set_fonda_grandeurs-mesures_nI_02', 'en-trop']]) {
+    assert.deepEqual(analyserArgumentsCloture(['set_fonda_grandeurs-mesures_nI_92']), { setId: 'set_fonda_grandeurs-mesures_nI_92', source: 'saisie_locale' });
+    assert.deepEqual(analyserArgumentsCloture(['set_fonda_grandeurs-mesures_nI_92', '--source', 'saisie_locale']).source, 'saisie_locale');
+    for (const argv of [['set_fonda_grandeurs-mesures_nI_92', '--source', 'page_relecture'], ['set_fonda_grandeurs-mesures_nI_92', '--source'], ['set_fonda_grandeurs-mesures_nI_92', '--source', 'n8n'],
+      ['pas-un-set-id'], [], ['set_fonda_grandeurs-mesures_nI_92', 'en-trop']]) {
       assert.throws(() => analyserArgumentsCloture(argv), (e) => e.issue === 'precondition', JSON.stringify(argv));
     }
   });
@@ -187,13 +187,13 @@ describe('garde maîtresse (lot 7 : levée pour saisie_locale SEULE)', () => {
     const avant = process.exitCode; const err = console.error; const log = console.log; let sortie = '';
     console.error = (m) => { sortie += m; }; console.log = () => {};
     try {
-      await mainCloture(['set_fonda_grandeurs-mesures_nI_02', '--source', 'page_relecture'], production);
+      await mainCloture(['set_fonda_grandeurs-mesures_nI_92', '--source', 'page_relecture'], production);
       assert.equal(process.exitCode, 1);
       assert.deepEqual(appels, []);
       assert.match(sortie, /seule « saisie_locale » est levée/);
       process.exitCode = avant;
-      await mainCloture(['set_fonda_grandeurs-mesures_nI_02'], production);
-      assert.deepEqual(appels, ['set_fonda_grandeurs-mesures_nI_02']);
+      await mainCloture(['set_fonda_grandeurs-mesures_nI_92'], production);
+      assert.deepEqual(appels, ['set_fonda_grandeurs-mesures_nI_92']);
     } finally { console.error = err; console.log = log; process.exitCode = avant; }
   });
   test('cloturerSaisieLocale appelée DIRECTEMENT : set_id invalide, source ≠ saisie_locale, rattachement fourni -> refus precondition AVANT sources, secret, phrase et cloturer', async () => {
@@ -204,16 +204,16 @@ describe('garde maîtresse (lot 7 : levée pour saisie_locale SEULE)', () => {
       for (const [setId, sur, motif] of [
         ['pas-un-set-id', {}, /set_id invalide/],
         [undefined, {}, /set_id invalide/],
-        ['set_fonda_grandeurs-mesures_nI_02', { source: 'page_relecture' }, /source « page_relecture » refusée/],
-        ['set_fonda_grandeurs-mesures_nI_02', { config: { source: 'page_relecture' } }, /config\.source « page_relecture » refusée/],
-        ['set_fonda_grandeurs-mesures_nI_02', { source: 'saisie_locale', config: { source: 'n8n' } }, /config\.source « n8n » refusée/],
-        ['set_fonda_grandeurs-mesures_nI_02', { rattachement: () => null }, /rattachement fourni par l'appelant refusé/],
+        ['set_fonda_grandeurs-mesures_nI_92', { source: 'page_relecture' }, /source « page_relecture » refusée/],
+        ['set_fonda_grandeurs-mesures_nI_92', { config: { source: 'page_relecture' } }, /config\.source « page_relecture » refusée/],
+        ['set_fonda_grandeurs-mesures_nI_92', { source: 'saisie_locale', config: { source: 'n8n' } }, /config\.source « n8n » refusée/],
+        ['set_fonda_grandeurs-mesures_nI_92', { rattachement: () => null }, /rattachement fourni par l'appelant refusé/],
       ]) {
         await assert.rejects(cloturerSaisieLocale(setId, o(sur)), (e) => motif.test(e.message) && e.issue === 'precondition', JSON.stringify(sur));
       }
       assert.deepEqual(espions, [], 'ni phrase de passe ni cloturer');
       // Contrôle : sans refus, l'échec suivant est bien la lecture des SECRETS (sources), pas la clé.
-      await assert.rejects(cloturerSaisieLocale('set_fonda_grandeurs-mesures_nI_02', o({ source: 'saisie_locale' })), /secret n8n-signataire\.cle illisible/);
+      await assert.rejects(cloturerSaisieLocale('set_fonda_grandeurs-mesures_nI_92', o({ source: 'saisie_locale' })), /secret n8n-signataire\.cle illisible/);
       assert.deepEqual(espions, []);
     } finally { require('fs').rmSync(vide, { recursive: true, force: true }); }
   });
@@ -221,10 +221,10 @@ describe('garde maîtresse (lot 7 : levée pour saisie_locale SEULE)', () => {
     const vide = require('fs').mkdtempSync(path.join(require('os').tmpdir(), 'home-vide-'));
     try {
       const cli = (...a) => require('child_process').spawnSync(process.execPath, [path.join(__dirname, 'signer-cloture.js'), ...a], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: vide }, input: '', timeout: 30000 });
-      const page = cli('set_fonda_grandeurs-mesures_nI_02', '--source', 'page_relecture');
+      const page = cli('set_fonda_grandeurs-mesures_nI_92', '--source', 'page_relecture');
       assert.equal(page.status, 1, page.stderr);
       assert.match(page.stderr, /source « page_relecture » refusée/);
-      const locale = cli('set_fonda_grandeurs-mesures_nI_02');
+      const locale = cli('set_fonda_grandeurs-mesures_nI_92');
       assert.equal(locale.status, 1, locale.stderr);
       assert.match(locale.stderr, /secret n8n-signataire\.cle illisible/);
       assert.doesNotMatch(locale.stdout + locale.stderr, /Phrase de passe/);
@@ -421,7 +421,7 @@ describe('§20.2–20.3 liaison de génération : chaque violation -> refus clas
     ['fichier mal nommé portant ce set_id', ({ candidats, setIdCourant }) => { void setIdCourant; candidats[0].nom = 'mauvais-nom.lot.json'; }, /nom et fonda_set_id discordants/, 'abandon'],
     ['fichier rattaché à une autre exécution', ({ candidats }) => { candidats[0].properties.fonda_execution_id = '777'; }, /≠ exécution retenue/, 'abandon'],
     ['aucun fichier candidat', ({ candidats }) => { candidats.length = 0; }, /0 fichier\(s\) candidat/, 'abandon'],
-    ['set_id de la sortie ≠ demandé', sortie((s) => { s.set_id = 'set_fonda_lexique_nI_02'; }), /set_id/, 'abandon'],
+    ['set_id de la sortie ≠ demandé', sortie((s) => { s.set_id = 'set_fonda_lexique_nI_92'; }), /set_id/, 'abandon'],
     ['ref de la sortie ≠ déclencheur', sortie((s) => { s.ref = 'autre-ref-1234'; }), /ref/, 'abandon'],
     ['journal_commit hors premier parent de design', sortie((s) => { s.journal_commit = 'f'.repeat(40); }), /hors de la chaîne du premier parent/, 'abandon'],
     ['réservation absente du journal au commit', ({ journal }) => { journal.lignes[0].ref = 'autre-ref-1234'; }, /réservation de ce set_id avec cette ref/, 'abandon'],
@@ -443,9 +443,9 @@ describe('§20.2–20.3 liaison de génération : chaque violation -> refus clas
     ['détail n8n : statut terminal ≠ listing', ({ gen }) => { gen[501].status = 'error'; }, /observations contradictoires.*statuts terminaux différents/, 'incident'],
     ['détail n8n : autre identifiant', ({ gen }) => { gen[501].id = 777; }, /observations contradictoires.*identifiant du détail/, 'incident'],
     ['détail n8n : startedAt contradictoire', ({ gen }) => { gen[501].startedAt = '2026-10-18T06:59:00.000Z'; }, /startedAt contradictoire/, 'incident'],
-    ['génération en cours d\'un AUTRE lot (incident global)', ({ execs, gen, fx }) => { execs.wfGen.push({ id: 506, workflowId: 'wfGen', status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null }); gen[506] = copie({ ...fx.doublon, id: 506, status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null }); gen[506].data.resultData.runData['FONDA Entree generation'][0].data.main[0][0].json.set_id = 'set_fonda_lexique_nI_02'; }, /non terminée ou de statut inconnu/, 'incident'],
+    ['génération en cours d\'un AUTRE lot (incident global)', ({ execs, gen, fx }) => { execs.wfGen.push({ id: 506, workflowId: 'wfGen', status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null }); gen[506] = copie({ ...fx.doublon, id: 506, status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null }); gen[506].data.resultData.runData['FONDA Entree generation'][0].data.main[0][0].json.set_id = 'set_fonda_lexique_nI_92'; }, /non terminée ou de statut inconnu/, 'incident'],
     ['déclencheur au set_id vide (non attribuable)', ({ execs, gen, fx }) => { execs.wfGen.push({ id: 507, workflowId: 'wfGen', status: 'error', startedAt: fx.erreur_sans_depot.startedAt, stoppedAt: fx.erreur_sans_depot.stoppedAt }); gen[507] = copie({ ...fx.erreur_sans_depot, id: 507 }); gen[507].data.resultData.runData['FONDA Entree generation'][0].data.main[0][0].json.set_id = ''; }, /non attribuable/, 'incident'],
-    ['second fichier rattaché à l\'exécution retenue (autre nom, autre set_id)', ({ candidats }) => { candidats.push({ id: 'drv-autre', nom: 'set_fonda_lexique_nI_02.lot.json', modifie_le: '2026-10-18T07:00:40.000Z', properties: { fonda_set_id: 'set_fonda_lexique_nI_02', fonda_execution_id: '501' }, proprietesLisibles: true }); }, /exécution retenue 501 : 2 fichier/, 'abandon'],
+    ['second fichier rattaché à l\'exécution retenue (autre nom, autre set_id)', ({ candidats }) => { candidats.push({ id: 'drv-autre', nom: 'set_fonda_lexique_nI_92.lot.json', modifie_le: '2026-10-18T07:00:40.000Z', properties: { fonda_set_id: 'set_fonda_lexique_nI_92', fonda_execution_id: '501' }, proprietesLisibles: true }); }, /exécution retenue 501 : 2 fichier/, 'abandon'],
     ['workflowData tableau', ({ gen }) => { gen[501].workflowData = []; }, /workflowData absent/, 'refus'],
     ['date du listing postérieure à la génération (lectures stables)', ({ candidats }) => { candidats[0].modifie_le = '2026-10-18T07:05:00.000Z'; }, /modifié APRÈS/, 'abandon'],
     ['accès API insuffisant (403)', ({ deps }) => { deps.api.lireExecution = async () => { const e = new Error('Forbidden'); e.statut = 403; throw e; }; }, /accès insuffisant \(403\)/, 'incident'],
@@ -479,7 +479,7 @@ describe('§20.5 réconciliation de lot_relu et unicité : chaque violation -> a
   const surLocale = (f) => ({ locales, decisionLocale }) => { const d = copie(decisionLocale); f(d); locales[0].octets = Buffer.from(JSON.stringify(d)); };
   const cas = [
     ['lot_relu.empreinte_complete ≠ lot source', surLocale((d) => { d.lot_relu.empreinte_complete = `sha256:${'0'.repeat(64)}`; }), /lot_relu.empreinte_complete/],
-    ['lot_relu.set_id ≠ set_id', surLocale((d) => { d.lot_relu.set_id = 'set_fonda_lexique_nI_02'; }), /lot_relu.set_id/],
+    ['lot_relu.set_id ≠ set_id', surLocale((d) => { d.lot_relu.set_id = 'set_fonda_lexique_nI_92'; }), /lot_relu.set_id/],
     ['carte manquante dans lot_relu', surLocale((d) => { d.lot_relu.cartes.pop(); }), /item_id ≠ ceux du lot source/],
     ['ordre des cartes ≠ lot source', surLocale((d) => { d.lot_relu.cartes.reverse(); }), /item_id ≠ ceux du lot source/],
     ['carte en double', surLocale((d) => { d.lot_relu.cartes[1] = { ...d.lot_relu.cartes[0] }; }), /item_id ≠ ceux du lot source/],
@@ -782,7 +782,7 @@ describe('critique Codex r3 : double attestation, fusion, observations partielle
       const sc = await scenario({ source: 'saisie_locale', modifier: ({ execs, gen, fx }) => {
         execs.wfGen.push({ id: 508, workflowId: 'wfGen', ...listing });
         gen[508] = copie({ ...fx.erreur_sans_depot, id: 508, ...detail });
-        gen[508].data.resultData.runData['FONDA Entree generation'][0].data.main[0][0].json.set_id = 'set_fonda_lexique_nI_02';
+        gen[508].data.resultData.runData['FONDA Entree generation'][0].data.main[0][0].json.set_id = 'set_fonda_lexique_nI_92';
       } });
       // La requête status=running ne renvoie que les « running » ; « mystere » n'apparaît qu'à la liste complète.
       await sansSignature(sc, /statut inconnu|non terminée|avant d'avoir démarré/, 'incident');
@@ -971,7 +971,7 @@ describe('§20.13 amendement r6 : règle d\'observation incomplète', () => {
 describe('critique Codex r9 : garde-fou 1 — contrôles intrinsèques des décisions sans référence', () => {
   const pannes = (deps) => { deps.drive.lireLotGenere = async () => { throw new Error('Drive 503'); }; deps.api.lireExecution = async () => { throw new Error('503'); }; };
   for (const [libelle, f, motif] of [
-    ['lot_relu.set_id ≠ set_id', (d) => { d.lot_relu.set_id = 'set_fonda_lexique_nI_02'; }, /lot_relu.set_id/],
+    ['lot_relu.set_id ≠ set_id', (d) => { d.lot_relu.set_id = 'set_fonda_lexique_nI_92'; }, /lot_relu.set_id/],
     ['choix interdit', (d) => { d.lot_relu.cartes[0].choix = 'peut-etre'; }, /choix ∉/],
     ['selection incohérente avec les « garder »', (d) => { d.coeur.selection = d.coeur.selection.slice(1); }, /coeur.selection ≠ cartes « garder »/],
   ]) {
@@ -1001,7 +1001,7 @@ describe('garde-fou 1 (§20.13 r6) : contrôles déterminables malgré une lectu
     await sansSignature(sc, /son référentiel archivé/, 'abandon');
   });
   test('deux clôtures antérieures aux codes distincts -> abandon', async () => {
-    const sc = await scenario({ source: 'saisie_locale', modifier: ({ deps }) => { pannes(deps); deps.fs.lister = () => [`set_fonda_grandeurs-mesures_nI_02-${'a'.repeat(16)}`, `set_fonda_grandeurs-mesures_nI_02-${'b'.repeat(16)}`]; } });
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ deps }) => { pannes(deps); deps.fs.lister = () => [`set_fonda_grandeurs-mesures_nI_92-${'a'.repeat(16)}`, `set_fonda_grandeurs-mesures_nI_92-${'b'.repeat(16)}`]; } });
     await sansSignature(sc, /2 clôtures antérieures/, 'abandon');
   });
   test('incident contenant fin_saisie_le (génération illisible) -> abandon', async () => {
@@ -1019,7 +1019,7 @@ describe('garde-fou 1 (§20.13 r6) : contrôles déterminables malgré une lectu
 describe('critique Codex r10 : observations partielles exploitées, moteur du candidat', () => {
   const pannePartielle = (sc, wf, renvoi) => { const base = sc.deps.api.listerExecutions; sc.deps.api.listerExecutions = async (q) => { if (q.workflowId === wf && q.status === 'waiting') return renvoi; if (q.workflowId === wf && !q.status) throw new Error('timeout'); return base(q); }; };
   test('confirmation « conflit » reçue avant une panne du listing -> abandon (pas temporaire)', async () => {
-    const sc = await scenario({ modifier: ({ rattachements }) => { rattachements[99] = { set_id: 'set_fonda_comprendre-consigne_nI_02', type: 'conflit', nonce: 'n99' }; } });
+    const sc = await scenario({ modifier: ({ rattachements }) => { rattachements[99] = { set_id: 'set_fonda_comprendre-consigne_nI_92', type: 'conflit', nonce: 'n99' }; } });
     pannePartielle(sc, 'wfConf', [{ id: 99, workflowId: 'wfConf', status: 'success', startedAt: '2026-10-19T17:10:00.000Z', stoppedAt: '2026-10-19T17:10:01.000Z' }]);
     await sansSignature(sc, /conflit/, 'abandon');
   });

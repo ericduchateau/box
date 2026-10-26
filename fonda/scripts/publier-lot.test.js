@@ -67,13 +67,13 @@ async function chargePour(lot, mode) {
 const enveloppe = (charge, signature = signer(charge)) => ({ type: 'cloture-signee', charge, signature });
 // Journal de HEAD + réservations des set_id de test (§20.11 : seul « reserve » est publiable).
 const JOURNAL = require('../data/set_ids-journal.json');
-const RESERVES = ['set_fonda_comprendre-consigne_nI_02', 'set_fonda_grandeurs-mesures_nI_02'];
+const RESERVES = ['set_fonda_comprendre-consigne_nI_92', 'set_fonda_grandeurs-mesures_nI_92'];
 const journalTest = (ids = RESERVES) => ({ schema: JOURNAL.schema, lignes: [...copie(JOURNAL.lignes), ...ids.map((id) => ({ set_id: id, transition: 'reserve', le: '2026-10-17', ref: `test-2026-10-17:${id}` }))] });
 // Référentiel ARCHIVÉ (§20.12) : par défaut, la version de la charge résout le référentiel du dépôt.
 const archive = (ref = REFERENTIEL) => async () => ({ ok: true, referentiel: ref });
 const base = (x) => ({ catalogue: copie(CATALOGUE), referentiel: REFERENTIEL, referentielArchive: archive(), journal: journalTest(), le: '2026-10-21T09:00:00.000Z', sha256Hex, cles: CLES, ...x });
-const LOT_FR = () => lotDerive('set_fonda_comprendre-consigne_nI_01', 'set_fonda_comprendre-consigne_nI_02');
-const LOT_MATHS = () => lotDerive('set_fonda_grandeurs-mesures_nI_01', 'set_fonda_grandeurs-mesures_nI_02');
+const LOT_FR = () => lotDerive('set_fonda_comprendre-consigne_nI_01', 'set_fonda_comprendre-consigne_nI_92');
+const LOT_MATHS = () => lotDerive('set_fonda_grandeurs-mesures_nI_01', 'set_fonda_grandeurs-mesures_nI_92');
 
 describe('publier-lot — Type 2 accepté et vérifié (aller-retour signé)', () => {
   test('charge nominale (relectrice tierce, réponse au message) signée -> publiée ; catalogue valide', async () => {
@@ -220,7 +220,7 @@ describe('invariants de dépôt — charge correctement signée', () => {
     ['coeur.moteur ≠ moteur', (c) => { c.coeur.moteur = { version: 'v2', sha256: MOTEUR.sha256 }; }, /coeur.moteur/],
     ['selection ≠ item_ids du fichier', (c) => { c.coeur.selection = [...c.coeur.selection].reverse(); }, /selection/],
     ['empreinte publiée ≠ fichier', (c) => { c.coeur.empreinte_publiee = 'sha256:' + '0'.repeat(64); }, /empreinte_publiee/],
-    ['set_id ≠ lot', (c) => { c.set_id = 'set_fonda_comprendre-consigne_nI_09'; }, /set_id/],
+    ['set_id ≠ lot', (c) => { c.set_id = 'set_fonda_comprendre-consigne_nI_99'; }, /set_id/],
     ['relecteur attribué ≠ référentiel', (c) => { c.relecteur_attribue = 'autre'; c.confirmation.par = 'autre'; c.badge.id = 'autre'; }, /référentiel/],
   ];
   for (const [libelle, alterer, motif] of cas) {
