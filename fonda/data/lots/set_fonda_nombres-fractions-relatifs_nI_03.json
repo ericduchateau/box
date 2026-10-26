@@ -1,0 +1,107 @@
+{
+  "schema": "lot-fonda/v1",
+  "set_id": "set_fonda_nombres-fractions-relatifs_nI_03",
+  "notion_id": "maths.nombres-fractions-relatifs",
+  "palier": "nI",
+  "matiere": "Mathématiques",
+  "notion": "Maîtriser nombres, fractions et relatifs",
+  "niveau": "Fondamentaux — Initial (accessible)",
+  "revue_carte_par_carte": true,
+  "nb_cartes": 6,
+  "date_creation": "2026-10-22",
+  "cartes": [
+    {
+      "item_id": "it01",
+      "numero": 1,
+      "question": "Une recette demande 0,4 L de lait. Quelle fraction est égale à 0,4 ?\nA) 1/4\nB) 2/5\nC) 4/5\nRéponds par la lettre.",
+      "reponse": "B",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "B"
+      ],
+      "contexte": "recette-lait-fraction-decimal",
+      "set_id": "set_fonda_nombres-fractions-relatifs_nI_03",
+      "notion_id": "maths.nombres-fractions-relatifs"
+    },
+    {
+      "item_id": "it02",
+      "numero": 2,
+      "question": "Un ruban mesure 31/5 de mètre. Entre quels deux entiers consécutifs se trouve le nombre 31/5 ?\nA) 4 et 5\nB) 5 et 6\nC) 6 et 7\nRéponds par la lettre.",
+      "reponse": "C",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "C"
+      ],
+      "contexte": "ruban-encadrement-fraction",
+      "set_id": "set_fonda_nombres-fractions-relatifs_nI_03",
+      "notion_id": "maths.nombres-fractions-relatifs"
+    },
+    {
+      "item_id": "it03",
+      "numero": 3,
+      "question": "Trois stations de ski relèvent ces températures : A) −7 °C ; B) −0,7 °C ; C) −1,7 °C. Quelle station a relevé la température la plus basse ? Réponds par la lettre.",
+      "reponse": "A",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "A"
+      ],
+      "contexte": "stations-ski-temperatures-negatives",
+      "set_id": "set_fonda_nombres-fractions-relatifs_nI_03",
+      "notion_id": "maths.nombres-fractions-relatifs"
+    },
+    {
+      "item_id": "it04",
+      "numero": 4,
+      "question": "Le solde d'un compte est de −8 €. On y dépose 12 €. Quel est le nouveau solde ?",
+      "reponse": "4 €",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "4 €",
+        "4"
+      ],
+      "contexte": "compte-bancaire-solde-negatif",
+      "set_id": "set_fonda_nombres-fractions-relatifs_nI_03",
+      "notion_id": "maths.nombres-fractions-relatifs",
+      "unite": "€"
+    },
+    {
+      "item_id": "it05",
+      "numero": 5,
+      "question": "Dans une classe de 20 élèves, 7 sont demi-pensionnaires. Écris la fraction 7/20 sous forme décimale.",
+      "reponse": "0,35",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "0,35",
+        "0.35"
+      ],
+      "contexte": "classe-demi-pensionnaires-proportion",
+      "set_id": "set_fonda_nombres-fractions-relatifs_nI_03",
+      "notion_id": "maths.nombres-fractions-relatifs"
+    },
+    {
+      "item_id": "it06",
+      "numero": 6,
+      "question": "Un chronomètre affiche 4,507 secondes. Quel est le chiffre des centièmes dans ce nombre ?",
+      "reponse": "0",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "0"
+      ],
+      "contexte": "chronometre-chiffre-centiemes",
+      "set_id": "set_fonda_nombres-fractions-relatifs_nI_03",
+      "notion_id": "maths.nombres-fractions-relatifs"
+    }
+  ]
+}

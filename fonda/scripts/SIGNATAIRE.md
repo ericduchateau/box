@@ -1,6 +1,12 @@
 # Signataire FONDA : commandes et secrets (plan étape 5, lot 5)
 
-Tout se passe sur le Mac d'Éric. **La garde maîtresse est en place** : `node fonda/scripts/signer-cloture.js <set_id>` refuse toujours de signer, faute de `rattachement`. Elle sera levée au lot 7, pour la seule `saisie_locale`.
+Tout se passe sur le Mac d'Éric. **La garde maîtresse est levée au lot 7, pour la seule `saisie_locale`** :
+- `node fonda/scripts/signer-cloture.js <set_id>` clôture en saisie locale. La clé est préparée **avant** la clôture : phrase de passe saisie au terminal.
+- Toute autre source (`--source page_relecture`, etc.) est refusée **avant** tout appel réseau et toute lecture de secret ou de clé.
+- La garde de `cloturer` est **inchangée** : sans fonction `rattachement`, elle refuse.
+  - En production, `main()` fournit `RATTACHEMENT_SAISIE_LOCALE`.
+  - Cette fonction n'est jamais consommée en saisie locale ; si elle l'était (parcours page), elle refuserait (`precondition`).
+  - Le contrat de rattachement du parcours page n'est toujours pas défini.
 
 ## Secrets (`~/.fonda-cles/`, jamais dans le dépôt ni dans Dropbox)
 
@@ -21,7 +27,7 @@ Dossier de clôture : `~/FONDA-clotures/` (hors dépôt, hors Dropbox).
 | `signer-cloture.js --initialiser` | crée le registre `incidents.json` (`[]`) et la sentinelle `.initialise`. **Jamais de remise à zéro** ; refus en cas de traces d'usage |
 | `signer-cloture.js --diagnostic [<set_id>]` | lecture seule **hermétique**, sans clé de signature ; état typé (tableau ci-dessous) |
 | `signer-cloture.js --saisir <set_id>` | décision locale figée (`saisirDecisionLocale`) |
-| `signer-cloture.js <set_id>` | clôture : **refusée** jusqu'au lot 7 (garde) |
+| `signer-cloture.js <set_id>` | clôture en **saisie locale** (lot 7) : clé préparée avant, puis `cloturer` ; `--source page_relecture` refusée avant réseau et clé |
 | `signer-cloture.js --extraire-publication <set_id>` | vérifie **toutes** les pièces signées, puis écrit `lot-relu.json`. La commande est relançable : si le fichier existe avec les mêmes octets, elle réussit sans écrire ; s'il diffère, elle refuse |
 | `declencher-generation.js <set_id> <ref>` (et `--etat`, `--liberer`, `--reparer`) | appelant unique de la génération (lot 4) |
 

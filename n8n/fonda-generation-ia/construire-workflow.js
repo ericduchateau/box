@@ -38,8 +38,8 @@ const CONFIG = Object.freeze({
   branche: 'design',
   // Drive « FONDA-Lots/candidats » (compte de l'établissement BOX).
   dossierCandidats: '1Ir-iJGZoSk5_FmJ9dnf_PM-NEBZWyn8d',
-  // G5 : Sonnet épinglé, AUCUN repli. Snapshot daté À CONFIRMER à la recette §20.8.
-  modele: 'claude-sonnet-5-5-20261001',
+  // G5 : Sonnet épinglé, AUCUN repli (recette §20.8 faite — modèle choisi à la ligne suivante).
+  modele: 'claude-sonnet-5-5', // épinglé (snapshot sans date ≥ 4.6) — sonde §20.8, exécution n8n 279792 (2026-10-21)
   maxTokens: 8192,
   nCartes: 6,
   credentialAnthropic: { id: 'YnhTnSOc1u7S99Q7', name: 'Anthropic FONDA' },

@@ -819,7 +819,12 @@ describe('construireEntreesIndex — dérivé du catalogue publié, libellés du
     const { construireEntreesIndex } = obtenirExportsBootstrap();
     const entrees = construireEntreesIndex(CATALOGUE, REFERENTIEL);
     assert.deepEqual(entrees.map((e) => e.notionId),
-      ['fr.comprendre-consigne', 'maths.grandeurs-mesures', 'maths.resolution-problemes', 'fr.inference-implicite']);
+      ['fr.comprendre-consigne', 'maths.grandeurs-mesures', 'maths.resolution-problemes', 'fr.inference-implicite', 'maths.nombres-fractions-relatifs']);
+    // Première fiche signée (lot 8) : notion de maths, ordre 8 du référentiel, palier nI seulement.
+    const nfr = entrees.find((e) => e.notionId === 'maths.nombres-fractions-relatifs');
+    assert.equal(nfr.libelle, REFERENTIEL.notions.find((n) => n.id === 'maths.nombres-fractions-relatifs').libelle);
+    assert.equal(nfr.matiere, 'maths');
+    assert.deepEqual(nfr.paliers, [{ palier: 'nI', setId: 'set_fonda_nombres-fractions-relatifs_nI_03', libelle: 'Initial' }]);
     const consigne = entrees[0];
     assert.equal(consigne.libelle, REFERENTIEL.notions.find((n) => n.id === 'fr.comprendre-consigne').libelle);
     assert.equal(consigne.matiere, 'français');
@@ -845,14 +850,14 @@ describe('construireEntreesIndex — dérivé du catalogue publié, libellés du
     const { construireEntreesIndex } = obtenirExportsBootstrap();
     for (const ref of [null, {}, { notions: 'x' }, { notions: [null] }]) {
       const entrees = construireEntreesIndex(CATALOGUE, ref);
-      assert.equal(entrees.length, 4);
+      assert.equal(entrees.length, new Set(CATALOGUE.lots.map((e) => e.notion_id)).size); // notions distinctes du catalogue (5 après _nI_03)
       entrees.forEach((e) => assert.equal(e.libelle, e.notionId));
     }
   });
 });
 
 describe('?page=entrainement — index des lots publiés', () => {
-  test('un lien ?set=<set_id> par lot du catalogue (8)', async () => {
+  test('un lien ?set=<set_id> par lot du catalogue', async () => {
     const root = await demarrerBootstrap({ search: '?fonda=1&page=entrainement' });
     const liens = liensIndex(root);
     const obtenus = liens.map((a) => {
@@ -862,7 +867,7 @@ describe('?page=entrainement — index des lots publiés', () => {
       return q.get('set');
     }).sort();
     assert.deepEqual(obtenus, CATALOGUE.lots.map((e) => e.set_id).sort());
-    assert.equal(obtenus.length, 8);
+    assert.equal(obtenus.length, CATALOGUE.lots.length); // 9 après _nI_03
     assert.match(texteDe(root), /S'entraîner sur les fondamentaux/);
     assert.match(texteDe(root), /Comprendre une consigne et sélectionner l'information utile/);
     assert.match(texteDe(root), /Français/);
@@ -880,7 +885,7 @@ describe('?page=entrainement — index des lots publiés', () => {
     global.__referentielEnPanne = true;
     const root = await demarrerBootstrap({ search: '?fonda=1&page=entrainement' });
     delete global.__referentielEnPanne;
-    assert.equal(liensIndex(root).length, 8);
+    assert.equal(liensIndex(root).length, CATALOGUE.lots.length);
     assert.match(texteDe(root), /fr\.comprendre-consigne/);
   });
 

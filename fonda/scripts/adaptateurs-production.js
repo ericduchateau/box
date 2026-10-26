@@ -479,7 +479,8 @@ async function dependancesSaisie(setId, o = {}) {
 }
 
 // cloturer (signer-cloture.js:346) en saisie locale. `signer` vient de preparerSignataire, appelé
-// AVANT. `rattachement` : fourni par l'appelant (ABSENT en production jusqu'au lot 7 -> garde).
+// AVANT. `rattachement` : fourni par l'appelant ; en production, RATTACHEMENT_SAISIE_LOCALE
+// (signer-cloture.js, lot 7 : jamais consommé en saisie locale, refus s'il l'était).
 function dependancesCloture(o = {}) {
   const s = o.sources || sourcesLecture(o);
   return {

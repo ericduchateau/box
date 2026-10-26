@@ -246,7 +246,9 @@ describe('déplacement des règles pédagogiques vers le moteur : admissibilité
   const { chargerMoteurNode } = require('../scripts/moteurs.js');
 
   test('les 8 lots historiques et leurs variantes : même verdict avant/après', { skip: !ancien && 'historique git indisponible' }, () => {
-    const lots = CATALOGUE.lots.map((e) => require(`../data/${e.fichier}`));
+    // Les 8 lots HISTORIQUES (figés), seuls concernés par la comparaison avec l'ancien catalogue.js
+    // (a418881) : les lots publiés ensuite par clôture signée ne l'ont jamais connu.
+    const lots = CATALOGUE.lots.filter((e) => e.attestation.type === 'manuelle-historique').map((e) => require(`../data/${e.fichier}`));
     assert.equal(lots.length, 8);
     const variantes = [
       (c) => c,

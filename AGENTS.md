@@ -36,6 +36,13 @@ Contexte : dépôt à l'AAP **CARDIE-SEPIA 2026-2027** (échéance **21/10/2026*
 
 ---
 
+## Modèle de branches (décision du 2026-10-21, après l'incident #28)
+
+- **`design`** = branche d'intégration et **branche par défaut** du dépôt. **Toutes** les PR de travail la ciblent. Elle contient toujours tout le code (référence de confiance du signataire : chaîne du **premier parent** de `origin/design`).
+- **`main`** = production (GitHub Pages). Mise à jour **uniquement** par une PR de mise en production `design → main`, en **merge commit**, sur go explicite d'Éric. La CI refuse toute PR vers `main` dont la source n'est pas la branche `design` de ce dépôt (fork exclu).
+- Ramener `main` dans `design` (si jamais nécessaire) : PR `main → design` en **merge commit**, jamais fast-forward, squash ni rebase (ici, `main` n'a pas `design` sur sa chaîne de premier parent : un fast-forward de `design` y mettrait l'historique de `main` et ferait échouer le contrôle d'immuabilité).
+- Liens de PR : toujours `https://github.com/ericduchateau/box/compare/design...<branche>` (cible explicite), jamais `pull/new/<branche>` (cible la branche par défaut).
+
 ## Garde-fous NON négociables (G1–G7)
 
 - **G1 — Autonomie vs IA-zimut.** Aucune dépendance aux photos ou au pipeline d'IA-zimut. Les indicateurs ne viennent que des événements d'usage de BOX.

@@ -26,7 +26,7 @@ const G = require('../../fonda/scripts/generer-lot-fonda.js');
 const Gen = require('../../fonda/engine/generation.js');
 const V = require('../../fonda/engine/canonique-vecteurs.json');
 const FIXTURE = require('../../fonda/scripts/fixtures/execution-generation.json');
-const { pages } = require('./simulateur.js');
+const { pages, PREAMBULE_N8N } = require('./simulateur.js');
 
 const FX = FIXTURE.workflow_ia;
 const N = B.NOEUDS;
@@ -60,7 +60,9 @@ function evaluer(valeur, ctx) {
 const json = (v) => JSON.parse(JSON.stringify(v));
 
 // reponses : { [nom de nœud HTTP]: (requête évaluée) -> json de réponse }.
-async function executer(wf, { corps, reponses, executionId = FX.execution_id, contexteCode = {} }) {
+// Chaque nœud Code s'exécute SOUS LE PRÉAMBULE du moteur de code n8n (lot 8, 279807), sauf
+// preambule: false (preuve que c'est lui qui attrape les blocages de l'ancien code).
+async function executer(wf, { corps, reponses, executionId = FX.execution_id, contexteCode = {}, preambule = true }) {
   const sorties = {};
   const runData = {};
   const requetes = {};
@@ -76,7 +78,7 @@ async function executer(wf, { corps, reponses, executionId = FX.execution_id, co
       if (courant.type === 'n8n-nodes-base.webhook') items = [{ json: { headers: {}, params: {}, query: {}, body: corps } }];
       else if (courant.type === 'n8n-nodes-base.code') {
         const $input = { all: () => entree, first: () => entree[0] };
-        const fn = vm.runInNewContext(`(async function () {\n${courant.parameters.jsCode}\n})`, { $input, $, $execution: { id: executionId }, ...contexteCode });
+        const fn = vm.runInNewContext(`${preambule ? PREAMBULE_N8N : ''}\n(async function () {\n${courant.parameters.jsCode}\n})`, { $input, $, $execution: { id: executionId }, ...contexteCode });
         items = json(await fn());
       } else if (courant.type === 'n8n-nodes-base.httpRequest') {
         const requete = evaluer(courant.parameters, { $, $json: entree[0].json });
@@ -281,12 +283,60 @@ describe('code embarqué : identique au dépôt', () => {
   test('copie embarquée de canonique.js : banc partagé complet rejoué dans le nœud (contexte nu)', () => {
     const m = /(const M_canonique = [\s\S]*?\/\/ <<< MODULE fonda\/engine\/canonique\.js)/.exec(code(N.construire));
     const K = vm.runInNewContext(`function requis(n) { throw new Error(n); }\n${m[1]}\n;M_canonique.exports`, {});
+    assert.equal(K._mode, 'strict');
     const entreeDe = (x) => (x.entree_json !== undefined ? JSON.parse(x.entree_json) : x.entree);
     for (const x of V.vecteurs) {
       const calc = () => (x.contrat ? K.hexContrat(x.contrat, entreeDe(x)) : K.hex(entreeDe(x), x.schema));
       if (x.refus) assert.throws(calc, /canonique :/, x.id);
       else assert.equal(calc(), x.hex, x.id);
     }
+  });
+  test('copie embarquée de canonique.js SOUS LE PRÉAMBULE n8n (mode repli) : banc complet, MÊMES octets que Node pour chaque vecteur', () => {
+    const m = /(const M_canonique = [\s\S]*?\/\/ <<< MODULE fonda\/engine\/canonique\.js)/.exec(code(N.construire));
+    const K = vm.runInNewContext(`${PREAMBULE_N8N}\nfunction requis(n) { throw new Error(n); }\n${m[1]}\n;M_canonique.exports`, {});
+    assert.equal(K._mode, 'repli', 'prototype neutralisé détecté');
+    const entreeDe = (x) => (x.entree_json !== undefined ? JSON.parse(x.entree_json) : x.entree);
+    let compares = 0;
+    for (const x of V.vecteurs) {
+      const calc = () => (x.contrat ? K.hexContrat(x.contrat, entreeDe(x)) : K.hex(entreeDe(x), x.schema));
+      if (x.refus) assert.throws(calc, /canonique :/, x.id);
+      else { assert.equal(calc(), x.hex, x.id); compares += 1; }
+    }
+    assert.equal(compares, V.vecteurs.filter((x) => !x.refus).length, 'tous les vecteurs acceptés comparés octet pour octet');
+    assert.ok(V.vecteurs.some((x) => x.refus), 'et les vecteurs de refus rejoués');
+    // Le repli refuse toujours accesseurs, champs inconnus, Map/Set/Date, tableaux à la place d'objets.
+    const enRepli = (v) => () => K.hexContrat('moteur-fonda/v1', v);
+    for (const mauvais of [new (vm.runInNewContext('Map'))(), vm.runInNewContext('new Date(0)'), [], { version: 'v1', sha256: 'a', autre: 1 },
+      Object.defineProperty({ sha256: 'a' }, 'version', { get: () => 'v1', enumerable: true })]) assert.throws(enRepli(mauvais), /canonique :/);
+  });
+});
+
+// --- 2 bis. Le préambule n8n attrape les DEUX blocages de l'ANCIEN code (exécution 279807) ---------
+describe('préambule n8n : les deux blocages de l\'ancien code (exécution réelle 279807) sont attrapés', async () => {
+  const ANCIEN = '82d3505b4f3a886071e8cd0e87d6257c26749733'; // design avant le correctif runtime
+  const ancien = JSON.parse(require('child_process').execFileSync('git', ['show', `${ANCIEN}:n8n/fonda-generation-ia/box-fonda-generation-ia.json`], { cwd: path.join(__dirname, '..', '..'), maxBuffer: 64 * 1024 * 1024 }).toString('utf8'));
+  const ancienGen = require('child_process').execFileSync('git', ['show', `${ANCIEN}:fonda/engine/generation.js`], { cwd: path.join(__dirname, '..', '..') }).toString('utf8');
+  const extraire = (src) => src.slice(src.indexOf('function clonerProfond(valeur) {'), src.indexOf('\n}\n', src.indexOf('function clonerProfond(valeur) {')) + 2);
+  const avecClonageCorrige = JSON.parse(JSON.stringify(ancien));
+  const nc = avecClonageCorrige.nodes.find((n) => n.name === N.construire);
+  nc.parameters.jsCode = nc.parameters.jsCode.replace(extraire(ancienGen), extraire(fs.readFileSync(path.join(__dirname, '../../fonda/engine/generation.js'), 'utf8')));
+  test('blocage 1 : clone VIDE (defineProperty neutralisé) -> « Construire lot » en échec, comme 279807', async () => {
+    const r = await executer(ancien, { corps: CORPS, reponses: reponsesNominales() });
+    assert.equal(r.status, 'error');
+    assert.equal(r.noeudErreur, N.construire);
+    assert.match(r.erreur, /item_id invalide/);
+    assert.match(r.erreur, /question vide/);
+  });
+  test('blocage 2 : clonage corrigé seul -> canonique refuse tout objet (getPrototypeOf neutralisé)', async () => {
+    assert.notEqual(nc.parameters.jsCode, ancien.nodes.find((n) => n.name === N.construire).parameters.jsCode, 'clonage remplacé');
+    const r = await executer(avecClonageCorrige, { corps: CORPS, reponses: reponsesNominales() });
+    assert.equal(r.status, 'error');
+    assert.equal(r.noeudErreur, N.construire);
+    assert.match(r.erreur, /objet de données attendu/);
+  });
+  test('sans le préambule, l\'ancien code passait (c\'est ce qui avait masqué les deux blocages)', async () => {
+    const r = await executer(ancien, { corps: CORPS, reponses: reponsesNominales(), preambule: false });
+    assert.equal(r.status, 'success', r.erreur);
   });
 });
 
@@ -365,15 +415,21 @@ describe('exécution-fixture : conforme au contrat du signataire', async () => {
     assert.deepEqual(constats.liste, []);
     assert.deepEqual(s, sortie);
   });
-  test('le signataire refuse un modèle hors liste autorisée (liste vide jusqu\'à §20.8)', async () => {
+  test('liste autorisée (§20.8, exécution n8n 279792) : le modèle épinglé du workflow est accepté ; hors liste -> refusé', async () => {
+    const autorises = require('../../fonda/data/modeles-autorises.json').generation_fonda;
+    assert.deepEqual(autorises, [B.CONFIG.modele], 'liste autorisée = modèle épinglé du workflow');
+    const constatsModele = (modelesAutorises) => {
     const b = brute(r);
     const constats = new L.Constats();
     const x = { id: b.id, workflowId: WF.id, status: 'success', startedAt: FX.startedAt, stoppedAt: FX.stoppedAt };
     const { examinees, complet } = L.examinerExecutions({ executions: [x], details: new Map([[x.id, b]]), constats, normaliserDate: (d) => d });
     const vueFichiers = L.examinerFichiers({ setId: FX.set_id, fichiers: [{ id: FX.fichier_drive_id, nom: metadonnees.name, properties: metadonnees.properties, proprietesLisibles: true }], constats });
     const { retenue } = L.classerExecutions({ setId: FX.set_id, examinees, complet, vueFichiers, constats });
-    L.rapprocher({ setId: FX.set_id, retenue, fichier: vueFichiers.fichier, brute: b, workflowId: WF.id, journalCommit: { surPremierParent: true, journal: JOURNAL }, registre: JSON.parse(MOTEURS), modelesAutorises: require('../../fonda/data/modeles-autorises.json').generation_fonda, lotSource: lot, empreintes: null, constats });
-    assert.ok(constats.liste.some((c) => /liste autorisée/.test(c.raison)));
+    L.rapprocher({ setId: FX.set_id, retenue, fichier: vueFichiers.fichier, brute: b, workflowId: WF.id, journalCommit: { surPremierParent: true, journal: JOURNAL }, registre: JSON.parse(MOTEURS), modelesAutorises, lotSource: lot, empreintes: null, constats });
+    return constats.liste.filter((c) => /liste autorisée/.test(c.raison));
+    };
+    assert.deepEqual(constatsModele(autorises), []);
+    assert.ok(constatsModele(['claude-sonnet-4-6']).length > 0);
   });
   test('pinData non vide dans l\'export -> le signataire abandonne (garde-fou du contrat)', async () => {
     const b = brute(r, { ...WF, pinData: FIXTURE.pinData });

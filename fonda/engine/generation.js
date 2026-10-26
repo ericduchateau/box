@@ -189,16 +189,16 @@ function setIdCoherentAvecNotion(setId, notionId, palier) {
 // un PROTOTYPE (invisible à `Object.keys`, donc jamais gelé par `gelProfond`) au
 // lieu d'une propriété "__proto__" ordinaire. `defineProperty` crée toujours une
 // propriété propre littérale, quel que soit son nom.
+//
+// Correctif runtime n8n (lot 8, exécution 279807) : le moteur de code de n8n NEUTRALISE
+// `Object.defineProperty` (préambule anti-pollution : `() => ({})`) — le clone ci-dessus
+// sortait VIDE. Copie désormais par ALLER-RETOUR JSON : JSON.parse crée des propriétés
+// propres de DONNÉES (CreateDataProperty, jamais le setter `__proto__` : une clé
+// « __proto__ » reste une propriété propre littérale, sans pollution — vérifié dans le
+// vrai moteur, sonde 279808). Les candidates sont déjà des données JSON (aller-retour
+// fait en amont par deposerEnRelecture), donc rien n'est perdu.
 function clonerProfond(valeur) {
-  if (isArray(valeur)) return valeur.map(clonerProfond);
-  if (valeur && typeof valeur === 'object') {
-    const clone = {};
-    Object.keys(valeur).forEach((k) => {
-      Object.defineProperty(clone, k, { value: clonerProfond(valeur[k]), writable: true, enumerable: true, configurable: true });
-    });
-    return clone;
-  }
-  return valeur;
+  return valeur === undefined ? undefined : JSON.parse(JSON.stringify(valeur));
 }
 
 // Gèle récursivement un objet/tableau DÉJÀ CLONÉ (jamais la structure reçue de

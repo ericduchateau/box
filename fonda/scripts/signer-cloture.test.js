@@ -15,7 +15,7 @@ const fsN = require('fs');
 const C = require('../engine/catalogue.js');
 const S = require('./attestation-signee.js');
 const L = require('./liaison-generation.js');
-const { cloturer, saisirDecisionLocale, normaliserDate } = require('./signer-cloture.js');
+const { cloturer, saisirDecisionLocale, normaliserDate, RATTACHEMENT_SAISIE_LOCALE, analyserArgumentsCloture, cloturerSaisieLocale, main: mainCloture } = require('./signer-cloture.js');
 const { preparerPublication } = require('./publier-lot.js');
 
 const REGISTRE = require('../engine/moteurs.json');
@@ -25,7 +25,7 @@ const REF_VERSION = `sha256:${crypto.createHash('sha256').update(OCTETS_REF).dig
 const REFERENTIEL = JSON.parse(OCTETS_REF.toString('utf8'));
 const CATALOGUE = require('../data/catalogue-fonda.json');
 const FIXTURE = require('./fixtures/execution-generation.json');
-const MODELE = FIXTURE.modele; // snapshot Sonnet daté REPRÉSENTATIF — à confirmer à la recette §20.8
+const MODELE = FIXTURE.modele; // claude-sonnet-5-5 : modèle autorisé (snapshot sans date ≥ 4.6 ; sonde §20.8, exécution n8n 279792)
 const COMMIT = 'c0ffee'.padEnd(40, '0');
 const copie = (o) => JSON.parse(JSON.stringify(o));
 const sha = C.sha256WebCrypto();
@@ -132,10 +132,10 @@ async function scenario(x = {}) {
 
 // Publication (§20.11, §20.12) : journal de HEAD + réservation ; référentiel ARCHIVÉ.
 const JOURNAL = require('../data/set_ids-journal.json');
-async function publication(publie, enveloppe) {
+async function publication(publie, enveloppe, modelesAutorises = [MODELE]) {
   const journal = { schema: JOURNAL.schema, lignes: [...copie(JOURNAL.lignes), { set_id: publie.set_id, transition: 'reserve', le: '2026-10-17', ref: `test-2026-10-17:${publie.set_id}` }] };
   const referentielArchive = async (v) => (v === enveloppe.charge.referentiel_version && v === REF_VERSION ? { ok: true, referentiel: REFERENTIEL } : { ok: false, raison: 'introuvable' });
-  return preparerPublication({ lot: publie, attestation: enveloppe, catalogue: copie(CATALOGUE), referentiel: REFERENTIEL, referentielArchive, journal, le: '2026-10-21T09:00:00.000Z', sha256Hex: sha, cles: CLES, modelesAutorises: [MODELE] });
+  return preparerPublication({ lot: publie, attestation: enveloppe, catalogue: copie(CATALOGUE), referentiel: REFERENTIEL, referentielArchive, journal, le: '2026-10-21T09:00:00.000Z', sha256Hex: sha, cles: CLES, modelesAutorises });
 }
 const sansSignature = async (sc, motif, issue) => {
   const err = await cloturer(sc.setId, sc.deps).then(() => null, (e) => e);
@@ -147,20 +147,89 @@ const sansSignature = async (sc, motif, issue) => {
   return err;
 };
 
-describe('garde maîtresse (NON levée — étape 5)', () => {
-  test('sans contrat de rattachement : refus AVANT toute opération, zéro signature, zéro appel', async () => {
+describe('garde maîtresse (lot 7 : levée pour saisie_locale SEULE)', () => {
+  test('cloturer sans fonction de rattachement : refus AVANT toute opération, zéro signature, zéro appel (garde INCHANGÉE)', async () => {
     for (const source of ['page_relecture', 'saisie_locale']) {
       const sc = await scenario({ source });
       delete sc.deps.rattachement;
-      await assert.rejects(cloturer(sc.setId, sc.deps), /rattachement.*NON DÉFINI/);
+      await assert.rejects(cloturer(sc.setId, sc.deps), (e) => /rattachement.*NON DÉFINI/.test(e.message) && e.issue === 'precondition');
       assert.equal(sc.etat.signatures, 0);
       assert.deepEqual(sc.etat.appels, []);
     }
   });
-  test('CLI : main() refuse (rattachement absent en production)', () => {
-    const r = require('child_process').spawnSync(process.execPath, [path.join(__dirname, 'signer-cloture.js'), 'set_fonda_grandeurs-mesures_nI_02'], { encoding: 'utf8' });
-    assert.equal(r.status, 1);
-    assert.match(r.stderr, /NON DÉFINI/);
+  test('saisie_locale avec le rattachement « poison » de production : clôture COMPLÈTE (il n\'est jamais appelé)', async () => {
+    const sc = await scenario({ source: 'saisie_locale' });
+    let appele = 0;
+    sc.deps.rattachement = (...a) => { appele += 1; return RATTACHEMENT_SAISIE_LOCALE(...a); };
+    const { enveloppe } = await cloturer(sc.setId, sc.deps);
+    assert.equal(enveloppe.charge.source_decisions, 'saisie_locale');
+    assert.equal(sc.etat.signatures, 1);
+    assert.equal(appele, 0, 'jamais consommé en saisie locale');
+    assert.equal((await publication(sc.publie, enveloppe)).ok, true);
+  });
+  test('page_relecture avec le rattachement « poison » : refus precondition, ZÉRO signature', async () => {
+    const sc = await scenario();
+    sc.deps.rattachement = RATTACHEMENT_SAISIE_LOCALE;
+    const err = await sansSignature(sc, /parcours page_relecture non défini/, 'precondition');
+    assert.ok(err);
+  });
+  test('analyserArgumentsCloture : saisie_locale par défaut ; toute autre source, set_id invalide ou arguments en trop -> refus precondition', () => {
+    assert.deepEqual(analyserArgumentsCloture(['set_fonda_grandeurs-mesures_nI_02']), { setId: 'set_fonda_grandeurs-mesures_nI_02', source: 'saisie_locale' });
+    assert.deepEqual(analyserArgumentsCloture(['set_fonda_grandeurs-mesures_nI_02', '--source', 'saisie_locale']).source, 'saisie_locale');
+    for (const argv of [['set_fonda_grandeurs-mesures_nI_02', '--source', 'page_relecture'], ['set_fonda_grandeurs-mesures_nI_02', '--source'], ['set_fonda_grandeurs-mesures_nI_02', '--source', 'n8n'],
+      ['pas-un-set-id'], [], ['set_fonda_grandeurs-mesures_nI_02', 'en-trop']]) {
+      assert.throws(() => analyserArgumentsCloture(argv), (e) => e.issue === 'precondition', JSON.stringify(argv));
+    }
+  });
+  test('main : page_relecture refusée AVANT la production (ni réseau, ni secret, ni clé) ; saisie_locale -> production appelée', async () => {
+    const appels = [];
+    const production = async (setId) => { appels.push(setId); return { dossierLot: '/tmp/x' }; };
+    const avant = process.exitCode; const err = console.error; const log = console.log; let sortie = '';
+    console.error = (m) => { sortie += m; }; console.log = () => {};
+    try {
+      await mainCloture(['set_fonda_grandeurs-mesures_nI_02', '--source', 'page_relecture'], production);
+      assert.equal(process.exitCode, 1);
+      assert.deepEqual(appels, []);
+      assert.match(sortie, /seule « saisie_locale » est levée/);
+      process.exitCode = avant;
+      await mainCloture(['set_fonda_grandeurs-mesures_nI_02'], production);
+      assert.deepEqual(appels, ['set_fonda_grandeurs-mesures_nI_02']);
+    } finally { console.error = err; console.log = log; process.exitCode = avant; }
+  });
+  test('cloturerSaisieLocale appelée DIRECTEMENT : set_id invalide, source ≠ saisie_locale, rattachement fourni -> refus precondition AVANT sources, secret, phrase et cloturer', async () => {
+    const vide = require('fs').mkdtempSync(path.join(require('os').tmpdir(), 'cles-vides-'));
+    try {
+      const espions = [];
+      const o = (sur) => ({ dossierCles: vide, dossier: vide, lirePhrase: async () => { espions.push('phrase'); return 'x'; }, cloturer: async () => { espions.push('cloturer'); }, ...sur });
+      for (const [setId, sur, motif] of [
+        ['pas-un-set-id', {}, /set_id invalide/],
+        [undefined, {}, /set_id invalide/],
+        ['set_fonda_grandeurs-mesures_nI_02', { source: 'page_relecture' }, /source « page_relecture » refusée/],
+        ['set_fonda_grandeurs-mesures_nI_02', { config: { source: 'page_relecture' } }, /config\.source « page_relecture » refusée/],
+        ['set_fonda_grandeurs-mesures_nI_02', { source: 'saisie_locale', config: { source: 'n8n' } }, /config\.source « n8n » refusée/],
+        ['set_fonda_grandeurs-mesures_nI_02', { rattachement: () => null }, /rattachement fourni par l'appelant refusé/],
+      ]) {
+        await assert.rejects(cloturerSaisieLocale(setId, o(sur)), (e) => motif.test(e.message) && e.issue === 'precondition', JSON.stringify(sur));
+      }
+      assert.deepEqual(espions, [], 'ni phrase de passe ni cloturer');
+      // Contrôle : sans refus, l'échec suivant est bien la lecture des SECRETS (sources), pas la clé.
+      await assert.rejects(cloturerSaisieLocale('set_fonda_grandeurs-mesures_nI_02', o({ source: 'saisie_locale' })), /secret n8n-signataire\.cle illisible/);
+      assert.deepEqual(espions, []);
+    } finally { require('fs').rmSync(vide, { recursive: true, force: true }); }
+  });
+  test('CLI réelle (environnement réduit à PATH + HOME vide, délai 30 s) : page_relecture refusée sans lire aucun secret ; saisie_locale sans secrets -> échec à la lecture du secret, AVANT toute phrase de passe', () => {
+    const vide = require('fs').mkdtempSync(path.join(require('os').tmpdir(), 'home-vide-'));
+    try {
+      const cli = (...a) => require('child_process').spawnSync(process.execPath, [path.join(__dirname, 'signer-cloture.js'), ...a], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: vide }, input: '', timeout: 30000 });
+      const page = cli('set_fonda_grandeurs-mesures_nI_02', '--source', 'page_relecture');
+      assert.equal(page.status, 1, page.stderr);
+      assert.match(page.stderr, /source « page_relecture » refusée/);
+      const locale = cli('set_fonda_grandeurs-mesures_nI_02');
+      assert.equal(locale.status, 1, locale.stderr);
+      assert.match(locale.stderr, /secret n8n-signataire\.cle illisible/);
+      assert.doesNotMatch(locale.stdout + locale.stderr, /Phrase de passe/);
+      assert.deepEqual(require('fs').readdirSync(vide), [], 'rien écrit dans le HOME');
+    } finally { require('fs').rmSync(vide, { recursive: true, force: true }); }
   });
 });
 
@@ -185,6 +254,21 @@ describe('aller-retour v2 : signer -> attestation-signee vérifie -> publier-lot
     assert.deepEqual(ch.badge, { forme: 'relue_et_validee', nom_affiche: 'Relectrice de test', id: 'justine' });
     const r = await publication(sc.publie, enveloppe);
     assert.equal(r.ok, true, JSON.stringify(r.erreurs));
+  });
+  // Le parcours nominal utilise désormais claude-sonnet-5-5 (sans date) ; ce scénario garde
+  // la forme DATÉE (format historique, toujours recevable) couverte de bout en bout.
+  test('modèle DATÉ (format historique) autorisé : clôture complète, modèle gravé, signature vérifiée, publiable', async () => {
+    const DATE = 'claude-sonnet-5-5-20261001';
+    const sc = await scenario({ source: 'saisie_locale', modifier: (c) => {
+      c.gen[501] = JSON.parse(JSON.stringify(c.gen[501]).split(`"${MODELE}"`).join(`"${DATE}"`));
+      c.deps.config.modelesAutorises = [DATE];
+    } });
+    const { enveloppe } = await cloturer(sc.setId, sc.deps);
+    assert.equal(sc.etat.signatures, 1);
+    assert.equal(enveloppe.charge.generation.modele, DATE);
+    const pub = await publication(sc.publie, enveloppe, [DATE]); // signature + invariants + liste (verifierAttestationSignee complet)
+    assert.equal(pub.ok, true, JSON.stringify(pub.erreurs));
+    assert.equal((await publication(sc.publie, enveloppe, [MODELE])).ok, false, 'hors liste -> non publiable');
   });
   test('page_relecture, auto-confirmation (relecteur = Éric) : publiable', async () => {
     const sc = await scenario({ maths: true });
@@ -245,7 +329,7 @@ describe('aller-retour v2 : signer -> attestation-signee vérifie -> publier-lot
   });
   test('journal illisible : les autres lignes de la table restent évaluées (modèle interdit -> abandon)', async () => {
     const sc = await scenario({ source: 'saisie_locale', modifier: ({ gen, deps }) => {
-      gen[501].data.resultData.runData['FONDA Sortie generation'][0].data.main[0][0].json.modele = 'claude-sonnet-5-5';
+      gen[501].data.resultData.runData['FONDA Sortie generation'][0].data.main[0][0].json.modele = 'claude-sonnet-4-6'; // hors liste autorisée
       deps.journal = async () => { throw new Error('git indisponible'); };
     } });
     await sansSignature(sc, /∉ liste autorisée/, 'abandon');
@@ -257,7 +341,7 @@ describe('aller-retour v2 : signer -> attestation-signee vérifie -> publier-lot
   });
   test('Drive candidats/ illisible : la table reste évaluée (modèle interdit -> abandon)', async () => {
     const sc = await scenario({ source: 'saisie_locale', modifier: ({ gen, deps }) => {
-      gen[501].data.resultData.runData['FONDA Sortie generation'][0].data.main[0][0].json.modele = 'claude-sonnet-5-5';
+      gen[501].data.resultData.runData['FONDA Sortie generation'][0].data.main[0][0].json.modele = 'claude-sonnet-4-6'; // hors liste autorisée
       deps.drive.listerCandidats = async () => { throw new Error('Drive 503'); };
     } });
     await sansSignature(sc, /∉ liste autorisée/, 'abandon');
@@ -343,7 +427,7 @@ describe('§20.2–20.3 liaison de génération : chaque violation -> refus clas
     ['réservation absente du journal au commit', ({ journal }) => { journal.lignes[0].ref = 'autre-ref-1234'; }, /réservation de ce set_id avec cette ref/, 'abandon'],
     ['set_id déjà publié au commit consigné', ({ journal, valeurs }) => { journal.lignes.push({ set_id: valeurs.SET_ID, transition: 'publie', le: '2026-10-17', ref: `${valeurs.REF}:publie` }); }, /état « reserve »/, 'abandon'],
     ['moteur ≠ registre', sortie((s) => { s.moteur.sha256 = '0'.repeat(64); }), /registre/, 'abandon'],
-    ['modèle hors liste épinglée (alias, autre version)', sortie((s) => { s.modele = 'claude-sonnet-5-5'; }), /∉ liste autorisée épinglée/, 'abandon'],
+    ['modèle hors liste épinglée (alias, autre version)', sortie((s) => { s.modele = 'claude-sonnet-4-6'; }), /∉ liste autorisée épinglée/, 'abandon'],
     ['empreinte pédagogique ≠ lot lu', sortie((s) => { s.empreinte_pedagogique = `sha256:${'0'.repeat(64)}`; }), /empreinte_pedagogique/, 'abandon'],
     ['empreinte complète ≠ lot lu', sortie((s) => { s.empreinte_complete = `sha256:${'0'.repeat(64)}`; }), /empreinte_complete/, 'abandon'],
     ['candidat_fichier_id ≠ fichier lu', sortie((s) => { s.candidat_fichier_id = 'drv-autre'; }), /candidat_fichier_id/, 'abandon'],
@@ -479,7 +563,7 @@ describe('§20.6 saisie locale : décisions figées', () => {
 describe('configuration G5 et sources', () => {
   for (const [libelle, f, motif] of [
     ['liste des modèles vide', (c) => { c.modelesAutorises = []; }, /G5/],
-    ['alias non daté dans la liste', (c) => { c.modelesAutorises = ['claude-sonnet-5-5']; }, /DATÉS/],
+    ['alias pré-4.6 (non épinglé) dans la liste', (c) => { c.modelesAutorises = ['claude-sonnet-4-5']; }, /G5/],
     ['source inconnue', (c) => { c.source = 'n8n'; }, /config.source/],
     ['workflow de génération non épinglé', (c) => { c.workflowGeneration = ''; }, /workflow de génération/],
   ]) {
@@ -790,7 +874,7 @@ describe('critique Codex r5 : contenus multiples du lot, examen non exhaustif', 
     await sansSignature(sc, /≠ webhook/, 'abandon');
   });
   test('workflowData absent ET modèle interdit dans la sortie : la table reste évaluée -> abandon', async () => {
-    const sc = await scenario({ source: 'saisie_locale', modifier: ({ gen }) => { delete gen[501].workflowData; gen[501].data.resultData.runData['FONDA Sortie generation'][0].data.main[0][0].json.modele = 'claude-sonnet-5-5'; } });
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ gen }) => { delete gen[501].workflowData; gen[501].data.resultData.runData['FONDA Sortie generation'][0].data.main[0][0].json.modele = 'claude-sonnet-4-6'; } });
     await sansSignature(sc, /∉ liste autorisée/, 'abandon');
   });
   test('examen non exhaustif, génération du lot conforme : jamais de signature (refus temporaire)', async () => {
@@ -863,7 +947,7 @@ describe('critique Codex r8 : identité du fichier effectivement lu', () => {
 describe('§20.13 amendement r6 : règle d\'observation incomplète', () => {
   test('(a) lecture en panne + anomalie déterminable sur ses propres données -> l\'issue FINE se déclenche (abandon)', async () => {
     const sc = await scenario({ source: 'saisie_locale', modifier: ({ gen, deps }) => {
-      gen[501].data.resultData.runData['FONDA Sortie generation'][0].data.main[0][0].json.modele = 'claude-sonnet-5-5';
+      gen[501].data.resultData.runData['FONDA Sortie generation'][0].data.main[0][0].json.modele = 'claude-sonnet-4-6'; // hors liste autorisée
       deps.drive.listerCandidats = async () => { throw new Error('Drive 503'); };
     } });
     const err = await sansSignature(sc, /∉ liste autorisée/, 'abandon');
