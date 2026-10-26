@@ -387,7 +387,7 @@ describe('exécution-fixture : conforme au contrat du signataire', async () => {
     const notion = referentiel.notions.find((n) => n.id === 'maths.proportionnalite');
     const texte = FX.reponse_ia.content.find((b) => b.type === 'text').text;
     const { cartesValides } = G.trierCartesBrutes(G.parserReponseModele(texte).cartesBrutes);
-    const candidats = G.construireCandidats({ notion, palier: 'nI', cartesBrutes: cartesValides, sequence: 50, ts: '2026-10-20T07:00:30.000Z' });
+    const candidats = G.construireCandidats({ notion, palier: 'nI', cartesBrutes: cartesValides, sequence: C.decomposerSetId(FX.set_id).sequence, ts: '2026-10-20T07:00:30.000Z' });
     const depot = Gen.deposerEnRelecture(candidats, { notions: referentiel.notions });
     const attendu = G.construireLotFonda({ notion, palier: 'nI', candidats: depot.parRelecteur.eric });
     assert.match(lot.date_creation, /^\d{4}-\d{2}-\d{2}$/);
