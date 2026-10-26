@@ -248,6 +248,7 @@ describe('témoin d\'incidents (option a)', () => {
     // le catalogue publié contient désormais les clôtures signées ; attestationsCatalogue() doit
     // retourner EXACTEMENT ces clôtures (vérifiées en entier), les 8 « manuelle-historique » ignorées.
     const cloturesSignees = reel.lots.filter((l) => l.attestation && l.attestation.type === 'cloture-signee').map((l) => l.set_id).sort();
+    assert.ok(cloturesSignees.includes('set_fonda_nombres-fractions-relatifs_nI_03'), 'au moins la 1re clôture signée (_nI_03) est publiée et vérifiée');
     assert.deepEqual((await s.attestationsCatalogue()).map((x) => x.entree.set_id).sort(), cloturesSignees, 'attestationsCatalogue() = exactement les clotures signees publiees du catalogue');
     const avec = (cat) => A.attestationsDuCatalogue({ git: (a) => (a[0] === 'show' && /catalogue-fonda/.test(a[1]) ? Buffer.from(JSON.stringify(cat)) : git(a)), cles: s.cles, registre: s.registre, modelesAutorises: s.modelesAutorises, resoudre: s.resoudre });
     const modif = (f) => { const c = JSON.parse(JSON.stringify(reel)); f(c.lots[0]); return c; };
