@@ -45,7 +45,7 @@
   "workflow_ia": {
     "description": "Exécution SIMULÉE du workflow n8n/fonda-generation-ia/box-fonda-generation-ia.json (harnais n8n/fonda-generation-ia/workflow.test.js) : déclencheur, réponses HTTP simulées (GitHub, Drive, Anthropic), AUCUN appel réel. La réservation de (set_id, ref) est simulée par un journal synthétique au commit journal_commit ; référentiel et registre des moteurs sont ceux du dépôt. La réponse IA est SIMULÉE : model = snapshot Sonnet daté REPRÉSENTATIF, À CONFIRMER à la recette §20.8. La 4e carte est volontairement fausse (rejetée par le correcteur).",
     "execution_id": "601",
-    "set_id": "set_fonda_proportionnalite_nI_50",
+    "set_id": "set_fonda_proportionnalite_nI_95",
     "ref": "2026-10-20-fixture0001",
     "journal_commit": "0123456789abcdef0123456789abcdef01234567",
     "startedAt": "2026-10-20T07:00:00.000Z",

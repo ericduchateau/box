@@ -16,7 +16,7 @@ const A = require('./adaptateurs-production.js');
 const SC = require('./signer-cloture.js');
 const G = require('./generer-lot-fonda.js');
 
-const SET = 'set_fonda_proportionnalite_nI_50';
+const SET = 'set_fonda_proportionnalite_nI_95';
 const tmp = (p) => fs.mkdtempSync(path.join(os.tmpdir(), p));
 // fetch simulé : routes = [[RegExp | (url, init) => bool, (url, init) => { status, json?, octets? }]]
 function faux(routes) {

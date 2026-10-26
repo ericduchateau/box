@@ -197,7 +197,7 @@ describe('defi résolu avec succès -> le lot programmé (set_id du calendrier) 
   });
 
   test('set_id programmé mais absent du catalogue publié -> « pas disponible », rien rendu', async () => {
-    const cal = { ...CALENDRIER, semaines: [{ ...SEMAINE_41, entrees: [{ ...SEMAINE_41.entrees[0], set_id: 'set_fonda_resolution-problemes_nI_02' }] }] };
+    const cal = { ...CALENDRIER, semaines: [{ ...SEMAINE_41, entrees: [{ ...SEMAINE_41.entrees[0], set_id: 'set_fonda_resolution-problemes_nI_92' }] }] };
     const root = await demarrerBootstrap({ search: '?fonda=1&defi=defi_2026-w41_601_resolution-problemes', calendrier: cal });
     assert.match(texteDe(root), /pas disponible/);
     assert.doesNotMatch(texteDe(root), /Carte 1/);
@@ -477,7 +477,7 @@ describe('G4 — seuls les lots du catalogue publié, intacts et attestés, sont
     ['question modifiée après attestation (empreinte ≠)', (l) => ({ ...l, cartes: [{ ...l.cartes[0], question: l.cartes[0].question + ' ' }, ...l.cartes.slice(1)] })],
     ['champ hors liste blanche (code_suppression)', (l) => ({ ...l, code_suppression: 'SUP-AAAA1111' })],
     ['champ hors liste blanche dans une carte (prof_email)', (l) => ({ ...l, cartes: [{ ...l.cartes[0], prof_email: 'x@y.z' }, ...l.cartes.slice(1)] })],
-    ['set_id du fichier ≠ entrée', (l) => ({ ...l, set_id: 'set_fonda_comprendre-consigne_nI_02' })],
+    ['set_id du fichier ≠ entrée', (l) => ({ ...l, set_id: 'set_fonda_comprendre-consigne_nI_92' })],
     ['cartes réordonnées (item_ids ≠ entrée)', (l) => ({ ...l, cartes: [l.cartes[1], l.cartes[0], ...l.cartes.slice(2)] })],
   ];
   for (const [libelle, alterer] of alterations) {
@@ -838,7 +838,7 @@ describe('construireEntreesIndex — dérivé du catalogue publié, libellés du
     const { construireEntreesIndex } = obtenirExportsBootstrap();
     const cat = { lots: [
       { set_id: 'set_fonda_comprendre-consigne_nI_01', notion_id: 'fr.comprendre-consigne', palier: 'nI' },
-      { set_id: 'set_fonda_comprendre-consigne_nI_02', notion_id: 'fr.comprendre-consigne', palier: 'nI' },
+      { set_id: 'set_fonda_comprendre-consigne_nI_92', notion_id: 'fr.comprendre-consigne', palier: 'nI' },
       { set_id: 'set_fonda_fictive_nF_01', notion_id: 'x.fictive', palier: 'nF' },
     ] };
     const entrees = construireEntreesIndex(cat, REFERENTIEL);
