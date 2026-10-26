@@ -244,9 +244,12 @@ describe('témoin d\'incidents (option a)', () => {
     const racine = path.join(__dirname, '..', '..');
     const git = (a) => execFileSync('git', a, { cwd: racine, stdio: ['ignore', 'pipe', 'ignore'] });
     const s = A.sourcesLecture({ api: {}, drive: {}, dossier: d, racine, git });
-    assert.deepEqual(await s.attestationsCatalogue(), [], 'catalogue actuel : 8 historiques, aucune clôture signée');
     const reel = JSON.parse(git(['show', 'origin/design:fonda/data/catalogue-fonda.json']).toString('utf8'));
-    const avec = (cat) => A.attestationsDuCatalogue({ git: (a) => (a[0] === 'show' && /catalogue-fonda/.test(a[1]) ? Buffer.from(JSON.stringify(cat)) : git(a)), cles: s.cles, registre: s.registre, modelesAutorises: [], resoudre: s.resoudre });
+    // le catalogue publié contient désormais les clôtures signées ; attestationsCatalogue() doit
+    // retourner EXACTEMENT ces clôtures (vérifiées en entier), les 8 « manuelle-historique » ignorées.
+    const cloturesSignees = reel.lots.filter((l) => l.attestation && l.attestation.type === 'cloture-signee').map((l) => l.set_id).sort();
+    assert.deepEqual((await s.attestationsCatalogue()).map((x) => x.entree.set_id).sort(), cloturesSignees, 'attestationsCatalogue() = exactement les clotures signees publiees du catalogue');
+    const avec = (cat) => A.attestationsDuCatalogue({ git: (a) => (a[0] === 'show' && /catalogue-fonda/.test(a[1]) ? Buffer.from(JSON.stringify(cat)) : git(a)), cles: s.cles, registre: s.registre, modelesAutorises: s.modelesAutorises, resoudre: s.resoudre });
     const modif = (f) => { const c = JSON.parse(JSON.stringify(reel)); f(c.lots[0]); return c; };
     const cas = [
       [{}, /forme catalogue-fonda\/v1/], [{ lots: [] }, /forme/], [{ schema: 'catalogue-fonda/v1', lots: {} }, /forme/],
@@ -260,7 +263,7 @@ describe('témoin d\'incidents (option a)', () => {
       [modif((e) => { e.attestation = { type: 'autre' }; }), /non conforme|type inattendu/],
     ];
     for (const [cat, motif] of cas) await assert.rejects(avec(cat), motif, JSON.stringify(cat).slice(0, 200));
-    assert.deepEqual(await avec(reel)(), [], 'catalogue réel : accepté, rien à citer');
+    assert.deepEqual((await avec(reel)()).map((x) => x.entree.set_id).sort(), cloturesSignees, 'catalogue réel : clôtures signées acceptées et vérifiées en entier');
   });
 });
 
