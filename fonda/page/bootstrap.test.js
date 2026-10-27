@@ -130,7 +130,7 @@ function creerFetchFactice({ calendrier = CALENDRIER, lots = {}, catalogue = CAT
   };
 }
 
-async function demarrerBootstrap({ search, calendrier, lots, catalogue, journalFetch, echecs, journalScripts, remplacements }) {
+async function demarrerBootstrap({ search, calendrier, lots, catalogue, journalFetch, journalOptions, echecs, journalScripts, remplacements }) {
   const doc = creerDocumentFactice({ echecs, journalScripts, remplacements });
   // document.body.appendChild('fondaRoot' div) -> on l'intercepte pour pouvoir le relire
   const originalAppendChild = doc.body.appendChild.bind(doc.body);
@@ -139,9 +139,11 @@ async function demarrerBootstrap({ search, calendrier, lots, catalogue, journalF
   global.document = doc;
   global.window = { location: { search, origin: 'https://ericduchateau.github.io', pathname: '/box/index.html' } };
   const fetchFactice = creerFetchFactice({ calendrier, lots, ...(catalogue !== undefined ? { catalogue } : {}) });
-  global.fetch = journalFetch
-    ? (chemin) => { journalFetch.push(chemin); return fetchFactice(chemin); }
-    : fetchFactice;
+  global.fetch = (chemin, options) => {
+    if (journalFetch) journalFetch.push(chemin);
+    if (journalOptions) journalOptions.push([chemin, options]);
+    return fetchFactice(chemin);
+  };
 
   delete require.cache[require.resolve('./bootstrap.js')];
   require('./bootstrap.js');
@@ -514,7 +516,7 @@ describe('chargement des dépendances FONDA en conditions navigateur (aucun glob
   const ORDRE = [
     'fonda/engine/catalogue.js?v=3',
     'fonda/engine/evenements.js?v=3',
-    'fonda/engine/liens.js?v=3',
+    'fonda/engine/liens.js?v=4',
     'fonda/engine/carte-reponse-produite.js?v=3',
   ];
   const MOTEUR = 'fonda/engine/moteur-correction-v1.js';
@@ -1078,5 +1080,283 @@ describe('obtenirMoteur — version + empreinte + SRI, registre non réassignabl
     await assert.rejects(obtenirMoteur('v2', V2b.sha256), /instance\.version/);
     await assert.rejects(obtenirMoteur('v2', V2b.sha256), /instance\.version/);
     assert.equal(journal.length, 2);
+  });
+});
+
+// --- Calendrier FONDA v2 : accueil « Notions de la semaine » et page=calendrier -----
+// Données RÉELLES (calendar.json, catalogue, référentiel committés) ; la date est
+// pilotée (mock de Date uniquement — setTimeout reste réel pour le harnais).
+const { mock: mockCal } = require('node:test');
+const CALENDRIER_REEL = require('../data/calendar.json');
+
+function tousParClasse(el, fragment, acc = []) {
+  for (const c of (el && el.children) || []) {
+    if (c && typeof c.className === 'string' && c.className.split(' ').includes(fragment)) acc.push(c);
+    tousParClasse(c, fragment, acc);
+  }
+  return acc;
+}
+function tousParTag(el, tag, acc = []) {
+  for (const c of (el && el.children) || []) {
+    if (c && c.tagName === tag) acc.push(c);
+    tousParTag(c, tag, acc);
+  }
+  return acc;
+}
+
+async function demarrerLe(dateIso, opts) {
+  mockCal.timers.enable({ apis: ['Date'], now: new Date(`${dateIso}T10:00:00`) });
+  try {
+    return await demarrerBootstrap({ calendrier: CALENDRIER_REEL, ...opts });
+  } finally {
+    mockCal.timers.reset();
+  }
+}
+
+describe('calendrier v2 — fonctions de vue pures', () => {
+  test('etatDuJour : vacances, semaine (week-end compris), hors calendrier', () => {
+    const { etatDuJour, texteBandeau } = obtenirExportsBootstrap();
+    const vac = etatDuJour(CALENDRIER_REEL, new Date('2026-10-27T10:00:00'));
+    assert.equal(vac.type, 'vacances');
+    assert.equal(texteBandeau(vac), 'Vacances de la Toussaint · reprise lun 2 nov');
+    const sem = etatDuJour(CALENDRIER_REEL, new Date('2026-11-04T10:00:00'));
+    assert.equal(sem.type, 'semaine');
+    assert.equal(texteBandeau(sem), 'Semaine 45 · P2 en cours');
+    assert.equal(etatDuJour(CALENDRIER_REEL, new Date('2026-11-08T18:00:00+01:00')).semaine.iso_week, 45, 'le dimanche (heure de Paris) reste dans la semaine');
+    const p3 = etatDuJour(CALENDRIER_REEL, new Date('2027-01-12T10:00:00'));
+    assert.equal(p3.type, 'periode');
+    assert.equal(texteBandeau(p3), 'P3 en cours');
+    assert.equal(texteBandeau(etatDuJour({}, new Date('2026-08-01T10:00:00'))), 'Hors période scolaire');
+  });
+
+  test('plageCourte : même mois / deux mois', () => {
+    const { plageCourte } = obtenirExportsBootstrap();
+    assert.equal(plageCourte('2026-11-02', '2026-11-06'), '2–6 nov');
+    assert.equal(plageCourte('2026-11-30', '2026-12-04'), '30 nov–4 déc');
+  });
+
+  test('caseDepuisEntree : couleur LUE dans difficulte.valeur, étoiles du palier, lien seulement si publiée ET au catalogue', () => {
+    const { caseDepuisEntree } = obtenirExportsBootstrap();
+    const notions = new Map(REFERENTIEL.notions.map((n) => [n.id, n]));
+    const publies = new Set(['set_fonda_grandeurs-mesures_nI_02']);
+    const base = { notion_id: 'maths.grandeurs-mesures', matiere: 'maths', palier: 'nI', bande: 'c4-milieu', statut: 'publie', set_id: 'set_fonda_grandeurs-mesures_nI_02', difficulte: { valeur: 'rouge', source: 'priorite_initiale' } };
+    const c = caseDepuisEntree(base, { notions, publies });
+    assert.equal(c.setId, 'set_fonda_grandeurs-mesures_nI_02');
+    assert.equal(c.difficulte, 'rouge');
+    assert.equal(c.etoiles, '★');
+    assert.equal(c.notion, notions.get('maths.grandeurs-mesures').libelle);
+    assert.equal(caseDepuisEntree({ ...base, difficulte: { valeur: 'vert', source: 'stats_cartes' } }, { notions, publies }).difficulte, 'vert');
+    assert.equal(caseDepuisEntree({ ...base, palier: 'nF' }, { notions, publies }).etoiles, '★★');
+    assert.equal(caseDepuisEntree(base, { notions, publies: new Set() }).setId, null, 'set_id absent du catalogue chargé : pas de lien');
+    const planifiee = { ...base, statut: 'planifie' };
+    delete planifiee.set_id;
+    assert.equal(caseDepuisEntree(planifiee, { notions, publies }).setId, null);
+  });
+
+  test('construireVueCalendrier (bande milieu) : P2 affichée, 14 cases dont 3 liées ; P3–P5 vides (grisées)', () => {
+    const { construireVueCalendrier } = obtenirExportsBootstrap();
+    const vue = construireVueCalendrier({ calendrier: CALENDRIER_REEL, catalogue: CATALOGUE, referentiel: REFERENTIEL, bande: 'c4-milieu', maintenant: new Date('2026-11-10T10:00:00') });
+    const [p2, ...autres] = vue.periodes;
+    assert.equal(p2.id, 'P2');
+    assert.equal(p2.vide, false, 'P2 a des entrées : jamais grisée en entier, même genere:false');
+    assert.equal(p2.genere, false);
+    assert.equal(p2.statut, 'en_cours');
+    assert.equal(p2.semaines.length, 7);
+    assert.equal(p2.semaines.filter((s) => s.courante).map((s) => s.isoWeek).join(), '46');
+    const cases = p2.semaines.flatMap((s) => s.cases);
+    assert.equal(cases.length, 14);
+    assert.deepEqual(cases.filter((c) => c.setId).map((c) => c.setId), [
+      'set_fonda_grandeurs-mesures_nI_02', 'set_fonda_nombres-fractions-relatifs_nI_03', 'set_fonda_grandeurs-mesures_nI_02',
+    ]);
+    assert.ok(cases.every((c) => c.matiere !== 'français' || c.setId === null), 'français : tout planifié');
+    assert.ok(p2.semaines.every((s) => s.cases[0].matiere === 'maths' && s.cases[1].matiere === 'français'));
+    assert.deepEqual(autres.map((p) => [p.id, p.vide]), [['P3', true], ['P4', true], ['P5', true]]);
+    const c3 = construireVueCalendrier({ calendrier: CALENDRIER_REEL, catalogue: CATALOGUE, referentiel: REFERENTIEL, bande: 'c3', maintenant: new Date('2026-11-10T10:00:00') });
+    assert.ok(c3.periodes.every((p) => p.vide), 'bande c3 : aucun contenu pour l\'instant');
+  });
+
+  test('notionsDeLaSemaine : semaine courante ; en vacances, la semaine de la reprise', () => {
+    const { notionsDeLaSemaine } = obtenirExportsBootstrap();
+    const args = { calendrier: CALENDRIER_REEL, catalogue: CATALOGUE, referentiel: REFERENTIEL, bande: 'c4-milieu' };
+    const s48 = notionsDeLaSemaine({ ...args, maintenant: new Date('2026-11-25T10:00:00') });
+    assert.equal(s48.semaine.isoWeek, 48);
+    assert.equal(s48.reprise, false);
+    assert.deepEqual(s48.cases.map((c) => c.setId), ['set_fonda_nombres-fractions-relatifs_nI_03', null]);
+    const toussaint = notionsDeLaSemaine({ ...args, maintenant: new Date('2026-10-27T10:00:00') });
+    assert.equal(toussaint.reprise, true);
+    assert.equal(toussaint.semaine.isoWeek, 45);
+    assert.equal(toussaint.cases.length, 2);
+    const noel = notionsDeLaSemaine({ ...args, maintenant: new Date('2026-12-24T10:00:00') });
+    assert.equal(noel.semaine, null, 'reprise de janvier non programmée : rien d\'inventé');
+    assert.equal(notionsDeLaSemaine({ ...args, bande: 'c3', maintenant: new Date('2026-11-25T10:00:00') }).cases.length, 0);
+  });
+});
+
+describe('?fonda=1 — accueil « Notions de la semaine » (porte : sélecteur de niveau)', () => {
+  test('sans niveau (rien en mémoire) : sélecteur d\'abord, liens vers l\'accueil (pas la page niveau)', async () => {
+    global.localStorage = { getItem: () => null, setItem() {} };
+    const root = await demarrerLe('2026-11-04', { search: '?fonda=1' });
+    delete global.localStorage;
+    const boutons = tousParClasse(root, 'fonda-niveau-picker__bouton');
+    assert.deepEqual(boutons.map((b) => b.textContent), ['6e', '5e', '4e', '3e']);
+    assert.ok(boutons.every((b) => /\?fonda=1&niveau=[3-6]e$/.test(b.href)), boutons.map((b) => b.href).join());
+  });
+
+  test('niveau 5e : les 2 fiches de la semaine (maths liée, français grisé sans lien), choix mémorisé', async () => {
+    const ecritures = [];
+    global.localStorage = { getItem: () => null, setItem: (k, v) => ecritures.push([k, v]) };
+    const root = await demarrerLe('2026-11-04', { search: '?fonda=1&niveau=5e' });
+    delete global.localStorage;
+    assert.deepEqual(ecritures, [['box_fonda_niveau', '5e']]);
+    assert.ok(tousParTag(root, 'h2').some((h) => h.textContent === 'Notions de la semaine'));
+    const tuiles = tousParClasse(root, 'fonda-cal-tuile');
+    assert.equal(tuiles.length, 2);
+    assert.equal(tuiles[0].tagName, 'a');
+    assert.match(tuiles[0].href, /\?fonda=1&page=carte&set=set_fonda_grandeurs-mesures_nI_02$/);
+    // Nom accessible = texte de la tuile : matière, notion, palier (texte lecteur d'écran),
+    // difficulté et état — jamais la couleur seule, jamais d'aria-label sur une div.
+    assert.match(tuiles[0].textContent, /Mathématiques.*palier Initial\..*difficulté forte.*Disponible/);
+    assert.equal(tuiles[1].tagName, 'div', 'case planifiée : jamais un lien');
+    assert.ok(tuiles[1].className.includes('fonda-cal-tuile--planifiee'));
+    assert.match(tuiles[1].textContent, /Français.*palier Initial\..*En préparation/);
+    assert.ok(tuiles.every((t) => !('aria-label' in t.attributes)));
+    const liens = tousParTag(root, 'a').map((a) => a.href);
+    assert.ok(liens.some((h) => /page=calendrier&bande=c4-milieu$/.test(h)), 'lien vers le calendrier de la bande');
+    assert.ok(liens.some((h) => /choix=niveau$/.test(h)), 'changer de niveau');
+    const prof = tousParClasse(root, 'fonda-cal-prof');
+    assert.equal(prof.length, 1, 'accès enseignant mis en avant');
+    assert.match(prof[0].href, /page=niveau&niveau=5e&semaine=45$/, 'la semaine affichée est transmise');
+  });
+
+  test('niveau mémorisé (switch BOX -> FONDA sans paramètre) : accueil direct ; ?choix=niveau rouvre le sélecteur', async () => {
+    global.localStorage = { getItem: () => '4e', setItem() {} };
+    const root = await demarrerLe('2026-11-04', { search: '?fonda=1' });
+    assert.equal(tousParClasse(root, 'fonda-cal-tuile').length, 2);
+    const choix = await demarrerLe('2026-11-04', { search: '?fonda=1&choix=niveau' });
+    delete global.localStorage;
+    assert.equal(tousParClasse(choix, 'fonda-niveau-picker__bouton').length, 4);
+  });
+
+  test('pendant les vacances : bandeau vacances + les fiches de la reprise', async () => {
+    const root = await demarrerLe('2026-10-27', { search: '?fonda=1&niveau=5e' });
+    const flaps = tousParClasse(root, 'fonda-flaps')[0];
+    assert.equal(flaps.attributes['aria-label'], 'Vacances de la Toussaint · reprise lun 2 nov');
+    assert.ok(tousParClasse(root, 'fonda-cal-intro').some((p) => /^À la reprise — semaine 45/.test(p.textContent)));
+    assert.equal(tousParClasse(root, 'fonda-cal-tuile').length, 2);
+  });
+
+  test('niveau 6e (bande sans contenu) : message, aucune tuile, aucune exception', async () => {
+    const root = await demarrerLe('2026-11-04', { search: '?fonda=1&niveau=6e' });
+    assert.equal(tousParClasse(root, 'fonda-cal-tuile').length, 0);
+    assert.ok(tousParClasse(root, 'fonda-cal-intro').some((p) => /Pas de fiche programmée/.test(p.textContent)));
+  });
+
+  test('catalogue indisponible : message visible, jamais de page blanche', async () => {
+    const root = await demarrerLe('2026-11-04', { search: '?fonda=1&niveau=5e', catalogue: null });
+    assert.match(texteDe(root), /Calendrier indisponible/);
+  });
+});
+
+describe('?fonda=1&page=calendrier — page d\'affichage par période', () => {
+  test('bande milieu : P2 dépliable avec 14 tuiles dont 3 liens ; P3–P5 grisées « Non générée »', async () => {
+    const root = await demarrerLe('2026-11-04', { search: '?fonda=1&page=calendrier' });
+    const periodes = tousParClasse(root, 'fonda-cal-periode');
+    assert.equal(periodes.length, 4);
+    assert.equal(periodes[0].className, 'fonda-cal-periode');
+    assert.equal(tousParClasse(root, 'fonda-cal-periode--vide').length, 3);
+    const tuiles = tousParClasse(periodes[0], 'fonda-cal-tuile');
+    assert.equal(tuiles.length, 14);
+    assert.equal(tuiles.filter((t) => t.tagName === 'a').length, 3);
+    assert.equal(tousParClasse(root, 'fonda-cal-tuile--planifiee').length, 11);
+    const tete = tousParClasse(periodes[0], 'fonda-cal-periode__tete')[0];
+    assert.equal(tete.attributes['aria-expanded'], 'true', 'période en cours dépliée');
+    const semaines = tousParClasse(periodes[0], 'fonda-cal-semaines')[0];
+    tete.__click();
+    assert.equal(semaines.hidden, true);
+    assert.equal(tete.attributes['aria-expanded'], 'false');
+    assert.equal(tousParClasse(root, 'fonda-cal-semaine--courante').length, 1);
+    assert.match(texteDe(periodes[1]), /À générer avant la reprise/);
+  });
+
+  test('sélecteur de bande : 3 bandes, active marquée ; bande c4-fin vide -> « Pas encore de programme »', async () => {
+    const root = await demarrerLe('2026-11-04', { search: '?fonda=1&page=calendrier&bande=c4-fin' });
+    const liens = tousParClasse(root, 'fonda-cal-bandes__lien');
+    assert.deepEqual(liens.map((a) => a.textContent), ['6e', '5e – 4e', '3e']);
+    assert.equal(liens[2].attributes['aria-current'], 'page');
+    assert.ok(liens.every((a) => /page=calendrier&bande=/.test(a.href)));
+    assert.ok(tousParClasse(root, 'fonda-message').some((p) => /Pas encore de programme pour les 3e/.test(p.textContent)));
+    assert.equal(tousParClasse(root, 'fonda-cal-tuile').length, 0);
+  });
+
+  test('bande inconnue dans l\'URL : repli sur la bande milieu, jamais une valeur arbitraire', async () => {
+    const root = await demarrerLe('2026-11-04', { search: '?fonda=1&page=calendrier&bande=__proto__' });
+    const actif = tousParClasse(root, 'fonda-cal-bandes__lien--actif');
+    assert.equal(actif.length, 1);
+    assert.equal(actif[0].textContent, '5e – 4e');
+  });
+
+  test('page niveau (parcours existant) avec le vrai calendrier v2 : liens de la seule fiche publiée, jamais de lien planifié', async () => {
+    const root = await demarrerLe('2026-11-04', { search: '?fonda=1&page=niveau&niveau=4e' });
+    const liens = tousParClasse(root, 'fonda-lien-classe');
+    assert.equal(liens.length, 5, '401..405 pour grandeurs-mesures uniquement');
+    assert.ok(liens.every((li) => /_grandeurs-mesures$/.test(decodeURIComponent(li.children[1].href))));
+  });
+});
+
+describe('calendrier v2 — corrections après relecture Codex', () => {
+  test('jour du calendrier = date à Paris, quel que soit le fuseau de l\'appareil', () => {
+    const { etatDuJour } = obtenirExportsBootstrap();
+    // 8 nov. 2026, 23 h 30 UTC = 9 nov., 0 h 30 à Paris : semaine 46, pas 45.
+    assert.equal(etatDuJour(CALENDRIER_REEL, new Date('2026-11-08T23:30:00Z')).semaine.iso_week, 46);
+    assert.equal(etatDuJour(CALENDRIER_REEL, new Date('2026-11-08T22:30:00Z')).semaine.iso_week, 45);
+  });
+
+  test('week-end : l\'accueil (S45) et « Défis par classe » montrent la même semaine', async () => {
+    const accueil = await demarrerLe('2026-11-08', { search: '?fonda=1&niveau=4e' });
+    const prof = tousParClasse(accueil, 'fonda-cal-prof')[0];
+    assert.match(prof.href, /semaine=45$/);
+    const page = await demarrerLe('2026-11-08', { search: prof.href.slice(prof.href.indexOf('?')) });
+    assert.equal(tousParClasse(page, 'fonda-lien-classe').length, 5, '401..405, pas « Aucun défi »');
+  });
+
+  test('vacances : « Défis par classe » vise la semaine de la reprise', async () => {
+    const accueil = await demarrerLe('2026-10-27', { search: '?fonda=1&niveau=5e' });
+    assert.match(tousParClasse(accueil, 'fonda-cal-prof')[0].href, /semaine=45$/);
+  });
+
+  test('page niveau : un set_id absent du catalogue chargé ne donne aucun lien (calendrier en retard sur un retrait)', async () => {
+    const catalogue = { ...CATALOGUE, lots: CATALOGUE.lots.filter((l) => l.set_id !== 'set_fonda_grandeurs-mesures_nI_02') };
+    const root = await demarrerLe('2026-11-04', { search: '?fonda=1&page=niveau&niveau=5e', catalogue });
+    assert.equal(tousParClasse(root, 'fonda-lien-classe').length, 0);
+    assert.match(texteDe(root), /Aucun défi programmé pour 5e/);
+  });
+
+  test('calendrier et catalogue lus en cache « no-cache » (fiche publiée visible aussitôt)', async () => {
+    const journalOptions = [];
+    await demarrerLe('2026-11-04', { search: '?fonda=1&niveau=5e', journalOptions });
+    const opts = new Map(journalOptions);
+    assert.deepEqual(opts.get('fonda/data/calendar.json'), { cache: 'no-cache' });
+    assert.deepEqual(opts.get('fonda/data/catalogue-fonda.json'), { cache: 'no-cache' });
+  });
+});
+
+describe('page niveau ouverte directement : même règle de jour que l\'accueil (Paris, lundi→dimanche)', () => {
+  test('dimanche 8 nov. et 2 nov. 0 h 30 à Paris : semaine 45, comme l\'accueil', () => {
+    const { semaineCourante, etatDuJour } = obtenirExportsBootstrap();
+    for (const instant of ['2026-11-08T12:00:00Z', '2026-11-01T23:30:00Z']) {
+      const d = new Date(instant);
+      assert.equal(semaineCourante(CALENDRIER_REEL, d).iso_week, 45, instant);
+      assert.equal(etatDuJour(CALENDRIER_REEL, d).semaine.iso_week, 45, instant);
+    }
+    assert.equal(semaineCourante(CALENDRIER_REEL, new Date('2026-11-01T22:30:00Z')), null, 'encore en vacances à Paris');
+    for (const jour of ['2026-12-19T10:00:00Z', '2026-12-20T10:00:00Z']) {
+      assert.equal(semaineCourante(CALENDRIER_REEL, new Date(jour)), null, `${jour} : vacances de Noël prioritaires`);
+      assert.equal(etatDuJour(CALENDRIER_REEL, new Date(jour)).type, 'vacances');
+    }
+  });
+
+  test('accès direct sans semaine= le dimanche : liens par classe affichés', async () => {
+    const root = await demarrerLe('2026-11-08', { search: '?fonda=1&page=niveau&niveau=4e' });
+    assert.equal(tousParClasse(root, 'fonda-lien-classe').length, 5);
   });
 });

@@ -541,3 +541,30 @@ PR #1 (`feat/box-fonda-theme-switch` → `design`, commit `5ea01ba`) relue par C
 - Preuves : `node --test` 598/598 (1 skip) ; différentiels ancien/nouveau (correcteur et composant a418881 réellement exécutés, frontières d'exception comprises ; mutations détectées) ; navigateur réel (Chrome 155) : 8 lots parcourus, SRI altérée bloquée ; BOX clair 0 pixel de différence vs design.
 - Changement visible voulu (CDC §12) : badge « Fiche relue par Éric Duchateau » (avant : « Fiche relue et validée par … avant publication. »).
 
+
+
+## Archivé le 2026-10-27 (état au 2026-10-22, remplacé dans AVANCEMENT.md)
+
+## État actuel (design = `9414354`, main = `71299fa` : tout FONDA y est arrivé par l'incident #28, gardé ; réconcilié par #32)
+- **BOX prod** : 9 workflows n8n actifs, Google Form + Tally, relecture carte par carte (`/box-select`), front `https://ericduchateau.github.io/box/` (`main`).
+- **FONDA sur `design`** : thème sombre, correction par profil, index `?fonda=1&page=entrainement` ; **chaîne séparée (bloc 1, PR #6/#7 mergées)** : `catalogue-fonda.json` + `fonda/data/lots/` (8 lots relus, empreintes figées `HISTORIQUES_FIGES`), CI `tests (node --test)` obligatoire sur `design`/`main`.
+- **CDC relecture v8.3 VALIDÉE** (§20 r5, `9b567ee`, branche `feat/box-fonda-relecture`, non mergée) : brique 1 additive (génération, projection complète, lot_relu, décision, charge v2, properties Drive, Sonnet épinglé, purge → refus). Preuve C8 faite.
+
+## Étape 2 : moteur de correction élève (M1) — **mergée** (PR #8, 2026-10-14)
+- `fonda/engine/moteur-correction-v1.js` immuable (registre `moteurs.json`, SRI, CI `immuabilite`) ; 8 lots historiques liés au moteur v1 et au badge « relue par Éric Duchateau » (figés dans `catalogue.js`). Détails et preuves : `AVANCEMENT-archive.md`.
+
+## Prochaines étapes
+1. **Mergés** : étape 3 (canonique, journal + M2, immuabilité + CODEOWNERS ; `immuabilite` requis sur `design`/`main`) ; 4.0 (CDC v8.2 §11 bis + schémas canoniques, PR #14) ; 4a (PR #15, publication Type 2 vérifiée) ; 4b-code (PR #16, `signer-cloture.js`, garde maîtresse) ; cérémonie de clé `eric-2026` (publique dans `fonda/data/cles/`, privée chiffrée hors dépôt, jamais lue par les agents).
+2. **Brique 1 (ordre §20.14)** : étapes 1–4 et dette A mergées (PR #18–#24 ; workflow de génération `vrqgtS5kQMvP9Ok5` INACTIF). **Étape 5** (plan validé, branche `docs/plan-etape5-propre` ; l'ancienne `docs/plan-etape5` contient l'inventaire F3 → suppression distante à décider par Éric) :
+   - lots 1–5 mergés : clé FONDA, recette, portier `MkYrdhgTo52nA3av` (#26), dette C (#27), adaptateurs + CLI + diagnostic + `--palier` (#28, arrivé sur main par erreur puis réconcilié par #32) ; `.gitignore` des secrets (`chore/gitignore-secrets`) ;
+   - **lot 6 mergé** : sonde §20.8 (`ZQASW4PKigh1JaHt`, inactive, à archiver dans l'UI sans la supprimer : exécutions 279791 = 404 sur l'id daté, 279792 = `model` `claude-sonnet-5-5`) ; règle G5 `modeleEpingle` (daté OU sans date, liste noire des alias pré-4.6, CDC r8 sur `docs/cdc-r8-modele-epingle`) (#29) ; `modeles-autorises.json` = `["claude-sonnet-5-5"]` + génération épinglée dessus, aucun repli (#34) ;
+   - **lot 7 mergé** (#36) : garde de `cloturer` INCHANGÉE ; `main()` n'accepte que `saisie_locale` (page refusée avant réseau et clé) ; `cloturerSaisieLocale` se valide elle-même, clé préparée avant, rattachement « poison » ; recette d'ACCÈS du signataire consignée (#35, 2026-10-22 : acces_ok, aucune_generation) ;
+   - **GATE LOT 8 (bloquant)** : Bloc de CONSIGNATION de `RECETTE-INSTANCE.md` à remplir par Éric et relire : (a) réglages Save executions observés dans Settings ; (b) `EXECUTIONS_DATA_PRUNE=false` constaté sur le conteneur. Pas de lot 8 avant.
+3. **Dette `--etendu` FERMÉE** (PR #21) : 1220 vecteurs de refus d'élargissement (un par type interdit au CDC — null, nombre, chaîne, booléen, objet, tableau — sur chaque chemin de chaque contrat), liste tenue À LA MAIN contre le CDC (`fonda/scripts/champs-canonique.js`, confrontée aux schémas chargés) ; `--etendu` : 506/506 détectées, en CI.
+4. Réglages à confirmer (Éric) : « Allow rebase merging » décoché ; « Do not allow bypassing » ; CODEOWNERS sur `main`. — bloc 3 (prod, feu vert) : orpheline `box_7e7tcooh`. `feat/box-delete-hardening` ; Moteur A + dette `defi_id` ; collecte `/box-fonda-events` ; recette `canonique.js` en vrai nœud n8n.
+
+## Dettes OBLIGATOIRES avant activation du workflow de génération (étape 5, avant le vrai run §20.8)
+- **A — pinData null (API n8n)** [PR `fix/box-fonda-pindata-null` + CDC r7 `caeaf2c` ; Codex « propre pour merge » ; feu vert Claude attendu] : l'API publique crée `pinData: null` (non accepté en écriture) et les exécutions le recopient. `rapprocher` + CDC : absent | null | `{}` acceptés ; objet non vide, tableau, autre type (falsy compris) → abandon. Le contournement par l'éditeur devient inutile après merge.
+- **B — appel mal formé (Codex r1 #4)** : correctif CÔTÉ WORKFLOW, pas signataire (le signataire a raison) : le nœud d'entrée émet TOUJOURS `{set_id, ref}` pour tout corps valide ; le malformé est rejeté à la frontière du webhook (4xx) sans exécution auditée non attribuable ; test jusqu'au signataire.
+- **C — dépôts concurrents (Codex r1 #5)** : dépôt idempotent ou exclusion mutuelle, reprises réseau incertaines comprises. En l'état : sûr (abandon), atténué par « un appel à la fois par set_id ».
+

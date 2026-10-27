@@ -116,11 +116,22 @@ describe('chaîne publiée FONDA — cohérence complète', () => {
     });
   }
 
+  // Calendrier v2 : une entrée « publie » pointe un set_id publié ; une entrée
+  // « planifie » (fiche pas encore produite) n'a AUCUN set_id — jamais de lien mort.
   test('calendrier : tout set_id programmé est publié au catalogue', () => {
     const publies = new Set(CATALOGUE.lots.map((e) => e.set_id));
+    let programmes = 0;
     for (const s of CALENDRIER.semaines || []) {
-      for (const en of s.entrees || []) assert.ok(publies.has(en.set_id), `set_id programmé non publié : ${en.set_id}`);
+      for (const en of s.entrees || []) {
+        if (en.statut === 'planifie') {
+          assert.ok(!('set_id' in en), `entrée planifiée avec un set_id : ${en.notion_id} (S${s.iso_week})`);
+          continue;
+        }
+        programmes += 1;
+        assert.ok(publies.has(en.set_id), `set_id programmé non publié : ${en.set_id}`);
+      }
     }
+    assert.ok(programmes > 0, 'le calendrier réel doit programmer au moins une fiche publiée');
   });
 
   test('lots de calibration : conformes, NON relus, jamais au catalogue, set_id distincts des publiés', () => {

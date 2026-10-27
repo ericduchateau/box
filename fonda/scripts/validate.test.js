@@ -146,3 +146,142 @@ describe('intégration — node fonda/scripts/validate.js sur les vraies donnée
     assert.match(sortie, /Tout est conforme/);
   });
 });
+
+// --- calendar.json v2 -------------------------------------------------------------
+const { validerCalendrier } = require('./validate.js');
+const REFERENTIEL = require('../data/referentiel.json');
+const CATALOGUE = require('../data/catalogue-fonda.json');
+const CALENDRIER_REEL = require('../data/calendar.json');
+
+function calendrierMinimal() {
+  return {
+    version: 2,
+    last_updated: '2026-10-27',
+    annee_scolaire: '2026-2027',
+    zone: 'B',
+    source_vacances: 'source officielle',
+    vacances: [{ libelle: 'Vacances de la Toussaint', du: '2026-10-17', au: '2026-11-01', reprise: '2026-11-02' }],
+    periodes: [{ id: 'P2', libelle: 'Toussaint → Noël', du: '2026-11-02', au: '2026-12-18', bandes: { 'c4-milieu': { genere: false, bilan: '', justification: '' } } }],
+    semaines: [{
+      iso_week: 45, du: '2026-11-02', au: '2026-11-06', periode_id: 'P2',
+      entrees: [
+        { notion_id: 'maths.grandeurs-mesures', matiere: 'maths', palier: 'nI', bande: 'c4-milieu', difficulte: { valeur: 'rouge', source: 'priorite_initiale' }, statut: 'publie', set_id: 'set_fonda_grandeurs-mesures_nI_02' },
+        { notion_id: 'fr.comprendre-consigne', matiere: 'français', palier: 'nI', bande: 'c4-milieu', difficulte: { valeur: 'rouge', source: 'priorite_initiale' }, statut: 'planifie' },
+      ],
+    }],
+  };
+}
+const valider = (cal) => validerCalendrier(cal, { referentiel: REFERENTIEL, catalogue: CATALOGUE });
+function refuse(modifier, motif) {
+  const cal = calendrierMinimal();
+  modifier(cal);
+  const r = valider(cal);
+  assert.equal(r.valide, false, `attendu refusé : ${motif}`);
+  assert.ok(r.erreurs.some((e) => motif.test(e)), `motif ${motif} absent de : ${r.erreurs.join(' | ')}`);
+}
+
+describe('validerCalendrier — calendar.json v2 (bandes, entrées planifiées, catalogue publié)', () => {
+  test('le calendrier minimal conforme est valide', () => {
+    assert.deepEqual(valider(calendrierMinimal()), { valide: true });
+  });
+
+  test('le VRAI calendar.json est valide contre le vrai référentiel et le vrai catalogue', () => {
+    assert.deepEqual(valider(CALENDRIER_REEL), { valide: true });
+  });
+
+  test('contrainte dure : set_id non publié, ou publié pour une autre notion/palier -> refus', () => {
+    refuse((c) => { c.semaines[0].entrees[0].set_id = 'set_fonda_grandeurs-mesures_nI_91'; }, /non publié au catalogue/);
+    refuse((c) => { c.semaines[0].entrees[0].set_id = 'set_fonda_nombres-fractions-relatifs_nI_03'; }, /publié pour maths\.nombres-fractions-relatifs/);
+    refuse((c) => { c.semaines[0].entrees[0].palier = 'nF'; }, /publié pour maths\.grandeurs-mesures\/nI/);
+    refuse((c) => { delete c.semaines[0].entrees[0].set_id; }, /non publié au catalogue/);
+  });
+
+  test('entrée planifiée : aucun set_id, même publié', () => {
+    refuse((c) => { c.semaines[0].entrees[1].set_id = 'set_fonda_comprendre-consigne_nI_01'; }, /planifiée n'a pas de set_id/);
+  });
+
+  test('enums, champs hors schéma, notion inconnue ou exclue, matière incohérente', () => {
+    refuse((c) => { c.semaines[0].entrees[0].bande = 'c5'; }, /bande "c5" invalide/);
+    refuse((c) => { c.semaines[0].entrees[0].statut = 'valide'; }, /statut "valide" invalide/);
+    refuse((c) => { c.semaines[0].entrees[0].palier = 'n0'; }, /palier "n0" invalide/);
+    refuse((c) => { c.semaines[0].entrees[0].niveau_cible = '5e'; }, /champ "niveau_cible" hors schéma/);
+    refuse((c) => { c.semaines[0].entrees[1].notion_id = 'fr.inexistante'; }, /absent du référentiel/);
+    refuse((c) => { Object.assign(c.semaines[0].entrees[0], { notion_id: 'maths.geometrie', statut: 'planifie' }); delete c.semaines[0].entrees[0].set_id; }, /exclue \(figures\)/);
+    refuse((c) => { c.semaines[0].entrees[1].matiere = 'maths'; }, /matiere "maths" ≠ référentiel/);
+  });
+
+  test('difficulté : valeur/source dans l\'enum ; source priorite_initiale = valeur du référentiel', () => {
+    refuse((c) => { c.semaines[0].entrees[0].difficulte.valeur = 'nouvelle'; }, /difficulte\.valeur "nouvelle" invalide/);
+    refuse((c) => { c.semaines[0].entrees[0].difficulte.source = 'intuition'; }, /difficulte\.source "intuition" invalide/);
+    refuse((c) => { c.semaines[0].entrees[0].difficulte.valeur = 'vert'; }, /≠ priorite_initiale rouge/);
+    const cal = calendrierMinimal();
+    cal.semaines[0].entrees[0].difficulte = { valeur: 'vert', source: 'stats_cartes' };
+    assert.deepEqual(valider(cal), { valide: true }, 'source stats_cartes : la couleur peut s\'écarter du diagnostic');
+  });
+
+  test('au plus une fiche par matière et par bande dans une semaine', () => {
+    refuse((c) => {
+      c.semaines[0].entrees.push({ notion_id: 'maths.proportionnalite', matiere: 'maths', palier: 'nI', bande: 'c4-milieu', difficulte: { valeur: 'ambre', source: 'priorite_initiale' }, statut: 'planifie' });
+    }, /deux entrées maths pour la bande c4-milieu/);
+    const cal = calendrierMinimal();
+    cal.semaines[0].entrees.push({ notion_id: 'maths.proportionnalite', matiere: 'maths', palier: 'nI', bande: 'c3', difficulte: { valeur: 'ambre', source: 'priorite_initiale' }, statut: 'planifie' });
+    assert.deepEqual(valider(cal), { valide: true }, 'une autre bande peut avoir sa propre fiche maths');
+  });
+
+  test('dates : semaine ISO cohérente, lundi, incluse dans sa période, jamais pendant les vacances', () => {
+    refuse((c) => { c.semaines[0].iso_week = 46; }, /pas dans la semaine ISO 46/);
+    refuse((c) => { c.semaines[0].du = '2026-11-03'; }, /doit être un lundi/);
+    refuse((c) => { c.semaines[0].au = '2026-11-31'; }, /date AAAA-MM-JJ valide/);
+    refuse((c) => { c.semaines[0].periode_id = 'P3'; }, /periode_id "P3" inconnu/);
+    refuse((c) => { Object.assign(c.semaines[0], { iso_week: 44, du: '2026-10-26', au: '2026-10-30' }); }, /hors de sa période|pendant Vacances/);
+    refuse((c) => { c.periodes[0].du = '2026-10-30'; }, /chevauche Vacances de la Toussaint/);
+    refuse((c) => { c.vacances[0].reprise = '2026-11-01'; }, /"reprise" doit être une date après "au"/);
+    refuse((c) => { c.semaines.push({ ...c.semaines[0], entrees: [] }); }, /iso_week en doublon/);
+  });
+
+  test('genere : exige un bilan et toutes les entrées de la période publiées', () => {
+    refuse((c) => { c.periodes[0].bandes['c4-milieu'].genere = true; }, /période générée sans bilan/);
+    refuse((c) => { Object.assign(c.periodes[0].bandes['c4-milieu'], { genere: true, bilan: 'Bilan.' }); }, /"genere" exige que toutes les entrées/);
+    const cal = calendrierMinimal();
+    Object.assign(cal.periodes[0].bandes['c4-milieu'], { genere: true, bilan: 'Bilan.' });
+    cal.semaines[0].entrees.pop();
+    assert.deepEqual(valider(cal), { valide: true });
+    refuse((c) => { c.periodes[0].bandes.c9 = { genere: false, bilan: '', justification: '' }; }, /bande "c9" inconnue/);
+  });
+
+  test('cohérence calendaire : zone B, années consécutives encadrant les dates, semaine lun→ven, reprise = début de période', () => {
+    refuse((c) => { c.zone = 'A'; }, /"zone" "A"/);
+    refuse((c) => { c.annee_scolaire = '2040-2001'; }, /années non consécutives/);
+    refuse((c) => { c.annee_scolaire = '2027-2028'; }, /hors de l'année scolaire 2027-2028/);
+    refuse((c) => { c.semaines[0].au = '2026-11-02'; }, /"au" doit être le vendredi/);
+    refuse((c) => { c.semaines[0].au = '2026-11-08'; }, /"au" doit être le vendredi/);
+    refuse((c) => { c.vacances[0].reprise = '2026-11-09'; }, /la reprise 2026-11-09 n'est le début d'aucune période/);
+    const ete = calendrierMinimal();
+    ete.vacances.push({ libelle: "Vacances d'été", du: '2027-07-03', au: '2027-09-01', reprise: '2027-09-02' });
+    assert.deepEqual(valider(ete), { valide: true }, 'la reprise de septembre n\'ouvre aucune période de cette année');
+  });
+
+  test('reprises : exception estivale explicite (rentrée suivante), fins et reprises bornées', () => {
+    const reel = () => JSON.parse(JSON.stringify(CALENDRIER_REEL));
+    const motif = (cal, re) => { const r = valider(cal); assert.equal(r.valide, false); assert.ok(r.erreurs.some((e) => re.test(e)), r.erreurs.join(' | ')); };
+    const toussaint = reel(); toussaint.vacances[0].reprise = '2099-11-02';
+    motif(toussaint, /reprise hors de l'année scolaire/);
+    const ete = reel(); Object.assign(ete.vacances[4], { au: '2099-09-01', reprise: '2099-09-02' });
+    motif(ete, /reprise hors de la rentrée suivante/);
+    const sansP5 = reel(); sansP5.periodes = sansP5.periodes.filter((p) => p.id !== 'P5');
+    motif(sansP5, /reprise 2027-05-03 n'est le début d'aucune période/);
+    const toussaintSept = reel(); toussaintSept.vacances[0].reprise = '2027-09-02';
+    motif(toussaintSept, /hors de l'année scolaire/);
+    const printempsSept = reel(); printempsSept.vacances[3].reprise = '2027-09-02';
+    printempsSept.periodes = printempsSept.periodes.filter((p) => p.id !== 'P5');
+    assert.equal(valider(printempsSept).valide, false, 'l\'exception estivale ne vaut que pour les vacances d\'été');
+    const finNoel = reel(); finNoel.vacances[1].au = '2027-08-20';
+    assert.equal(valider(finNoel).valide, false, 'fin de vacances (hors été) au-delà de l\'année : refusée');
+  });
+
+  test('enveloppe : version 2 obligatoire, source des vacances citée', () => {
+    refuse((c) => { c.version = 1; }, /"version" doit valoir 2/);
+    refuse((c) => { delete c.source_vacances; }, /source_vacances/);
+    assert.equal(validerCalendrier(null, {}).valide, false);
+  });
+});

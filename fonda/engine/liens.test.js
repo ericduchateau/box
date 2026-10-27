@@ -178,3 +178,92 @@ describe('cas 5/6 — résolution d\'un lien de classe : grp hérité, jamais de
     assert.equal(r.valide, false);
   });
 });
+
+// --- Calendrier v2 : bandes de niveaux et entrées planifiées (sans set_id) ---------
+const {
+  BANDES, niveauxDeLaBande, bandeDuNiveau, classesDeLaBande, entreeConcerneNiveau, entreeALien,
+} = require('./liens.js');
+
+const SEMAINE_45_V2 = {
+  iso_week: 45,
+  du: '2026-11-02',
+  au: '2026-11-06',
+  periode_id: 'P2',
+  entrees: [
+    { notion_id: 'maths.grandeurs-mesures', matiere: 'maths', palier: 'nI', bande: 'c4-milieu', statut: 'publie', set_id: 'set_fonda_grandeurs-mesures_nI_02', difficulte: { valeur: 'rouge', source: 'priorite_initiale' } },
+    { notion_id: 'fr.comprendre-consigne', matiere: 'français', palier: 'nI', bande: 'c4-milieu', statut: 'planifie', difficulte: { valeur: 'rouge', source: 'priorite_initiale' } },
+  ],
+};
+const CALENDRIER_V2 = { version: 2, semaines: [SEMAINE_45_V2] };
+
+describe('bandes — c3 = 6e, c4-milieu = 5e + 4e, c4-fin = 3e (classes déduites de classes.json)', () => {
+  test('correspondance bande <-> classes conforme au découpage validé', () => {
+    assert.deepEqual(classesDeLaBande('c3', CLASSES), ['601', '602', '603', '604', '605']);
+    assert.deepEqual(classesDeLaBande('c4-milieu', CLASSES), ['401', '402', '403', '404', '405', '501', '502', '503', '504', '505']);
+    assert.deepEqual(classesDeLaBande('c4-fin', CLASSES), ['301', '302', '303', '304', '305']);
+    assert.deepEqual(classesDeLaBande('inconnue', CLASSES), []);
+  });
+
+  test('garde : chaque classe de classes.json appartient à UNE ET UNE SEULE bande', () => {
+    for (const grp of CLASSES) {
+      const bandes = Object.keys(BANDES).filter((b) => classesDeLaBande(b, CLASSES).includes(grp));
+      assert.equal(bandes.length, 1, `classe ${grp} : ${bandes.length} bande(s)`);
+    }
+  });
+
+  test('bandeDuNiveau / niveauxDeLaBande, et BANDES gelé', () => {
+    assert.equal(bandeDuNiveau('5e'), 'c4-milieu');
+    assert.equal(bandeDuNiveau('4e'), 'c4-milieu');
+    assert.equal(bandeDuNiveau('6e'), 'c3');
+    assert.equal(bandeDuNiveau('3e'), 'c4-fin');
+    assert.equal(bandeDuNiveau('2nde'), null);
+    assert.deepEqual(niveauxDeLaBande('c4-milieu'), ['5e', '4e']);
+    assert.deepEqual(niveauxDeLaBande('__proto__'), []);
+    assert.ok(Object.isFrozen(BANDES) && Object.isFrozen(BANDES['c4-milieu']));
+  });
+
+  test('entreeConcerneNiveau : bande (v2) ou niveau_cible (v1, conservé)', () => {
+    const e = SEMAINE_45_V2.entrees[0];
+    assert.equal(entreeConcerneNiveau(e, '5e'), true);
+    assert.equal(entreeConcerneNiveau(e, '4e'), true);
+    assert.equal(entreeConcerneNiveau(e, '6e'), false);
+    assert.equal(entreeConcerneNiveau(SEMAINE_41.entrees[0], '6e'), true);
+    assert.equal(entreeConcerneNiveau(null, '6e'), false);
+  });
+});
+
+describe('entrée planifiée (sans set_id) : jamais de lien, jamais de défi résolu', () => {
+  test('entreeALien : vrai seulement avec un set_id non vide', () => {
+    assert.equal(entreeALien(SEMAINE_45_V2.entrees[0]), true);
+    assert.equal(entreeALien(SEMAINE_45_V2.entrees[1]), false);
+    assert.equal(entreeALien({ set_id: '' }), false);
+    assert.equal(entreeALien(SEMAINE_41.entrees[0]), true, 'entrée v1 sans statut : acceptée');
+  });
+
+  test('défense en profondeur : statut « planifie » refusé même avec un set_id (donnée contradictoire)', () => {
+    const contradictoire = { ...SEMAINE_45_V2.entrees[0], statut: 'planifie' };
+    assert.equal(entreeALien(contradictoire), false);
+    const cal = { version: 2, semaines: [{ ...SEMAINE_45_V2, entrees: [contradictoire] }] };
+    assert.equal(resoudreContexteDefi({ defiId: 'defi_2026-w45_402_grandeurs-mesures', calendrier: cal, classesAutorisees: CLASSES }).valide, false);
+    assert.equal(genererLiensNiveau({ niveau: '4e', annee: '2026', semaine: '45', entreesNiveau: [contradictoire], classesAutorisees: CLASSES }).length, 0);
+  });
+
+  test('genererLiensNiveau ignore l\'entrée planifiée : liens pour la seule fiche publiée, 5 classes de 5e', () => {
+    const liens = genererLiensNiveau({
+      niveau: '5e', annee: '2026', semaine: '45',
+      entreesNiveau: SEMAINE_45_V2.entrees.filter((e) => entreeConcerneNiveau(e, '5e')),
+      classesAutorisees: CLASSES,
+    });
+    assert.equal(liens.length, 5);
+    assert.ok(liens.every((l) => l.setId === 'set_fonda_grandeurs-mesures_nI_02'));
+  });
+
+  test('resoudreContexteDefi : 4e résolue par la bande ; l\'entrée planifiée reste invalide', () => {
+    const ok = resoudreContexteDefi({ defiId: 'defi_2026-w45_402_grandeurs-mesures', calendrier: CALENDRIER_V2, classesAutorisees: CLASSES });
+    assert.deepEqual(ok, { valide: true, grp: '402', notionId: 'maths.grandeurs-mesures', palier: 'nI', setId: 'set_fonda_grandeurs-mesures_nI_02' });
+    const planifiee = resoudreContexteDefi({ defiId: 'defi_2026-w45_402_comprendre-consigne', calendrier: CALENDRIER_V2, classesAutorisees: CLASSES });
+    assert.equal(planifiee.valide, false);
+    const autreBande = resoudreContexteDefi({ defiId: 'defi_2026-w45_601_grandeurs-mesures', calendrier: CALENDRIER_V2, classesAutorisees: CLASSES });
+    assert.equal(autreBande.valide, false);
+  });
+});
