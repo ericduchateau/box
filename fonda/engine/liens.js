@@ -40,6 +40,43 @@
 const NIVEAU_DEPUIS_PREFIXE = { 6: '6e', 5: '5e', 4: '4e', 3: '3e' };
 const PREFIXE_DEPUIS_NIVEAU = { '6e': '6', '5e': '5', '4e': '4', '3e': '3' };
 
+// Bandes du calendrier FONDA (calendar.json v2) -> niveaux couverts. Les classes s'en
+// déduisent par le préfixe (classes.json reste la liste fermée, inchangée) :
+// c3 = 601–605 ; c4-milieu = 501–505 + 401–405 ; c4-fin = 301–305.
+const BANDES = Object.freeze({
+  c3: Object.freeze(['6e']),
+  'c4-milieu': Object.freeze(['5e', '4e']),
+  'c4-fin': Object.freeze(['3e']),
+});
+
+function niveauxDeLaBande(bande) {
+  return Object.prototype.hasOwnProperty.call(BANDES, bande) ? BANDES[bande].slice() : [];
+}
+
+function bandeDuNiveau(niveau) {
+  return Object.keys(BANDES).find((b) => BANDES[b].includes(niveau)) || null;
+}
+
+function classesDeLaBande(bande, classesAutorisees) {
+  return niveauxDeLaBande(bande).flatMap((n) => classesDuNiveau(n, classesAutorisees)).sort();
+}
+
+// Une entrée concerne un niveau par son ancien `niveau_cible` (calendrier v1, conservé)
+// ou par sa `bande` (v2 : une entrée c4-milieu concerne la 5e ET la 4e).
+function entreeConcerneNiveau(entree, niveau) {
+  if (!entree || typeof niveau !== 'string') return false;
+  if (entree.niveau_cible === niveau) return true;
+  return typeof entree.bande === 'string' && niveauxDeLaBande(entree.bande).includes(niveau);
+}
+
+// Seule une entrée pointant un set_id (publiée) produit un lien : une entrée planifiée
+// (programme connu, fiche pas encore produite) n'a pas de set_id — jamais de lien mort.
+// Défense en profondeur : statut « planifie » refusé même si un set_id traîne (le
+// validateur l'interdit déjà) ; une entrée v1, sans statut, reste acceptée.
+function entreeALien(entree) {
+  return !!entree && entree.statut !== 'planifie' && typeof entree.set_id === 'string' && entree.set_id.length > 0;
+}
+
 function extraireNotionSlug(notionId) {
   if (typeof notionId !== 'string') return null;
   const i = notionId.indexOf('.');
@@ -66,6 +103,7 @@ function genererLiensNiveau({ niveau, annee, semaine, entreesNiveau, classesAuto
   const classes = classesDuNiveau(niveau, classesAutorisees);
   const liens = [];
   for (const entree of entreesNiveau || []) {
+    if (!entreeALien(entree)) continue; // entrée planifiée : aucun lien
     const slug = extraireNotionSlug(entree.notion_id);
     if (!slug) continue; // notion_id absent/malformé : on n'invente pas de lien
     for (const grp of classes) {
@@ -109,7 +147,7 @@ function resoudreContexteDefi({ defiId, calendrier, classesAutorisees }) {
 
   const entrees = Array.isArray(semaineEntry.entrees) ? semaineEntry.entrees : [];
   const entree = entrees.find(
-    (e) => e && e.niveau_cible === niveau && extraireNotionSlug(e.notion_id) === parse.notionSlug,
+    (e) => entreeALien(e) && entreeConcerneNiveau(e, niveau) && extraireNotionSlug(e.notion_id) === parse.notionSlug,
   );
   if (!entree) return { valide: false };
 
@@ -123,6 +161,12 @@ function resoudreContexteDefi({ defiId, calendrier, classesAutorisees }) {
 }
 
 return {
+  BANDES,
+  niveauxDeLaBande,
+  bandeDuNiveau,
+  classesDeLaBande,
+  entreeConcerneNiveau,
+  entreeALien,
   extraireNotionSlug,
   classesDuNiveau,
   genererDefiId,

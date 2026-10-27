@@ -90,12 +90,21 @@ event = {
 > `rang_local` et `dt_jours` sont posés par l'appareil (qui connaît déjà l'historique local). Le serveur ne reçoit jamais d'identité : seulement « 2ᵉ tentative, 9 j après ». Fiable sur mobile perso, **bruité sur poste partagé** → observable d'appoint, à présenter comme tel.
 
 ### 3.3 `calendar.json` (le « menu » public)
+
+**v2 (2026-10-27)** — calendrier réel, par périodes inter-vacances (zone B) et par **bandes** de niveaux. Contrat détaillé et règles de validation : `fonda/data/README.md` ; validé par `validerCalendrier` (`fonda/scripts/validate.js`) et la CI.
 ```
-semaine = {
-  iso_week, du, au,
-  entrees: [ { defi_id, notion_id, matiere, palier, niveau_cible, set_id } ]
-}
+{ version: 2, annee_scolaire, zone: "B", source_vacances,
+  vacances: [ { libelle, du, au, reprise } ],
+  periodes: [ { id, libelle, du, au, bandes: { <bande>: { genere, bilan, justification } } } ],
+  semaines: [ { iso_week, du (lundi), au (vendredi), periode_id,
+                entrees: [ { notion_id, matiere, palier, bande ("c3"|"c4-milieu"|"c4-fin"),
+                             difficulte: { valeur, source }, statut ("publie"|"planifie"),
+                             set_id } ] } ] }   // set_id seulement si publie, et publié au catalogue
 ```
+- Bandes : `c3` = 6e, `c4-milieu` = 5e + 4e, `c4-fin` = 3e. Une semaine porte au plus une fiche de maths et une de français par bande.
+- Une entrée **planifiée** (programme connu, fiche pas encore produite) n'a pas de `set_id` : case grisée, jamais de lien ni de défi.
+- Le `defi_id` n'est pas stocké : il est dérivé à la génération des liens (`defi_{annee}-w{semaine}_{grp}_{slug}`, `fonda/engine/liens.js`). `niveau_cible` (v1) reste lu pour compatibilité.
+- Pages : `?fonda=1` = « Notions de la semaine » (vue principale, atteinte par le switch BOX) ; `?fonda=1&page=calendrier` = affichage par période. L'accès enseignant aux liens par classe passe par « Défis par classe » sur l'accueil (un clic de plus qu'avant, assumé : décision du 2026-10-27).
 
 ### 3.4 `coverage.json` (état par notion)
 ```
