@@ -1,0 +1,59 @@
+{
+  "schema": "lot-fonda/v1",
+  "set_id": "set_fonda_comprendre-consigne_nI_02",
+  "notion_id": "fr.comprendre-consigne",
+  "palier": "nI",
+  "matiere": "Français",
+  "notion": "Comprendre une consigne et sélectionner l'information utile",
+  "niveau": "Fondamentaux — Initial (accessible)",
+  "revue_carte_par_carte": true,
+  "nb_cartes": 3,
+  "date_creation": "2026-10-28",
+  "cartes": [
+    {
+      "item_id": "it01",
+      "numero": 1,
+      "question": "Léa prépare un exposé sur ce que mangent les abeilles. Quel paragraphe du document lui est utile ?\nA. Le nectar et le pollen récoltés sur les fleurs\nB. L'histoire du miel au Moyen Âge\nC. Le métier d'apiculteur et son matériel\nRéponds par une lettre.",
+      "reponse": "A",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "A"
+      ],
+      "contexte": "expose-abeilles-alimentation",
+      "set_id": "set_fonda_comprendre-consigne_nI_02",
+      "notion_id": "fr.comprendre-consigne"
+    },
+    {
+      "item_id": "it03",
+      "numero": 3,
+      "question": "Consigne : « Combien de temps dure le trajet entre les deux gares ? » Que cherche-t-on ?\nA. Une heure d'arrivée\nB. Une durée\nC. Une distance\nRéponds par une lettre.",
+      "reponse": "B",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "B"
+      ],
+      "contexte": "trajet-duree-consigne",
+      "set_id": "set_fonda_comprendre-consigne_nI_02",
+      "notion_id": "fr.comprendre-consigne"
+    },
+    {
+      "item_id": "it04",
+      "numero": 4,
+      "question": "Pour un exposé, Inès doit indiquer à quelle température l'eau se met à bouillir. Quelle phrase de sa fiche lui est utile ?\nA. L'eau gèle à 0 °C.\nB. L'eau du robinet est tiède à 20 °C.\nC. L'eau bout à 100 °C.\nRéponds par une lettre.",
+      "reponse": "C",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "C"
+      ],
+      "contexte": "fiche-eau-ebullition",
+      "set_id": "set_fonda_comprendre-consigne_nI_02",
+      "notion_id": "fr.comprendre-consigne"
+    }
+  ]
+}

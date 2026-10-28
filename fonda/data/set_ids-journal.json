@@ -186,6 +186,12 @@
       "transition": "reserve",
       "le": "2026-10-28",
       "ref": "2026-10-28-506583495ec4"
+    },
+    {
+      "set_id": "set_fonda_comprendre-consigne_nI_02",
+      "transition": "publie",
+      "le": "2026-10-28T21:09:02.712Z",
+      "ref": "2026-10-28-506583495ec4:publie"
     }
   ]
 }
