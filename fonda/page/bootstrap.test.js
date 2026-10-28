@@ -826,29 +826,45 @@ function liensIndex(root) {
 }
 
 describe('construireEntreesIndex — dérivé du catalogue publié, libellés du référentiel', () => {
-  test('une ligne par notion du catalogue, triées par `ordre` du référentiel, un lien par set_id', () => {
+  // Attendus DÉRIVÉS du catalogue publié (jamais figés) : une nouvelle notion ou un nouveau lot
+  // publié ne casse pas ce test ; l'ordre exact est vérifié sur une fixture synthétique ci-dessous.
+  const BASE = { nI: 'Initial', nF: 'Final' };
+  const paliersAttendus = (cat, notionId) => ['nI', 'nF'].flatMap((p) => {
+    const ids = cat.lots.filter((e) => e.notion_id === notionId && e.palier === p).map((e) => e.set_id).sort();
+    return ids.map((setId, i) => ({ palier: p, setId, libelle: ids.length > 1 ? `${BASE[p]} ${i + 1}` : BASE[p] }));
+  });
+  test('une ligne par notion du catalogue, triées par `ordre` du référentiel, un lien par lot (attendus dérivés du catalogue)', () => {
     const { construireEntreesIndex } = obtenirExportsBootstrap();
     const entrees = construireEntreesIndex(CATALOGUE, REFERENTIEL);
-    assert.deepEqual(entrees.map((e) => e.notionId),
-      ['fr.comprendre-consigne', 'maths.grandeurs-mesures', 'maths.resolution-problemes', 'fr.inference-implicite', 'maths.nombres-fractions-relatifs']);
-    // Première fiche signée (lot 8) : notion de maths, ordre 8 du référentiel, palier nI seulement.
-    const nfr = entrees.find((e) => e.notionId === 'maths.nombres-fractions-relatifs');
-    assert.equal(nfr.libelle, REFERENTIEL.notions.find((n) => n.id === 'maths.nombres-fractions-relatifs').libelle);
-    assert.equal(nfr.matiere, 'maths');
-    assert.deepEqual(nfr.paliers, [{ palier: 'nI', setId: 'set_fonda_nombres-fractions-relatifs_nI_03', libelle: 'Initial' }]);
-    const consigne = entrees[0];
-    assert.equal(consigne.libelle, REFERENTIEL.notions.find((n) => n.id === 'fr.comprendre-consigne').libelle);
-    assert.equal(consigne.matiere, 'français');
-    // UN LIEN PAR LOT du couple (notion, palier), compte DÉRIVÉ du catalogue : « Initial » seul,
-    // ou « Initial 1 », « Initial 2 »… dès qu'un même palier a plusieurs lots publiés.
-    const BASE = { nI: 'Initial', nF: 'Final' };
-    const attendus = ['nI', 'nF'].flatMap((p) => {
-      const ids = CATALOGUE.lots.filter((e) => e.notion_id === 'fr.comprendre-consigne' && e.palier === p).map((e) => e.set_id).sort();
-      return ids.map((setId, i) => ({ palier: p, setId, libelle: ids.length > 1 ? `${BASE[p]} ${i + 1}` : BASE[p] }));
-    });
-    assert.deepEqual(consigne.paliers, attendus);
-    assert.equal(consigne.paliers.filter((x) => x.palier === 'nI').length, LOTS_CONSIGNE_NI.length);
-    assert.ok(consigne.paliers.some((x) => x.setId === SET_CONSIGNE_NI), 'le lot historique reste listé');
+    const notions = [...new Set(CATALOGUE.lots.map((e) => e.notion_id))];
+    assert.deepEqual(entrees.map((e) => e.notionId).slice().sort(), notions.slice().sort(), 'une ligne par notion du catalogue, ni plus ni moins');
+    const ordre = (id) => REFERENTIEL.notions.find((n) => n.id === id).ordre;
+    entrees.forEach((e, i) => { if (i > 0) assert.ok(ordre(entrees[i - 1].notionId) <= ordre(e.notionId), `ordre du référentiel : ${entrees[i - 1].notionId} avant ${e.notionId}`); });
+    for (const e of entrees) {
+      const n = REFERENTIEL.notions.find((x) => x.id === e.notionId);
+      assert.equal(e.libelle, n.libelle, e.notionId);
+      assert.equal(e.matiere, n.matiere, e.notionId);
+      assert.deepEqual(e.paliers, paliersAttendus(CATALOGUE, e.notionId), `${e.notionId} : un lien par lot publié`);
+    }
+    // Repères stables : le lot historique et la première fiche signée restent listés.
+    assert.ok(entrees.find((e) => e.notionId === 'fr.comprendre-consigne').paliers.some((x) => x.setId === SET_CONSIGNE_NI));
+    assert.equal(entrees.find((e) => e.notionId === 'fr.comprendre-consigne').paliers.filter((x) => x.palier === 'nI').length, LOTS_CONSIGNE_NI.length);
+    assert.ok(entrees.find((e) => e.notionId === 'maths.nombres-fractions-relatifs').paliers.some((x) => x.setId === 'set_fonda_nombres-fractions-relatifs_nI_03'));
+  });
+
+  test('ordre exact (fixture synthétique) : `ordre` du référentiel d\'abord, puis ordre d\'apparition au catalogue ; nI avant nF', () => {
+    const { construireEntreesIndex } = obtenirExportsBootstrap();
+    const ref = { notions: [
+      { id: 'x.b', libelle: 'B', matiere: 'maths', ordre: 2 }, { id: 'x.a', libelle: 'A', matiere: 'français', ordre: 1 },
+      { id: 'x.c', libelle: 'C', matiere: 'maths', ordre: 2 },
+    ] };
+    const cat = { lots: [
+      { set_id: 'set_fonda_c_nF_01', notion_id: 'x.c', palier: 'nF' }, { set_id: 'set_fonda_b_nI_01', notion_id: 'x.b', palier: 'nI' },
+      { set_id: 'set_fonda_a_nF_01', notion_id: 'x.a', palier: 'nF' }, { set_id: 'set_fonda_c_nI_01', notion_id: 'x.c', palier: 'nI' },
+    ] };
+    const entrees = construireEntreesIndex(cat, ref);
+    assert.deepEqual(entrees.map((e) => [e.notionId, e.paliers.map((p) => p.setId)]),
+      [['x.a', ['set_fonda_a_nF_01']], ['x.c', ['set_fonda_c_nI_01', 'set_fonda_c_nF_01']], ['x.b', ['set_fonda_b_nI_01']]]);
   });
 
   test('pas de liste en dur : un lot ajouté au catalogue apparaît ; deux lots du même couple sont numérotés', () => {
