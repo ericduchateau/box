@@ -59,10 +59,12 @@ describe('charge v2 : nominal par source', () => {
     const ch = charge('saisie_locale');
     const sig = signer(ch);
     const avec = (schema) => S.verifierAttestationSignee({ type: 'cloture-signee', charge: { ...ch, schema }, signature: sig }, { entree: entreeDe(ch), registre: REGISTRE, referentiel: REFERENTIEL, cles: CLES, modelesAutorises: [MODELE] });
-    assert.match(avec('attestation-cloture/v3').join(), /charge.schema/);
+    assert.match(avec('attestation-cloture/v4').join(), /charge.schema/);
     assert.match(avec(undefined).join(), /charge.schema/);
     // Une charge v2 présentée comme v1 : octets v1 impossibles (champs inconnus).
     assert.match(avec('attestation-cloture/v1').join(), /charge :/);
+    // Une charge v2 présentée comme v3 (intérim) : octets v3 impossibles (relecture_interim absent).
+    assert.match(avec('attestation-cloture/v3').join(), /charge : canonique : relecture_interim : champ manquant/);
   });
   test('signature v2 altérée -> refus', () => {
     const ch = charge('saisie_locale');

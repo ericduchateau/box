@@ -138,6 +138,10 @@ Liste fermée des 20 classes de l'année, format canonique **3 chiffres sans let
 
 Structure par niveau (`6e`/`5e`/`4e`/`3e`, vide) et **identifiants** de relecteurs (`eric`, `justine`) avec leur nom affichable. **Aucune adresse e-mail dans le dépôt** (public) : les adresses vivent dans n8n (chaîne FONDA, PRD §2 bis). Le relecteur **attribué** à une notion vient de `referentiel.json` (champ `relecteur`), jamais du libellé de matière.
 
+## `relecture-interim.json` — relecteur de secours en intérim (CDC r9 §20.6)
+
+`{ "schema": "relecture-interim/v1", "entrees": [ { relecteur_titulaire, relecteur_de_secours, motif, periode, du, au } ] }`. Une entrée autorise le **secours** (seul « eric » signe en saisie locale) à relire une notion dont le relecteur attribué (référentiel, **inchangé**) est le **titulaire**, du `du` au `au` inclus (heure de Paris), dans la période `periode` de `calendar.json` (`au` ≤ fin de la période ; `du` peut la précéder). Clés exactes, relecteurs connus, titulaire ≠ secours, motif **public et fonctionnel** (aucun détail privé ni financier), aucune fenêtre chevauchante pour un même titulaire. Validé par `validate.js` (fonda/scripts/interim.js, seule source des règles). Lu par le signataire **sur design** (fetch explicite), jamais dans la copie de travail ; retirer l'entrée interdit toute nouvelle saisie ou clôture sans toucher aux attestations déjà signées. Procédure : `fonda/scripts/SIGNATAIRE.md`.
+
 ## `catalogue-fonda.json` + `lots/` — lots PUBLIÉS (contrats v1, 2026-10-13)
 
 Ce que l'élève lit (servi par GitHub Pages, aucun webhook) : `catalogue-fonda.json` (`catalogue-fonda/v1`) liste les lots publiés ; chaque lot est dans `lots/<set_id>.json` (`lot-fonda/v1`). Contrats et validation : [`fonda/engine/catalogue.js`](../engine/catalogue.js) (partagé par le front, `fonda/scripts/publier-lot.js` et le test CI `fonda/data/catalogue.test.js`).

@@ -23,9 +23,9 @@ Dossier de clôture : `~/FONDA-clotures/` (hors dépôt, hors Dropbox).
 
 | Commande | Effet |
 |---|---|
-| `signer-cloture.js --actualiser` | `git fetch origin design`. C'est la **seule** commande qui écrit dans `.git` |
+| `signer-cloture.js --actualiser` | `git fetch --quiet origin +refs/heads/design:refs/remotes/origin/design` (refspec **explicite**, indépendante de `remote.origin.fetch`) ; affiche le SHA |
 | `signer-cloture.js --initialiser` | crée le registre `incidents.json` (`[]`) et la sentinelle `.initialise`. **Jamais de remise à zéro** ; refus en cas de traces d'usage |
-| `signer-cloture.js --diagnostic [<set_id>]` | lecture seule **hermétique**, sans clé de signature ; état typé (tableau ci-dessous) |
+| `signer-cloture.js --diagnostic [<set_id>]` | sans clé de signature ; état typé (tableau ci-dessous). **Écrit dans `.git`** (même fetch explicite que `--actualiser`, CDC r9) et affiche le SHA consulté ; rien d'autre n'est écrit |
 | `signer-cloture.js --saisir <set_id>` | décision locale figée (`saisirDecisionLocale`) |
 | `signer-cloture.js <set_id>` | clôture en **saisie locale** (lot 7) : clé préparée avant, puis `cloturer` ; `--source page_relecture` refusée avant réseau et clé |
 | `signer-cloture.js --extraire-publication <set_id>` | vérifie **toutes** les pièces signées, puis écrit `lot-relu.json`. La commande est relançable : si le fichier existe avec les mêmes octets, elle réussit sans écrire ; s'il diffère, elle refuse |
@@ -42,9 +42,10 @@ Précisions :
 - génération réussie sans candidat, ou candidat sans génération → `generation_incoherente` (jamais `aucune_generation`, réservé au cas où il n'y a ni l'une ni l'autre) ;
 - le lot est lu deux fois (octets, id, date de modification) : s'il change entre les deux → `candidat_non_conforme` ; idem si le référentiel archivé ne se résout pas ;
 - lot au JSON invalide, lu dans un autre fichier que celui listé, ou daté après la fin de génération → `candidat_non_conforme` (mêmes contrôles que le signataire) ;
-- relecteur attribué autre que « eric » (fonction `relecteurDeLaGeneration` du signataire) → `relecteur_non_local` ;
+- relecteur attribué autre que « eric » (fonction `relecteurDeLaGeneration` du signataire) **sans intérim applicable aujourd'hui** → `relecteur_non_local` (jamais pour un lot déjà signé : voir « Intérim ») ;
 - décision illisible, d'un autre `set_id`, dont l'empreinte relue ne correspond pas au lot, ou deux décisions aux octets distincts → `decision_non_conforme` ;
 - `signe` exige que les pièces d'un dossier `<set_id>-<code>` se vérifient ; le marqueur `.signature` seul (écrit avant la signature) → `signature_interrompue`.
+- lot **signé** (pièces vérifiées, tous lots) : il reste `signe` et n'est **jamais** `pret_pour_cloture` ; une décision locale abîmée **ou illisible** après la signature, ou l'échec de l'actualisation de `design`, est rapporté dans `problemes_courants`, jamais comme `decision_non_conforme` ni `acces_ko` (les autres causes d'`acces_ko` — n8n, Drive, registre des incidents — restent des anomalies).
 
 `--saisir` : une fin d'entrée au terminal (Ctrl-D) arrête la saisie sur un refus (code ≠ 0), sans figer de décision.
 
@@ -55,6 +56,22 @@ Précisions :
 - une génération rapprochée sans constat ;
 - **aucune** anomalie, en particulier aucune exécution en vol, même non attribuée ;
 - aucun incident résolu dont la période couvre la fenêtre de candidature (de la génération à `recu_le`).
+
+## Intérim : relecteur de secours (CDC r9 §20.6, §20.9 v3)
+
+`fonda/data/relecture-interim.json` (sur `design`) autorise « eric » à saisir et clôturer en saisie locale une notion routée vers un autre relecteur (le **titulaire**, qui reste le relecteur attribué : le référentiel n'est pas modifié). Une entrée = `{ relecteur_titulaire, relecteur_de_secours, motif, periode, du, au }`, bornes incluses, en heure de Paris ; `au` ≤ fin de la période du calendrier.
+
+- **Autorisation** (nouvelles opérations seulement) : à chaque contrôle, `git fetch` explicite puis lecture, **au même SHA figé**, de `relecture-interim.json`, `calendar.json` et `destinataires.json` (jamais la copie de travail) ; validation **complète** du fichier ; **une seule** entrée applicable.
+- **Saisie** (`--saisir`) : contrôle S1 avant la première carte (la présentation — titulaire, secours, motif, fenêtre, SHA — s'affiche), S2 juste avant l'écriture ; la décision `decision-fonda/v2` porte la preuve observée (entrée, `source_version`, `source_commit`).
+- **Clôture** : provenance de la preuve (commit sur la chaîne de confiance, empreinte, fichier **valide** à ce commit, entrée unique au jour de `recu_le`) ; C1 ; C2 avant le récapitulatif (le badge exact est affiché puis figé) ; C3 après le code et la fidélité, avant le marqueur — tout changement de l'entrée ou des noms arrête (`local` : relancer, nouvelle confirmation). `cloture_le` doit tomber dans la fenêtre (minuit compris).
+- **Charge `attestation-cloture/v3`** : mode `auto` par le secours, `relecteur_egal_cloturer` **false**, bloc `relecture_interim`, badge `relue_par_secours` avec le titulaire (« Fiche relue par Éric Duchateau — relecteur de secours (relecture de français, en attendant Justine Leblanc) »). L'instantané `instantane-fonda/v2` **embarque la décision complète** (et son empreinte) : toute substitution change le code de confirmation.
+- **Vérification des pièces signées** (extraction, témoin, diagnostic `signe`) : **archive historique seule**, jamais le fichier de la tête ni le calendrier courant ; liaison complète décision ↔ instantané ↔ charge ↔ génération.
+- **Réversibilité** : retirer l'entrée sur `design` interdit toute nouvelle saisie ou clôture ; le retrait ne touche pas aux attestations existantes (toujours vérifiables via `source_version` dans l'historique de confiance).
+- **Diagnostic** : deux axes séparés — validité des pièces signées (toujours reconnue) ; autorisation de nouvelles opérations (`autorisation_interim`, rapportée à part). `pret_pour_cloture` exige aussi l'intérim applicable **aujourd'hui**.
+
+**Limites assumées** (telles quelles) :
+- un fetch **observe** l'état distant, il ne **verrouille** pas `design` : il subsiste une fenêtre résiduelle, non atomique, entre la dernière observation (C3) et l'appel au signataire ;
+- on ne prouve pas cryptographiquement que S2 a été exécuté (la provenance prouve que l'état revendiqué **pouvait** autoriser la saisie).
 
 ## Registre des incidents : témoin dérivé (option a)
 

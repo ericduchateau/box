@@ -132,7 +132,7 @@ describe('cloture-signee (Type 2) : forme et cohérence charge <-> entrée (sans
     e.fichier = `lots/${e.set_id}.json`;
     e.relecteur = { forme: 'relue_et_validee', nom_affiche: 'Relectrice de test', id: 'justine' };
     e.attestation = { type: 'cloture-signee', signature: 'QUJD', charge: {
-      set_id: e.set_id, notion_id: e.notion_id, palier: e.palier, relecteur_attribue: 'justine',
+      schema: 'attestation-cloture/v2', set_id: e.set_id, notion_id: e.notion_id, palier: e.palier, relecteur_attribue: 'justine',
       coeur: { selection: [...e.item_ids], empreinte_publiee: e.empreinte, moteur: { ...e.moteur } },
       moteur: { ...e.moteur }, badge: { ...e.relecteur } } };
     return e;
@@ -158,6 +158,53 @@ describe('cloture-signee (Type 2) : forme et cohérence charge <-> entrée (sans
   }
   test('type réservé n8n-relecture désormais inconnu', () => {
     assert.match(C.validerAttestation({ type: 'n8n-relecture' }, entreeType2()).join(), /inconnu/);
+  });
+});
+
+// CDC r9 (intérim) : cohérence version de charge <-> forme du badge <-> titulaire, côté front
+// (validerCatalogue, SANS cryptographie : une charge v2 porteuse d'un badge de secours est
+// refusée ici même si le vérificateur Node n'est pas exécuté).
+describe('intérim (CDC r9) : badge de secours au catalogue — rejets croisés sans le vérificateur Node', () => {
+  const SECOURS = { forme: 'relue_par_secours', nom_affiche: 'Éric Duchateau', id: 'eric', titulaire: { id: 'justine', nom_affiche: 'Justine Leblanc' } };
+  const entree = (schema = 'attestation-cloture/v3', badge = SECOURS, relecteur = badge) => {
+    const e = copie(CATALOGUE.lots.find((x) => x.set_id === LOT.set_id));
+    e.set_id = 'set_fonda_comprendre-consigne_nI_92';
+    e.fichier = `lots/${e.set_id}.json`;
+    e.relecteur = copie(relecteur);
+    e.attestation = { type: 'cloture-signee', signature: 'QUJD', charge: {
+      schema, set_id: e.set_id, notion_id: e.notion_id, palier: e.palier, relecteur_attribue: 'justine',
+      coeur: { selection: [...e.item_ids], empreinte_publiee: e.empreinte, moteur: { ...e.moteur } }, moteur: { ...e.moteur }, badge: copie(badge) } };
+    return e;
+  };
+  const valider = (e) => C.validerCatalogue({ ...copie(CATALOGUE), lots: [...copie(CATALOGUE.lots), e] }, REFERENTIEL);
+  test('charge v3 + badge de secours (titulaire) = relecteur de l\'entrée -> accepté', () => {
+    assert.deepEqual(valider(entree()), { valide: true, erreurs: [] });
+    assert.ok(C.FORMES_BADGE.includes('relue_par_secours'));
+  });
+  test('charge v2 portant un badge de secours -> refus', () => assert.match(valider(entree('attestation-cloture/v2')).erreurs.join(), /badge incompatible avec attestation-cloture\/v2/));
+  test('charge v1 portant un badge de secours -> refus', () => assert.match(valider(entree('attestation-cloture/v1')).erreurs.join(), /badge incompatible avec attestation-cloture\/v1/));
+  test('charge v3 avec un badge v2 (relue_et_validee) -> refus', () => {
+    const b = { forme: 'relue_et_validee', nom_affiche: 'Éric Duchateau', id: 'eric' };
+    assert.match(valider(entree('attestation-cloture/v3', b)).erreurs.join(), /badge incompatible avec attestation-cloture\/v3/);
+  });
+  test('charge v3 avec forme de secours mais SANS titulaire -> refus', () => {
+    const b = { forme: 'relue_par_secours', nom_affiche: 'Éric Duchateau', id: 'eric' };
+    assert.match(valider(entree('attestation-cloture/v3', b)).erreurs.join(), /incompatible|relecteur de secours invalide/);
+  });
+  test('version de charge inconnue -> refus', () => assert.match(valider(entree('attestation-cloture/v9')).erreurs.join(), /version de charge inconnue/));
+  test('titulaire FALSIFIÉ dans l\'entrée (nom ou id) -> refus (badge ≠ relecteur)', () => {
+    for (const t of [{ id: 'justine', nom_affiche: 'Autre' }, { id: 'paul', nom_affiche: 'Justine Leblanc' }]) {
+      assert.match(valider(entree('attestation-cloture/v3', SECOURS, { ...SECOURS, titulaire: t })).erreurs.join(), /badge ≠ relecteur de l'entrée/);
+    }
+  });
+  test('entrée : titulaire porté par une autre forme -> refus (champ non autorisé)', () => {
+    const r = { forme: 'relue_et_validee', nom_affiche: 'Éric Duchateau', id: 'eric', titulaire: { id: 'justine', nom_affiche: 'Justine Leblanc' } };
+    assert.match(valider(entree('attestation-cloture/v2', { forme: 'relue_et_validee', nom_affiche: 'Éric Duchateau', id: 'eric' }, r)).erreurs.join(), /relecteur invalide/);
+  });
+  test('entrée de secours mal formée (id nul, titulaire = secours, clé en trop) -> refus', () => {
+    for (const r of [{ ...SECOURS, id: null }, { ...SECOURS, titulaire: { id: 'eric', nom_affiche: 'Éric Duchateau' } }, { ...SECOURS, titulaire: { ...SECOURS.titulaire, x: 1 } }]) {
+      assert.match(valider(entree('attestation-cloture/v3', r, r)).erreurs.join(), /relecteur de secours invalide/);
+    }
   });
 });
 

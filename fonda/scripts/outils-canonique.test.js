@@ -76,9 +76,11 @@ describe('rejeu durci des mutations', () => {
     assert.notEqual(s, SOURCE);
     assert.match(R.rejouer({ source: s, vecteurs: VECTEURS }).invalide.join('\n'), /découverte incomplète/);
   });
-  test('complétude sémantique : 28 chemins nullables atteignables, tous couverts', () => {
+  // 28 chemins (v8.2 + brique 1) + 6 de la charge v3 de l'intérim (CDC r9) : execution_cloture,
+  // revoque_le et les 4 nullables des incidents ; ni fin_saisie_le ni badge.id (non nullables en v3).
+  test('complétude sémantique : 34 chemins nullables atteignables (28 + 6 de la charge v3), tous couverts', () => {
     const r = R.rejouer({ source: SOURCE, vecteurs: VECTEURS });
-    assert.equal(r.chemins, 28);
+    assert.equal(r.chemins, 34);
     assert.deepEqual(r.invalide, []);
   });
   test('commentaires (ligne et bloc indépendant) : exemples ni découverts ni comptés', () => {
@@ -233,9 +235,12 @@ describe('vecteurs d\'élargissement : liste tenue à la main contre le CDC, jam
     return out;
   };
 
-  test('les vecteurs figés (index 114 et suivants) sont reconstruits à l\'identique depuis la liste du CDC', () => {
+  test('les vecteurs figés d\'élargissement (repérés par identifiant « refus-larg- ») sont reconstruits à l\'identique depuis la liste du CDC', () => {
     assert.deepEqual(E.auditer(VECTEURS), []);
     assert.equal(E.NB_AVANT, A.NB_V82 + A.NB_BRIQUE1);
+    // Premier bloc historique contigu (index 114 à 1333) ; ceux de l'intérim suivent son bloc.
+    assert.ok(VECTEURS.slice(E.NB_AVANT, 1334).every(E.estElargissement));
+    assert.ok(!VECTEURS.slice(0, E.NB_AVANT).some(E.estElargissement));
   });
   test('indépendance : liste et générateur ne chargent pas canonique.js (lecture du code et exécution)', () => {
     for (const f of OUTILS) {
@@ -252,9 +257,12 @@ describe('vecteurs d\'élargissement : liste tenue à la main contre le CDC, jam
     ].join('\n');
     for (const c of JSON.parse(execFileSync(process.execPath, ['-e', script], { encoding: 'utf8' }))) assert.doesNotMatch(c, /(^|\/)canonique(\.js)?$|^(node:)?vm$/, c);
   });
-  test('classification : 28 nullables légitimes ; « chaîne ou nombre » = seulement reponses_acceptees[] (récapitulatif, projection)', () => {
+  test('classification : 34 nullables légitimes (28 + 6 de la charge v3) ; « chaîne ou nombre » = seulement reponses_acceptees[] (récapitulatif, projection)', () => {
     const tous = Object.entries(H.CONTRATS).flatMap(([c, f]) => H.chemins(f).map((x) => ({ ...x, contrat: c })));
-    assert.equal(tous.filter((x) => x.nullable).length, 28);
+    assert.equal(tous.filter((x) => x.nullable).length, 34);
+    assert.deepEqual(tous.filter((x) => x.nullable && x.contrat === 'attestation-cloture/v3').map((x) => x.chemin), ['execution_cloture', 'revoque_le',
+      'incidents_connus[].resolu_le', 'incidents_connus[].preuve_resolution', 'incidents_connus[].periode.debut', 'incidents_connus[].periode.fin']);
+    assert.deepEqual(tous.filter((x) => x.nullable && x.contrat === 'decision-fonda/v2'), []);
     assert.deepEqual(tous.filter((x) => x.classe === 'chaine_ou_nombre').map((x) => `${x.contrat}:${x.chemin}`).sort(),
       ['lot-complet-fonda/v1:cartes[].reponses_acceptees[]', 'recapitulatif-fonda/v1:cartes_gardees[].reponses_acceptees[]']);
   });
@@ -268,7 +276,7 @@ describe('vecteurs d\'élargissement : liste tenue à la main contre le CDC, jam
     // Table indépendante du générateur : types admis par classe du CDC (+ null si nullable).
     const ADMIS = { chaine: ['chaine'], nombre: ['nombre'], booleen: ['booleen'], chaine_ou_nombre: ['chaine', 'nombre'], objet: ['objet'], tableau: ['tableau'] };
     const TYPES = ['null', 'nombre', 'chaine', 'booleen', 'objet', 'tableau'];
-    const ids = new Set(VECTEURS.slice(E.NB_AVANT).map((x) => x.id));
+    const ids = new Set(E.elargissements(VECTEURS).map((x) => x.id));
     let n = 0;
     for (const [contrat, f] of Object.entries(H.CONTRATS)) {
       const court = contrat.replace(/-fonda\/v1$|\/v/g, (m) => (m === '/v' ? '-v' : ''));
@@ -284,7 +292,7 @@ describe('vecteurs d\'élargissement : liste tenue à la main contre le CDC, jam
   });
   test('chaque refus d\'élargissement porte sur le champ modifié (le message canonique cite ce chemin)', () => {
     const C = require('../engine/canonique.js');
-    for (const x of VECTEURS.slice(E.NB_AVANT)) {
+    for (const x of E.elargissements(VECTEURS)) {
       const court = x.contrat.replace(/-fonda\/v1$|\/v/g, (m) => (m === '/v' ? '-v' : ''));
       const type = x.id.slice(x.id.lastIndexOf('-') + 1);
       const chemin = x.id.slice(`refus-larg-${court}-`.length, -(type.length + 1));
@@ -320,11 +328,52 @@ describe('vecteurs d\'élargissement : liste tenue à la main contre le CDC, jam
     assert.deepEqual(E.remplacer({ a: [{ b: 1 }, { b: 2 }] }, 'a[].b', null), { a: [{ b: null }, { b: 2 }] });
   });
   test('un élargissement de canonique.js est détecté par le banc ET par la confrontation (champ requis -> nullable)', () => {
-    const mutant = SOURCE.replace("['cle_id', 'chaine'],\n  ]);\n\n  var CONTRATS", "['cle_id', { type: 'nullable', de: 'chaine' }],\n  ]);\n\n  var CONTRATS");
-    assert.notEqual(mutant, SOURCE);
-    const C = require('vm').runInNewContext(`${mutant}\n;FondaCanonique`, Object.create(null));
-    assert.ok(R.echecs(C, VECTEURS).some((x) => x.id === 'refus-larg-attestation-cloture-v2-cle_id-null'));
-    const schemas = R.schemasDe(mutant);
-    assert.notDeepEqual(cheminsDuSchema(schemas['attestation-cloture/v2']), H.chemins(H.CONTRATS['attestation-cloture/v2']));
+    // Charge v2 (suivie du bloc de l'intérim) puis charge v3 (dernière avant CONTRATS).
+    for (const [contrat, ancre] of [['attestation-cloture/v2', "['cle_id', 'chaine'],\n  ]);\n\n  // --- CDC r9"], ['attestation-cloture/v3', "['cle_id', 'chaine'],\n  ]);\n\n  var CONTRATS"]]) {
+      assert.equal(SOURCE.split(ancre).length, 2, ancre);
+      const mutant = SOURCE.replace(ancre, ancre.replace("['cle_id', 'chaine']", "['cle_id', { type: 'nullable', de: 'chaine' }]"));
+      const C = require('vm').runInNewContext(`${mutant}\n;FondaCanonique`, Object.create(null));
+      assert.ok(R.echecs(C, VECTEURS).some((x) => x.id === `refus-larg-${contrat.replace('/v', '-v')}-cle_id-null`), contrat);
+      const schemas = R.schemasDe(mutant);
+      assert.notDeepEqual(cheminsDuSchema(schemas[contrat]), H.chemins(H.CONTRATS[contrat]), contrat);
+    }
+  });
+});
+
+describe('audit des vecteurs de l\'intérim (CDC r9 : decision-fonda/v2, attestation-cloture/v3)', () => {
+  const VI = require('./vecteurs-canonique-interim.js');
+  const OUTIL = path.join(__dirname, 'vecteurs-canonique-interim.js');
+  test('bloc figé reconstruit à l\'identique (repéré par identifiants) ; positifs ET refus pour chaque nouveau contrat', () => {
+    assert.deepEqual(VI.auditer(VECTEURS, SHA_V1), []);
+    const bloc = VI.construire(SHA_V1);
+    for (const c of ['decision-fonda/v2', 'attestation-cloture/v3']) {
+      assert.ok(bloc.some((x) => x.contrat === c && !x.refus), `positif ${c}`);
+      assert.ok(bloc.some((x) => x.contrat === c && x.refus), `refus ${c}`);
+    }
+  });
+  test('blocs ANTÉRIEURS à l\'octet près : 1334 premiers vecteurs = ceux d\'avant l\'intérim (empreinte figée)', () => {
+    const h = require('crypto').createHash('sha256').update(JSON.stringify(VECTEURS.slice(0, 1334))).digest('hex');
+    assert.equal(h, '6c0b627e782287389b7c47a95ac884d116fa553e9b192f7a9a23c5d1b8108a16');
+  });
+  test('indépendance : l\'outil ne charge pas canonique.js (lecture du code et exécution)', () => {
+    const code = fs.readFileSync(OUTIL, 'utf8').split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
+    assert.doesNotMatch(code, /require\([^)]*\/canonique(\.js)?['"]\)|FondaCanonique|\bvm\b|engine\/canonique\.js/);
+    const script = [
+      "const Module = require('module'); const vus = []; const orig = Module._load;",
+      "Module._load = function (req, ...r) { vus.push(req); return orig.call(this, req, ...r); };",
+      `const VI = require(${JSON.stringify(OUTIL)});`,
+      `const V = JSON.parse(require('fs').readFileSync(${JSON.stringify(path.join(RACINE, 'fonda/engine/canonique-vecteurs.json'))}, 'utf8')).vecteurs;`,
+      `if (VI.auditer(V, ${JSON.stringify(SHA_V1)}).length) throw new Error('écarts');`,
+      "process.stdout.write(JSON.stringify(vus.concat(Object.keys(require.cache))));",
+    ].join('\n');
+    for (const c of JSON.parse(execFileSync(process.execPath, ['-e', script], { encoding: 'utf8' }))) assert.doesNotMatch(c, /(^|\/)canonique(\.js)?$|^(node:)?vm$/, c);
+  });
+  test('détecte un attendu altéré et un vecteur retiré', () => {
+    const v = copie(); v.find((x) => x.id === 'attestation-v3-interim').hex = '00';
+    assert.match(VI.auditer(v, SHA_V1).join(), /attestation-v3-interim/);
+    assert.match(VI.auditer(copie().filter((x) => x.id !== 'refus-v3-badge-id-null'), SHA_V1).join(), /nombre/);
+  });
+  test('ligne de commande : sortie 0 sur le fichier figé', () => {
+    assert.match(execFileSync(process.execPath, [OUTIL], { encoding: 'utf8' }), /vecteurs de l'intérim : 17 reconstruits/);
   });
 });

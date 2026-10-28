@@ -272,6 +272,7 @@ Chaîne : A lève ⬛ → B génère des candidates → **dépôt dans la file d
 - **Routage par le relecteur attribué à la notion dans `referentiel.json`** (dérivé de `notion_id`, jamais du libellé de matière) :
   - notions de français → **Justine**
   - notions de mathématiques → **Éric**
+- **Exception d'intérim (CDC relecture r9, §20.6 et §20.9)** : tant qu'une entrée de `fonda/data/relecture-interim.json` le prévoit (période, fenêtre de dates, motif public), Éric peut relire et clôturer **en saisie locale** une notion routée vers Justine, comme **relecteur de secours**. Le routage n'est pas modifié (Justine reste la relectrice attribuée dans `referentiel.json`) ; le badge l'affiche honnêtement (« relecteur de secours, en attendant Justine Leblanc ») et ne prétend jamais que Justine a relu. Hors de ces conditions, la règle ci-dessus s'applique sans exception.
 - Chaque relecteur ne voit que ses candidates. Rien n'entre au catalogue sans feu vert carte par carte (G4).
 
 ---

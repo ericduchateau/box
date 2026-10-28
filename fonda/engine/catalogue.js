@@ -80,8 +80,18 @@ const MOTEUR_HISTORIQUE = Object.freeze({ version: 'v1', sha256: 'ce14c3e4979499
 
 // Badge élève (CDC §12) : même schéma { forme, nom_affiche, id } pour toute entrée ;
 // texte construit par le composant à partir de `forme`. Lots historiques : exception
-// figée « relue_par » (libellé seulement).
-const FORMES_BADGE = Object.freeze(['relue_et_validee', 'relue_par']);
+// figée « relue_par » (libellé seulement). CDC r9 (intérim) : « relue_par_secours » =
+// { forme, nom_affiche, id, titulaire: { id, nom_affiche } } — le relecteur de secours a
+// relu, le titulaire est nommé « en attendant » (jamais présenté comme relecteur) ;
+// réservée aux charges attestation-cloture/v3, et seule forme qui porte `titulaire`.
+const FORMES_BADGE = Object.freeze(['relue_et_validee', 'relue_par', 'relue_par_secours']);
+const FORME_SECOURS = 'relue_par_secours';
+const FORMES_PAR_SCHEMA = Object.freeze({
+  'attestation-cloture/v1': Object.freeze(['relue_et_validee', 'relue_par']),
+  'attestation-cloture/v2': Object.freeze(['relue_et_validee', 'relue_par']),
+  'attestation-cloture/v3': Object.freeze([FORME_SECOURS]),
+});
+const aTitulaire = (x) => Object.prototype.hasOwnProperty.call(x, 'titulaire');
 const BADGE_HISTORIQUE = Object.freeze({ forme: 'relue_par', nom_affiche: 'Éric Duchateau', id: 'eric' });
 
 const estTexte = (v) => typeof v === 'string' && v.trim() !== '';
@@ -207,7 +217,16 @@ function validerAttestation(att, entree) {
     }
     const meme = (a, b) => JSON.stringify(a) === JSON.stringify(b); // tableaux ordonnés
     const memeMoteur = (a, b) => !!a && !!b && a.version === b.version && a.sha256 === b.sha256;
-    const memeBadge = (a, b) => !!a && !!b && a.forme === b.forme && a.nom_affiche === b.nom_affiche && a.id === b.id;
+    const memeTitulaire = (a, b) => (!aTitulaire(a) && !aTitulaire(b))
+      || (aTitulaire(a) && aTitulaire(b) && !!a.titulaire && !!b.titulaire && a.titulaire.id === b.titulaire.id && a.titulaire.nom_affiche === b.titulaire.nom_affiche);
+    const memeBadge = (a, b) => !!a && !!b && a.forme === b.forme && a.nom_affiche === b.nom_affiche && a.id === b.id && memeTitulaire(a, b);
+    // Cohérence version de charge <-> forme du badge <-> titulaire (sans cryptographie) :
+    // v1/v2 -> badge sans titulaire, jamais de secours ; v3 -> badge de secours AVEC titulaire.
+    const formes = Object.prototype.hasOwnProperty.call(FORMES_PAR_SCHEMA, ch.schema) ? FORMES_PAR_SCHEMA[ch.schema] : null;
+    if (!formes) erreurs.push(`cloture-signee : version de charge inconnue (${ch.schema})`);
+    else if (!ch.badge || typeof ch.badge !== 'object' || !formes.includes(ch.badge.forme) || aTitulaire(ch.badge) !== (ch.schema === 'attestation-cloture/v3')) {
+      erreurs.push(`cloture-signee : badge incompatible avec ${ch.schema} (forme ${ch.badge && ch.badge.forme}${ch.badge && aTitulaire(ch.badge) ? ', titulaire' : ''})`);
+    }
     if (ch.set_id !== entree.set_id || ch.notion_id !== entree.notion_id || ch.palier !== entree.palier) erreurs.push('cloture-signee : identité de la charge ≠ entrée');
     if (!ch.coeur || ch.coeur.empreinte_publiee !== entree.empreinte) erreurs.push('cloture-signee : coeur.empreinte_publiee ≠ empreinte de l\'entrée');
     if (!ch.coeur || !meme(ch.coeur.selection, entree.item_ids)) erreurs.push('cloture-signee : coeur.selection ≠ item_ids de l\'entrée');
@@ -272,9 +291,17 @@ function validerCatalogue(catalogue, referentiel) {
       erreurs.push(`${p} : moteur invalide (attendu { version: "v<N>", sha256: <64 hex> })`);
     }
     const r = e.relecteur;
-    if (!r || typeof r !== 'object' || champsEnTrop(r, ['forme', 'nom_affiche', 'id']).length
+    const secours = !!r && typeof r === 'object' && r.forme === FORME_SECOURS;
+    if (!r || typeof r !== 'object' || champsEnTrop(r, secours ? ['forme', 'nom_affiche', 'id', 'titulaire'] : ['forme', 'nom_affiche', 'id']).length
       || !FORMES_BADGE.includes(r.forme) || !estTexte(r.nom_affiche) || !(r.id === null || estTexte(r.id))) {
       erreurs.push(`${p} : relecteur invalide (attendu { forme, nom_affiche, id })`);
+    } else if (secours) {
+      // Badge de secours : id et titulaire { id, nom_affiche } obligatoires, titulaire ≠ secours.
+      const t = r.titulaire;
+      if (!estTexte(r.id) || !aTitulaire(r) || !t || typeof t !== 'object' || Array.isArray(t) || Object.keys(t).sort().join() !== 'id,nom_affiche'
+        || !estTexte(t.id) || !estTexte(t.nom_affiche) || t.id === r.id) {
+        erreurs.push(`${p} : relecteur de secours invalide (attendu { forme, nom_affiche, id, titulaire: { id, nom_affiche } }, titulaire ≠ secours)`);
+      }
     }
     if (e.attestation && e.attestation.type === 'manuelle-historique') {
       if (!m || m.version !== MOTEUR_HISTORIQUE.version || m.sha256 !== MOTEUR_HISTORIQUE.sha256) {
@@ -347,7 +374,7 @@ function prochainSetId(notionId, palier, setIdsExistants) {
 
 return {
   SCHEMA_CATALOGUE, SCHEMA_LOT, SCHEMA_EMPREINTE, SET_ID_PATTERN, CHAMPS_LOT, CHAMPS_CARTE, CHAMPS_ENTREE,
-  TYPES_ATTESTATION, HISTORIQUES_FIGES, MOTEUR_HISTORIQUE, BADGE_HISTORIQUE, FORMES_BADGE, texteEmpreinte, calculerEmpreinte, sha256WebCrypto, validerLot, validerAttestation,
+  TYPES_ATTESTATION, HISTORIQUES_FIGES, MOTEUR_HISTORIQUE, BADGE_HISTORIQUE, FORMES_BADGE, FORME_SECOURS, FORMES_PAR_SCHEMA, texteEmpreinte, calculerEmpreinte, sha256WebCrypto, validerLot, validerAttestation,
   validerCatalogue, verifierLotContreEntree, trouverEntree, prochainSetId, decomposerSetId, slugDeNotion,
 };
 }); // fin UMD

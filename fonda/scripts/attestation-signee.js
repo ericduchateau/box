@@ -3,10 +3,13 @@
 //
 // Enveloppe : { type: "cloture-signee", charge, signature } ; signature = base64 d'une
 // signature RSA-SHA256 PKCS#1 v1.5 sur les OCTETS CANONIQUES de la charge, au contrat
-// désigné par charge.schema ∈ { attestation-cloture/v1, attestation-cloture/v2 }
+// désigné par charge.schema ∈ { attestation-cloture/v1, v2, v3 }
 // (fonda/engine/canonique.js — la charge ne contient jamais de champ « signature »).
 // v1 acceptée telle quelle ; v2 (CDC v8.3 §20.9) : invariants COMMUNS puis PAR SOURCE
 // (page_relecture | saisie_locale), liaison de génération, modèle ∈ liste épinglée (G5).
+// v3 (CDC r9 §20.6, §20.9) : relecteur de SECOURS en intérim, saisie locale seule ; liste
+// explicite d'invariants (invariantsValeurV3) ; archive d'intérim au dépôt (resoudreInterim :
+// version -> { ok, octets }, historique de confiance ; exigé pour v3 seulement).
 //
 // Clés : fonda/data/cles/cles.json = [{ cle_id, fichier, sha256_pem, algorithme,
 // valide_du, valide_au, revoquee_le }] ; fichier = « cles/<cle_id>.pem » (SPKI PEM,
@@ -35,6 +38,7 @@
 
 const crypto = require('crypto');
 const Canonique = require('../engine/canonique.js');
+const I = require('./interim.js');
 
 const TYPE = 'cloture-signee';
 const ALGORITHME = 'RSA-SHA256-PKCS1v15';
@@ -58,7 +62,12 @@ const egal = (a, b) => JSON.stringify(a) === JSON.stringify(b); // tableaux ordo
 // Égalités d'OBJETS indépendantes de l'ordre des clés (les octets canoniques, eux, sont
 // reconstruits dans l'ordre du contrat) : champ par champ.
 const memeMoteur = (a, b) => !!a && !!b && a.version === b.version && a.sha256 === b.sha256;
-const memeBadge = (a, b) => !!a && !!b && a.forme === b.forme && a.nom_affiche === b.nom_affiche && a.id === b.id;
+// Badge : forme, nom, id ET titulaire (présent des deux côtés et égal, ou absent des deux
+// côtés — badge de secours v3).
+const aTitulaire = (x) => Object.prototype.hasOwnProperty.call(x, 'titulaire');
+const memeTitulaire = (a, b) => (!aTitulaire(a) && !aTitulaire(b))
+  || (aTitulaire(a) && aTitulaire(b) && !!a.titulaire && !!b.titulaire && a.titulaire.id === b.titulaire.id && a.titulaire.nom_affiche === b.titulaire.nom_affiche);
+const memeBadge = (a, b) => !!a && !!b && a.forme === b.forme && a.nom_affiche === b.nom_affiche && a.id === b.id && memeTitulaire(a, b);
 
 // PEM de clé PUBLIQUE SPKI strict : un seul bloc « PUBLIC KEY », base64 canonique ;
 // tout autre conteneur (PRIVATE KEY, RSA PUBLIC KEY/PKCS#1, ENCRYPTED, certificat) est
@@ -156,6 +165,20 @@ function invariantsCommuns(ch, e) {
     e.push('mode = "auto" ⇔ relecteur_egal_cloturer ⇔ relecteur_attribue = "eric" : non respecté');
   }
   if (ch.fidelite_transmission.atteste_par !== 'eric') e.push('fidelite_transmission.atteste_par ≠ "eric"');
+  invariantsCoeurLeveesIncidents(ch, e);
+  // Badge (§11 bis, par priorité)
+  const b = ch.badge;
+  if (!FORMES_BADGE.includes(b.forme)) e.push(`badge.forme hors énumération (${b.forme})`);
+  if (auto && !memeBadge(b, BADGE_AUTO)) e.push('badge : auto-confirmation ⇒ { relue_par, Éric Duchateau, eric }');
+  if (!auto) {
+    const nomme = b.forme === 'relue_et_validee' && b.id === ch.relecteur_attribue && estTexte(b.nom_affiche);
+    if (!nomme && !memeBadge(b, BADGE_SANS_NOM)) e.push('badge incohérent : relue_et_validee au nom du relecteur attribué, ou forme « sans nom »');
+  }
+  if (!(b.id === null || b.id === ch.relecteur_attribue)) e.push('badge.id ∉ { relecteur_attribue, null }');
+}
+// Pièces NEUTRES (cœur, nombre de fichiers, levées, incidents) : communes à v1, v2 et v3,
+// extraites de invariantsCommuns SANS changement (même ordre, mêmes messages).
+function invariantsCoeurLeveesIncidents(ch, e) {
   // Cœur
   const co = ch.coeur;
   if (co.action !== 'accepter') e.push('coeur.action ≠ "accepter"');
@@ -179,15 +202,6 @@ function invariantsCommuns(ch, e) {
     const y = ch.incidents_connus[i + 1];
     if (y && !(x.id < y.id)) e.push('incidents_connus : ordre par id (unités de code) non respecté');
   });
-  // Badge (§11 bis, par priorité)
-  const b = ch.badge;
-  if (!FORMES_BADGE.includes(b.forme)) e.push(`badge.forme hors énumération (${b.forme})`);
-  if (auto && !memeBadge(b, BADGE_AUTO)) e.push('badge : auto-confirmation ⇒ { relue_par, Éric Duchateau, eric }');
-  if (!auto) {
-    const nomme = b.forme === 'relue_et_validee' && b.id === ch.relecteur_attribue && estTexte(b.nom_affiche);
-    if (!nomme && !memeBadge(b, BADGE_SANS_NOM)) e.push('badge incohérent : relue_et_validee au nom du relecteur attribué, ou forme « sans nom »');
-  }
-  if (!(b.id === null || b.id === ch.relecteur_attribue)) e.push('badge.id ∉ { relecteur_attribue, null }');
 }
 // Provenances (§11 bis) : ≥ 1, success, execution_id unique, tri (date puis id).
 function invariantsProvenances(ch, e) {
@@ -262,17 +276,17 @@ const croissant = (e, nom, suite) => {
     if (!(suite[i][1] <= suite[i + 1][1])) e.push(`chronologie ${nom} : ${suite[i][0]} ≤ ${suite[i + 1][0]} non respecté`);
   }
 };
-function invariantsValeurV2(ch, { modelesAutorises } = {}) {
-  const e = [];
-  if (ch.schema !== 'attestation-cloture/v2') e.push('schema ≠ attestation-cloture/v2');
-  invariantsCode(ch, e);
+// Pièces de v2 PARTAGÉES avec v3, extraites SANS changement (même ordre, mêmes messages).
+function datesV2(ch) {
   const g = ch.generation;
   const datesGeneration = [['generation.demarree_le', g.demarree_le], ['generation.terminee_le', g.terminee_le],
     ['generation.listing_debut_le', g.listing_debut_le], ['generation.listing_fin_le', g.listing_fin_le]];
   const communes = [...datesGeneration, ['confirmation.le', ch.confirmation.le], ['fidelite_transmission.le', ch.fidelite_transmission.le], ['cloture_le', ch.cloture_le]];
-  verifierDates(e, [...communes, ...datesIncidents(ch)]);
-  invariantsCommuns(ch, e);
-  // Liaison de génération (§20.3, §20.8)
+  return { datesGeneration, communes };
+}
+// Liaison de génération (§20.3, §20.8)
+function invariantsLiaison(ch, e, modelesAutorises) {
+  const g = ch.generation;
   if (g.statut !== 'success') e.push('generation.statut ≠ "success"');
   if (!estTexte(g.execution_id) || !estTexte(g.workflow_id)) e.push('generation : identifiants vides');
   if (!/^sha256:[0-9a-f]{64}$/.test(g.empreinte_complete)) e.push('generation.empreinte_complete : sha256:<64 hex> attendu');
@@ -280,8 +294,36 @@ function invariantsValeurV2(ch, { modelesAutorises } = {}) {
   if (!/^sha256:[0-9a-f]{64}$/.test(ch.referentiel_version)) e.push('referentiel_version : sha256:<64 hex> attendu');
   if (!modelesValides(modelesAutorises)) e.push('liste des modèles autorisés absente, vide ou non épinglée : charge v2 non vérifiable (G5, §20.8)');
   else if (!modelesAutorises.includes(g.modele)) e.push(`generation.modele « ${g.modele} » ∉ modèles autorisés épinglés (G5)`);
-  // Chronologie commune
+}
+function chronologieCommune(e, { datesGeneration, communes }) {
   if (communes.every(([, v]) => dateSignee(v))) croissant(e, 'commune', [datesGeneration[0], datesGeneration[1], datesGeneration[2], datesGeneration[3], communes[4], communes[5], communes[6]]);
+}
+// Saisie locale : structure (avant les règles d'identité) puis chronologie (après).
+function structureSaisieLocale(ch, e) {
+  if (ch.provenances.length !== 0) e.push('saisie_locale : provenances doit être vide');
+  if (ch.execution_cloture !== null) e.push('saisie_locale : execution_cloture doit être null');
+  if (ch.revoque_le !== null) e.push('saisie_locale : revoque_le doit être null');
+  if (ch.fin_saisie_le === null) e.push('saisie_locale : fin_saisie_le requise (non nulle)');
+  else verifierDates(e, [['fin_saisie_le', ch.fin_saisie_le]]);
+  if (ch.nb_fichiers_decision !== 1) e.push('saisie_locale : nb_fichiers_decision = 1 attendu');
+}
+function chronologieSaisieLocale(ch, e) {
+  const g = ch.generation;
+  const suite = [['generation.terminee_le', g.terminee_le], ['fin_saisie_le', ch.fin_saisie_le], ['listing_debut_le', g.listing_debut_le]];
+  if (suite.every(([, v]) => dateSignee(v))) croissant(e, 'saisie locale', suite);
+}
+
+function invariantsValeurV2(ch, { modelesAutorises } = {}) {
+  const e = [];
+  if (ch.schema !== 'attestation-cloture/v2') e.push('schema ≠ attestation-cloture/v2');
+  invariantsCode(ch, e);
+  const g = ch.generation;
+  const dv = datesV2(ch);
+  verifierDates(e, [...dv.communes, ...datesIncidents(ch)]);
+  invariantsCommuns(ch, e);
+  invariantsLiaison(ch, e, modelesAutorises);
+  // Chronologie commune
+  chronologieCommune(e, dv);
   // Par source
   if (ch.source_decisions === 'page_relecture') {
     verifierDates(e, ch.provenances.map((p, i) => [`provenances[${i}].demarree_le`, p.demarree_le]));
@@ -297,18 +339,64 @@ function invariantsValeurV2(ch, { modelesAutorises } = {}) {
     const suite = [['generation.terminee_le', g.terminee_le], ['revoque_le', ch.revoque_le], ['execution_cloture.terminee_le', ch.execution_cloture && ch.execution_cloture.terminee_le], ['listing_debut_le', g.listing_debut_le]];
     if (suite.every(([, v]) => dateSignee(v))) croissant(e, 'page', suite);
   } else if (ch.source_decisions === 'saisie_locale') {
-    if (ch.provenances.length !== 0) e.push('saisie_locale : provenances doit être vide');
-    if (ch.execution_cloture !== null) e.push('saisie_locale : execution_cloture doit être null');
-    if (ch.revoque_le !== null) e.push('saisie_locale : revoque_le doit être null');
-    if (ch.fin_saisie_le === null) e.push('saisie_locale : fin_saisie_le requise (non nulle)');
-    else verifierDates(e, [['fin_saisie_le', ch.fin_saisie_le]]);
-    if (ch.nb_fichiers_decision !== 1) e.push('saisie_locale : nb_fichiers_decision = 1 attendu');
+    structureSaisieLocale(ch, e);
     if (ch.relecteur_attribue !== 'eric') e.push('saisie_locale : relecteur_attribue = "eric" attendu (§20.6)');
     if (ch.confirmation.mode !== 'auto') e.push('saisie_locale : confirmation.mode = "auto" attendu (§20.6)');
-    const suite = [['generation.terminee_le', g.terminee_le], ['fin_saisie_le', ch.fin_saisie_le], ['listing_debut_le', g.listing_debut_le]];
-    if (suite.every(([, v]) => dateSignee(v))) croissant(e, 'saisie locale', suite);
+    chronologieSaisieLocale(ch, e);
   } else {
     e.push(`source_decisions hors énumération (${ch.source_decisions}) : ${SOURCES.join(' | ')}`);
+  }
+  return e;
+}
+
+// v3 (CDC r9 §20.6, §20.9 ; plan r6, annexe D) : relecteur de SECOURS en intérim, saisie
+// locale seule. Liste EXPLICITE : A = repris de v2 à l'identique (pièces extraites ci-dessus) ;
+// B = remplacés pour v3 seulement ; C = nouveaux. invariantsCommuns n'est PAS appelé : ses
+// règles d'identité (par = attribué, auto ⇔ attribué = eric ⇔ égalité, badges v2) sont
+// remplacées par B3–B7 ; ses pièces neutres (A4, A5) le sont via invariantsCoeurLeveesIncidents.
+function invariantsValeurV3(ch, { modelesAutorises } = {}) {
+  const e = [];
+  const ri = ch.relecture_interim;
+  const cf = ch.confirmation;
+  const b = ch.badge;
+  if (ch.schema !== 'attestation-cloture/v3') e.push('schema ≠ attestation-cloture/v3'); // B1
+  invariantsCode(ch, e); // A1
+  const dv = datesV2(ch);
+  verifierDates(e, [...dv.communes, ['fin_saisie_le', ch.fin_saisie_le], ...datesIncidents(ch)]); // A2
+  if (cf.recue_par !== 'eric') e.push('confirmation.recue_par ≠ "eric"'); // A3
+  if (ch.fidelite_transmission.atteste_par !== 'eric') e.push('fidelite_transmission.atteste_par ≠ "eric"');
+  invariantsCoeurLeveesIncidents(ch, e); // A4, A5
+  invariantsLiaison(ch, e, modelesAutorises); // A6
+  chronologieCommune(e, dv); // A7
+  if (ch.source_decisions !== 'saisie_locale') e.push('v3 : source_decisions = "saisie_locale" attendu (intérim : saisie locale seule)'); // B2
+  structureSaisieLocale(ch, e); // A8
+  chronologieSaisieLocale(ch, e);
+  // B3, B4
+  if (ch.relecteur_attribue !== ri.relecteur_titulaire) e.push('v3 : relecteur_attribue ≠ relecture_interim.relecteur_titulaire');
+  if (ch.relecteur_attribue === 'eric') e.push('v3 : relecteur_attribue = "eric" (l\'intérim ne concerne qu\'un autre titulaire)');
+  if (ri.relecteur_de_secours !== 'eric') e.push('v3 : relecture_interim.relecteur_de_secours = "eric" attendu');
+  if (ri.relecteur_titulaire === ri.relecteur_de_secours) e.push('v3 : titulaire = secours');
+  // B5, B6
+  if (cf.mode !== 'auto') e.push('v3 : confirmation.mode = "auto" attendu (le secours relit lui-même)');
+  if (cf.par !== ri.relecteur_de_secours) e.push('v3 : confirmation.par ≠ relecteur_de_secours');
+  if (ch.relecteur_egal_cloturer !== false) e.push('v3 : relecteur_egal_cloturer = false attendu (le relecteur attribué n\'est pas le clôturant)');
+  // B7
+  if (b.forme !== 'relue_par_secours') e.push(`v3 : badge.forme = "relue_par_secours" attendu (${b.forme})`);
+  if (b.id !== ri.relecteur_de_secours) e.push('v3 : badge.id ≠ relecteur_de_secours');
+  if (b.titulaire.id !== ri.relecteur_titulaire) e.push('v3 : badge.titulaire.id ≠ relecteur_titulaire');
+  if (!estTexte(b.nom_affiche) || !estTexte(b.titulaire.nom_affiche)) e.push('v3 : badge.nom_affiche et badge.titulaire.nom_affiche non vides attendus');
+  // C1
+  for (const k of ['relecteur_titulaire', 'relecteur_de_secours', 'motif', 'periode', 'du', 'au', 'source_version']) if (!estTexte(ri[k])) e.push(`v3 : relecture_interim.${k} vide`);
+  const jours = I.jourCivil(ri.du) && I.jourCivil(ri.au);
+  if (!jours) e.push('v3 : relecture_interim.du / au : date civile AAAA-MM-JJ réelle attendue');
+  else if (ri.du > ri.au) e.push('v3 : relecture_interim.du > au');
+  if (!/^sha256:[0-9a-f]{64}$/.test(ri.source_version)) e.push('v3 : relecture_interim.source_version : sha256:<64 hex> attendu');
+  // C2 : fenêtre en heure de Paris (C3 : aucun calendrier dans les invariants de la charge).
+  if (jours) {
+    for (const [nom, v] of [['fin_saisie_le', ch.fin_saisie_le], ['confirmation.le', cf.le], ['fidelite_transmission.le', ch.fidelite_transmission.le], ['cloture_le', ch.cloture_le]]) {
+      const j = dateSignee(v) ? I.jourParis(v) : null;
+      if (j === null || j < ri.du || j > ri.au) e.push(`v3 : ${nom} hors de la fenêtre d'intérim [${ri.du}, ${ri.au}] (heure de Paris)`);
+    }
   }
   return e;
 }
@@ -316,12 +404,13 @@ function invariantsValeurV2(ch, { modelesAutorises } = {}) {
 // Aiguillage par schéma (liste FERMÉE). v1 acceptée telle quelle ; v2 exige la liste
 // des modèles autorisés.
 function invariantsValeur(ch, options = {}) {
+  if (ch && ch.schema === 'attestation-cloture/v3') return invariantsValeurV3(ch, options);
   if (ch && ch.schema === 'attestation-cloture/v2') return invariantsValeurV2(ch, options);
   return invariantsValeurV1(ch);
 }
 
 // --- Invariants de DÉPÔT (charge <-> entrée, lot, registre, référentiel) ---------------
-function invariantsDepot(ch, { entree, registre, referentiel }) {
+function invariantsDepot(ch, { entree, registre, referentiel, resoudreInterim }) {
   const e = [];
   for (const k of ['set_id', 'notion_id', 'palier']) if (ch[k] !== entree[k]) e.push(`charge.${k} ≠ entrée`);
   if (!memeMoteur(ch.coeur.moteur, ch.moteur) || !memeMoteur(ch.moteur, entree.moteur)) e.push('coeur.moteur = moteur = entree.moteur : non respecté');
@@ -338,12 +427,23 @@ function invariantsDepot(ch, { entree, registre, referentiel }) {
     const n = referentiel.notions.find((x) => x && x.id === ch.notion_id);
     if (!n || n.relecteur !== ch.relecteur_attribue) e.push('relecteur_attribue ≠ relecteur du référentiel (§2)');
   }
+  // v3 (D2–D5) : archive d'intérim résolue pour source_version sur l'historique de
+  // confiance (jamais le fichier courant ni le calendrier) ; sans résolveur -> erreur.
+  if (ch.schema === 'attestation-cloture/v3') {
+    if (typeof resoudreInterim !== 'function') e.push('résolveur d\'archive d\'intérim absent : relecture_interim non vérifiable (fail-closed)');
+    else {
+      let r;
+      try { r = resoudreInterim(ch.relecture_interim.source_version); } catch (err) { r = { ok: false, raison: err.message }; }
+      if (!r || r.ok !== true) e.push(`archive d'intérim : ${(r && r.raison) || 'introuvable'}`);
+      else e.push(...I.verifierArchive(ch.relecture_interim, r.octets));
+    }
+  }
   return e;
 }
 
 // Vérification complète, ordre fail-closed. Renvoie la liste des erreurs (vide = ok).
-const CONTRATS_CHARGE = Object.freeze(['attestation-cloture/v1', 'attestation-cloture/v2']);
-function verifierAttestationSignee(enveloppe, { entree, registre, referentiel, cles, modelesAutorises }) {
+const CONTRATS_CHARGE = Object.freeze(['attestation-cloture/v1', 'attestation-cloture/v2', 'attestation-cloture/v3']);
+function verifierAttestationSignee(enveloppe, { entree, registre, referentiel, cles, modelesAutorises, resoudreInterim }) {
   if (!enveloppe || typeof enveloppe !== 'object' || Array.isArray(enveloppe)
     || Object.keys(enveloppe).sort().join() !== 'charge,signature,type' || enveloppe.type !== TYPE) {
     return [`enveloppe : { type: "${TYPE}", charge, signature } attendu`];
@@ -364,7 +464,7 @@ function verifierAttestationSignee(enveloppe, { entree, registre, referentiel, c
   if (!valide) return ['signature RSA-SHA256 PKCS#1 v1.5 invalide sur les octets canoniques de la charge'];
   const ev = invariantsValeur(ch, { modelesAutorises });
   if (ev.length) return ev;
-  return invariantsDepot(ch, { entree, registre, referentiel });
+  return invariantsDepot(ch, { entree, registre, referentiel, resoudreInterim });
 }
 
 module.exports = {

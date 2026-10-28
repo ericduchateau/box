@@ -30,6 +30,7 @@ const S = require('./attestation-signee.js');
 const SC = require('./signer-cloture.js');
 const L = require('./liaison-generation.js');
 const RA = require('./referentiel-archive.js');
+const I = require('./interim.js');
 const PL = require('./publier-lot.js');
 const J = require('../engine/journal-set-ids.js');
 const C = require('../engine/catalogue.js');
@@ -213,8 +214,39 @@ function dossierDuLot(dossier, setId) {
   if (noms.length !== 1) throw new ErreurAdaptateur(`${setId} : ${noms.length} dossier(s) de lot signé(s) (exactement un attendu)`);
   return path.join(dossier, noms[0]);
 }
+// Liaison des pièces d'une charge v3 (intérim, CDC r9 ; plan r6 §7) : instantané v2 ⇔ charge
+// v3 ; décision EMBARQUÉE (empreinte, égalités, réconciliation avec candidat_lot,
+// provenance S2 par l'archive HISTORIQUE seule) ; les 6 champs métier égaux instantané ↔
+// charge (source_version peut différer entre instantané et charge, jamais entre décision et
+// instantané) ; liaison à la génération signée, comme le signataire (signer-cloture.js) —
+// jamais plus laxiste que lui.
+const OCTETS_RELU = (r) => Canonique.hexContrat('lot_relu-fonda/v1', r);
+async function verifierLiaisonInterim(ch, inst, { aCommit }) {
+  const D = inst.decision;
+  if (!D || SC.versionDecision(D) !== 'decision-fonda/v2' || !SC.admissible(false, ch.relecteur_attribue, 'decision-fonda/v2')) throw new ErreurAdaptateur('instantané v2 : décision embarquée non conforme ou non admissible (decision-fonda/v2, relecteur ≠ eric)');
+  if (inst.decision_sha256 !== `sha256:${sha256Hex(Buffer.from(Canonique.octetsContrat('decision-fonda/v2', D)))}`) throw new ErreurAdaptateur('instantané v2 : decision_sha256 ≠ empreinte canonique de la décision embarquée');
+  if (D.set_id !== inst.set_id || inst.set_id !== ch.set_id) throw new ErreurAdaptateur('instantané v2 : set_id décision / instantané / charge discordants');
+  if (OCTETS_COEUR(D.coeur) !== OCTETS_COEUR(inst.coeur)) throw new ErreurAdaptateur('instantané v2 : cœur de la décision ≠ cœur de l\'instantané');
+  if (OCTETS_RELU(D.lot_relu) !== OCTETS_RELU(inst.lot_relu)) throw new ErreurAdaptateur('instantané v2 : lot_relu de la décision ≠ lot_relu de l\'instantané');
+  const bi = inst.relecture_interim;
+  if (!bi || typeof bi !== 'object' || Object.keys(bi).sort().join() !== [...I.CHAMPS_DECISION].sort().join() || I.CHAMPS_DECISION.some((k) => bi[k] !== D.relecture_interim[k])) {
+    throw new ErreurAdaptateur('instantané v2 : bloc d\'intérim ≠ bloc de la décision (8 champs, source_commit et source_version compris)');
+  }
+  const empreintes = { pedagogique: await C.calculerEmpreinte(inst.candidat_lot, shaTexte), complete: L.empreinteComplete(inst.candidat_lot) };
+  const empreintePubliee = async (gardees) => C.calculerEmpreinte(SC.lotPublie(inst.candidat_lot, { selection: gardees }), shaTexte);
+  const rc = await L.reconcilier(D, { setId: ch.set_id, lotSource: inst.candidat_lot, empreintes, empreintePubliee });
+  if (rc.length) throw new ErreurAdaptateur(`instantané v2 : décision non réconciliable avec candidat_lot (${rc.join(' ; ')})`);
+  if (typeof aCommit !== 'function') throw new ErreurAdaptateur('archive d\'intérim (aCommit) absente : provenance non vérifiable');
+  const pv = I.prouverProvenance(D.relecture_interim, D.recu_le, aCommit);
+  if (!pv.ok) throw new ErreurAdaptateur(pv.raison);
+  if (!I.memeEntree(bi, ch.relecture_interim)) throw new ErreurAdaptateur('instantané v2 : champs métier de l\'intérim ≠ charge');
+  if (D.recu_le !== ch.fin_saisie_le) throw new ErreurAdaptateur('décision embarquée : recu_le ≠ charge.fin_saisie_le');
+  if (!(ch.generation.empreinte_complete === D.lot_relu.empreinte_complete && D.lot_relu.empreinte_complete === empreintes.complete)) {
+    throw new ErreurAdaptateur('liaison à la génération : charge.generation.empreinte_complete, lot_relu.empreinte_complete et empreinte complète de candidat_lot discordantes');
+  }
+}
 // -> { attestation, instantane, lot, entree } ; lève si quoi que ce soit ne concorde pas.
-async function verifierPieces(dossierLot, { cles, registre, modelesAutorises, resoudre }, setIdAttendu = null) {
+async function verifierPieces(dossierLot, { cles, registre, modelesAutorises, resoudre, resoudreInterim, aCommit }, setIdAttendu = null) {
   const attestation = JSON.parse(fs.readFileSync(path.join(dossierLot, 'attestation.json'), 'utf8'));
   const ch = attestation && attestation.charge;
   if (!ch || typeof ch !== 'object') throw new ErreurAdaptateur('attestation sans charge');
@@ -227,8 +259,11 @@ async function verifierPieces(dossierLot, { cles, registre, modelesAutorises, re
   if (inst.set_id !== ch.set_id) throw new ErreurAdaptateur('instantané : set_id ≠ charge');
   if (OCTETS_COEUR(inst.coeur) !== OCTETS_COEUR(ch.coeur)) throw new ErreurAdaptateur('instantané : cœur ≠ cœur signé');
   if (!inst.moteur || !ch.moteur || inst.moteur.version !== ch.moteur.version || inst.moteur.sha256 !== ch.moteur.sha256) throw new ErreurAdaptateur('instantané : moteur ≠ charge');
+  // Version de charge ⇔ version d'instantané : v3 (intérim) ⇔ instantane-fonda/v2.
+  if ((ch.schema === 'attestation-cloture/v3') !== (inst.schema === 'instantane-fonda/v2')) throw new ErreurAdaptateur(`charge ${ch.schema} avec instantané ${inst.schema} : v3 ⇔ instantane-fonda/v2`);
+  if (ch.schema === 'attestation-cloture/v3') await verifierLiaisonInterim(ch, inst, { aCommit });
   const lot = SC.lotPublie(inst.candidat_lot, inst.coeur);
-  const va = await PL.verifierLotEtAttestation({ lot, attestation, referentielArchive: async (v) => resoudre(v), sha256Hex: shaTexte, cles, modelesAutorises, registre });
+  const va = await PL.verifierLotEtAttestation({ lot, attestation, referentielArchive: async (v) => resoudre(v), resoudreInterim, sha256Hex: shaTexte, cles, modelesAutorises, registre });
   if (!va.ok) throw new ErreurAdaptateur(`attestation non vérifiée : ${va.erreurs.join(' ; ')}`);
   return { attestation, instantane: inst, lot, entree: va.entree };
 }
@@ -307,7 +342,7 @@ function temoinIncidents({ dossier, verifier, attestationsCatalogue }) {
 }
 // Attestations du catalogue PUBLIÉ (origin/design) : cloture-signee vérifiées en entier ;
 // les 8 « manuelle-historique » (sans charge) ignorées ; tout autre type ou forme -> refus.
-function attestationsDuCatalogue({ git, cles, registre, modelesAutorises, resoudre }) {
+function attestationsDuCatalogue({ git, cles, registre, modelesAutorises, resoudre, resoudreInterim }) {
   return async () => {
     const cat = JSON.parse(lireADesign(git, 'fonda/data/catalogue-fonda.json').toString('utf8'));
     if (!cat || cat.schema !== C.SCHEMA_CATALOGUE || !Array.isArray(cat.lots)) throw new ErreurAdaptateur('catalogue publié : forme catalogue-fonda/v1 attendue');
@@ -325,7 +360,7 @@ function attestationsDuCatalogue({ git, cles, registre, modelesAutorises, resoud
         continue;
       }
       if (!a || a.type !== S.TYPE) throw new ErreurAdaptateur(`catalogue : ${e && e.set_id} : attestation de type inattendu`);
-      const es = PL.verifierClotureDuCatalogue(e, { resoudre, cles, registre, modelesAutorises });
+      const es = PL.verifierClotureDuCatalogue(e, { resoudre, resoudreInterim, cles, registre, modelesAutorises });
       if (es.length) throw new ErreurAdaptateur(`catalogue : ${e.set_id} : attestation non vérifiée (${es.join(' ; ')})`);
       out.push({ entree: e, charge: a.charge });
     }
@@ -412,10 +447,15 @@ function sourcesLocales(o = {}) {
   const registre = JSON.parse(fs.readFileSync(path.join(racine, 'fonda/engine/moteurs.json'), 'utf8'));
   const modelesAutorises = S.lireModelesAutorises(fs.readFileSync(path.join(racine, 'fonda/data/modeles-autorises.json'), 'utf8')); // TEXTE du fichier
   const resoudre = (version) => RA.resoudreReferentiel({ version, refs: [REF_CONFIANCE], racine, git });
-  const verifier = (dl, setIdAttendu = null) => verifierPieces(dl, { cles, registre, modelesAutorises, resoudre }, setIdAttendu);
-  const attestationsCatalogue = attestationsDuCatalogue({ git, cles, registre, modelesAutorises, resoudre });
+  // Intérim (CDC r9) : archive HISTORIQUE (vérification des pièces signées, jamais la tête) ;
+  // observation de design (nouvelles opérations seulement : fetch EXPLICITE puis lecture au SHA).
+  const resoudreInterim = o.resoudreInterim || I.resoudreInterimGit({ refs: [REF_CONFIANCE], racine, git });
+  const aCommit = o.aCommit || I.aCommitGit({ git, refs: [REF_CONFIANCE] });
+  const interim = o.interim || { observer: async () => I.observer(git), aCommit, actualiser: async () => I.actualiser(git) };
+  const verifier = (dl, setIdAttendu = null) => verifierPieces(dl, { cles, registre, modelesAutorises, resoudre, resoudreInterim, aCommit }, setIdAttendu);
+  const attestationsCatalogue = attestationsDuCatalogue({ git, cles, registre, modelesAutorises, resoudre, resoudreInterim });
   return {
-    racine, dossier, dossierCles, git, cles, registre, modelesAutorises, resoudre, verifier, attestationsCatalogue,
+    racine, dossier, dossierCles, git, cles, registre, modelesAutorises, resoudre, resoudreInterim, aCommit, interim, verifier, attestationsCatalogue,
     workflowGeneration: o.workflowGeneration || WORKFLOW_GENERATION,
     journal: journalGit({ git }),
     referentielArchive: RA.referentielArchiveGit({ refs: [REF_CONFIANCE], racine, git }), // -> OCTETS
@@ -473,7 +513,7 @@ async function dependancesSaisie(setId, o = {}) {
   const s = o.sources || sourcesLecture(o);
   return {
     config: { dossier: s.dossier, workflowGeneration: s.workflowGeneration },
-    api: s.api, drive: { lireLotGenere: s.drive.lireLotGenere }, referentielArchive: s.referentielArchive,
+    api: s.api, drive: { lireLotGenere: s.drive.lireLotGenere }, referentielArchive: s.referentielArchive, interim: s.interim,
     moteur: await moteurDeLaGeneration(setId, s), registre: s.registre, fs: s.fs, horloge: s.horloge, ...ES_TERMINAL({ ...o, horloge: s.horloge }),
   };
 }
@@ -488,7 +528,7 @@ function dependancesCloture(o = {}) {
     api: s.api,
     config: { source: 'saisie_locale', workflowGeneration: s.workflowGeneration, dossier: s.dossier, cleId: o.cleId || CLE_ID, modelesAutorises: s.modelesAutorises },
     drive: { lireLotGenere: s.drive.lireLotGenere, listerCandidats: s.drive.listerCandidats },
-    journal: s.journal, decisionsLocales: s.decisionsLocales, incidents: s.incidents, referentielArchive: s.referentielArchive,
+    journal: s.journal, decisionsLocales: s.decisionsLocales, incidents: s.incidents, referentielArchive: s.referentielArchive, interim: s.interim,
     tableRelecteurs: {}, fs: s.fs, signer: o.signer, cles: s.cles, registre: s.registre, horloge: s.horloge, levees: [],
     ...ES_TERMINAL({ ...o, horloge: s.horloge }),
   };
@@ -535,7 +575,7 @@ function dependancesDeclenchement(o = {}) {
 module.exports = {
   SaisieInterrompue,
   incidentMalforme, saisirTerminal, sourcesLocales,
-  ErreurAdaptateur, apiN8n, jetonCompteService, driveLecture, journalGit, fsProduction, decisionsLocales, verifierPieces, dossierDuLot,
+  ErreurAdaptateur, apiN8n, jetonCompteService, driveLecture, journalGit, fsProduction, decisionsLocales, verifierPieces, verifierLiaisonInterim, dossierDuLot,
   lireRegistreStrict, projectionIncident, temoinIncidents, attestationsDuCatalogue, registreIncidents, initialiser, tracesDUsage,
   preparerSignataire, sourcesLecture, moteurDeLaGeneration, dependancesSaisie, dependancesCloture, dependancesDeclenchement,
   WORKFLOW_GENERATION, DOSSIER_CANDIDATS, URL_PORTIER, CLE_ID, DOSSIER_CLOTURE, DOSSIER_CLES, REF_CONFIANCE,

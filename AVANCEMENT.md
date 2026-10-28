@@ -5,20 +5,21 @@
 ## Objectif
 Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correction par profil, mesure par groupe, fiches générées puis relues par un humain), sans casser BOX. Dépôt AAP CARDIE-SEPIA, échéance **21/10/2026**. Source de vérité : `docs/PRD-Box-FONDA.md` ; règles : `AGENTS.md`.
 
-## État actuel (2026-10-27, design = `5217d19`)
+## État actuel (2026-10-28, design = `c215dd0`)
 - **BOX prod** : 9 workflows n8n actifs, front `https://ericduchateau.github.io/box/` (`main`).
 - **Brique 1, étape 5 : lots 1–8 faits.** Génération `vrqgtS5kQMvP9Ok5` et portier `MkYrdhgTo52nA3av` INACTIFS hors fenêtre ; modèle épinglé `claude-sonnet-5-5` ; clôture signée en saisie locale (relecteur eric). Correctif runtime n8n (#42) ; plage `_90–_99` réservée aux set_id fictifs (#47).
 - **Publiés par la chaîne signée** : `set_fonda_nombres-fractions-relatifs_nI_03` (#44) et `set_fonda_grandeurs-mesures_nI_02` (pilote maths 5e/4e, exéc. 279890, #49).
-- Fiche français `comprendre-consigne` (relectrice justine) EN ATTENTE : parcours page de relecture de Justine à spécifier (chantier séparé).
+- Calendrier FONDA réel fusionné (#50).
+- Fiche français `comprendre-consigne` (relectrice justine) : débloquée par l'intérim ci-dessous une fois fusionné.
 - Sondes/copies n8n `ZQASW4PKigh1JaHt`, `4pDA91YG9ssSus3X`, `XrSG2nt5q40SNvf4` : à archiver par Éric (jamais supprimer : preuves).
 
-## En cours : calendrier FONDA réel (`feat/calendrier-fonda`)
-- `calendar.json` v2 (vacances zone B officielles, périodes P2–P5, bandes, entrées publiées/planifiées) ; programme P2 validé (maths : S45/S51 grandeurs-mesures_nI_02, S48 nombres-fractions_nI_03 publiés, reste planifié ; français tout planifié ; jamais de géométrie).
-- `validerCalendrier` (validate.js) + test sur les vraies données ; `liens.js` : `BANDES`, entrées planifiées sans lien ; accueil `?fonda=1` « Notions de la semaine » (goFonda y mène) ; page `?fonda=1&page=calendrier` (visuel split-flap).
-- Relu par Codex (4 passes : 8 points r1 tous corrigés, dont jour à Paris, vacances prioritaires, validateur zone/année/reprises, `no-cache`, accessibilité) ; PR vers design → relecture architecte → fusion par Éric.
+## En cours : relecteur de secours en intérim (`feat/relecture-interim`, sensible)
+- Plan r6 approuvé (6 passes Codex high) ; `relecture-interim.json` (justine → eric, P2, 2026-10-28 → 2026-12-18) ; `interim.js` (autorisation au SHA de design par fetch EXPLICITE, provenance, archive) ; décision v2, instantané v2 (décision embarquée), charge `attestation-cloture/v3`, badge `relue_par_secours` ; vérificateur, catalogue, front, diagnostic à deux axes, export n8n régénéré (génération identique).
+- Suite 5603/0 ; non-régression octet pour octet contre c215dd0 (7312 mutations, 1440 v1 + 2025 v2 de forme valide) ; #44 et #49 se revérifient. Codex high du code : 4 passes, verdict final vert (diagnostic : lot signé toujours « signe », problèmes courants à part ; fetch du journal à refspec explicite). PR vers design -> architecte -> Éric. CDC r9 : PR séparée sur la lignée `docs/cdc-r8-modele-epingle`.
+- Après fusion seulement, sur go architecte + Éric : resync du workflow n8n de génération en ligne (INACTIF).
 
 ## Prochaines étapes
-1. Cycle de la fiche français : parcours page de relecture (Justine) à spécifier ; puis génération des fiches planifiées de P2 avant leurs semaines.
+1. Après l'intérim : génération et relecture (secours) des fiches français planifiées de P2 avant leurs semaines ; parcours page de Justine plus tard.
 2. Champ `bande` dans la métadonnée des lots (lot séparé) ; bilans de période à rédiger avant chaque génération (P3 avant le 4 janvier).
 3. Réglages à confirmer (Éric) : « Allow rebase merging » décoché ; « Do not allow bypassing » ; CODEOWNERS sur `main`. Bloc 3 (prod) : orpheline `box_7e7tcooh`, `feat/box-delete-hardening`, Moteur A + dette `defi_id`, collecte `/box-fonda-events`.
 
@@ -42,6 +43,7 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - **Historique de confiance = chaîne du premier parent** de la référence et de `design` (états réellement publiés) : les commits intermédiaires d'une PR ne comptent pas, son merge oui. Suppose merge commit ou squash (rebase-merge et push direct exclus). Le CI **détecte** une violation, la **protection de branche l'empêche**. Reporté au CDC §17 + annexe A.
 
 ## Pièges
+- Intérim : l'autorisation se lit TOUJOURS sur design (fetch explicite), jamais dans la copie de travail ; les pièces signées se vérifient par l'archive historique seule. Retirer l'entrée = arrêt des nouvelles opérations, attestations existantes intactes.
 - Chrome met `css/style.css` en cache : désactiver le cache pour toute preuve visuelle ; figer `Math.random` (sinon deux captures du même état BOX diffèrent). Scripts injectés dynamiquement : ordre garanti par `await` séquentiel, preuve de chargement = export sur `window`.
 - Calendrier : une entrée `planifie` n'a jamais de `set_id` (validateur + CI) ; un retrait de lot doit retirer ses entrées du calendrier dans le même commit.
 - Profil `orthographe` : ne jamais normaliser accents/pluriels (c'est ce qu'on mesure).
@@ -49,4 +51,4 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - Le classificateur auto-mode bloque les commandes contenant la clé API : Éric lance lui-même les générations.
 - Branches (AGENTS.md) : PR toujours vers `design` (liens `compare/design...<branche>`), fusion en merge commit ; jamais de fast-forward de `design` (casse la chaîne du premier parent).
 
-_Dernière mise à jour : 2026-10-27 — Claude Code (Opus 5.5)._
+_Dernière mise à jour : 2026-10-28 — Claude Code (Opus 5.5)._

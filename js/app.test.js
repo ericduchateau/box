@@ -56,7 +56,7 @@ describe('App.initFonda — bootstrap.js qui ne charge jamais / échoue', () => 
     assert.ok(lienRetour(), 'lien retour absent pendant l\'attente');
     assert.equal(lienRetour().href, '/box/index.html');
     assert.equal(scripts.length, 1);
-    assert.equal(scripts[0].src, 'fonda/page/bootstrap.js?v=4');
+    assert.equal(scripts[0].src, 'fonda/page/bootstrap.js?v=5');
   });
 
   test('requête pendante (ni onload ni onerror) : message d\'indisponibilité au délai, lien retour toujours là', () => {

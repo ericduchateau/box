@@ -74,14 +74,14 @@ require('./carte-reponse-produite.js');
 const { montrerCarteReponseProduite } = global.window.FondaCarteReponseProduite;
 
 // `relecteur` (ancienne forme : nom seul) -> badge du catalogue (CDC §12).
-function monterCarte({ relecteur, forme = 'relue_et_validee', ...carte }, onResultat) {
+function monterCarte({ relecteur, forme = 'relue_et_validee', titulaire, ...carte }, onResultat) {
   const container = creerElementFactice('div');
   const resultats = [];
   const bruts = [];
   montrerCarteReponseProduite(container, {
     moteur,
     carte: moteur.preparerCarte(carte),
-    badge: relecteur ? { forme, nom_affiche: relecteur } : undefined,
+    badge: relecteur ? { forme, nom_affiche: relecteur, ...(titulaire ? { titulaire } : {}) } : undefined,
     onResultat: (r) => { bruts.push(r); resultats.push(ancien(r)); if (onResultat) onResultat(r); },
   });
   const [, input, bouton] = container.children; // question, input, bouton, feedback
@@ -495,6 +495,27 @@ describe('carte-reponse-produite — écarts volontaires E1/E2 et badge (CDC §4
     bouton.__click();
     const relecteur = trouverEnfant(container.children[3], 'fonda-feedback__relecteur');
     assert.equal(relecteur.textContent, '✓Fiche relue par Éric Duchateau');
+  });
+
+  test('badge « relue_par_secours » (intérim, CDC r9) : relecteur de secours nommé, titulaire « en attendant » — jamais présenté comme relecteur', () => {
+    const { input, bouton, container } = monterCarte({
+      question: 'Q ?', profil_correction: 'exact', reponses_acceptees: ['a'], relecteur: 'Éric Duchateau', forme: 'relue_par_secours',
+      titulaire: { id: 'justine', nom_affiche: 'Justine Leblanc' },
+    });
+    input.value = 'a';
+    bouton.__click();
+    const relecteur = trouverEnfant(container.children[3], 'fonda-feedback__relecteur');
+    assert.equal(relecteur.textContent, '✓Fiche relue par Éric Duchateau — relecteur de secours (relecture de français, en attendant Justine Leblanc)');
+    assert.doesNotMatch(relecteur.textContent, /relue (et validée )?par Justine/);
+  });
+
+  test('badge « relue_par_secours » SANS titulaire : aucun texte (jamais de libellé déduit)', () => {
+    const { input, bouton, container } = monterCarte({
+      question: 'Q ?', profil_correction: 'exact', reponses_acceptees: ['a'], relecteur: 'Éric Duchateau', forme: 'relue_par_secours',
+    });
+    input.value = 'a';
+    bouton.__click();
+    assert.equal(trouverEnfant(container.children[3], 'fonda-feedback__relecteur'), undefined);
   });
 
   test('sans moteur : refus explicite au montage (aucune correction implicite)', () => {

@@ -1,6 +1,7 @@
 // Octets canoniques FONDA (CDC relecture §1, §11, §11 bis, §20) — étape 3, chantier 1 ;
-// étendu à l'étape 4.0 (null, « chaîne ou nombre », récapitulatif, charge signée) puis à
-// la brique 1 (v8.3 §20 : génération, lot complet, lot relu, décision, charge v2).
+// étendu à l'étape 4.0 (null, « chaîne ou nombre », récapitulatif, charge signée), à
+// la brique 1 (v8.3 §20 : génération, lot complet, lot relu, décision, charge v2) puis à
+// l'intérim (r9 §20.6, §20.9 : décision v2, charge v3), sans toucher aux contrats existants.
 //
 // Règle (CDC §1) : JSON.stringify d'ECMAScript sur une valeur construite dans l'ORDRE
 // DE CLÉS DU CONTRAT ; UTF-8 sans BOM, sans espace ni saut de ligne ; nombres finis,
@@ -144,6 +145,39 @@ var FondaCanonique = (function () {
     ['cloture_le', 'chaine'], ['badge', BADGE], ['cle_id', 'chaine'],
   ]);
 
+  // --- CDC r9 §20.6 / §20.9 (intérim, ADDITIF) : v1, v2, BADGE et decision v1 INCHANGÉS ----
+  // Bloc d'intérim : mêmes noms que l'entrée de relecture-interim.json, plus la version
+  // (sha256 des octets du fichier) et, dans la décision, le commit observé à la saisie.
+  var INTERIM_CHARGE = objet([
+    ['relecteur_titulaire', 'chaine'], ['relecteur_de_secours', 'chaine'], ['motif', 'chaine'], ['periode', 'chaine'],
+    ['du', 'chaine'], ['au', 'chaine'], ['source_version', 'chaine'],
+  ]);
+  var INTERIM_DECISION = objet([
+    ['relecteur_titulaire', 'chaine'], ['relecteur_de_secours', 'chaine'], ['motif', 'chaine'], ['periode', 'chaine'],
+    ['du', 'chaine'], ['au', 'chaine'], ['source_version', 'chaine'], ['source_commit', 'chaine'],
+  ]);
+  var BADGE_SECOURS = objet([
+    ['forme', 'chaine'], ['nom_affiche', 'chaine'], ['id', 'chaine'], ['titulaire', objet([['id', 'chaine'], ['nom_affiche', 'chaine']])],
+  ]);
+  var DECISION_V2 = objet([
+    ['schema', 'chaine'], ['set_id', 'chaine'], ['generation', 'nombre'], ['nonce', 'chaine'], ['recu_le', 'chaine'],
+    ['coeur', COEUR], ['lot_relu', LOT_RELU], ['hash_formulaire', 'chaine'], ['relecture_interim', INTERIM_DECISION],
+  ]);
+  // Charge v3 : ordre v2, relecture_interim après relecteur_egal_cloturer ; fin_saisie_le
+  // NON nullable (saisie locale seule) ; execution_cloture et revoque_le gardent leur type
+  // nullable v2 (null imposé par les invariants) ; badge de secours.
+  var ATTESTATION_V3 = objet([
+    ['schema', 'chaine'], ['set_id', 'chaine'], ['notion_id', 'chaine'], ['palier', 'chaine'],
+    ['coeur', COEUR], ['sha256_instantane', 'chaine'], ['code_confirmation', 'chaine'],
+    ['confirmation', CONFIRMATION], ['fidelite_transmission', FIDELITE],
+    ['relecteur_attribue', 'chaine'], ['relecteur_egal_cloturer', 'booleen'], ['relecture_interim', INTERIM_CHARGE],
+    ['provenances', tableau(PROVENANCE)], ['nb_fichiers_decision', 'nombre'],
+    ['referentiel_version', 'chaine'], ['moteur', MOTEUR], ['execution_cloture', nul(EXECUTION_CLOTURE)],
+    ['source_decisions', 'chaine'], ['generation', GENERATION_CHARGE], ['fin_saisie_le', 'chaine'],
+    ['revoque_le', nul('chaine')], ['levees', tableau(LEVEE)], ['incidents_connus', tableau(INCIDENT)],
+    ['cloture_le', 'chaine'], ['badge', BADGE_SECOURS], ['cle_id', 'chaine'],
+  ]);
+
   var CONTRATS = {
     'moteur-fonda/v1': MOTEUR,
     'coeur-decision-fonda/v1': COEUR,
@@ -154,9 +188,12 @@ var FondaCanonique = (function () {
     'lot_relu-fonda/v1': LOT_RELU,
     'decision-fonda/v1': DECISION,
     'attestation-cloture/v2': ATTESTATION_V2,
+    'decision-fonda/v2': DECISION_V2,
+    'attestation-cloture/v3': ATTESTATION_V3,
     // Instantané : JAMAIS reconstruit, vérifié en octets bruts (§3.2, §20.5) -> aucune
-    // forme canonique, refusé ici.
+    // forme canonique, refusé ici (v1, et v2 de l'intérim : décision embarquée, CDC r9).
     'instantane-fonda/v1': null,
+    'instantane-fonda/v2': null,
   };
 
   function erreur(chemin, message) {
