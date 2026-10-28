@@ -372,6 +372,24 @@ function validateCalendar() {
 }
 
 // ---------------------------------------------------------------------------
+// relecture-interim.json (CDC r9 §20.6) — validation COMPLÈTE (intrinsèque + calendaire
+// contre calendar.json du MÊME état) : fonda/scripts/interim.js, seule source des règles.
+// ---------------------------------------------------------------------------
+
+function validerRelectureInterim(fichier, options) {
+  return require('./interim.js').validerRelectureInterim(fichier, options);
+}
+
+function validateRelectureInterim() {
+  const fichier = readJson(path.join(DATA_DIR, 'relecture-interim.json'));
+  const calendrier = readJson(path.join(DATA_DIR, 'calendar.json'));
+  const e = validerRelectureInterim(fichier, { calendrier });
+  check('relecture-interim.json : entrées conformes, aucune fenêtre chevauchante, au ≤ fin de période', () => {
+    assert(e.length === 0, e.join(' ; '));
+  });
+}
+
+// ---------------------------------------------------------------------------
 // coverage.json / dashboard.json — enveloppes vides T1
 // ---------------------------------------------------------------------------
 
@@ -484,7 +502,7 @@ function validerEvenement(e, notionIds) {
   }
 }
 
-module.exports = { validerEvenement, EVENT_FIELDS_LIST, validerNotion, validerEnveloppeReferentiel, validerCalendrier };
+module.exports = { validerEvenement, EVENT_FIELDS_LIST, validerNotion, validerEnveloppeReferentiel, validerCalendrier, validerRelectureInterim };
 
 // ---------------------------------------------------------------------------
 // run
@@ -495,6 +513,7 @@ function main() {
     [
       'data/referentiel.json',
       'data/calendar.json',
+      'data/relecture-interim.json',
       'data/coverage.json',
       'data/dashboard.json',
       'fixtures/events.sample.json',
@@ -507,6 +526,7 @@ function main() {
   if (errors.length === 0) {
     notionIds = validateReferentiel();
     validateCalendar();
+    validateRelectureInterim();
     validateCoverage();
     validateDashboard();
     validateEventsSample(notionIds);

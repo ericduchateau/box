@@ -85,6 +85,8 @@ before(async () => {
   cles.push({ cle_id: CLE_ID, fichier: `cles/${CLE_ID}.pem`, sha256_pem: crypto.createHash('sha256').update(pem).digest('hex'), algorithme: 'RSA-SHA256-PKCS1v15', valide_du: '2026-01-01T00:00:00.000Z', valide_au: '2030-01-01T00:00:00.000Z', revoquee_le: null });
   fs.writeFileSync(path.join(t.copie, 'fonda/data/cles/cles.json'), `${JSON.stringify(cles, null, 2)}\n`);
   fs.writeFileSync(path.join(t.copie, 'fonda/data/modeles-autorises.json'), `${JSON.stringify({ schema: 'modeles-autorises/v1', generation_fonda: [FIXTURE.modele] }, null, 2)}\n`);
+  // Intérim : FIXTURE de test committée dans la copie (jamais l'entrée réelle de fonda/data).
+  fs.copyFileSync(path.join(__dirname, 'fixtures/relecture-interim.json'), path.join(t.copie, 'fonda/data/relecture-interim.json'));
   const jp = path.join(t.copie, 'fonda/data/set_ids-journal.json');
   const journal = JSON.parse(fs.readFileSync(jp, 'utf8'));
   journal.lignes.push({ set_id: SET, transition: 'reserve', le: '2026-10-20', ref: FX.ref });
@@ -121,7 +123,10 @@ before(async () => {
     lireLotGenere: async () => ({ id: 'drv-lot', nom: metadonnees.name, modifie_le: '2026-10-20T07:01:00.000Z', octets: Buffer.from(t.lot) }),
     candidatsDuSetId: async () => 1,
   };
-  t.sources = (sur = {}) => ({ ...A.sourcesLecture({ racine: t.copie, dossier: t.dossier, dossierCles: t.cles, api: t.api, drive: t.drive }), ...sur });
+  // `git fetch` (actualisation EXPLICITE de origin/design, intérim CDC r9) NEUTRALISÉ dans la
+  // copie : son origin est le dépôt réel ; origin/design y est simulé par update-ref.
+  t.git = (a) => (a[0] === 'fetch' ? Buffer.alloc(0) : execFileSync('git', a, { cwd: t.copie, stdio: ['ignore', 'pipe', 'ignore'] }));
+  t.sources = (sur = {}) => ({ ...A.sourcesLecture({ racine: t.copie, dossier: t.dossier, dossierCles: t.cles, api: t.api, drive: t.drive, git: t.git }), ...sur });
 });
 
 const diag = async (sur) => CLI.executer({ commande: '--diagnostic', setId: SET }, { sources: t.sources(sur) });
@@ -187,15 +192,30 @@ describe('parcours complet (sans non-retour réel)', () => {
     const ecart = await diag({ drive: { ...t.drive, listerCandidats: async () => ({ incompleteSearch: false, fichiers: [{ ...t.fichier, modifie_le: '2026-10-20T07:00:30.000Z' }] }) } });
     assert.equal(ecart.etat, 'candidat_non_conforme');
   });
-  test('r2 #3 : relecteur attribué ≠ « eric » (fonction RÉELLE du signataire) -> relecteur_non_local, jamais prêt', async () => {
+  test('r2 #3 : relecteur attribué ≠ « eric » (fonction RÉELLE du signataire), SANS intérim applicable -> relecteur_non_local, jamais prêt', async () => {
     const vrai = SC.relecteurDeLaGeneration;
     let appels = 0;
     SC.relecteurDeLaGeneration = async (...a) => { appels += 1; assert.equal(await vrai(...a), 'eric'); return 'justine'; };
     try {
-      const d = await diag();
+      // Hors de la fenêtre de l'entrée committée (P2 : 2026-10-28 -> 2026-12-18).
+      const d = await diag({ horloge: () => new Date('2027-01-10T10:00:00.000Z') });
       assert.equal(appels, 1, 'le diagnostic passe par la fonction du signataire');
       assert.equal(d.etat, 'relecteur_non_local');
+      assert.match(String(d.detail), /intérim : 0 entrée\(s\) d'intérim applicable/);
+      assert.equal(d.autorisation_interim.statut, 'refusee');
       assert.ok(!d.applicables.some((x) => /^pret_/.test(x.etat)));
+    } finally { SC.relecteurDeLaGeneration = vrai; }
+  });
+  test('CDC r9 : relecteur attribué « justine » DANS la fenêtre de l\'intérim committé (design) -> pret_pour_saisie, autorisation affichée avec le SHA', async () => {
+    const vrai = SC.relecteurDeLaGeneration;
+    SC.relecteurDeLaGeneration = async () => 'justine';
+    try {
+      const d = await diag({ horloge: () => new Date('2026-11-05T10:00:00.000Z') });
+      assert.equal(d.etat, 'pret_pour_saisie');
+      assert.equal(d.autorisation_interim.statut, 'autorisee');
+      assert.equal(d.autorisation_interim.sha, t.commit);
+      assert.equal(d.design, t.commit);
+      assert.equal(d.autorisation_interim.entree.relecteur_de_secours, 'eric');
     } finally { SC.relecteurDeLaGeneration = vrai; }
   });
   test('r2 #7 : --saisir interrompue (fin d\'entrée) -> code ≠ 0, AUCUNE décision figée', async () => {
@@ -237,6 +257,31 @@ describe('parcours complet (sans non-retour réel)', () => {
     const r3 = await diag({ api: enVol });
     assert.equal(r3.etat, 'generation_en_cours');
     assert.ok(!r3.applicables.some((x) => x.etat === 'pret_pour_cloture'), 'jamais prêt pour la clôture pendant une exécution en vol');
+  });
+  test('CDC r9 : décision figée sous intérim (v2) — prête si intérim applicable AUJOURD\'HUI ; jamais prête après expiration ; provenance fausse -> non conforme', async () => {
+    const I = require(path.join(t.copie, 'fonda/scripts/interim.js'));
+    const octets = execFileSync('git', ['show', `${t.commit}:fonda/data/relecture-interim.json`], { cwd: t.copie });
+    const version = `sha256:${crypto.createHash('sha256').update(octets).digest('hex')}`;
+    const entree = JSON.parse(octets.toString('utf8')).entrees[0];
+    const dec = (await t.sources().decisionsLocales(SET)).map((f) => JSON.parse(f.octets.toString('utf8')))[0];
+    const v2 = { ...dec, schema: 'decision-fonda/v2', recu_le: '2026-11-04T10:00:00.000Z', relecture_interim: I.blocDecision(entree, version, t.commit) };
+    const avec = (d) => ({ decisionsLocales: async () => [{ nom: 'decision.json', octets: Buffer.from(JSON.stringify(d)) }] });
+    const vrai = SC.relecteurDeLaGeneration;
+    SC.relecteurDeLaGeneration = async () => 'justine';
+    try {
+      const ok = await diag({ ...avec(v2), horloge: () => new Date('2026-11-05T10:00:00.000Z') });
+      assert.equal(ok.etat, 'pret_pour_cloture', JSON.stringify(ok.applicables));
+      assert.equal(ok.autorisation_interim.statut, 'autorisee');
+      const expire = await diag({ ...avec(v2), horloge: () => new Date('2027-01-10T10:00:00.000Z') });
+      assert.ok(!expire.applicables.some((x) => x.etat === 'pret_pour_cloture'), 'décision valable hier, intérim expiré aujourd\'hui -> jamais prête');
+      assert.match(JSON.stringify(expire.applicables), /intérim non applicable aujourd'hui/);
+      const faux = await diag({ ...avec({ ...v2, relecture_interim: { ...v2.relecture_interim, motif: 'Autre.' } }), horloge: () => new Date('2026-11-05T10:00:00.000Z') });
+      assert.equal(faux.etat, 'decision_non_conforme');
+      assert.match(String(faux.detail), /provenance de la saisie/);
+      const v1 = await diag({ horloge: () => new Date('2026-11-05T10:00:00.000Z') }); // décision v1 (sans preuve) pour justine
+      assert.equal(v1.etat, 'decision_non_conforme');
+      assert.match(String(v1.detail), /decision-fonda\/v2/);
+    } finally { SC.relecteurDeLaGeneration = vrai; }
   });
   test('r2 #4 : deux décisions figées ne différant que par le nonce -> decision_non_conforme', async () => {
     const f = (await t.sources().decisionsLocales(SET))[0];
@@ -287,6 +332,26 @@ describe('parcours complet (sans non-retour réel)', () => {
   });
   test('--diagnostic : signe', async () => {
     assert.equal((await CLI.executer({ commande: '--diagnostic', setId: SET }, { sources: t.sources() })).etat, 'signe');
+  });
+  test('CDC r9, axes séparés : relecteur ≠ eric, lot SIGNÉ, intérim expiré / retiré / fichier absent de la tête -> « signe » (jamais relecteur_non_local), autorisation rapportée à part', async () => {
+    const vrai = SC.relecteurDeLaGeneration;
+    SC.relecteurDeLaGeneration = async () => 'justine';
+    try {
+      for (const sur of [
+        { horloge: () => new Date('2027-01-10T10:00:00.000Z') }, // expiré
+        { interim: { ...t.sources().interim, observer: async () => ({ sha: t.commit, octetsInterim: Buffer.from('{"schema":"relecture-interim/v1","entrees":[]}'), octetsCalendrier: Buffer.from('{}'), octetsDestinataires: Buffer.from('{}') }) } }, // retiré
+        { interim: { ...t.sources().interim, observer: async () => { throw new Error('fonda/data/relecture-interim.json absent de la tête'); } } }, // absent
+      ]) {
+        // Décision locale CONSERVÉE (v1, non admissible pour « justine ») : lot signé -> elle n'est
+        // qu'un problème courant, rapporté à part ; « signe » n'est jamais masqué ni « prêt ».
+        const d = await diag(sur);
+        assert.equal(d.etat, 'signe', JSON.stringify(d.applicables));
+        assert.ok(!d.applicables.some((x) => x.etat === 'pret_pour_cloture'));
+        assert.match(d.problemes_courants.join(), /decision-fonda\/v2/);
+        assert.ok(!d.applicables.some((x) => x.etat === 'relecteur_non_local'));
+        assert.equal(d.autorisation_interim.statut, 'refusee');
+      }
+    } finally { SC.relecteurDeLaGeneration = vrai; }
   });
   test('r2 #5 : marqueur .signature SANS pièces vérifiées -> signature_interrompue, jamais signe', async () => {
     const d = await diag({ verifier: async () => { throw new Error('pièces absentes ou invalides'); } });
@@ -375,8 +440,8 @@ describe('essais négatifs après clôture', () => {
   });
 });
 
-describe('--diagnostic hermétique', () => {
-  test('aucune écriture (fs, child_process) et aucune lecture de clé de SIGNATURE', async () => {
+describe('--diagnostic : seule écriture = actualisation explicite de origin/design (CDC r9)', () => {
+  test('aucune écriture fs, git limité à la lecture + UN fetch à refspec explicite, aucune lecture de clé de SIGNATURE', async () => {
     const ecritures = [];
     const lectures = [];
     const origine = {};
@@ -391,7 +456,7 @@ describe('--diagnostic hermétique', () => {
     const rf = fs.readFileSync;
     fs.readFileSync = function espion(p, ...r) { if (String(p).endsWith('.priv.pem')) lectures.push(String(p)); return rf.call(this, p, ...r); };
     const gitArgs = [];
-    const git = (a) => { gitArgs.push(a.join(' ')); return execFileSync('git', a, { cwd: t.copie, stdio: ['ignore', 'pipe', 'ignore'] }); };
+    const git = (a) => { gitArgs.push(a.join(' ')); return a[0] === 'fetch' ? Buffer.alloc(0) : execFileSync('git', a, { cwd: t.copie, stdio: ['ignore', 'pipe', 'ignore'] }); };
     let d;
     try {
       const s = A.sourcesLecture({ racine: t.copie, dossier: t.dossier, dossierCles: t.cles, api: t.api, drive: t.drive, git });
@@ -402,7 +467,10 @@ describe('--diagnostic hermétique', () => {
     }
     assert.equal(d.etat, 'signe', 'le diagnostic a réellement tourné');
     assert.ok(gitArgs.length > 0, 'git réellement observé');
-    assert.ok(gitArgs.every((x) => /^(rev-parse|rev-list|show|cat-file|log|ls-tree)\b/.test(x)), `commande git non lecture : ${gitArgs.join(' | ')}`);
+    // Seule écriture admise (CDC r9) : l'actualisation EXPLICITE de origin/design, une fois.
+    const fetchs = gitArgs.filter((x) => /^fetch\b/.test(x));
+    assert.deepEqual(fetchs, ['fetch --quiet origin +refs/heads/design:refs/remotes/origin/design']);
+    assert.ok(gitArgs.every((x) => /^(fetch --quiet origin \+refs\/heads\/design:refs\/remotes\/origin\/design$|rev-parse|rev-list|show|cat-file|log|ls-tree)\b/.test(x)), `commande git non lecture : ${gitArgs.join(' | ')}`);
     assert.deepEqual(ecritures, []);
     assert.deepEqual(lectures, []);
   });

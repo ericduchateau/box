@@ -307,7 +307,9 @@ describe('fabriques : EXACTEMENT ce que consomment saisie et clôture', () => {
   });
   test('clôture : toutes les clés lues par cloturer, config complète (modelesAutorises DANS config), rattachement ABSENT par défaut', () => {
     const d = A.dependancesCloture({ sources: s, signer: () => Buffer.alloc(0) });
-    assert.deepEqual(Object.keys(d).sort(), ['afficher', 'api', 'cles', 'config', 'decisionsLocales', 'drive', 'fs', 'horloge', 'incidents', 'journal', 'levees', 'rattachement', 'referentielArchive', 'registre', 'saisir', 'signer', 'tableRelecteurs'].sort());
+    assert.deepEqual(Object.keys(d).sort(), ['afficher', 'api', 'cles', 'config', 'decisionsLocales', 'drive', 'fs', 'horloge', 'incidents', 'interim', 'journal', 'levees', 'rattachement', 'referentielArchive', 'registre', 'saisir', 'signer', 'tableRelecteurs'].sort());
+    // Intérim (CDC r9) : observation de design (fetch explicite) et archive historique.
+    assert.deepEqual(Object.keys(d.interim).sort(), ['aCommit', 'actualiser', 'observer']);
     assert.equal(d.rattachement, undefined, 'garde maîtresse : aucun rattachement fourni en production');
     assert.deepEqual(Object.keys(d.config).sort(), ['cleId', 'dossier', 'modelesAutorises', 'source', 'workflowGeneration']);
     assert.equal(d.config.source, 'saisie_locale');
@@ -322,7 +324,8 @@ describe('fabriques : EXACTEMENT ce que consomment saisie et clôture', () => {
     const exec = (sortie) => ({ data: { resultData: { runData: { 'FONDA Entree generation': [{ data: { main: [[{ json: { set_id: SET, ref: 'r' } }]] } }], 'FONDA Sortie generation': [{ data: { main: [[{ json: sortie }]] } }] } } } });
     const api = { listerExecutions: async ({ status }) => (status ? [] : [{ id: '1', workflowId: 'vrqgtS5kQMvP9Ok5', status: 'success', startedAt: '2026-10-20T07:00:00.000Z', stoppedAt: '2026-10-20T07:01:00.000Z' }]), lireExecution: async () => exec({ moteur: { version: reg.version, sha256: reg.sha256 } }) };
     const d = await A.dependancesSaisie(SET, { sources: { ...s, api } });
-    assert.deepEqual(Object.keys(d).sort(), ['afficher', 'api', 'config', 'drive', 'fs', 'horloge', 'moteur', 'referentielArchive', 'registre', 'saisir'].sort());
+    assert.deepEqual(Object.keys(d).sort(), ['afficher', 'api', 'config', 'drive', 'fs', 'horloge', 'interim', 'moteur', 'referentielArchive', 'registre', 'saisir'].sort());
+    assert.equal(typeof d.interim.observer, 'function');
     assert.deepEqual(d.config, { dossier: s.dossier, workflowGeneration: 'vrqgtS5kQMvP9Ok5' });
     assert.deepEqual(d.moteur, { version: reg.version, sha256: reg.sha256 }, 'descripteur, pas une instance');
     assert.equal(typeof d.referentielArchive, 'function');

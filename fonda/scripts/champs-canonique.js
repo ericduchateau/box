@@ -74,6 +74,22 @@ const ATTESTATION_V2 = O({
   cloture_le: 'chaine', badge: BADGE, cle_id: 'chaine',
 });
 
+// r9 §20.6 / §20.9 (intérim) : bloc d'intérim (noms de l'entrée de relecture-interim.json),
+// décision v2 (= v1 + bloc avec source_commit), charge v3 (fin_saisie_le chaîne NON
+// nullable ; execution_cloture et revoque_le nullables comme en v2 ; badge de secours, id
+// non nullable, titulaire { id, nom_affiche }).
+const INTERIM_CHARGE = O({ relecteur_titulaire: 'chaine', relecteur_de_secours: 'chaine', motif: 'chaine', periode: 'chaine', du: 'chaine', au: 'chaine', source_version: 'chaine' });
+const INTERIM_DECISION = O({ relecteur_titulaire: 'chaine', relecteur_de_secours: 'chaine', motif: 'chaine', periode: 'chaine', du: 'chaine', au: 'chaine', source_version: 'chaine', source_commit: 'chaine' });
+const BADGE_SECOURS = O({ forme: 'chaine', nom_affiche: 'chaine', id: 'chaine', titulaire: O({ id: 'chaine', nom_affiche: 'chaine' }) });
+const DECISION_V2 = O({ schema: 'chaine', set_id: 'chaine', generation: 'nombre', nonce: 'chaine', recu_le: 'chaine', coeur: COEUR, lot_relu: LOT_RELU, hash_formulaire: 'chaine', relecture_interim: INTERIM_DECISION });
+const ATTESTATION_V3 = O({
+  schema: 'chaine', set_id: 'chaine', notion_id: 'chaine', palier: 'chaine', coeur: COEUR, sha256_instantane: 'chaine', code_confirmation: 'chaine',
+  confirmation: CONFIRMATION, fidelite_transmission: FIDELITE, relecteur_attribue: 'chaine', relecteur_egal_cloturer: 'booleen', relecture_interim: INTERIM_CHARGE,
+  provenances: T(PROVENANCE), nb_fichiers_decision: 'nombre', referentiel_version: 'chaine', moteur: MOTEUR, execution_cloture: N(EXECUTION_CLOTURE),
+  source_decisions: 'chaine', generation: GENERATION_CHARGE, fin_saisie_le: 'chaine', revoque_le: N('chaine'), levees: T(LEVEE), incidents_connus: T(INCIDENT),
+  cloture_le: 'chaine', badge: BADGE_SECOURS, cle_id: 'chaine',
+});
+
 const CONTRATS = Object.freeze({
   'moteur-fonda/v1': MOTEUR,
   'coeur-decision-fonda/v1': COEUR,
@@ -84,6 +100,8 @@ const CONTRATS = Object.freeze({
   'lot_relu-fonda/v1': LOT_RELU,
   'decision-fonda/v1': DECISION,
   'attestation-cloture/v2': ATTESTATION_V2,
+  'decision-fonda/v2': DECISION_V2,
+  'attestation-cloture/v3': ATTESTATION_V3,
 });
 
 // Énumère les chemins (ex. « cartes[].unite ») avec leur classe : 'chaine', 'nombre',

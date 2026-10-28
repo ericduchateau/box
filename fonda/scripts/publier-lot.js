@@ -112,7 +112,7 @@ async function entreeDepuisLot(lot, attestation, sha256Hex) {
   };
 }
 
-async function verifierLotEtAttestation({ lot, attestation, referentielArchive, sha256Hex, cles, modelesAutorises, registre = lireRegistre() }) {
+async function verifierLotEtAttestation({ lot, attestation, referentielArchive, resoudreInterim, sha256Hex, cles, modelesAutorises, registre = lireRegistre() }) {
   const erreurs = [];
   // 1. Référentiel ARCHIVÉ de la charge (§20.12) : le relecteur attribué est vérifié
   //    contre CETTE version, jamais contre le référentiel courant. Sans résolveur ->
@@ -126,7 +126,7 @@ async function verifierLotEtAttestation({ lot, attestation, referentielArchive, 
   //    AVANT toute exécution de code pédagogique : le moteur n'est chargé qu'une fois
   //    la charge authentifiée et son moteur rapproché du registre.
   const entree = await entreeDepuisLot(lot, attestation, sha256Hex);
-  const es = S.verifierAttestationSignee(attestation, { entree, registre, referentiel: ra.referentiel, cles, modelesAutorises });
+  const es = S.verifierAttestationSignee(attestation, { entree, registre, referentiel: ra.referentiel, cles, modelesAutorises, resoudreInterim });
   if (es.length) return { ok: false, erreurs: es };
 
   // 3. Garde-fous pédagogiques du MOTEUR DU LOT (celui de la charge authentifiée).
@@ -149,10 +149,12 @@ async function verifierLotEtAttestation({ lot, attestation, referentielArchive, 
  *   referentiel        : référentiel COURANT (validité du catalogue résultant) ;
  *   referentielArchive : (version) -> { ok, referentiel } | { ok: false, raison } (§20.12) ;
  *   journal            : journal des set_id (état de HEAD) ; le : date de la ligne `publie` ;
- *   modelesAutorises   : modèles épinglés (G5) — exigés pour une charge v2 (§20.9).
+ *   modelesAutorises   : modèles épinglés (G5) — exigés pour une charge v2 (§20.9) ;
+ *   resoudreInterim    : (version) -> { ok, octets } | { ok: false, raison } — archive d'intérim
+ *                        sur l'historique de confiance, exigée pour une charge v3 (CDC r9).
  * @returns {Promise<{ok:true, entree, catalogue, journal, lignePublie, fichier}|{ok:false, erreurs:string[]}>}
  */
-async function preparerPublication({ lot, attestation, catalogue, referentiel, referentielArchive, journal, le, fichierExiste = () => false, sha256Hex, cles, modelesAutorises, registre = lireRegistre() }) {
+async function preparerPublication({ lot, attestation, catalogue, referentiel, referentielArchive, resoudreInterim, journal, le, fichierExiste = () => false, sha256Hex, cles, modelesAutorises, registre = lireRegistre() }) {
   const erreurs = [];
   const v = C.validerLot(lot);
   if (!v.valide) return { ok: false, erreurs: v.erreurs.map((e) => `lot : ${e}`) };
@@ -176,7 +178,7 @@ async function preparerPublication({ lot, attestation, catalogue, referentiel, r
   if (!vj2.valide) return { ok: false, erreurs: vj2.erreurs.map((e) => `journal après publie : ${e}`) };
 
   // 1-3. Lot + attestation vérifiés (fonction PARTAGÉE avec l'extraction locale du signataire).
-  const va = await verifierLotEtAttestation({ lot, attestation, referentielArchive, sha256Hex, cles, modelesAutorises, registre });
+  const va = await verifierLotEtAttestation({ lot, attestation, referentielArchive, resoudreInterim, sha256Hex, cles, modelesAutorises, registre });
   if (!va.ok) return { ok: false, erreurs: va.erreurs };
   const { entree } = va;
   if (erreurs.length) return { ok: false, erreurs };
@@ -346,6 +348,7 @@ async function publierSousVerrou({ cheminLot, cheminAttestation, mode, env, depe
     lot, attestation, catalogue: cat.objet, journal: jou.objet, le,
     referentiel: JSON.parse(env.aHead(REL_REFERENTIEL).toString('utf8')),
     referentielArchive: dependances.referentielArchive,
+    resoudreInterim: dependances.resoudreInterim,
     fichierExiste: (f) => env.aHeadExiste(`fonda/data/${f}`),
     sha256Hex: dependances.sha256Hex, cles: dependances.cles,
     modelesAutorises: S.lireModelesAutorises(env.aHead(REL_MODELES).toString('utf8')),
@@ -400,11 +403,11 @@ async function publierSousVerrou({ cheminLot, cheminAttestation, mode, env, depe
 
 // Contrôle CI d'une entrée « cloture-signee » du catalogue (catalogue.test.js) : même
 // vérification que la publication, contre le RÉFÉRENTIEL ARCHIVÉ de la charge (§20.12).
-function verifierClotureDuCatalogue(e, { resoudre, cles, registre, modelesAutorises }) {
+function verifierClotureDuCatalogue(e, { resoudre, resoudreInterim, cles, registre, modelesAutorises }) {
   const charge = e && e.attestation && e.attestation.charge;
   const ra = resoudre(charge && charge.referentiel_version);
   if (!ra || ra.ok !== true || !ra.referentiel) return [`référentiel archivé : ${(ra && ra.raison) || 'introuvable'}`];
-  return S.verifierAttestationSignee(e.attestation, { entree: e, registre, referentiel: ra.referentiel, cles, modelesAutorises });
+  return S.verifierAttestationSignee(e.attestation, { entree: e, registre, referentiel: ra.referentiel, cles, modelesAutorises, resoudreInterim });
 }
 
 async function main() {
@@ -425,6 +428,7 @@ async function main() {
       dependances: {
         horloge: () => new Date(),
         referentielArchive: (version) => RA.resoudreReferentiel({ version, refs, racine: env.racine, git: env.git }),
+        resoudreInterim: require('./interim.js').resoudreInterimGit({ refs, racine: env.racine, git: env.git }),
         sha256Hex: C.sha256WebCrypto(),
         cles: clesDuDepot(),
       },

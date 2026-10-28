@@ -1,0 +1,13 @@
+{
+  "schema": "relecture-interim/v1",
+  "entrees": [
+    {
+      "relecteur_titulaire": "justine",
+      "relecteur_de_secours": "eric",
+      "motif": "Intérim de relecture du français pour P2, pendant la mise en place du parcours titulaire.",
+      "periode": "P2",
+      "du": "2026-10-28",
+      "au": "2026-12-18"
+    }
+  ]
+}

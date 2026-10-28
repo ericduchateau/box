@@ -18,6 +18,12 @@
 // Charge produite : attestation-cloture/v2 (CDC v8.3 §20.9), deux sources de décisions :
 // « page_relecture » (parcours v8.2, page §7, clôture technique §9) et « saisie_locale »
 // (§20.6, premier lot : décision figée par saisirDecisionLocale, relecteur « eric »).
+// CDC r9 (INTÉRIM) : en saisie locale SEULE, une notion routée vers un autre relecteur
+// (titulaire) est saisie et clôturée par « eric », relecteur de SECOURS, sous une entrée de
+// fonda/data/relecture-interim.json observée sur design (interim.js) : décision v2 (preuve
+// observée), instantané v2 (décision embarquée), charge attestation-cloture/v3. Seuls les trois
+// points §20.6 changent (saisie, constat de routage, défense en profondeur) ; la garde
+// maîtresse et tous les autres constats sont INCHANGÉS.
 // Étapes, toutes avant la moindre signature ; tout refus => ZÉRO signature :
 //  1. Lot généré lu AVANT le listing ; LISTING en intervalle [listing_debut_le,
 //     listing_fin_le] de TOUTES les sources (exécutions du workflow de génération épinglé
@@ -68,6 +74,7 @@ const C = require('../engine/catalogue.js');
 const Canonique = require('../engine/canonique.js');
 const S = require('./attestation-signee.js');
 const L = require('./liaison-generation.js');
+const I = require('./interim.js');
 const { chargerMoteurNode } = require('./moteurs.js');
 
 const RACINE_DEPOT = path.resolve(__dirname, '..', '..');
@@ -225,11 +232,49 @@ function choisirBadge(mode, relecteur, tableRelecteurs) {
   return { forme: 'relue_par', nom_affiche: 'un professeur', id: null };
 }
 
-// Décision figée conforme à decision-fonda/v1 (forme canonique + valeurs de base).
-function decisionConforme(d) {
-  try { Canonique.octetsContrat('decision-fonda/v1', d); } catch { return false; }
-  return d.schema === 'decision-fonda/v1' && C.SET_ID_PATTERN.test(d.set_id) && Number.isSafeInteger(d.generation) && d.generation >= 0
+// Version d'une décision figée (VALIDATION STRUCTURELLE par version : forme canonique +
+// valeurs de base) : 'decision-fonda/v1' | 'decision-fonda/v2' | null. v2 (CDC r9, intérim) =
+// v1 + bloc d'intérim observé à la saisie (source_commit, source_version), saisie locale seule.
+const DECISION_V1 = 'decision-fonda/v1';
+const DECISION_V2 = 'decision-fonda/v2';
+function versionDecision(d) {
+  const schema = d && typeof d === 'object' ? d.schema : undefined;
+  if (schema !== DECISION_V1 && schema !== DECISION_V2) return null;
+  try { Canonique.octetsContrat(schema, d); } catch { return null; }
+  const base = C.SET_ID_PATTERN.test(d.set_id) && Number.isSafeInteger(d.generation) && d.generation >= 0
     && d.nonce.trim() !== '' && S.dateSignee(d.recu_le) && d.hash_formulaire.trim() !== '';
+  if (!base) return null;
+  if (schema === DECISION_V2) {
+    const b = d.relecture_interim;
+    if (d.generation !== 0 || d.hash_formulaire !== 'saisie-locale' || !/^[0-9a-f]{40}$/.test(b.source_commit) || !/^sha256:[0-9a-f]{64}$/.test(b.source_version)) return null;
+  }
+  return schema;
+}
+// Décision figée conforme à decision-fonda/v1 (inchangé pour la page et le relecteur eric).
+function decisionConforme(d) { return versionDecision(d) === DECISION_V1; }
+// ADMISSIBILITÉ par parcours (distincte de la structure) : page -> v1 ; saisie locale du
+// relecteur eric -> v1 ; saisie locale d'un autre relecteur (intérim) -> v2 SEULEMENT.
+function admissible(page, relecteur, version) {
+  if (page || relecteur === 'eric') return version === DECISION_V1;
+  return version === DECISION_V2;
+}
+const MESSAGE_20_6 = (relecteur) => `saisie locale réservée au relecteur « eric » (relecteur attribué : ${relecteur}) — §20.6`;
+// Observation de design pour l'intérim (deps.interim.observer : fetch EXPLICITE puis lecture
+// au même SHA) ; toute panne -> exception (l'appelant refuse).
+async function observerInterim(deps) {
+  if (!deps.interim || typeof deps.interim.observer !== 'function') throw new Error('aucune source d\'autorisation d\'intérim (deps.interim)');
+  return deps.interim.observer();
+}
+// Instantané figé (§3) — MÊME constructeur pour le code attendu et l'instantané écrit.
+// v1 INCHANGÉ (octet pour octet) ; v2 (intérim) embarque la décision COMPLÈTE, son empreinte
+// canonique et son bloc d'intérim : toute mutation de la décision change le code.
+function construireInstantane({ setId, lotSource, coeur, decision, moteur, recapitulatif }) {
+  if (decision.schema !== DECISION_V2) return { schema: 'instantane-fonda/v1', set_id: setId, candidat_lot: lotSource, coeur, lot_relu: decision.lot_relu, moteur, recapitulatif };
+  return {
+    schema: 'instantane-fonda/v2', set_id: setId, candidat_lot: lotSource, coeur, lot_relu: decision.lot_relu,
+    decision, decision_sha256: `sha256:${sha256Hex(Buffer.from(Canonique.octetsContrat(DECISION_V2, decision)))}`,
+    relecture_interim: decision.relecture_interim, moteur, recapitulatif,
+  };
 }
 
 const lireJson = (octets) => { try { return JSON.parse(Buffer.from(octets).toString('utf8')); } catch { return undefined; } };
@@ -287,7 +332,17 @@ async function saisirDecisionLocale(setId, deps) {
   // saisie, contre le référentiel ARCHIVÉ de la génération (sortie de l'unique exécution
   // réussie de ce set_id), comme à la clôture (§20.12).
   const relecteur = await relecteurDeLaGeneration(setId, deps);
-  if (relecteur !== 'eric') refuser(`saisie locale réservée au relecteur « eric » (relecteur attribué : ${relecteur}) — §20.6`, 'refus');
+  // CDC r9 : un autre relecteur attribué n'est saisissable QUE sous un intérim valable (S1,
+  // avant toute carte) — sinon le refus §20.6 inchangé.
+  let interim = null;
+  if (relecteur !== 'eric') {
+    let obs;
+    try { obs = await observerInterim(deps); } catch (e) { refuser(`${MESSAGE_20_6(relecteur)} ; intérim non vérifiable (${e.message})`, 'refus'); }
+    const a = I.autoriser(relecteur, I.jourParis(deps.horloge().toISOString()), obs);
+    if (!a.ok) refuser(`${MESSAGE_20_6(relecteur)} ; intérim : ${a.raison}`, 'refus');
+    interim = a;
+    deps.afficher(I.textePresentation(a.presentation, a.sha));
+  }
   const moteur = deps.moteur;
   const reg = (deps.registre || []).find((l) => l && moteur && l.version === moteur.version);
   if (!reg || reg.sha256 !== moteur.sha256) refuser('moteur ≠ registre moteurs.json');
@@ -317,6 +372,24 @@ async function saisirDecisionLocale(setId, deps) {
     moteur: { version: moteur.version, sha256: moteur.sha256 },
   };
   const aleatoire = deps.aleatoire || (() => crypto.randomBytes(16).toString('hex'));
+  if (interim) {
+    // S2 (après « oui », juste avant l'écriture) : nouvelle observation ; entrée IDENTIQUE à
+    // S1, applicable au jour (Paris) de recu_le — couvre retrait, modification, expiration
+    // et passage de minuit pendant la saisie. La preuve observée est figée dans la décision.
+    let obs;
+    try { obs = await observerInterim(deps); } catch (e) { refuser(`intérim non vérifiable avant figement (${e.message}) : rien n'est figé`, 'refus'); }
+    const recuLe = deps.horloge().toISOString();
+    const a = I.autoriser(relecteur, I.jourParis(recuLe), obs);
+    if (!a.ok || !I.memeEntree(a.entree, interim.entree)) refuser(`autorisation d'intérim modifiée ou retirée pendant la saisie (${a.ok ? 'entrée différente' : a.raison}) : rien n'est figé`, 'refus');
+    const decision = {
+      schema: DECISION_V2, set_id: setId, generation: 0, nonce: aleatoire(), recu_le: recuLe, coeur,
+      lot_relu: { set_id: setId, empreinte_complete: L.empreinteComplete(lot), cartes }, hash_formulaire: 'saisie-locale',
+      relecture_interim: I.blocDecision(a.entree, a.source_version, a.sha),
+    };
+    if (versionDecision(decision) !== DECISION_V2) refuser('décision construite non conforme (bug)');
+    deps.fs.ecrireExclusif(chemin, `${JSON.stringify(decision, null, 2)}\n`);
+    return { figee: true, chemin, decision };
+  }
   const decision = {
     schema: 'decision-fonda/v1', set_id: setId, generation: 0, nonce: aleatoire(), recu_le: deps.horloge().toISOString(), coeur,
     lot_relu: { set_id: setId, empreinte_complete: L.empreinteComplete(lot), cartes }, hash_formulaire: 'saisie-locale',
@@ -536,13 +609,16 @@ async function cloturer(setId, deps) {
   }
   // ── Décisions ──
   const decisions = [];
+  let interim = null; // { bloc } : branche intérim établie (provenance + C1), saisie locale seule
   let fenetre = null; // fenêtre de candidature (§10 B ; §20.6 en saisie locale)
   let derniere = null; let duLot = []; let revoqueLe = null; let finSaisie = null;
   if (page) {
     const ev = evaluerPage({ setId, candidatEnv, clotures, confirmations, listeDecisions, rattachement, levees, constats, sortie, relecteur, empreintes, listingDebut, registre: deps.registre });
     decisions.push(...ev.decisions); ({ derniere, duLot, revoqueLe, fenetre } = ev);
   } else {
-    if (relecteur !== null && relecteur !== 'eric') constats.ajouter('refus', `saisie locale réservée au relecteur « eric » (relecteur attribué : ${relecteur}) — §20.6`);
+    // §0 (plan r6) : SEUL le constat de ROUTAGE (§20.6) est remplacé — un autre relecteur
+    // attribué passe par la branche intérim (provenance S2 puis C1, ci-dessous), soumise aux
+    // mêmes contrôles ; à défaut, le MÊME constat « refus » qu'avant.
     if (locales.ok) {
       const lus = (locales.v || []).map((f) => ({ nom: f.nom, d: lireJson(f.octets), octets: Buffer.from(f.octets) }));
       if (!lus.length) constats.ajouter('local', `aucune décision figée dans ${dossierDecisionLocale(config.dossier, setId)} : lancer la saisie locale`);
@@ -551,7 +627,12 @@ async function cloturer(setId, deps) {
       if (new Set(conformes.map((f) => f.octets.toString('hex'))).size > 1) constats.ajouter('abandon', 'deux décisions figées distinctes pour ce set_id : conflit');
       for (const f of conformes) {
         const d = f.d;
-        if (!decisionConforme(d)) { constats.ajouter('abandon', `décision figée ${f.nom} non conforme à decision-fonda/v1`); continue; }
+        const version = versionDecision(d);
+        // Libellé d'origine pour eric (v1) ; la v2 n'est attendue que sous intérim.
+        if (!version) { constats.ajouter('abandon', `décision figée ${f.nom} non conforme à ${relecteur !== null && relecteur !== 'eric' ? 'decision-fonda/v2' : 'decision-fonda/v1'}`); continue; }
+        // Admissibilité : v1 pour eric (une v2 -> abandon) ; pour un autre relecteur, une v1
+        // (sans preuve d'intérim) reste évaluée comme avant et tombe sous le refus §20.6 ci-dessous.
+        if (relecteur === 'eric' && !admissible(false, relecteur, version)) { constats.ajouter('abandon', `décision figée ${f.nom} : ${version} non admissible pour le relecteur « eric » (v1 attendue)`); continue; }
         if (d.set_id !== setId || d.generation !== 0 || d.hash_formulaire !== 'saisie-locale') { constats.ajouter('abandon', `décision figée ${f.nom} : set_id, generation = 0 ou hash_formulaire = « saisie-locale » non respectés`); continue; }
         decisions.push(d);
       }
@@ -559,6 +640,29 @@ async function cloturer(setId, deps) {
         finSaisie = decisions[0].recu_le;
         if (generationObservee && generationObservee.x.startedAt) fenetre = { debut: generationObservee.x.startedAt, fin: finSaisie };
       }
+    }
+    if (relecteur !== null && relecteur !== 'eric') {
+      // Branche intérim : (2) PROVENANCE de la preuve figée à la saisie (archive historique
+      // seule), puis (3) C1 : entrée applicable au jour de fin_saisie_le, sur design
+      // fraîchement observé, IDENTIQUE au bloc de la décision. Tout échec -> refus §20.6.
+      const d = decisions.length === 1 && decisions[0].schema === DECISION_V2 ? decisions[0] : null;
+      let raison = null;
+      if (!d) raison = 'aucune décision figée sous intérim (decision-fonda/v2) admissible';
+      else if (!deps.interim || typeof deps.interim.aCommit !== 'function') raison = 'aucune source d\'archive d\'intérim (deps.interim)';
+      else {
+        const pv = I.prouverProvenance(d.relecture_interim, d.recu_le, deps.interim.aCommit);
+        if (!pv.ok) raison = pv.raison;
+        else {
+          const o1 = await lire('git (origin/design, intérim)', () => observerInterim(deps));
+          if (o1.ok) {
+            const a1 = I.autoriser(relecteur, I.jourParis(d.recu_le), o1.v);
+            if (!a1.ok) raison = `C1 : ${a1.raison}`;
+            else if (!I.memeEntree(a1.entree, d.relecture_interim)) raison = 'C1 : autorisation retirée ou modifiée depuis la saisie (entrée actuelle ≠ entrée figée)';
+            else interim = { bloc: d.relecture_interim };
+          }
+        }
+      }
+      if (raison) constats.ajouter('refus', `${MESSAGE_20_6(relecteur)} ; intérim : ${raison}`);
     }
   }
   // §20.5 réconciliation de CHAQUE décision (tardives comprises), puis unicité
@@ -611,7 +715,7 @@ async function cloturer(setId, deps) {
   let codeAttendu = null;
   if (lotSource && decisions.length) {
     const co = decisions[0].coeur;
-    const inst0 = { schema: 'instantane-fonda/v1', set_id: setId, candidat_lot: lotSource, coeur: co, lot_relu: decisions[0].lot_relu, moteur: co.moteur, recapitulatif: projeterRecapitulatif(lotSource, co, co.moteur) };
+    const inst0 = construireInstantane({ setId, lotSource, coeur: co, decision: decisions[0], moteur: co.moteur, recapitulatif: projeterRecapitulatif(lotSource, co, co.moteur) });
     codeAttendu = sha256Hex(Buffer.from(`${JSON.stringify(inst0, null, 2)}\n`, 'utf8')).slice(0, 16);
   }
   let entreesDossier = null;
@@ -659,6 +763,7 @@ async function cloturer(setId, deps) {
   }
   // Invariants de complétude (toute donnée manquante a produit un constat ci-dessus).
   if (!retenue || !lotSource || !sortie || !decisions.length || relecteur === null || (page && (!derniere || !revoqueLe))) refuser('évaluation incomplète sans constat (bug) : refus');
+  if (!page && relecteur !== 'eric' && !interim) refuser('intérim non établi sans constat (bug) : refus');
 
   // ═══ Instantané figé + confirmation (§3 ; code calculé APRÈS la décision figée) ═══
   const coeur = decisions[0].coeur;
@@ -672,7 +777,7 @@ async function cloturer(setId, deps) {
     if (!m.outils.verifierReponseOr(c).ok || !m.outils.verifierFormesAcceptees(c).ok) refuser(`${c.item_id} : garde-fous du moteur non respectés`, 'abandon');
   }
   const recapitulatif = projeterRecapitulatif(lotSource, coeur, moteur);
-  const instantane = { schema: 'instantane-fonda/v1', set_id: setId, candidat_lot: lotSource, coeur, lot_relu: decisions[0].lot_relu, moteur, recapitulatif };
+  const instantane = construireInstantane({ setId, lotSource, coeur, decision: decisions[0], moteur, recapitulatif });
   const texteInstantane = `${JSON.stringify(instantane, null, 2)}\n`;
   const shaInstantane = sha256Hex(Buffer.from(texteInstantane, 'utf8'));
   const shaRecap = sha256Hex(Buffer.from(Canonique.octetsContrat('recapitulatif-fonda/v1', recapitulatif)));
@@ -724,12 +829,25 @@ async function cloturer(setId, deps) {
     return lu;
   };
   verifier34();
+  // C2 (intérim) : AVANT le récapitulatif et le code, nouvelle observation, même règle que
+  // C1 ; la présentation (badge exact, motif, fenêtre, version) est affichée puis FIGÉE.
+  let presentationC2 = null;
+  if (interim) {
+    let o2;
+    try { o2 = await observerInterim(deps); } catch (e) { refuser(`C2 : intérim non vérifiable (${e.message}) : relancer`, 'temporaire'); }
+    const a2 = I.autoriser(relecteur, I.jourParis(finSaisie), o2);
+    if (!a2.ok || !I.memeEntree(a2.entree, interim.bloc)) refuser(`${MESSAGE_20_6(relecteur)} ; intérim : C2 : ${a2.ok ? 'entrée actuelle ≠ entrée figée' : a2.raison}`, 'refus');
+    presentationC2 = a2.presentation;
+    deps.afficher(`${I.textePresentation(presentationC2, a2.sha)}\n\n`);
+  }
   deps.afficher(`${rendu}\n\nCODE DE CONFIRMATION : ${code}`);
 
   const auto = relecteur === 'eric';
-  if (!page && !auto) refuser('saisie locale : relecteur attribué ≠ « eric »'); // déjà constaté ; défense en profondeur
-  const mode = auto ? 'auto' : (await deps.saisir('Mode de confirmation (vive_voix | reponse_message) : ')).trim();
-  if (auto ? mode !== 'auto' : !['vive_voix', 'reponse_message'].includes(mode)) refuser('mode de confirmation invalide (auto réservé au relecteur Éric ; tiers : vive_voix ou reponse_message)', 'local');
+  // Défense en profondeur (§0, l.730) : `auto` reste « relecteur = eric » ; branche intérim
+  // DISTINCTE (le secours relit lui-même : mode auto sans saisie, égalité fausse).
+  if (!page && !auto && !interim) refuser('saisie locale : relecteur attribué ≠ « eric »'); // déjà constaté ; défense en profondeur
+  const mode = auto || interim ? 'auto' : (await deps.saisir('Mode de confirmation (vive_voix | reponse_message) : ')).trim();
+  if (auto || interim ? mode !== 'auto' : !['vive_voix', 'reponse_message'].includes(mode)) refuser('mode de confirmation invalide (auto réservé au relecteur Éric ; tiers : vive_voix ou reponse_message)', 'local');
   const codeSaisi = (await deps.saisir('Code confirmé (16 hex) : ')).trim();
   if (codeSaisi !== code) refuser('code de confirmation saisi ≠ code de l\'instantané : reprendre la confirmation sur l\'instantané existant (jamais reconstruit)', 'local');
   const confirmationLe = deps.horloge().toISOString();
@@ -741,10 +859,27 @@ async function cloturer(setId, deps) {
   const inst = verifier34();
   if (L.empreinteComplete(inst.candidat_lot) !== sortie.empreinte_complete) refuser('instantané : empreinte complète du lot source ≠ génération');
 
-  // ═══ Charge v2, signature, revérification ═══
-  const badge = choisirBadge(mode, relecteur, deps.tableRelecteurs);
+  // C3 (intérim) : APRÈS les confirmations, AVANT le marqueur : nouvelle observation, même
+  // règle ; présentation IDENTIQUE à celle de C2 (sinon arrêt : la reprise refait C2 et la
+  // confirmation). Les octets observés ici servent seuls aux validations finales (aucun
+  // nouveau parcours d'historique avant de signer).
+  let o3 = null; let a3 = null;
+  if (interim) {
+    try { o3 = await observerInterim(deps); } catch (e) { refuser(`C3 : intérim non vérifiable (${e.message}) : relancer`, 'temporaire'); }
+    a3 = I.autoriser(relecteur, I.jourParis(finSaisie), o3);
+    if (!a3.ok || !I.memeEntree(a3.entree, interim.bloc)) refuser(`${MESSAGE_20_6(relecteur)} ; intérim : C3 : ${a3.ok ? 'entrée actuelle ≠ entrée figée' : a3.raison}`, 'refus');
+    if (!I.memePresentation(a3.presentation, presentationC2)) refuser('C3 : autorisation ou noms modifiés depuis la confirmation : relancer (nouvelle présentation et nouvelle confirmation)', 'local');
+  }
+
+  // ═══ Charge v2 (v3 sous intérim), signature, revérification ═══
+  const badge = interim ? presentationC2.badge : choisirBadge(mode, relecteur, deps.tableRelecteurs);
   const x = retenue.x;
-  const charge = {
+  const clotureLe = deps.horloge().toISOString();
+  if (interim) {
+    const j = I.jourParis(clotureLe);
+    if (j < a3.entree.du || j > a3.entree.au) refuser(`cloture_le (${j}, heure de Paris) hors de la fenêtre d'intérim [${a3.entree.du}, ${a3.entree.au}]`, 'refus');
+  }
+  const chargeV2 = {
     schema: 'attestation-cloture/v2', set_id: setId, notion_id: inst.candidat_lot.notion_id, palier: inst.candidat_lot.palier,
     coeur: inst.coeur, sha256_instantane: shaInstantane, code_confirmation: code,
     confirmation: { mode, par: relecteur, recue_par: 'eric', le: confirmationLe },
@@ -761,12 +896,27 @@ async function cloturer(setId, deps) {
     },
     fin_saisie_le: page ? null : finSaisie, revoque_le: page ? revoqueLe : null,
     levees, incidents_connus: [...incidents].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
-    cloture_le: deps.horloge().toISOString(), badge, cle_id: config.cleId,
+    cloture_le: clotureLe, badge, cle_id: config.cleId,
   };
+  // v3 (intérim) : ordre de l'annexe A ; le secours (« eric ») confirme lui-même, le
+  // relecteur attribué reste le titulaire (égalité fausse), bloc = entrée observée en C3.
+  const charge = !interim ? chargeV2 : {
+    schema: 'attestation-cloture/v3', set_id: chargeV2.set_id, notion_id: chargeV2.notion_id, palier: chargeV2.palier, coeur: chargeV2.coeur,
+    sha256_instantane: chargeV2.sha256_instantane, code_confirmation: chargeV2.code_confirmation,
+    confirmation: { mode: 'auto', par: a3.entree.relecteur_de_secours, recue_par: 'eric', le: chargeV2.confirmation.le },
+    fidelite_transmission: chargeV2.fidelite_transmission, relecteur_attribue: relecteur, relecteur_egal_cloturer: false,
+    relecture_interim: I.blocCharge(a3.entree, a3.source_version),
+    provenances: [], nb_fichiers_decision: chargeV2.nb_fichiers_decision, referentiel_version: chargeV2.referentiel_version, moteur: chargeV2.moteur,
+    execution_cloture: null, source_decisions: 'saisie_locale', generation: chargeV2.generation, fin_saisie_le: finSaisie, revoque_le: null,
+    levees: chargeV2.levees, incidents_connus: chargeV2.incidents_connus, cloture_le: clotureLe, badge, cle_id: config.cleId,
+  };
+  // Archive d'intérim des validations finales : les octets OBSERVÉS EN C3 (sha256 =
+  // source_version), sans nouveau parcours d'historique.
+  const resoudreInterim = interim ? (v) => (v === a3.source_version ? { ok: true, octets: o3.octetsInterim } : { ok: false, raison: 'version ≠ observation C3' }) : undefined;
   // AVANT toute signature : forme canonique, clé déclarée et recevable, invariants de
   // valeur (communs + par source) et de dépôt — tout refus ici => signataire jamais appelé.
   let octets;
-  try { octets = Buffer.from(Canonique.octetsContrat('attestation-cloture/v2', charge)); } catch (e) { refuser(`charge non conforme : ${e.message}`); }
+  try { octets = Buffer.from(Canonique.octetsContrat(charge.schema, charge)); } catch (e) { refuser(`charge non conforme : ${e.message}`); }
   // Clé validée UNE fois (avant la tranche) puis figée : jamais relue.
   const k = k0;
   if (!k.ok || charge.cle_id !== config.cleId) refuser(k.raison || 'cle_id ≠ configuration', 'temporaire');
@@ -774,7 +924,7 @@ async function cloturer(setId, deps) {
   if (irrecevable) refuser(irrecevable, 'temporaire');
   const entree = { set_id: setId, notion_id: charge.notion_id, palier: charge.palier, item_ids: [...inst.coeur.selection], empreinte: inst.coeur.empreinte_publiee, moteur: { ...inst.moteur }, relecteur: badge };
   const opts = { modelesAutorises: config.modelesAutorises };
-  const avant = [...S.invariantsValeur(charge, opts), ...S.invariantsDepot(charge, { entree, registre: deps.registre, referentiel })];
+  const avant = [...S.invariantsValeur(charge, opts), ...S.invariantsDepot(charge, { entree, registre: deps.registre, referentiel, resoudreInterim })];
   if (avant.length) refuser(`charge refusée avant signature : ${avant.join(' ; ')}`);
   // Destination vérifiée AVANT signature (occupée ou inaccessible = refus sans signature).
   // Panne APRÈS signature (vérification ou écriture) : NE PAS relancer — le marqueur
@@ -791,7 +941,7 @@ async function cloturer(setId, deps) {
     refuser(`${marqueurSignature} : ${e.message} — une signature a peut-être déjà été tentée : traitement manuel`, 'local');
   }
   const enveloppe = { type: S.TYPE, charge, signature: deps.signer(octets).toString('base64') };
-  const erreurs = S.verifierAttestationSignee(enveloppe, { entree, registre: deps.registre, referentiel, cles: cleFigee, ...opts });
+  const erreurs = S.verifierAttestationSignee(enveloppe, { entree, registre: deps.registre, referentiel, cles: cleFigee, resoudreInterim, ...opts });
   if (erreurs.length) refuser(`revérification immédiate en échec : ${erreurs.join(' ; ')}`);
   deps.fs.ecrireExclusif(cheminAttestation, `${JSON.stringify(enveloppe, null, 2)}\n`);
   return { enveloppe, dossierLot, lotPublie: publie };
@@ -944,7 +1094,7 @@ function existeSurDisque(p) {
 }
 
 module.exports = {
-  existeSurDisque, cloturer, saisirDecisionLocale, Refus, normaliserDate, projeterRecapitulatif, rendreRecapitulatif, decisionConforme, lotPublie,
+  existeSurDisque, cloturer, saisirDecisionLocale, Refus, normaliserDate, projeterRecapitulatif, rendreRecapitulatif, decisionConforme, versionDecision, admissible, construireInstantane, lotPublie,
   choisirBadge, verifierDossierLocal, observer, evaluerPage, relecteurDeLaGeneration, NOM_DECISION_LOCALE,
   RATTACHEMENT_SAISIE_LOCALE, analyserArgumentsCloture, cloturerSaisieLocale, main,
 };

@@ -514,10 +514,10 @@ describe('G4 — seuls les lots du catalogue publié, intacts et attestés, sont
 
 describe('chargement des dépendances FONDA en conditions navigateur (aucun global pré-injecté)', () => {
   const ORDRE = [
-    'fonda/engine/catalogue.js?v=3',
+    'fonda/engine/catalogue.js?v=4',
     'fonda/engine/evenements.js?v=3',
     'fonda/engine/liens.js?v=4',
-    'fonda/engine/carte-reponse-produite.js?v=3',
+    'fonda/engine/carte-reponse-produite.js?v=4',
   ];
   const MOTEUR = 'fonda/engine/moteur-correction-v1.js';
 
@@ -880,7 +880,7 @@ describe('?page=entrainement — index des lots publiés', () => {
     const journalScripts = [];
     await demarrerBootstrap({ search: '?fonda=1&page=entrainement', journalFetch: journal, journalScripts });
     assert.deepEqual(journal, ['fonda/data/catalogue-fonda.json', 'fonda/data/referentiel.json']);
-    assert.deepEqual(journalScripts, ['fonda/engine/catalogue.js?v=3']);
+    assert.deepEqual(journalScripts, ['fonda/engine/catalogue.js?v=4']);
   });
 
   test('référentiel indisponible : la liste s\'affiche quand même (identifiants)', async () => {

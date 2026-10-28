@@ -340,6 +340,37 @@ describe('préambule n8n : les deux blocages de l\'ancien code (exécution réel
   });
 });
 
+// --- 2 ter. Export régénéré pour l'intérim (CDC r9) : comportement de génération INCHANGÉ ---------
+// catalogue.js et canonique.js (copiés octet pour octet) ont changé (badge de secours, contrats
+// decision-fonda/v2 et attestation-cloture/v3) : la génération doit rester IDENTIQUE à l'export
+// d'avant l'intérim (design c215dd0) — mêmes octets déposés, même sortie, mêmes empreintes.
+describe('export régénéré (intérim, CDC r9) : génération identique à l\'export précédent', async () => {
+  const AVANT = 'c215dd035ed865e7c66ff8e139ac42419d201b19';
+  const precedent = JSON.parse(require('child_process').execFileSync('git', ['show', `${AVANT}:n8n/fonda-generation-ia/box-fonda-generation-ia.json`], { cwd: path.join(__dirname, '..', '..'), maxBuffer: 64 * 1024 * 1024 }).toString('utf8'));
+  const ra = await executer(precedent, { corps: CORPS, reponses: reponsesNominales() });
+  const rb = await executer(WF, { corps: CORPS, reponses: reponsesNominales() });
+  const sortieDe = (r) => r.runData[N.sortie][0].data.main[0][0].json;
+  test('seuls les modules catalogue et canonique diffèrent (nœuds, connexions et réglages inchangés)', () => {
+    assert.deepEqual(WF.nodes.map((n) => n.name), precedent.nodes.map((n) => n.name));
+    assert.deepEqual(WF.connections, precedent.connections);
+    assert.deepEqual(WF.settings, precedent.settings);
+    for (const n of WF.nodes) {
+      const a = precedent.nodes.find((x) => x.name === n.name);
+      const sans = (code) => (code || '').replace(/\/\/ >>> MODULE fonda\/engine\/(catalogue|canonique)\.js [\s\S]*?\/\/ <<< MODULE fonda\/engine\/\1\.js/g, '<module $1>');
+      assert.equal(sans(n.parameters.jsCode), sans(a.parameters.jsCode), n.name);
+      assert.deepEqual({ ...n.parameters, jsCode: undefined }, { ...a.parameters, jsCode: undefined }, n.name);
+    }
+  });
+  test('mêmes octets déposés, même sortie generation-fonda/v1, mêmes empreintes', () => {
+    assert.equal(ra.status, 'success', ra.erreur);
+    assert.equal(rb.status, 'success', rb.erreur);
+    assert.equal(lireMultipart(rb.requetes[N.deposer]).contenu, lireMultipart(ra.requetes[N.deposer]).contenu);
+    assert.deepEqual(sortieDe(rb), sortieDe(ra));
+    assert.equal(sortieDe(rb).empreinte_pedagogique, sortieDe(ra).empreinte_pedagogique);
+    assert.equal(sortieDe(rb).empreinte_complete, sortieDe(ra).empreinte_complete);
+  });
+});
+
 // --- 3. Exécution-fixture -> contrat du signataire -----------------------------------------------
 describe('exécution-fixture : conforme au contrat du signataire', async () => {
   const r = await executer(WF, { corps: CORPS, reponses: reponsesNominales() });

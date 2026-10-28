@@ -570,3 +570,46 @@ describe('generer-lot-fonda — séquence réelle genererReserve : zéro appel A
     assert.equal(appels.api, 0);
   });
 });
+
+// Fetch FONDA à refspec EXPLICITE (CDC r9, plan r6 §2) : la lecture du journal sur design ne
+// dépend pas de remote.origin.fetch et ne poursuit jamais sur une référence préexistante.
+describe('lireJournalDesign : actualisation par refspec explicite (vrai dépôt temporaire)', () => {
+  const { execFileSync: ex } = require('child_process');
+  const os = require('os');
+  const G2 = require('./generer-lot-fonda.js');
+  const JOURNAL = require('fs').readFileSync(require('path').join(__dirname, '../data/set_ids-journal.json'));
+  test('mapping de fetch ne couvrant PAS design, ancienne référence locale -> le SHA distant ACTUEL est lu', () => {
+    const fsx = require('fs'); const px = require('path');
+    const tmp = fsx.mkdtempSync(px.join(os.tmpdir(), 'fonda-journal-git-'));
+    const g = (cwd, ...a) => ex('git', a, { cwd, stdio: ['ignore', 'pipe', 'ignore'] });
+    const distant = px.join(tmp, 'distant');
+    fsx.mkdirSync(px.join(distant, 'fonda', 'data'), { recursive: true });
+    g(distant, 'init', '-q', '-b', 'design');
+    g(distant, 'config', 'user.email', 'test@exemple.invalid'); g(distant, 'config', 'user.name', 'test');
+    fsx.writeFileSync(px.join(distant, 'fonda', 'data', 'set_ids-journal.json'), JOURNAL);
+    g(distant, 'add', '-A'); g(distant, 'commit', '-qm', 'journal');
+    g(distant, 'branch', 'autre');
+    const local = px.join(tmp, 'local');
+    g(tmp, 'clone', '-q', distant, local);
+    const ancien = g(local, 'rev-parse', 'refs/remotes/origin/design').toString().trim();
+    fsx.writeFileSync(px.join(distant, 'autre-fichier.txt'), 'x');
+    g(distant, 'add', '-A'); g(distant, 'commit', '-qm', 'avance design');
+    const nouveau = g(distant, 'rev-parse', 'HEAD').toString().trim();
+    g(local, 'config', 'remote.origin.fetch', '+refs/heads/autre:refs/remotes/origin/autre');
+    g(local, 'fetch', '-q', 'origin');
+    assert.equal(g(local, 'rev-parse', 'refs/remotes/origin/design').toString().trim(), ancien, 'un fetch ordinaire laisse la référence périmée');
+    const r = G2.lireJournalDesign((a) => g(local, ...a));
+    assert.equal(r.sha, nouveau);
+    assert.ok(Array.isArray(r.journal.lignes) && r.journal.lignes.length > 0);
+  });
+  test('fetch en échec -> arrêt explicite, aucune lecture de la référence préexistante', () => {
+    const appels = [];
+    assert.throws(() => G2.lireJournalDesign((a) => { appels.push(a[0]); if (a[0] === 'fetch') throw new Error('réseau'); return Buffer.from(''); }), /actualisation de origin\/design impossible/);
+    assert.deepEqual(appels, ['fetch']);
+  });
+  test('commande exacte : refspec explicite', () => {
+    const appels = [];
+    try { G2.lireJournalDesign((a) => { appels.push(a.join(' ')); if (a[0] === 'rev-parse') return Buffer.from(`${'a'.repeat(40)}\n`); throw new Error('arrêt'); }); } catch { /* attendu */ }
+    assert.equal(appels[0], 'fetch --quiet origin +refs/heads/design:refs/remotes/origin/design');
+  });
+});

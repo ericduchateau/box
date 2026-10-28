@@ -192,13 +192,14 @@
   //   présentationnel, ne lit aucun global : le moteur est chargé à part, par version
   //   et SRI, une fois l'entrée du lot résolue). await séquentiel, pas Promise.all. Appelée en tête de demarrer(), AVANT tout
   //   usage de FondaLiens (page niveau, lien défi) — plus seulement dans lancerDefi().
-  // ?v=3 (moteur versionné, M1) : invalide les copies en cache — l'ancien catalogue.js
+  // ?v=4 (intérim, CDC r9 : badge « relue_par_secours » au catalogue et sur la carte) ; ?v=3
+  // (moteur versionné, M1) : invalide les copies en cache — l'ancien catalogue.js
   // refuserait le champ « moteur » des entrées.
   async function chargerDependancesFonda() {
-    await chargerScript('fonda/engine/catalogue.js?v=3', 'FondaCatalogue');
+    await chargerScript('fonda/engine/catalogue.js?v=4', 'FondaCatalogue');
     await chargerScript('fonda/engine/evenements.js?v=3', 'FondaEvenements');
     await chargerScript(CHEMIN_LIENS, 'FondaLiens');
-    await chargerScript('fonda/engine/carte-reponse-produite.js?v=3', 'FondaCarteReponseProduite');
+    await chargerScript('fonda/engine/carte-reponse-produite.js?v=4', 'FondaCarteReponseProduite');
   }
 
   // ?v=4 (calendrier v2 : bandes, entrées planifiées sans lien) : invalide l'ancien
@@ -207,7 +208,7 @@
 
   // Accueil « Notions de la semaine » et page calendrier : ni carte ni moteur.
   async function chargerDependancesCalendrier() {
-    await chargerScript('fonda/engine/catalogue.js?v=3', 'FondaCatalogue');
+    await chargerScript('fonda/engine/catalogue.js?v=4', 'FondaCatalogue');
     await chargerScript('fonda/engine/evenements.js?v=3', 'FondaEvenements');
     await chargerScript(CHEMIN_LIENS, 'FondaLiens');
   }
@@ -1211,7 +1212,7 @@
 
     if (param('page') === 'entrainement') {
       const catalogue = await avecDelai(
-        chargerScript('fonda/engine/catalogue.js?v=3', 'FondaCatalogue').then(chargerCatalogue),
+        chargerScript('fonda/engine/catalogue.js?v=4', 'FondaCatalogue').then(chargerCatalogue),
         DELAI_CHARGEMENT_MS,
       ).catch(() => null);
       if (!catalogue) { afficherMessage(racineFonda(), 'Entraînement indisponible pour le moment — réessaie plus tard.'); return; }

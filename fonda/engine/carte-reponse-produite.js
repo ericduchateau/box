@@ -20,7 +20,11 @@
 //
 // `badge` (optionnel, = entree.relecteur du catalogue) : texte construit à partir de
 // `forme` (CDC §12) — « relue_et_validee » -> « Fiche relue et validée par X »,
-// sinon « Fiche relue par X ». Affiché seulement si resultat.afficher_badge_relecture.
+// « relue_par_secours » (CDC r9, intérim) -> « Fiche relue par X — relecteur de secours
+// (relecture de français, en attendant T) », X et T lus dans le badge PUBLIÉ (jamais
+// recalculés ; le titulaire T n'est jamais présenté comme relecteur ; badge de secours
+// sans titulaire -> aucun texte), sinon « Fiche relue par X ». Affiché seulement si
+// resultat.afficher_badge_relecture.
 // `onResultat(resultat)` : appelé une fois par soumission, APRÈS l'affichage et le
 // verrouillage (E2), avec l'objet gelé du moteur ; une exception y est interceptée
 // et journalisée sans rien changer à l'affichage (E3). Plus d'onErreur : l'issue
@@ -33,10 +37,16 @@
 const TEXTES_BADGE = {
   relue_et_validee: (nom) => `Fiche relue et validée par ${nom}`,
   relue_par: (nom) => `Fiche relue par ${nom}`,
+  relue_par_secours: (nom, titulaire) => `Fiche relue par ${nom} — relecteur de secours (relecture de français, en attendant ${titulaire})`,
 };
 
 function texteBadge(badge) {
   if (!badge || typeof badge.nom_affiche !== 'string' || badge.nom_affiche.trim() === '') return '';
+  if (badge.forme === 'relue_par_secours') {
+    const t = badge.titulaire;
+    if (!t || typeof t.nom_affiche !== 'string' || t.nom_affiche.trim() === '') return '';
+    return TEXTES_BADGE.relue_par_secours(badge.nom_affiche.trim(), t.nom_affiche.trim());
+  }
   return (TEXTES_BADGE[badge.forme] || TEXTES_BADGE.relue_par)(badge.nom_affiche.trim());
 }
 

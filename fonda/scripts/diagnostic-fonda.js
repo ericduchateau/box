@@ -1,9 +1,23 @@
-// Diagnostic HERMÉTIQUE d'un set_id (plan étape 5, lot 5) : lecture seule, aucune écriture
-// (ni dépôt, ni .git, ni dossier de clôture), aucune clé de SIGNATURE (seule la clé du compte
-// de service Drive et la clé d'API n8n de lecture sont utilisées). N'appelle ni
-// preparerSignataire, ni le signataire, ni cloturer : il réutilise les fonctions PURES de
-// liaison-generation.js (examen, classement, rapprochement, réconciliation, unicité) et
-// l'observation de signer-cloture.js. Pas de `git fetch` : c'est la commande --actualiser.
+// Diagnostic d'un set_id (plan étape 5, lot 5) : aucune écriture dans le dépôt ni le dossier
+// de clôture, aucune clé de SIGNATURE (seule la clé du compte de service Drive et la clé
+// d'API n8n de lecture sont utilisées). N'appelle ni preparerSignataire, ni le signataire, ni
+// cloturer : il réutilise les fonctions PURES de liaison-generation.js (examen, classement,
+// rapprochement, réconciliation, unicité) et l'observation de signer-cloture.js.
+// CHANGEMENT (CDC r9, intérim) : il ÉCRIT désormais dans .git — `git fetch` de
+// refs/remotes/origin/design par la refspec EXPLICITE (interim.js), y compris pour les lots
+// eric/v1 et sans set_id — et AFFICHE le SHA consulté ; rien d'autre n'est écrit.
+// Intérim (relecteur attribué ≠ eric), deux axes SÉPARÉS :
+//   (I)  VALIDITÉ DES PIÈCES SIGNÉES : `signe` est établi par la vérification des pièces
+//        (archive HISTORIQUE seule), TOUJOURS reconnu si valide, même après expiration ou
+//        retrait de l'intérim ; les contrôles d'autorisation ne s'appliquent pas à lui ;
+//   (II) AUTORISATION DE NOUVELLES OPÉRATIONS (lots non signés) : (a) nouvelle saisie
+//        autorisée aujourd'hui ; (b) décision existante recevable (v2 admissible, provenance,
+//        entrée identique à l'entrée actuelle au jour de recu_le) ; pret_pour_cloture exige
+//        (b) ET l'intérim applicable AUJOURD'HUI. Un échec de (II) est rapporté à part
+//        (autorisation_interim) et ne masque jamais `signe`.
+// Lot SIGNÉ (tous, eric/v1 comme intérim/v3) : il reste `signe`, n'est JAMAIS `pret_pour_cloture` ;
+// une décision locale abîmée ou illisible après signature, ou l'échec de l'actualisation de
+// design, va dans `problemes_courants`, jamais en anomalie (autres causes d'acces_ko inchangées).
 //
 // État rapporté : le PREMIER applicable de la liste ordonnée (anomalies d'abord, puis
 // progression du plus avancé au moins avancé) ; les autres applicables sont listés.
@@ -16,6 +30,7 @@ const crypto = require('crypto');
 const SC = require('./signer-cloture.js');
 const L = require('./liaison-generation.js');
 const C = require('../engine/catalogue.js');
+const I = require('./interim.js');
 
 const ANOMALIES = ['non_initialise', 'acces_ko', 'incident_ouvert', 'observation_contradictoire', 'generation_en_cours', 'doublon',
   'signature_interrompue', 'generation_incoherente', 'candidat_non_conforme', 'relecteur_non_local', 'decision_non_conforme'];
@@ -32,7 +47,11 @@ async function essayer(f) { try { return { ok: true, v: await f() }; } catch (e)
 async function diagnostiquer(setId, s) {
   if (!C.SET_ID_PATTERN.test(setId || '')) throw new Error(`set_id invalide : ${setId}`);
   const etats = new Map();
-  const marquer = (nom, detail = true) => { if (!etats.has(nom)) etats.set(nom, detail); };
+  const causesAccesKo = []; // toutes les causes d'acces_ko, dans l'ordre (le détail affiché = la première)
+  const marquer = (nom, detail = true, courant = false) => {
+    if (nom === 'acces_ko') causesAccesKo.push({ detail, courant });
+    if (!etats.has(nom)) etats.set(nom, detail);
+  };
 
   if (!SC.existeSurDisque(path.join(s.dossier, '.initialise'))) marquer('non_initialise');
 
@@ -43,8 +62,10 @@ async function diagnostiquer(setId, s) {
   const cand = await essayer(() => s.drive.listerCandidats());
   if (!cand.ok) marquer('acces_ko', `Drive : ${cand.e.message}`);
   else if (cand.v.incompleteSearch !== false) marquer('acces_ko', 'Drive : recherche des candidats incomplète');
-  const g = await essayer(() => s.git(['rev-parse', '--verify', 'origin/design^{commit}']));
-  if (!g.ok) marquer('acces_ko', 'git : origin/design absent (lancer --actualiser)');
+  // Actualisation EXPLICITE de origin/design (seule écriture : .git) ; le SHA est affiché.
+  const act = await essayer(() => s.interim.actualiser());
+  // « courant » : problème OPÉRATIONNEL (autorisation, décision) — rapporté à part pour un lot signé.
+  if (!act.ok) marquer('acces_ko', `git : actualisation de origin/design impossible (${act.e.message})`, true);
   let incidents = [];
   if (!etats.has('non_initialise')) {
     const inc = await essayer(() => s.incidents());
@@ -78,6 +99,10 @@ async function diagnostiquer(setId, s) {
   // Rapprochement (§20.3) : examen des fichiers, classement, table normative, lot stable,
   // référentiel archivé résolu.
   let pretSaisie = false;
+  let rapproche = false; // génération rapprochée sans constat (indépendant de l'autorisation)
+  let relecteurAttribue = null;
+  let autorisation = null; // axe II : { ok, ... } de interim.autoriser aujourd'hui
+  let observation = null;
   let generation = null;
   let lot = null;
   let empreintes = null;
@@ -127,28 +152,51 @@ async function diagnostiquer(setId, s) {
       // relecteurDeLaGeneration) ; saisie et clôture locales réservées à « eric » (§20.6).
       const r = await essayer(() => SC.relecteurDeLaGeneration(setId, { api: s.api, config: { workflowGeneration: s.workflowGeneration }, referentielArchive: s.referentielArchive }));
       if (!r.ok) marquer('candidat_non_conforme', `relecteur attribué non déterminable : ${r.e.message}`);
-      else if (r.v !== 'eric') marquer('relecteur_non_local', `relecteur attribué « ${r.v} » : saisie et clôture locales réservées à « eric » (§20.6)`);
-      else pretSaisie = true;
+      else {
+        rapproche = true;
+        relecteurAttribue = r.v;
+        if (r.v === 'eric') pretSaisie = true;
+        else {
+          // Axe II (a) : nouvelle saisie autorisée AUJOURD'HUI par un intérim (observation complète).
+          const o = await essayer(() => s.interim.observer());
+          if (!o.ok) autorisation = { ok: false, raison: `observation de design impossible (${o.e.message})` };
+          else { observation = o.v; autorisation = I.autoriser(r.v, I.jourParis((s.horloge ? s.horloge() : new Date()).toISOString()), o.v); }
+          if (autorisation.ok) pretSaisie = true;
+        }
+      }
     } else marquer('candidat_non_conforme', c2.liste.map((c) => `${c.issue} : ${c.raison}`).join(' ; ') || 'rapprochement impossible');
   }
   if (pretSaisie) marquer('pret_pour_saisie');
 
   // Signé : SEULEMENT si les pièces d'un dossier canonique <set_id>-<code> se vérifient
   // (signature, chemin, instantané) ; le marqueur, écrit AVANT la signature, ne suffit pas.
+  // Axe I : par l'ARCHIVE HISTORIQUE seule (s.verifier), jamais le fichier d'intérim de la tête.
+  let signeVerifie = false;
+  const problemesCourants = []; // lot signé : problèmes courants rapportés à part (jamais un état)
   if (SC.existeSurDisque(path.join(s.dossier, `${setId}.signature`))) {
     const dossiers = SC.existeSurDisque(s.dossier) ? fs.readdirSync(s.dossier).filter((n) => n.startsWith(`${setId}-`)) : [];
-    let verifie = false;
-    for (const n of dossiers) if ((await essayer(() => s.verifier(path.join(s.dossier, n), setId))).ok) verifie = true;
-    if (verifie) marquer('signe');
+    for (const n of dossiers) if ((await essayer(() => s.verifier(path.join(s.dossier, n), setId))).ok) signeVerifie = true;
+    if (signeVerifie) marquer('signe');
     else marquer('signature_interrompue', `marqueur ${setId}.signature sans pièces signées vérifiées : tentative de clôture interrompue (abandon du set_id)`);
   }
+  // Routage §20.6 : un autre relecteur sans intérim applicable -> anomalie, SAUF lot déjà signé
+  // (axe I : la signature historique reste reconnue ; l'erreur d'autorisation est rapportée à part).
+  if (relecteurAttribue !== null && relecteurAttribue !== 'eric' && !autorisation.ok && !signeVerifie) {
+    marquer('relecteur_non_local', `relecteur attribué « ${relecteurAttribue} » : saisie et clôture locales réservées à « eric » (§20.6) ; intérim : ${autorisation.raison}`);
+  }
   const dl = await essayer(() => s.decisionsLocales(setId));
-  if (!dl.ok) marquer('acces_ko', `décisions locales : ${dl.e.message}`);
+  if (!dl.ok) marquer('acces_ko', `décisions locales : ${dl.e.message}`, true);
   const lus = dl.ok ? dl.v.map((f) => lireJson(f.octets)) : [];
   if (lus.length) {
     const defauts = [];
-    if (lus.some((d) => d === undefined || !SC.decisionConforme(d))) defauts.push('décision illisible ou non conforme à decision-fonda/v1');
+    // Version admissible selon le relecteur : v1 (eric, ou relecteur inconnu), v2 (intérim).
+    const attendue = relecteurAttribue !== null && relecteurAttribue !== 'eric' ? 'decision-fonda/v2' : 'decision-fonda/v1';
+    if (lus.some((d) => d === undefined || SC.versionDecision(d) !== attendue)) defauts.push(`décision illisible ou non conforme à ${attendue}`);
     else {
+      // Intérim (b) : provenance de la preuve figée (archive historique seule).
+      if (attendue === 'decision-fonda/v2') {
+        for (const d of lus) { const pv = I.prouverProvenance(d.relecture_interim, d.recu_le, s.aCommit); if (!pv.ok) defauts.push(pv.raison); }
+      }
       for (const d of lus) if (d.set_id !== setId || d.generation !== 0 || d.hash_formulaire !== 'saisie-locale') defauts.push('décision : set_id, generation = 0 ou hash_formulaire « saisie-locale » non respectés');
       // Même règle que le signataire : deux décisions figées aux OCTETS distincts = conflit.
       if (new Set(dl.v.map((f) => Buffer.from(f.octets).toString('hex'))).size > 1) defauts.push('deux décisions figées distinctes pour ce set_id : conflit');
@@ -159,12 +207,23 @@ async function diagnostiquer(setId, s) {
       }
       if (sortie && lus.some((d) => d.coeur.moteur.version !== sortie.moteur.version || d.coeur.moteur.sha256 !== sortie.moteur.sha256)) defauts.push('coeur.moteur ≠ moteur de la génération');
     }
-    if (defauts.length) marquer('decision_non_conforme', defauts.join(' ; '));
+    // Lot SIGNÉ (pièces vérifiées, archive historique seule), eric/v1 comme intérim/v3 : il
+    // reste « signe » ; la décision locale n'est plus qu'un problème COURANT, rapporté à part,
+    // jamais une anomalie qui le masquerait, jamais un « prêt pour clôture ».
+    if (signeVerifie) { if (defauts.length) problemesCourants.push(`décision locale : ${defauts.join(' ; ')}`); }
+    else if (defauts.length) marquer('decision_non_conforme', defauts.join(' ; '));
     else {
       const d = lus[0];
       const exclusions = [];
       if (d.coeur.action !== 'accepter') exclusions.push('décision « rejeter » : abandon, rien à clôturer');
-      if (!pretSaisie || !lot) exclusions.push('génération non rapprochée sans constat');
+      if (!rapproche || !lot) exclusions.push('génération non rapprochée sans constat');
+      // Intérim, axe II (lots non signés) : décision recevable (entrée actuelle identique au
+      // jour de recu_le) ET intérim applicable AUJOURD'HUI ; sinon jamais « prêt pour clôture ».
+      if (d.schema === 'decision-fonda/v2') {
+        const aRecu = observation ? I.autoriser(relecteurAttribue, I.jourParis(d.recu_le), observation) : { ok: false, raison: 'observation de design indisponible' };
+        if (!aRecu.ok || !I.memeEntree(aRecu.entree, d.relecture_interim)) exclusions.push(`intérim : décision non recevable (${aRecu.ok ? 'entrée actuelle ≠ entrée figée' : aRecu.raison})`);
+        if (!autorisation || !autorisation.ok) exclusions.push(`intérim non applicable aujourd'hui (${autorisation ? autorisation.raison : 'non évalué'}) : clôture refusée`);
+      }
       for (const n of ANOMALIES) if (etats.has(n)) exclusions.push(`anomalie : ${n}`);
       if (generation) {
         const fenetre = { debut: generation.x.startedAt, fin: SC.normaliserDate(d.recu_le) };
@@ -182,9 +241,23 @@ async function diagnostiquer(setId, s) {
   if (!duLot.length && !fichiersDuLot.length) marquer('aucune_generation');
   else if (duLot.length && !reussies.length && !fichiersDuLot.length) marquer('generation_echouee');
 
+  // Lot SIGNÉ : les causes OPÉRATIONNELLES d'acces_ko (actualisation de design, lecture des
+  // décisions locales) passent dans problemes_courants ; les autres causes restent l'anomalie.
+  if (signeVerifie && causesAccesKo.some((c) => c.courant)) {
+    for (const c of causesAccesKo.filter((x) => x.courant)) problemesCourants.push(c.detail);
+    const autres = causesAccesKo.filter((x) => !x.courant);
+    if (autres.length) etats.set('acces_ko', autres[0].detail); else etats.delete('acces_ko');
+  }
   const applicables = ORDRE.filter((n) => etats.has(n));
   const etat = applicables[0] || 'generation_incoherente';
-  return { set_id: setId, etat, detail: etats.get(etat) ?? 'aucun état déterminé', applicables: applicables.map((n) => ({ etat: n, detail: etats.get(n) })) };
+  const r = { set_id: setId, etat, detail: etats.get(etat) ?? 'aucun état déterminé', applicables: applicables.map((n) => ({ etat: n, detail: etats.get(n) })), design: act.ok ? act.v.sha : null };
+  if (signeVerifie) r.problemes_courants = problemesCourants;
+  if (relecteurAttribue !== null && relecteurAttribue !== 'eric') {
+    r.autorisation_interim = autorisation && autorisation.ok
+      ? { statut: 'autorisee', sha: autorisation.sha, entree: autorisation.entree }
+      : { statut: 'refusee', detail: autorisation ? autorisation.raison : 'non évaluée' };
+  }
+  return r;
 }
 
 // Diagnostic sans set_id : accès seulement.
@@ -193,7 +266,9 @@ async function diagnostiquerAcces(s) {
   r.initialise = SC.existeSurDisque(path.join(s.dossier, '.initialise'));
   r.n8n = (await essayer(() => s.api.listerExecutions({ workflowId: s.workflowGeneration }))).ok;
   r.drive = (await essayer(() => s.drive.verifierDossier())).ok;
-  r.git = (await essayer(() => s.git(['rev-parse', '--verify', 'origin/design^{commit}']))).ok;
+  const act = await essayer(() => s.interim.actualiser());
+  r.git = act.ok;
+  r.design = act.ok ? act.v.sha : null;
   r.registre = r.initialise ? (await essayer(() => s.incidents())).ok : false;
   return r;
 }

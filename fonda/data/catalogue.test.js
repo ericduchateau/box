@@ -111,8 +111,11 @@ describe('chaîne publiée FONDA — cohérence complète', () => {
       const registre = require('../engine/moteurs.json');
       const refs = RA.refsDeConfiance();
       const resoudre = (version) => RA.resoudreReferentiel({ version, refs });
+      // Charge v3 (intérim, CDC r9) : archive de relecture-interim.json à source_version, même
+      // historique de confiance — jamais le fichier courant ni le calendrier.
+      const resoudreInterim = require('../scripts/interim.js').resoudreInterimGit({ refs });
       const modelesAutorises = require('../scripts/attestation-signee.js').lireModelesAutorises(fs.readFileSync(path.join(DATA, 'modeles-autorises.json'), 'utf8'));
-      assert.deepEqual(verifierClotureDuCatalogue(e, { resoudre, cles: clesDuDepot(), registre, modelesAutorises }), []);
+      assert.deepEqual(verifierClotureDuCatalogue(e, { resoudre, resoudreInterim, cles: clesDuDepot(), registre, modelesAutorises }), []);
     });
   }
 
