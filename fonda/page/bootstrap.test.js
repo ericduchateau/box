@@ -13,9 +13,17 @@ const assert = require('node:assert/strict');
 const CLASSES = require('../data/classes.json');
 const REFERENTIEL = require('../data/referentiel.json');
 const CATALOGUE = require('../data/catalogue-fonda.json');
+// Lot HISTORIQUE épinglé (6 cartes, relu par Éric) : toujours ouvert par ?set=, jamais par
+// notion/palier — ce lien-là sert le lot le PLUS RÉCENT du couple, qui change à chaque publication.
 const SET_CONSIGNE_NI = 'set_fonda_comprendre-consigne_nI_01';
 const CHEMIN_CONSIGNE_NI = 'fonda/data/lots/set_fonda_comprendre-consigne_nI_01.json';
 const LOT_CONSIGNE_NI = require('../data/lots/set_fonda_comprendre-consigne_nI_01.json');
+const LIEN_CONSIGNE_NI = `?fonda=1&page=carte&set=${SET_CONSIGNE_NI}`;
+// Lot le plus récent de fr.comprendre-consigne/nI, DÉRIVÉ du catalogue (plus grande séquence).
+const sequence = (setId) => Number(/_(\d{2})$/.exec(setId)[1]);
+const LOTS_CONSIGNE_NI = CATALOGUE.lots.filter((e) => e.notion_id === 'fr.comprendre-consigne' && e.palier === 'nI');
+const PLUS_RECENT_CONSIGNE_NI = LOTS_CONSIGNE_NI.slice().sort((a, b) => sequence(b.set_id) - sequence(a.set_id))[0];
+const LOT_PLUS_RECENT_CONSIGNE_NI = require(`../data/${PLUS_RECENT_CONSIGNE_NI.fichier}`);
 
 const SEMAINE_41 = {
   iso_week: 41,
@@ -391,11 +399,12 @@ describe('?page=carte — rendu réel d\'un paquet FONDA (plus de stub "contenu 
     assert.match(texteDe(root), /Carte 1 \/ 6/);
   });
 
-  test('compat ancien lien notion/palier : résolu par le catalogue (même lot)', async () => {
+  test('compat ancien lien notion/palier : résolu par le catalogue vers le lot le PLUS RÉCENT du couple (dérivé)', async () => {
     const journal = [];
     const root = await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI', journalFetch: journal });
-    assert.match(texteDe(root), /Carte 1 \/ 6/);
-    assert.ok(journal.includes(CHEMIN_CONSIGNE_NI));
+    assert.match(texteDe(root), new RegExp(`Carte 1 / ${LOT_PLUS_RECENT_CONSIGNE_NI.cartes.length}(?!\\d)`));
+    assert.ok(journal.includes(`fonda/data/${PLUS_RECENT_CONSIGNE_NI.fichier}`), 'le lot servi est le plus récent du catalogue');
+    for (const e of LOTS_CONSIGNE_NI.filter((x) => x !== PLUS_RECENT_CONSIGNE_NI)) assert.ok(!journal.includes(`fonda/data/${e.fichier}`), `${e.set_id} : plus ancien, jamais servi par ce lien`);
   });
 
   test('lot introuvable (fetch échoue) : message clair, pas de page blanche', async () => {
@@ -405,8 +414,8 @@ describe('?page=carte — rendu réel d\'un paquet FONDA (plus de stub "contenu 
     assert.doesNotMatch(texte, /contenu à venir/, 'le stub ne doit plus jamais apparaître');
   });
 
-  test('paquet réel (fr.comprendre-consigne/nI, fichier committé) : carte 1 rendue avec le relecteur ATTESTÉ ("Éric Duchateau")', async () => {
-    const root = await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI', calendrier: CALENDRIER });
+  test('paquet réel ÉPINGLÉ (set=…_nI_01, fichier committé) : carte 1 rendue avec le relecteur ATTESTÉ ("Éric Duchateau")', async () => {
+    const root = await demarrerBootstrap({ search: LIEN_CONSIGNE_NI, calendrier: CALENDRIER });
     const texte = (root.textContent || '').trim() || root.children.map((c) => c.textContent).join(' ');
     assert.match(texte, /Comprendre une consigne/, 'le titre du lot doit apparaître');
     assert.match(texte, /Carte 1 \/ 6/, 'le compteur doit annoncer 6 cartes (lot réel committé)');
@@ -420,7 +429,7 @@ describe('?page=carte — rendu réel d\'un paquet FONDA (plus de stub "contenu 
   });
 
   test('"Carte suivante" fait avancer le paquet jusqu\'à l\'écran de fin', async () => {
-    const root = await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI', calendrier: CALENDRIER });
+    const root = await demarrerBootstrap({ search: LIEN_CONSIGNE_NI, calendrier: CALENDRIER });
 
     const trouverBouton = trouverBoutonParTexte;
 
@@ -679,7 +688,7 @@ describe('lot validé EN ENTIER avant affichage (relecture Codex PR #2, #9)', ()
   for (const [libelle, abimer] of casMalformes) {
     test(`${libelle} : refusé AVANT la 1re carte, message visible`, async () => {
       const root = await demarrerBootstrap({
-        search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI',
+        search: LIEN_CONSIGNE_NI,
         lots: { [CHEMIN]: abimer(VRAI) },
       });
       assert.match(texteDe(root), /pas disponible/);
@@ -762,7 +771,7 @@ describe('réponses non textuelles (relecture Codex PR #2 v2, #4)', () => {
   // d'onErreur).
   test('au clic : si la lecture de la saisie plante, message visible + « Carte suivante » révélé', async () => {
     const root = await demarrerBootstrap({
-      search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI',
+      search: LIEN_CONSIGNE_NI,
       lots: { [CHEMIN]: VRAI },
     });
     const carteHote = root.children.find((c) => c && c.classList && (c.children || []).some((x) => x.className === 'fonda-question'));
@@ -780,7 +789,7 @@ describe('réponses non textuelles (relecture Codex PR #2 v2, #4)', () => {
   test('au clic : si l\'évaluation plante dans le moteur, message visible + « Carte suivante » révélé', async () => {
     const lot = JSON.parse(JSON.stringify(VRAI));
     const root = await demarrerBootstrap({
-      search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI',
+      search: LIEN_CONSIGNE_NI,
       lots: { [CHEMIN]: lot },
     });
     lot.cartes[1].reponses_acceptees.push({ toString: null });
@@ -830,10 +839,16 @@ describe('construireEntreesIndex — dérivé du catalogue publié, libellés du
     const consigne = entrees[0];
     assert.equal(consigne.libelle, REFERENTIEL.notions.find((n) => n.id === 'fr.comprendre-consigne').libelle);
     assert.equal(consigne.matiere, 'français');
-    assert.deepEqual(consigne.paliers, [
-      { palier: 'nI', setId: 'set_fonda_comprendre-consigne_nI_01', libelle: 'Initial' },
-      { palier: 'nF', setId: 'set_fonda_comprendre-consigne_nF_01', libelle: 'Final' },
-    ]);
+    // UN LIEN PAR LOT du couple (notion, palier), compte DÉRIVÉ du catalogue : « Initial » seul,
+    // ou « Initial 1 », « Initial 2 »… dès qu'un même palier a plusieurs lots publiés.
+    const BASE = { nI: 'Initial', nF: 'Final' };
+    const attendus = ['nI', 'nF'].flatMap((p) => {
+      const ids = CATALOGUE.lots.filter((e) => e.notion_id === 'fr.comprendre-consigne' && e.palier === p).map((e) => e.set_id).sort();
+      return ids.map((setId, i) => ({ palier: p, setId, libelle: ids.length > 1 ? `${BASE[p]} ${i + 1}` : BASE[p] }));
+    });
+    assert.deepEqual(consigne.paliers, attendus);
+    assert.equal(consigne.paliers.filter((x) => x.palier === 'nI').length, LOTS_CONSIGNE_NI.length);
+    assert.ok(consigne.paliers.some((x) => x.setId === SET_CONSIGNE_NI), 'le lot historique reste listé');
   });
 
   test('pas de liste en dur : un lot ajouté au catalogue apparaît ; deux lots du même couple sont numérotés', () => {
@@ -904,7 +919,7 @@ describe('retour vers l\'index depuis un paquet libre', () => {
   const versIndex = (root) => (root.children || []).find((c) => c && c.textContent === '← Toutes les notions');
 
   test('paquet libre (page=carte) : lien « ← Toutes les notions » présent, puis encore sur l\'écran de fin', async () => {
-    const root = await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI' });
+    const root = await demarrerBootstrap({ search: LIEN_CONSIGNE_NI });
     assert.ok(versIndex(root), 'retour index absent pendant le paquet');
     assert.match(versIndex(root).href, /\?fonda=1&page=entrainement$/);
     for (let i = 0; i < 6; i += 1) {
