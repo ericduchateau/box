@@ -269,13 +269,16 @@ function rapprocher({ setId, retenue, fichier, brute, workflowId, journalCommit,
 }
 
 // --- §20.5 Réconciliation de CHAQUE décision, puis unicité ------------------------------------
-// decision : decision-fonda/v1 ; contexte : { setId, lotSource (null si non lu), empreintes:
+// decision : decision-fonda/v1 ou v2 (v2 = v1 + bloc d'intérim, qui n'entre dans AUCUN calcul
+// de réconciliation ; l'ADMISSIBILITÉ de la version selon le parcours est imposée par
+// l'appelant AVANT, signer-cloture.js admissible) ; contexte : { setId, lotSource (null si non lu), empreintes:
 // { pedagogique, complete } (du lot lu, sinon de la sortie de génération ; null si aucune —
 // les contrôles INTRINSÈQUES de la décision sont faits quand même, garde-fou 1 §20.13 r6),
 // empreintePubliee(cartesGardees) -> Promise<string> }. Renvoie les erreurs.
 async function reconcilier(decision, { setId, lotSource, empreintes, empreintePubliee }) {
   const e = [];
-  try { Canonique.octetsContrat('decision-fonda/v1', decision); } catch (err) { return [`décision non conforme à decision-fonda/v1 : ${err.message}`]; }
+  const contrat = decision && decision.schema === 'decision-fonda/v2' ? 'decision-fonda/v2' : 'decision-fonda/v1';
+  try { Canonique.octetsContrat(contrat, decision); } catch (err) { return [`décision non conforme à ${contrat} : ${err.message}`]; }
   const lr = decision.lot_relu;
   const co = decision.coeur;
   if (decision.set_id !== setId || lr.set_id !== setId) e.push('lot_relu.set_id / decision.set_id ≠ set_id');

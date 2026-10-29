@@ -56,7 +56,7 @@ describe('App.initFonda — bootstrap.js qui ne charge jamais / échoue', () => 
     assert.ok(lienRetour(), 'lien retour absent pendant l\'attente');
     assert.equal(lienRetour().href, '/box/index.html');
     assert.equal(scripts.length, 1);
-    assert.equal(scripts[0].src, 'fonda/page/bootstrap.js?v=3');
+    assert.equal(scripts[0].src, 'fonda/page/bootstrap.js?v=5');
   });
 
   test('requête pendante (ni onload ni onerror) : message d\'indisponibilité au délai, lien retour toujours là', () => {
@@ -152,5 +152,27 @@ describe('écran de suppression : jamais rendu en mode FONDA, inchangé en BOX c
     App.showScreen('delete');
     assert.equal(els.Delete.style.display, 'block');
     assert.equal(els.Menu.style.display, 'none');
+  });
+});
+
+describe('switch BOX -> FONDA (goFonda) : atterrit sur l\'accueil « Notions de la semaine »', () => {
+  afterEach(() => { delete global.localStorage; });
+
+  test('sans niveau mémorisé : ?fonda=1 (l\'accueil affiche d\'abord le sélecteur)', () => {
+    global.localStorage = { getItem: () => null };
+    chargerApp().goFonda();
+    assert.equal(window.location.href, '/box/index.html?fonda=1');
+  });
+
+  test('niveau mémorisé : ?fonda=1&niveau=… (plus page=niveau)', () => {
+    global.localStorage = { getItem: () => '5e' };
+    chargerApp().goFonda();
+    assert.equal(window.location.href, '/box/index.html?fonda=1&niveau=5e');
+  });
+
+  test('localStorage indisponible : repli sans exception', () => {
+    global.localStorage = { getItem() { throw new Error('indisponible'); } };
+    chargerApp().goFonda();
+    assert.equal(window.location.href, '/box/index.html?fonda=1');
   });
 });

@@ -16,7 +16,7 @@ const A = require('./adaptateurs-production.js');
 const SC = require('./signer-cloture.js');
 const G = require('./generer-lot-fonda.js');
 
-const SET = 'set_fonda_proportionnalite_nI_50';
+const SET = 'set_fonda_proportionnalite_nI_95';
 const tmp = (p) => fs.mkdtempSync(path.join(os.tmpdir(), p));
 // fetch simulé : routes = [[RegExp | (url, init) => bool, (url, init) => { status, json?, octets? }]]
 function faux(routes) {
@@ -240,6 +240,25 @@ describe('témoin d\'incidents (option a)', () => {
     await assert.rejects(() => t([]), /signature invalide/);
     assert.equal(verifie, 1);
   });
+  // GARDE v3 PUBLIÉE (CDC r9) : une charge attestation-cloture/v3 du catalogue RÉEL passe par le
+  // chemin de PRODUCTION (sourcesLocales -> attestationsDuCatalogue, résolveur d'archive d'intérim
+  // sur l'historique de confiance) ; sans ce résolveur, elle est refusée (fail-closed). Une entrée
+  // publiée est immuable : la garde reste active après tout retrait de l'intérim.
+  test('garde v3 publiée : chaque charge v3 du catalogue réel vérifiée par le chemin de production ; sans résolveur d\'intérim -> refus', async () => {
+    const racine = path.join(__dirname, '..', '..');
+    const git = (a) => execFileSync('git', a, { cwd: racine, stdio: ['ignore', 'pipe', 'ignore'] });
+    const s = A.sourcesLecture({ api: {}, drive: {}, dossier: d, racine, git });
+    const reel = JSON.parse(git(['show', 'origin/design:fonda/data/catalogue-fonda.json']).toString('utf8'));
+    const v3 = reel.lots.filter((l) => l.attestation && l.attestation.charge && l.attestation.charge.schema === 'attestation-cloture/v3').map((l) => l.set_id);
+    assert.ok(v3.includes('set_fonda_comprendre-consigne_nI_02'), '1re charge v3 publiée (#53), immuable');
+    assert.equal(typeof s.resoudreInterim, 'function', 'sourcesLocales fournit le résolveur d\'intérim');
+    const verifiees = (await s.attestationsCatalogue()).map((x) => x.entree.set_id);
+    for (const id of v3) assert.ok(verifiees.includes(id), `${id} : vérifiée en entier par le chemin de production`);
+    const sans = A.attestationsDuCatalogue({ git, cles: s.cles, registre: s.registre, modelesAutorises: s.modelesAutorises, resoudre: s.resoudre });
+    await assert.rejects(sans(), /résolveur d'archive d'intérim absent/);
+    const aveugle = A.attestationsDuCatalogue({ git, cles: s.cles, registre: s.registre, modelesAutorises: s.modelesAutorises, resoudre: s.resoudre, resoudreInterim: () => ({ ok: false, raison: 'introuvable' }) });
+    await assert.rejects(aveugle(), /archive d'intérim : introuvable/);
+  });
   test('catalogue : 8 « manuelle-historique » ignorées ; cloture-signee malformée REFUSÉE ; autre type refusé', async () => {
     const racine = path.join(__dirname, '..', '..');
     const git = (a) => execFileSync('git', a, { cwd: racine, stdio: ['ignore', 'pipe', 'ignore'] });
@@ -250,7 +269,9 @@ describe('témoin d\'incidents (option a)', () => {
     const cloturesSignees = reel.lots.filter((l) => l.attestation && l.attestation.type === 'cloture-signee').map((l) => l.set_id).sort();
     assert.ok(cloturesSignees.includes('set_fonda_nombres-fractions-relatifs_nI_03'), 'au moins la 1re clôture signée (_nI_03) est publiée et vérifiée');
     assert.deepEqual((await s.attestationsCatalogue()).map((x) => x.entree.set_id).sort(), cloturesSignees, 'attestationsCatalogue() = exactement les clotures signees publiees du catalogue');
-    const avec = (cat) => A.attestationsDuCatalogue({ git: (a) => (a[0] === 'show' && /catalogue-fonda/.test(a[1]) ? Buffer.from(JSON.stringify(cat)) : git(a)), cles: s.cles, registre: s.registre, modelesAutorises: s.modelesAutorises, resoudre: s.resoudre });
+    // MÊMES dépendances que la production (sourcesLocales : resoudre ET resoudreInterim) — sans
+    // le résolveur d'intérim, toute charge v3 publiée serait refusée (oubli de #51, révélé par #53).
+    const avec = (cat) => A.attestationsDuCatalogue({ git: (a) => (a[0] === 'show' && /catalogue-fonda/.test(a[1]) ? Buffer.from(JSON.stringify(cat)) : git(a)), cles: s.cles, registre: s.registre, modelesAutorises: s.modelesAutorises, resoudre: s.resoudre, resoudreInterim: s.resoudreInterim });
     const modif = (f) => { const c = JSON.parse(JSON.stringify(reel)); f(c.lots[0]); return c; };
     const cas = [
       [{}, /forme catalogue-fonda\/v1/], [{ lots: [] }, /forme/], [{ schema: 'catalogue-fonda/v1', lots: {} }, /forme/],
@@ -307,7 +328,9 @@ describe('fabriques : EXACTEMENT ce que consomment saisie et clôture', () => {
   });
   test('clôture : toutes les clés lues par cloturer, config complète (modelesAutorises DANS config), rattachement ABSENT par défaut', () => {
     const d = A.dependancesCloture({ sources: s, signer: () => Buffer.alloc(0) });
-    assert.deepEqual(Object.keys(d).sort(), ['afficher', 'api', 'cles', 'config', 'decisionsLocales', 'drive', 'fs', 'horloge', 'incidents', 'journal', 'levees', 'rattachement', 'referentielArchive', 'registre', 'saisir', 'signer', 'tableRelecteurs'].sort());
+    assert.deepEqual(Object.keys(d).sort(), ['afficher', 'api', 'cles', 'config', 'decisionsLocales', 'drive', 'fs', 'horloge', 'incidents', 'interim', 'journal', 'levees', 'rattachement', 'referentielArchive', 'registre', 'saisir', 'signer', 'tableRelecteurs'].sort());
+    // Intérim (CDC r9) : observation de design (fetch explicite) et archive historique.
+    assert.deepEqual(Object.keys(d.interim).sort(), ['aCommit', 'actualiser', 'observer']);
     assert.equal(d.rattachement, undefined, 'garde maîtresse : aucun rattachement fourni en production');
     assert.deepEqual(Object.keys(d.config).sort(), ['cleId', 'dossier', 'modelesAutorises', 'source', 'workflowGeneration']);
     assert.equal(d.config.source, 'saisie_locale');
@@ -322,7 +345,8 @@ describe('fabriques : EXACTEMENT ce que consomment saisie et clôture', () => {
     const exec = (sortie) => ({ data: { resultData: { runData: { 'FONDA Entree generation': [{ data: { main: [[{ json: { set_id: SET, ref: 'r' } }]] } }], 'FONDA Sortie generation': [{ data: { main: [[{ json: sortie }]] } }] } } } });
     const api = { listerExecutions: async ({ status }) => (status ? [] : [{ id: '1', workflowId: 'vrqgtS5kQMvP9Ok5', status: 'success', startedAt: '2026-10-20T07:00:00.000Z', stoppedAt: '2026-10-20T07:01:00.000Z' }]), lireExecution: async () => exec({ moteur: { version: reg.version, sha256: reg.sha256 } }) };
     const d = await A.dependancesSaisie(SET, { sources: { ...s, api } });
-    assert.deepEqual(Object.keys(d).sort(), ['afficher', 'api', 'config', 'drive', 'fs', 'horloge', 'moteur', 'referentielArchive', 'registre', 'saisir'].sort());
+    assert.deepEqual(Object.keys(d).sort(), ['afficher', 'api', 'config', 'drive', 'fs', 'horloge', 'interim', 'moteur', 'referentielArchive', 'registre', 'saisir'].sort());
+    assert.equal(typeof d.interim.observer, 'function');
     assert.deepEqual(d.config, { dossier: s.dossier, workflowGeneration: 'vrqgtS5kQMvP9Ok5' });
     assert.deepEqual(d.moteur, { version: reg.version, sha256: reg.sha256 }, 'descripteur, pas une instance');
     assert.equal(typeof d.referentielArchive, 'function');

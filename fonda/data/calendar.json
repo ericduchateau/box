@@ -1,5 +1,291 @@
 {
-  "version": 1,
-  "last_updated": "",
-  "semaines": []
+  "version": 2,
+  "last_updated": "2026-10-27",
+  "annee_scolaire": "2026-2027",
+  "zone": "B",
+  "source_vacances": "data.education.gouv.fr, jeu « fr-en-calendrier-scolaire » (Lille, zone B, 2026-2027), consulté le 2026-10-27",
+  "vacances": [
+    {
+      "libelle": "Vacances de la Toussaint",
+      "du": "2026-10-17",
+      "au": "2026-11-01",
+      "reprise": "2026-11-02"
+    },
+    {
+      "libelle": "Vacances de Noël",
+      "du": "2026-12-19",
+      "au": "2027-01-03",
+      "reprise": "2027-01-04"
+    },
+    {
+      "libelle": "Vacances d'hiver",
+      "du": "2027-02-20",
+      "au": "2027-03-07",
+      "reprise": "2027-03-08"
+    },
+    {
+      "libelle": "Vacances de printemps",
+      "du": "2027-04-17",
+      "au": "2027-05-02",
+      "reprise": "2027-05-03"
+    },
+    {
+      "libelle": "Vacances d'été",
+      "du": "2027-07-03",
+      "au": "2027-09-01",
+      "reprise": "2027-09-02"
+    }
+  ],
+  "periodes": [
+    {
+      "id": "P2",
+      "libelle": "Toussaint → Noël",
+      "du": "2026-11-02",
+      "au": "2026-12-18",
+      "bandes": {
+        "c4-milieu": {
+          "genere": false,
+          "bilan": "",
+          "justification": ""
+        }
+      }
+    },
+    {
+      "id": "P3",
+      "libelle": "Noël → hiver",
+      "du": "2027-01-04",
+      "au": "2027-02-19",
+      "bandes": {}
+    },
+    {
+      "id": "P4",
+      "libelle": "Hiver → printemps",
+      "du": "2027-03-08",
+      "au": "2027-04-16",
+      "bandes": {}
+    },
+    {
+      "id": "P5",
+      "libelle": "Printemps → été",
+      "du": "2027-05-03",
+      "au": "2027-07-02",
+      "bandes": {}
+    }
+  ],
+  "semaines": [
+    {
+      "iso_week": 45,
+      "du": "2026-11-02",
+      "au": "2026-11-06",
+      "periode_id": "P2",
+      "entrees": [
+        {
+          "notion_id": "maths.grandeurs-mesures",
+          "matiere": "maths",
+          "palier": "nI",
+          "bande": "c4-milieu",
+          "difficulte": {
+            "valeur": "rouge",
+            "source": "priorite_initiale"
+          },
+          "statut": "publie",
+          "set_id": "set_fonda_grandeurs-mesures_nI_02"
+        },
+        {
+          "notion_id": "fr.comprendre-consigne",
+          "matiere": "français",
+          "palier": "nI",
+          "bande": "c4-milieu",
+          "difficulte": {
+            "valeur": "rouge",
+            "source": "priorite_initiale"
+          },
+          "statut": "publie",
+          "set_id": "set_fonda_comprendre-consigne_nI_02"
+        }
+      ]
+    },
+    {
+      "iso_week": 46,
+      "du": "2026-11-09",
+      "au": "2026-11-13",
+      "periode_id": "P2",
+      "entrees": [
+        {
+          "notion_id": "maths.resolution-problemes",
+          "matiere": "maths",
+          "palier": "nI",
+          "bande": "c4-milieu",
+          "difficulte": {
+            "valeur": "rouge",
+            "source": "priorite_initiale"
+          },
+          "statut": "planifie"
+        },
+        {
+          "notion_id": "fr.inference-implicite",
+          "matiere": "français",
+          "palier": "nI",
+          "bande": "c4-milieu",
+          "difficulte": {
+            "valeur": "rouge",
+            "source": "priorite_initiale"
+          },
+          "statut": "planifie"
+        }
+      ]
+    },
+    {
+      "iso_week": 47,
+      "du": "2026-11-16",
+      "au": "2026-11-20",
+      "periode_id": "P2",
+      "entrees": [
+        {
+          "notion_id": "maths.proportionnalite",
+          "matiere": "maths",
+          "palier": "nI",
+          "bande": "c4-milieu",
+          "difficulte": {
+            "valeur": "ambre",
+            "source": "priorite_initiale"
+          },
+          "statut": "planifie"
+        },
+        {
+          "notion_id": "fr.changer-representation",
+          "matiere": "français",
+          "palier": "nI",
+          "bande": "c4-milieu",
+          "difficulte": {
+            "valeur": "rouge",
+            "source": "priorite_initiale"
+          },
+          "statut": "planifie"
+        }
+      ]
+    },
+    {
+      "iso_week": 48,
+      "du": "2026-11-23",
+      "au": "2026-11-27",
+      "periode_id": "P2",
+      "entrees": [
+        {
+          "notion_id": "maths.nombres-fractions-relatifs",
+          "matiere": "maths",
+          "palier": "nI",
+          "bande": "c4-milieu",
+          "difficulte": {
+            "valeur": "ambre",
+            "source": "priorite_initiale"
+          },
+          "statut": "publie",
+          "set_id": "set_fonda_nombres-fractions-relatifs_nI_03"
+        },
+        {
+          "notion_id": "fr.phrase-orthographe",
+          "matiere": "français",
+          "palier": "nI",
+          "bande": "c4-milieu",
+          "difficulte": {
+            "valeur": "ambre",
+            "source": "priorite_initiale"
+          },
+          "statut": "planifie"
+        }
+      ]
+    },
+    {
+      "iso_week": 49,
+      "du": "2026-11-30",
+      "au": "2026-12-04",
+      "periode_id": "P2",
+      "entrees": [
+        {
+          "notion_id": "maths.comprendre-document",
+          "matiere": "maths",
+          "palier": "nI",
+          "bande": "c4-milieu",
+          "difficulte": {
+            "valeur": "ambre",
+            "source": "priorite_initiale"
+          },
+          "statut": "planifie"
+        },
+        {
+          "notion_id": "fr.sens-mot-inconnu",
+          "matiere": "français",
+          "palier": "nI",
+          "bande": "c4-milieu",
+          "difficulte": {
+            "valeur": "ambre",
+            "source": "priorite_initiale"
+          },
+          "statut": "planifie"
+        }
+      ]
+    },
+    {
+      "iso_week": 50,
+      "du": "2026-12-07",
+      "au": "2026-12-11",
+      "periode_id": "P2",
+      "entrees": [
+        {
+          "notion_id": "maths.resolution-problemes",
+          "matiere": "maths",
+          "palier": "nI",
+          "bande": "c4-milieu",
+          "difficulte": {
+            "valeur": "rouge",
+            "source": "priorite_initiale"
+          },
+          "statut": "planifie"
+        },
+        {
+          "notion_id": "fr.lexique",
+          "matiere": "français",
+          "palier": "nI",
+          "bande": "c4-milieu",
+          "difficulte": {
+            "valeur": "vert",
+            "source": "priorite_initiale"
+          },
+          "statut": "planifie"
+        }
+      ]
+    },
+    {
+      "iso_week": 51,
+      "du": "2026-12-14",
+      "au": "2026-12-18",
+      "periode_id": "P2",
+      "entrees": [
+        {
+          "notion_id": "maths.grandeurs-mesures",
+          "matiere": "maths",
+          "palier": "nI",
+          "bande": "c4-milieu",
+          "difficulte": {
+            "valeur": "rouge",
+            "source": "priorite_initiale"
+          },
+          "statut": "publie",
+          "set_id": "set_fonda_grandeurs-mesures_nI_02"
+        },
+        {
+          "notion_id": "fr.comprendre-consigne",
+          "matiere": "français",
+          "palier": "nI",
+          "bande": "c4-milieu",
+          "difficulte": {
+            "valeur": "rouge",
+            "source": "priorite_initiale"
+          },
+          "statut": "planifie"
+        }
+      ]
+    }
+  ]
 }

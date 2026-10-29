@@ -53,7 +53,7 @@ function instancier(gabarit, valeurs) {
 async function scenario(x = {}) {
   const source = x.source || 'page_relecture';
   const maths = x.maths || source === 'saisie_locale';
-  const setId = maths ? 'set_fonda_grandeurs-mesures_nI_02' : 'set_fonda_comprendre-consigne_nI_02';
+  const setId = maths ? 'set_fonda_grandeurs-mesures_nI_92' : 'set_fonda_comprendre-consigne_nI_92';
   const lot = lotSource(maths ? 'set_fonda_grandeurs-mesures_nI_01' : 'set_fonda_comprendre-consigne_nI_01', setId);
   const ref = `test-2026-10-17:${setId}`;
   const ids = lot.cartes.map((c) => c.item_id);
@@ -81,7 +81,7 @@ async function scenario(x = {}) {
     ],
     wfClot: [{ id: 20, workflowId: 'wfClot', status: 'success', startedAt: '2026-10-20T07:58:00.000Z', stoppedAt: '2026-10-20T08:00:00.000Z' }],
   };
-  const rattachements = { 10: { set_id: setId, type: 'decision', nonce: 'n10' }, 2: { set_id: setId, type: 'decision', nonce: 'n2' }, 30: { set_id: 'set_fonda_lexique_nI_02', type: 'decision', nonce: 'nx' }, 20: { set_id: setId, type: 'cloture', nonce: null } };
+  const rattachements = { 10: { set_id: setId, type: 'decision', nonce: 'n10' }, 2: { set_id: setId, type: 'decision', nonce: 'n2' }, 30: { set_id: 'set_fonda_lexique_nI_92', type: 'decision', nonce: 'nx' }, 20: { set_id: setId, type: 'cloture', nonce: null } };
   const fichiers = [
     { nom: `${setId}-n10.json`, modifie_le: '2026-10-19T17:00:01.500Z', contenu: decision('n10') },
     { nom: `${setId}-n2.json`, modifie_le: '2026-10-19T17:00:02.500Z', contenu: decision('n2') },
@@ -174,10 +174,10 @@ describe('garde maîtresse (lot 7 : levée pour saisie_locale SEULE)', () => {
     assert.ok(err);
   });
   test('analyserArgumentsCloture : saisie_locale par défaut ; toute autre source, set_id invalide ou arguments en trop -> refus precondition', () => {
-    assert.deepEqual(analyserArgumentsCloture(['set_fonda_grandeurs-mesures_nI_02']), { setId: 'set_fonda_grandeurs-mesures_nI_02', source: 'saisie_locale' });
-    assert.deepEqual(analyserArgumentsCloture(['set_fonda_grandeurs-mesures_nI_02', '--source', 'saisie_locale']).source, 'saisie_locale');
-    for (const argv of [['set_fonda_grandeurs-mesures_nI_02', '--source', 'page_relecture'], ['set_fonda_grandeurs-mesures_nI_02', '--source'], ['set_fonda_grandeurs-mesures_nI_02', '--source', 'n8n'],
-      ['pas-un-set-id'], [], ['set_fonda_grandeurs-mesures_nI_02', 'en-trop']]) {
+    assert.deepEqual(analyserArgumentsCloture(['set_fonda_grandeurs-mesures_nI_92']), { setId: 'set_fonda_grandeurs-mesures_nI_92', source: 'saisie_locale' });
+    assert.deepEqual(analyserArgumentsCloture(['set_fonda_grandeurs-mesures_nI_92', '--source', 'saisie_locale']).source, 'saisie_locale');
+    for (const argv of [['set_fonda_grandeurs-mesures_nI_92', '--source', 'page_relecture'], ['set_fonda_grandeurs-mesures_nI_92', '--source'], ['set_fonda_grandeurs-mesures_nI_92', '--source', 'n8n'],
+      ['pas-un-set-id'], [], ['set_fonda_grandeurs-mesures_nI_92', 'en-trop']]) {
       assert.throws(() => analyserArgumentsCloture(argv), (e) => e.issue === 'precondition', JSON.stringify(argv));
     }
   });
@@ -187,13 +187,13 @@ describe('garde maîtresse (lot 7 : levée pour saisie_locale SEULE)', () => {
     const avant = process.exitCode; const err = console.error; const log = console.log; let sortie = '';
     console.error = (m) => { sortie += m; }; console.log = () => {};
     try {
-      await mainCloture(['set_fonda_grandeurs-mesures_nI_02', '--source', 'page_relecture'], production);
+      await mainCloture(['set_fonda_grandeurs-mesures_nI_92', '--source', 'page_relecture'], production);
       assert.equal(process.exitCode, 1);
       assert.deepEqual(appels, []);
       assert.match(sortie, /seule « saisie_locale » est levée/);
       process.exitCode = avant;
-      await mainCloture(['set_fonda_grandeurs-mesures_nI_02'], production);
-      assert.deepEqual(appels, ['set_fonda_grandeurs-mesures_nI_02']);
+      await mainCloture(['set_fonda_grandeurs-mesures_nI_92'], production);
+      assert.deepEqual(appels, ['set_fonda_grandeurs-mesures_nI_92']);
     } finally { console.error = err; console.log = log; process.exitCode = avant; }
   });
   test('cloturerSaisieLocale appelée DIRECTEMENT : set_id invalide, source ≠ saisie_locale, rattachement fourni -> refus precondition AVANT sources, secret, phrase et cloturer', async () => {
@@ -204,16 +204,16 @@ describe('garde maîtresse (lot 7 : levée pour saisie_locale SEULE)', () => {
       for (const [setId, sur, motif] of [
         ['pas-un-set-id', {}, /set_id invalide/],
         [undefined, {}, /set_id invalide/],
-        ['set_fonda_grandeurs-mesures_nI_02', { source: 'page_relecture' }, /source « page_relecture » refusée/],
-        ['set_fonda_grandeurs-mesures_nI_02', { config: { source: 'page_relecture' } }, /config\.source « page_relecture » refusée/],
-        ['set_fonda_grandeurs-mesures_nI_02', { source: 'saisie_locale', config: { source: 'n8n' } }, /config\.source « n8n » refusée/],
-        ['set_fonda_grandeurs-mesures_nI_02', { rattachement: () => null }, /rattachement fourni par l'appelant refusé/],
+        ['set_fonda_grandeurs-mesures_nI_92', { source: 'page_relecture' }, /source « page_relecture » refusée/],
+        ['set_fonda_grandeurs-mesures_nI_92', { config: { source: 'page_relecture' } }, /config\.source « page_relecture » refusée/],
+        ['set_fonda_grandeurs-mesures_nI_92', { source: 'saisie_locale', config: { source: 'n8n' } }, /config\.source « n8n » refusée/],
+        ['set_fonda_grandeurs-mesures_nI_92', { rattachement: () => null }, /rattachement fourni par l'appelant refusé/],
       ]) {
         await assert.rejects(cloturerSaisieLocale(setId, o(sur)), (e) => motif.test(e.message) && e.issue === 'precondition', JSON.stringify(sur));
       }
       assert.deepEqual(espions, [], 'ni phrase de passe ni cloturer');
       // Contrôle : sans refus, l'échec suivant est bien la lecture des SECRETS (sources), pas la clé.
-      await assert.rejects(cloturerSaisieLocale('set_fonda_grandeurs-mesures_nI_02', o({ source: 'saisie_locale' })), /secret n8n-signataire\.cle illisible/);
+      await assert.rejects(cloturerSaisieLocale('set_fonda_grandeurs-mesures_nI_92', o({ source: 'saisie_locale' })), /secret n8n-signataire\.cle illisible/);
       assert.deepEqual(espions, []);
     } finally { require('fs').rmSync(vide, { recursive: true, force: true }); }
   });
@@ -221,10 +221,10 @@ describe('garde maîtresse (lot 7 : levée pour saisie_locale SEULE)', () => {
     const vide = require('fs').mkdtempSync(path.join(require('os').tmpdir(), 'home-vide-'));
     try {
       const cli = (...a) => require('child_process').spawnSync(process.execPath, [path.join(__dirname, 'signer-cloture.js'), ...a], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: vide }, input: '', timeout: 30000 });
-      const page = cli('set_fonda_grandeurs-mesures_nI_02', '--source', 'page_relecture');
+      const page = cli('set_fonda_grandeurs-mesures_nI_92', '--source', 'page_relecture');
       assert.equal(page.status, 1, page.stderr);
       assert.match(page.stderr, /source « page_relecture » refusée/);
-      const locale = cli('set_fonda_grandeurs-mesures_nI_02');
+      const locale = cli('set_fonda_grandeurs-mesures_nI_92');
       assert.equal(locale.status, 1, locale.stderr);
       assert.match(locale.stderr, /secret n8n-signataire\.cle illisible/);
       assert.doesNotMatch(locale.stdout + locale.stderr, /Phrase de passe/);
@@ -421,7 +421,7 @@ describe('§20.2–20.3 liaison de génération : chaque violation -> refus clas
     ['fichier mal nommé portant ce set_id', ({ candidats, setIdCourant }) => { void setIdCourant; candidats[0].nom = 'mauvais-nom.lot.json'; }, /nom et fonda_set_id discordants/, 'abandon'],
     ['fichier rattaché à une autre exécution', ({ candidats }) => { candidats[0].properties.fonda_execution_id = '777'; }, /≠ exécution retenue/, 'abandon'],
     ['aucun fichier candidat', ({ candidats }) => { candidats.length = 0; }, /0 fichier\(s\) candidat/, 'abandon'],
-    ['set_id de la sortie ≠ demandé', sortie((s) => { s.set_id = 'set_fonda_lexique_nI_02'; }), /set_id/, 'abandon'],
+    ['set_id de la sortie ≠ demandé', sortie((s) => { s.set_id = 'set_fonda_lexique_nI_92'; }), /set_id/, 'abandon'],
     ['ref de la sortie ≠ déclencheur', sortie((s) => { s.ref = 'autre-ref-1234'; }), /ref/, 'abandon'],
     ['journal_commit hors premier parent de design', sortie((s) => { s.journal_commit = 'f'.repeat(40); }), /hors de la chaîne du premier parent/, 'abandon'],
     ['réservation absente du journal au commit', ({ journal }) => { journal.lignes[0].ref = 'autre-ref-1234'; }, /réservation de ce set_id avec cette ref/, 'abandon'],
@@ -443,9 +443,9 @@ describe('§20.2–20.3 liaison de génération : chaque violation -> refus clas
     ['détail n8n : statut terminal ≠ listing', ({ gen }) => { gen[501].status = 'error'; }, /observations contradictoires.*statuts terminaux différents/, 'incident'],
     ['détail n8n : autre identifiant', ({ gen }) => { gen[501].id = 777; }, /observations contradictoires.*identifiant du détail/, 'incident'],
     ['détail n8n : startedAt contradictoire', ({ gen }) => { gen[501].startedAt = '2026-10-18T06:59:00.000Z'; }, /startedAt contradictoire/, 'incident'],
-    ['génération en cours d\'un AUTRE lot (incident global)', ({ execs, gen, fx }) => { execs.wfGen.push({ id: 506, workflowId: 'wfGen', status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null }); gen[506] = copie({ ...fx.doublon, id: 506, status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null }); gen[506].data.resultData.runData['FONDA Entree generation'][0].data.main[0][0].json.set_id = 'set_fonda_lexique_nI_02'; }, /non terminée ou de statut inconnu/, 'incident'],
+    ['génération en cours d\'un AUTRE lot (incident global)', ({ execs, gen, fx }) => { execs.wfGen.push({ id: 506, workflowId: 'wfGen', status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null }); gen[506] = copie({ ...fx.doublon, id: 506, status: 'running', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: null }); gen[506].data.resultData.runData['FONDA Entree generation'][0].data.main[0][0].json.set_id = 'set_fonda_lexique_nI_92'; }, /non terminée ou de statut inconnu/, 'incident'],
     ['déclencheur au set_id vide (non attribuable)', ({ execs, gen, fx }) => { execs.wfGen.push({ id: 507, workflowId: 'wfGen', status: 'error', startedAt: fx.erreur_sans_depot.startedAt, stoppedAt: fx.erreur_sans_depot.stoppedAt }); gen[507] = copie({ ...fx.erreur_sans_depot, id: 507 }); gen[507].data.resultData.runData['FONDA Entree generation'][0].data.main[0][0].json.set_id = ''; }, /non attribuable/, 'incident'],
-    ['second fichier rattaché à l\'exécution retenue (autre nom, autre set_id)', ({ candidats }) => { candidats.push({ id: 'drv-autre', nom: 'set_fonda_lexique_nI_02.lot.json', modifie_le: '2026-10-18T07:00:40.000Z', properties: { fonda_set_id: 'set_fonda_lexique_nI_02', fonda_execution_id: '501' }, proprietesLisibles: true }); }, /exécution retenue 501 : 2 fichier/, 'abandon'],
+    ['second fichier rattaché à l\'exécution retenue (autre nom, autre set_id)', ({ candidats }) => { candidats.push({ id: 'drv-autre', nom: 'set_fonda_lexique_nI_92.lot.json', modifie_le: '2026-10-18T07:00:40.000Z', properties: { fonda_set_id: 'set_fonda_lexique_nI_92', fonda_execution_id: '501' }, proprietesLisibles: true }); }, /exécution retenue 501 : 2 fichier/, 'abandon'],
     ['workflowData tableau', ({ gen }) => { gen[501].workflowData = []; }, /workflowData absent/, 'refus'],
     ['date du listing postérieure à la génération (lectures stables)', ({ candidats }) => { candidats[0].modifie_le = '2026-10-18T07:05:00.000Z'; }, /modifié APRÈS/, 'abandon'],
     ['accès API insuffisant (403)', ({ deps }) => { deps.api.lireExecution = async () => { const e = new Error('Forbidden'); e.statut = 403; throw e; }; }, /accès insuffisant \(403\)/, 'incident'],
@@ -479,7 +479,7 @@ describe('§20.5 réconciliation de lot_relu et unicité : chaque violation -> a
   const surLocale = (f) => ({ locales, decisionLocale }) => { const d = copie(decisionLocale); f(d); locales[0].octets = Buffer.from(JSON.stringify(d)); };
   const cas = [
     ['lot_relu.empreinte_complete ≠ lot source', surLocale((d) => { d.lot_relu.empreinte_complete = `sha256:${'0'.repeat(64)}`; }), /lot_relu.empreinte_complete/],
-    ['lot_relu.set_id ≠ set_id', surLocale((d) => { d.lot_relu.set_id = 'set_fonda_lexique_nI_02'; }), /lot_relu.set_id/],
+    ['lot_relu.set_id ≠ set_id', surLocale((d) => { d.lot_relu.set_id = 'set_fonda_lexique_nI_92'; }), /lot_relu.set_id/],
     ['carte manquante dans lot_relu', surLocale((d) => { d.lot_relu.cartes.pop(); }), /item_id ≠ ceux du lot source/],
     ['ordre des cartes ≠ lot source', surLocale((d) => { d.lot_relu.cartes.reverse(); }), /item_id ≠ ceux du lot source/],
     ['carte en double', surLocale((d) => { d.lot_relu.cartes[1] = { ...d.lot_relu.cartes[0] }; }), /item_id ≠ ceux du lot source/],
@@ -782,7 +782,7 @@ describe('critique Codex r3 : double attestation, fusion, observations partielle
       const sc = await scenario({ source: 'saisie_locale', modifier: ({ execs, gen, fx }) => {
         execs.wfGen.push({ id: 508, workflowId: 'wfGen', ...listing });
         gen[508] = copie({ ...fx.erreur_sans_depot, id: 508, ...detail });
-        gen[508].data.resultData.runData['FONDA Entree generation'][0].data.main[0][0].json.set_id = 'set_fonda_lexique_nI_02';
+        gen[508].data.resultData.runData['FONDA Entree generation'][0].data.main[0][0].json.set_id = 'set_fonda_lexique_nI_92';
       } });
       // La requête status=running ne renvoie que les « running » ; « mystere » n'apparaît qu'à la liste complète.
       await sansSignature(sc, /statut inconnu|non terminée|avant d'avoir démarré/, 'incident');
@@ -971,7 +971,7 @@ describe('§20.13 amendement r6 : règle d\'observation incomplète', () => {
 describe('critique Codex r9 : garde-fou 1 — contrôles intrinsèques des décisions sans référence', () => {
   const pannes = (deps) => { deps.drive.lireLotGenere = async () => { throw new Error('Drive 503'); }; deps.api.lireExecution = async () => { throw new Error('503'); }; };
   for (const [libelle, f, motif] of [
-    ['lot_relu.set_id ≠ set_id', (d) => { d.lot_relu.set_id = 'set_fonda_lexique_nI_02'; }, /lot_relu.set_id/],
+    ['lot_relu.set_id ≠ set_id', (d) => { d.lot_relu.set_id = 'set_fonda_lexique_nI_92'; }, /lot_relu.set_id/],
     ['choix interdit', (d) => { d.lot_relu.cartes[0].choix = 'peut-etre'; }, /choix ∉/],
     ['selection incohérente avec les « garder »', (d) => { d.coeur.selection = d.coeur.selection.slice(1); }, /coeur.selection ≠ cartes « garder »/],
   ]) {
@@ -1001,7 +1001,7 @@ describe('garde-fou 1 (§20.13 r6) : contrôles déterminables malgré une lectu
     await sansSignature(sc, /son référentiel archivé/, 'abandon');
   });
   test('deux clôtures antérieures aux codes distincts -> abandon', async () => {
-    const sc = await scenario({ source: 'saisie_locale', modifier: ({ deps }) => { pannes(deps); deps.fs.lister = () => [`set_fonda_grandeurs-mesures_nI_02-${'a'.repeat(16)}`, `set_fonda_grandeurs-mesures_nI_02-${'b'.repeat(16)}`]; } });
+    const sc = await scenario({ source: 'saisie_locale', modifier: ({ deps }) => { pannes(deps); deps.fs.lister = () => [`set_fonda_grandeurs-mesures_nI_92-${'a'.repeat(16)}`, `set_fonda_grandeurs-mesures_nI_92-${'b'.repeat(16)}`]; } });
     await sansSignature(sc, /2 clôtures antérieures/, 'abandon');
   });
   test('incident contenant fin_saisie_le (génération illisible) -> abandon', async () => {
@@ -1019,7 +1019,7 @@ describe('garde-fou 1 (§20.13 r6) : contrôles déterminables malgré une lectu
 describe('critique Codex r10 : observations partielles exploitées, moteur du candidat', () => {
   const pannePartielle = (sc, wf, renvoi) => { const base = sc.deps.api.listerExecutions; sc.deps.api.listerExecutions = async (q) => { if (q.workflowId === wf && q.status === 'waiting') return renvoi; if (q.workflowId === wf && !q.status) throw new Error('timeout'); return base(q); }; };
   test('confirmation « conflit » reçue avant une panne du listing -> abandon (pas temporaire)', async () => {
-    const sc = await scenario({ modifier: ({ rattachements }) => { rattachements[99] = { set_id: 'set_fonda_comprendre-consigne_nI_02', type: 'conflit', nonce: 'n99' }; } });
+    const sc = await scenario({ modifier: ({ rattachements }) => { rattachements[99] = { set_id: 'set_fonda_comprendre-consigne_nI_92', type: 'conflit', nonce: 'n99' }; } });
     pannePartielle(sc, 'wfConf', [{ id: 99, workflowId: 'wfConf', status: 'success', startedAt: '2026-10-19T17:10:00.000Z', stoppedAt: '2026-10-19T17:10:01.000Z' }]);
     await sansSignature(sc, /conflit/, 'abandon');
   });
@@ -1036,5 +1036,567 @@ describe('critique Codex r10 : observations partielles exploitées, moteur du ca
     const sc = await scenario({ source: 'saisie_locale', modifier: ({ gen }) => { gen[501].mode = 'manual'; } });
     pannePartielle(sc, 'wfGen', [{ id: 501, workflowId: 'wfGen', status: 'success', startedAt: '2026-10-18T07:00:00.000Z', stoppedAt: '2026-10-18T07:01:00.000Z' }]);
     await sansSignature(sc, /≠ webhook/, 'abandon');
+  });
+});
+
+// ═══ CDC r9 (plan r6) : relecteur de SECOURS en intérim — saisie S1/S2, clôture C1–C3, charge v3 ═══
+// Lot de FRANÇAIS (relecteur attribué « justine » dans le référentiel archivé) en saisie locale ;
+// autorisation = fonda/data/relecture-interim.json observé sur design (observation SIMULÉE, SHA
+// figé) ; archive historique simulée (aCommit). Pour CHAQUE refus : signataire jamais appelé.
+const I = require('./interim.js');
+const SC2 = require('./signer-cloture.js');
+// FIXTURE de test (jamais l'entrée réelle de fonda/data : son retrait ne doit pas casser la CI).
+const FICHIER_INTERIM = require('./fixtures/relecture-interim.json');
+const OCT_CAL = fsN.readFileSync(path.join(__dirname, '../data/calendar.json'));
+const OCT_DEST = fsN.readFileSync(path.join(__dirname, '../data/destinataires.json'));
+const SHA_DESIGN = 'd'.repeat(40);
+const octetsJson = (o) => Buffer.from(`${JSON.stringify(o, null, 2)}\n`);
+const versionInterim = (f) => `sha256:${crypto.createHash('sha256').update(octetsJson(f)).digest('hex')}`;
+const BADGE_SECOURS = { forme: 'relue_par_secours', nom_affiche: 'Éric Duchateau', id: 'eric', titulaire: { id: 'justine', nom_affiche: 'Justine Leblanc' } };
+
+// x.observer(etatI, n) : observation n (1, 2, …) ; défaut = état courant de etatI.
+async function scenarioInterim(x = {}) {
+  const sc = await scenario({ source: 'page_relecture' }); // lot de français (justine)
+  sc.deps.config.source = 'saisie_locale';
+  sc.etat.heure = Date.parse(x.heure || '2026-11-05T09:00:00.000Z');
+  const fichier = copie(FICHIER_INTERIM);
+  const etatI = { fichier, destinataires: JSON.parse(OCT_DEST.toString('utf8')), sha: SHA_DESIGN, n: 0, historique: new Map() };
+  const observation = () => ({ sha: etatI.sha, octetsInterim: octetsJson(etatI.fichier), octetsCalendrier: OCT_CAL, octetsDestinataires: octetsJson(etatI.destinataires) });
+  etatI.historique.set(SHA_DESIGN, { octetsInterim: octetsJson(fichier), octetsCalendrier: OCT_CAL });
+  sc.deps.interim = {
+    observer: async () => { etatI.n += 1; if (x.observer) x.observer(etatI, etatI.n); if (etatI.panne) throw new Error('git fetch : réseau'); return observation(); },
+    aCommit: (c) => (etatI.historique.has(c) ? { surPremierParent: true, ...etatI.historique.get(c) } : { surPremierParent: false }),
+  };
+  const decisionV2 = { schema: 'decision-fonda/v2', set_id: sc.setId, generation: 0, nonce: 'f3a9c0d1e2b4a5c6', recu_le: x.recuLe || '2026-11-04T17:00:01.000Z',
+    coeur: copie(sc.coeur), lot_relu: copie(sc.lotRelu), hash_formulaire: 'saisie-locale', relecture_interim: I.blocDecision(fichier.entrees[0], versionInterim(fichier), SHA_DESIGN) };
+  const locales = [{ nom: 'decision.json', octets: octetsJson(decisionV2) }];
+  sc.deps.decisionsLocales = async () => locales.map((f) => ({ nom: f.nom, octets: Buffer.from(f.octets) }));
+  const resoudreInterim = (v) => {
+    for (const [, h] of etatI.historique) if (`sha256:${crypto.createHash('sha256').update(h.octetsInterim).digest('hex')}` === v) return { ok: true, octets: h.octetsInterim };
+    return { ok: false, raison: 'introuvable' };
+  };
+  const out = { ...sc, etatI, decisionV2, locales, resoudreInterim };
+  if (x.modifier) await x.modifier(out);
+  return out;
+}
+const marqueurEcrit = (sc) => [...sc.etat.ecrits.keys()].some((p) => p.endsWith('.signature'));
+
+describe('intérim (CDC r9) : clôture en saisie locale d\'une notion routée « justine »', () => {
+  test('nominal : charge v3 (annexe A), badge de secours honnête, instantané v2 (décision embarquée), vérifiée et publiable', async () => {
+    const sc = await scenarioInterim();
+    const { enveloppe, lotPublie } = await cloturer(sc.setId, sc.deps);
+    const ch = enveloppe.charge;
+    assert.equal(sc.etat.signatures, 1);
+    assert.equal(ch.schema, 'attestation-cloture/v3');
+    assert.equal(ch.relecteur_attribue, 'justine', 'le référentiel n\'est pas modifié : le titulaire reste le relecteur attribué');
+    assert.equal(ch.relecteur_egal_cloturer, false);
+    assert.deepEqual(ch.confirmation, { mode: 'auto', par: 'eric', recue_par: 'eric', le: ch.confirmation.le });
+    assert.deepEqual(ch.relecture_interim, I.blocCharge(FICHIER_INTERIM.entrees[0], versionInterim(FICHIER_INTERIM)));
+    assert.deepEqual(ch.badge, BADGE_SECOURS);
+    assert.equal(ch.fin_saisie_le, sc.decisionV2.recu_le);
+    assert.deepEqual([ch.provenances, ch.execution_cloture, ch.revoque_le, ch.source_decisions], [[], null, null, 'saisie_locale']);
+    assert.deepEqual(Object.keys(ch), ['schema', 'set_id', 'notion_id', 'palier', 'coeur', 'sha256_instantane', 'code_confirmation', 'confirmation', 'fidelite_transmission',
+      'relecteur_attribue', 'relecteur_egal_cloturer', 'relecture_interim', 'provenances', 'nb_fichiers_decision', 'referentiel_version', 'moteur', 'execution_cloture',
+      'source_decisions', 'generation', 'fin_saisie_le', 'revoque_le', 'levees', 'incidents_connus', 'cloture_le', 'badge', 'cle_id']);
+    // Présentation affichée AVANT le code (C2), noms lus dans destinataires.json au SHA observé.
+    assert.match(sc.etat.affiche, /INTÉRIM DE RELECTURE[\s\S]*Titulaire : Justine Leblanc[\s\S]*Version observée : origin\/design d{40}[\s\S]*CODE DE CONFIRMATION/);
+    assert.equal(sc.etatI.n, 3, 'trois observations à la clôture : C1, C2, C3');
+    // Instantané v2 : décision COMPLÈTE embarquée, son empreinte canonique, bloc identique.
+    const inst = JSON.parse([...sc.etat.ecrits.entries()].find(([p]) => p.endsWith('instantane.json'))[1].toString('utf8'));
+    assert.equal(inst.schema, 'instantane-fonda/v2');
+    assert.deepEqual(Object.keys(inst), ['schema', 'set_id', 'candidat_lot', 'coeur', 'lot_relu', 'decision', 'decision_sha256', 'relecture_interim', 'moteur', 'recapitulatif']);
+    assert.deepEqual(inst.decision, sc.decisionV2);
+    assert.equal(inst.decision_sha256, `sha256:${crypto.createHash('sha256').update(Buffer.from(require('../engine/canonique.js').octetsContrat('decision-fonda/v2', sc.decisionV2))).digest('hex')}`);
+    assert.deepEqual(inst.relecture_interim, sc.decisionV2.relecture_interim);
+    // Vérification indépendante + publication (archive d'intérim par version, jamais le fichier courant).
+    const entree = { set_id: sc.setId, notion_id: ch.notion_id, palier: ch.palier, item_ids: [...ch.coeur.selection], empreinte: ch.coeur.empreinte_publiee, moteur: { ...ch.moteur }, relecteur: ch.badge };
+    assert.deepEqual(S.verifierAttestationSignee(enveloppe, { entree, registre: REGISTRE, referentiel: REFERENTIEL, cles: CLES, modelesAutorises: [MODELE], resoudreInterim: sc.resoudreInterim }), []);
+    assert.match(S.verifierAttestationSignee(enveloppe, { entree, registre: REGISTRE, referentiel: REFERENTIEL, cles: CLES, modelesAutorises: [MODELE] }).join(), /résolveur d'archive d'intérim absent/);
+    const journal = { schema: JOURNAL.schema, lignes: [...copie(JOURNAL.lignes), { set_id: sc.setId, transition: 'reserve', le: '2026-10-17', ref: `test-2026-10-17:${sc.setId}` }] };
+    const pub = await preparerPublication({ lot: lotPublie, attestation: enveloppe, catalogue: copie(CATALOGUE), referentiel: REFERENTIEL, referentielArchive: async () => ({ ok: true, referentiel: REFERENTIEL }),
+      resoudreInterim: sc.resoudreInterim, journal, le: '2026-11-05T10:00:00.000Z', sha256Hex: sha, cles: CLES, modelesAutorises: [MODELE] });
+    assert.equal(pub.ok, true, JSON.stringify(pub.erreurs));
+    assert.deepEqual(pub.entree.relecteur, BADGE_SECOURS);
+    assert.deepEqual(C.validerCatalogue(pub.catalogue, REFERENTIEL), { valide: true, erreurs: [] });
+  });
+  test('réversibilité : entrée RETIRÉE de design après signature -> attestation existante toujours vérifiée (archive), nouvelle clôture refusée', async () => {
+    const sc = await scenarioInterim();
+    const { enveloppe } = await cloturer(sc.setId, sc.deps);
+    sc.etatI.fichier = { schema: 'relecture-interim/v1', entrees: [] };
+    const entree = { set_id: sc.setId, notion_id: enveloppe.charge.notion_id, palier: enveloppe.charge.palier, item_ids: [...enveloppe.charge.coeur.selection], empreinte: enveloppe.charge.coeur.empreinte_publiee, moteur: { ...enveloppe.charge.moteur }, relecteur: enveloppe.charge.badge };
+    assert.deepEqual(S.verifierAttestationSignee(enveloppe, { entree, registre: REGISTRE, referentiel: REFERENTIEL, cles: CLES, modelesAutorises: [MODELE], resoudreInterim: sc.resoudreInterim }), []);
+    const autre = await scenarioInterim({ modifier: (c) => { c.etatI.fichier = { schema: 'relecture-interim/v1', entrees: [] }; } });
+    await sansSignature(autre, /§20\.6 ; intérim : C1/, 'refus');
+  });
+  test('sans source d\'autorisation (deps.interim absent) -> refus §20.6, signataire jamais appelé', async () => {
+    const sc = await scenarioInterim();
+    delete sc.deps.interim;
+    await sansSignature(sc, /réservée au relecteur « eric ».*intérim : aucune source/, 'refus');
+  });
+  test('décision v1 (sans preuve d\'intérim) pour justine -> refus §20.6', async () => {
+    const sc = await scenarioInterim();
+    const v1 = { ...copie(sc.decisionV2), schema: 'decision-fonda/v1' };
+    delete v1.relecture_interim;
+    sc.locales[0].octets = octetsJson(v1);
+    await sansSignature(sc, /§20\.6 ; intérim : aucune décision figée sous intérim/, 'refus');
+  });
+  test('décision v2 pour le relecteur « eric » -> abandon (v1 seule admissible)', async () => {
+    const sc = await scenario({ source: 'saisie_locale' });
+    sc.locales[0].octets = octetsJson({ ...sc.decisionLocale, schema: 'decision-fonda/v2', relecture_interim: I.blocDecision(FICHIER_INTERIM.entrees[0], versionInterim(FICHIER_INTERIM), SHA_DESIGN) });
+    await sansSignature(sc, /non admissible pour le relecteur « eric »/, 'abandon');
+  });
+  test('décision v2 injectée dans le parcours PAGE -> refus (v1 seule admissible), zéro signature', async () => {
+    const sc = await scenario();
+    sc.fichiers[0].contenu = { ...sc.fichiers[0].contenu, schema: 'decision-fonda/v2', relecture_interim: I.blocDecision(FICHIER_INTERIM.entrees[0], versionInterim(FICHIER_INTERIM), SHA_DESIGN) };
+    await sansSignature(sc, /non conforme/);
+    assert.equal(SC2.admissible(true, 'justine', 'decision-fonda/v2'), false);
+  });
+  test('provenance : commit hors de la chaîne de confiance -> refus §20.6', async () => {
+    const sc = await scenarioInterim({ modifier: (c) => { c.etatI.historique.clear(); } });
+    await sansSignature(sc, /hors de la chaîne de confiance/, 'refus');
+  });
+  test('provenance : source_version ≠ empreinte du fichier au commit -> refus', async () => {
+    const sc = await scenarioInterim();
+    const d = copie(sc.decisionV2); d.relecture_interim.source_version = `sha256:${'0'.repeat(64)}`;
+    sc.locales[0].octets = octetsJson(d);
+    await sansSignature(sc, /≠ source_version/, 'refus');
+  });
+  test('provenance : fichier du commit INVALIDE (chevauchement) alors que le fichier courant est corrigé -> refus', async () => {
+    const sc = await scenarioInterim();
+    const f = copie(FICHIER_INTERIM); f.entrees.push({ ...f.entrees[0], motif: 'doublon' });
+    sc.etatI.historique.set('e'.repeat(40), { octetsInterim: octetsJson(f), octetsCalendrier: OCT_CAL });
+    const d = copie(sc.decisionV2); d.relecture_interim.source_commit = 'e'.repeat(40); d.relecture_interim.source_version = versionInterim(f);
+    sc.locales[0].octets = octetsJson(d);
+    await sansSignature(sc, /fichier d'intérim du commit non conforme/, 'refus');
+  });
+  test('C1 : fetch en échec -> refus temporaire (relancer), signataire jamais appelé', async () => {
+    const sc = await scenarioInterim({ modifier: (c) => { c.etatI.panne = true; } });
+    await sansSignature(sc, /git \(origin\/design, intérim\)/, 'temporaire');
+  });
+  for (const [champ, valeur] of [['motif', 'Autre motif.'], ['periode', 'P3'], ['du', '2026-10-29'], ['au', '2026-12-17'], ['relecteur_de_secours', 'justine'], ['relecteur_titulaire', 'eric']]) {
+    test(`modification de « ${champ} » entre la saisie et la clôture -> refus §20.6`, async () => {
+      const sc = await scenarioInterim({ modifier: (c) => { c.etatI.fichier.entrees[0][champ] = valeur; } });
+      await sansSignature(sc, /§20\.6 ; intérim : C1/, 'refus');
+    });
+  }
+  test('retrait entre C2 et C3 (pendant la saisie du code) -> refus §20.6 APRÈS confirmation, AVANT marqueur ; signataire jamais appelé', async () => {
+    const sc = await scenarioInterim({ observer: (e, n) => { if (n === 3) e.fichier = { schema: 'relecture-interim/v1', entrees: [] }; } });
+    await sansSignature(sc, /intérim : C3 : 0 entrée/, 'refus');
+    assert.equal(marqueurEcrit(sc), false, 'aucun marqueur de signature');
+    assert.match(sc.etat.affiche, /CODE DE CONFIRMATION/, 'la confirmation avait eu lieu');
+  });
+  test('nom du titulaire modifié dans destinataires.json entre C2 et C3 -> arrêt (relancer : nouvelle présentation, nouvelle confirmation)', async () => {
+    const sc = await scenarioInterim({ observer: (e, n) => { if (n === 3) e.destinataires.relecteurs.justine.nom_affiche = 'J. Leblanc'; } });
+    await sansSignature(sc, /noms modifiés depuis la confirmation/, 'local');
+    assert.equal(marqueurEcrit(sc), false);
+  });
+  test('passage de minuit sur « au » pendant l\'attente : cloture_le hors fenêtre -> refus, signataire jamais appelé', async () => {
+    // Fenêtre se terminant le jour de la saisie ; horloge à 23:59:59 (Paris) : cloture_le tombe le lendemain.
+    const sc = await scenarioInterim({ heure: '2026-11-05T22:59:59.000Z', recuLe: '2026-11-05T10:00:00.000Z', modifier: (c) => {
+      for (const f of [c.etatI.fichier]) f.entrees[0].au = '2026-11-05';
+      c.etatI.historique.set(SHA_DESIGN, { octetsInterim: octetsJson(c.etatI.fichier), octetsCalendrier: OCT_CAL });
+      const d = copie(c.decisionV2); d.relecture_interim = I.blocDecision(c.etatI.fichier.entrees[0], versionInterim(c.etatI.fichier), SHA_DESIGN);
+      c.locales[0].octets = octetsJson(d);
+    } });
+    await sansSignature(sc, /cloture_le \(2026-11-06, heure de Paris\) hors de la fenêtre/, 'refus');
+  });
+  test('bornes en heure de Paris : recu_le 2026-10-27T23:30Z (= 28/10) admis ; 2026-10-27T22:30Z (27/10) refusé', async () => {
+    const ok = await scenarioInterim({ recuLe: '2026-10-27T23:30:00.000Z' });
+    await cloturer(ok.setId, ok.deps);
+    assert.equal(ok.etat.signatures, 1);
+    const ko = await scenarioInterim({ recuLe: '2026-10-27T22:30:00.000Z' });
+    await sansSignature(ko, /au 2026-10-27/, 'refus');
+  });
+  test('instantané v2 : mutation de recu_le SEUL, du nonce SEUL -> code de confirmation différent ; reprise sur une décision substituée refusée', async () => {
+    const sc = await scenarioInterim();
+    const code = (d) => crypto.createHash('sha256').update(Buffer.from(`${JSON.stringify(SC2.construireInstantane({ setId: sc.setId, lotSource: sc.lot, coeur: d.coeur, decision: d, moteur: d.coeur.moteur,
+      recapitulatif: SC2.projeterRecapitulatif(sc.lot, d.coeur, d.coeur.moteur) }), null, 2)}\n`, 'utf8')).digest('hex').slice(0, 16);
+    const base = code(sc.decisionV2);
+    assert.notEqual(code({ ...sc.decisionV2, recu_le: '2026-11-04T18:00:01.000Z' }), base);
+    assert.notEqual(code({ ...sc.decisionV2, nonce: 'autre-nonce-0001' }), base);
+    // Tentative interrompue (code faux) -> instantané figé ; décision remplacée (recu_le seul) -> abandon.
+    const saisir = sc.deps.saisir;
+    sc.deps.saisir = async (q) => (/Code/.test(q) ? '0'.repeat(16) : saisir(q));
+    await assert.rejects(cloturer(sc.setId, sc.deps), /code de confirmation/);
+    sc.deps.saisir = saisir;
+    sc.locales[0].octets = octetsJson({ ...sc.decisionV2, recu_le: '2026-11-04T18:00:01.000Z' });
+    await sansSignature(sc, /clôture antérieure .*AUTRES données/, 'abandon');
+  });
+  test('incident daté ENTRE l\'ancien et le nouveau recu_le : la date de la décision délimite la fenêtre des incidents', async () => {
+    const inc = { id: 'i1', nature: 'x', detecte_le: '2026-11-04T17:30:00.000Z', statut: 'resolu', resolu_le: '2026-11-04T17:40:00.000Z', preuve_resolution: 'ok', periode: { debut: '2026-11-04T17:20:00.000Z', fin: '2026-11-04T17:40:00.000Z' } };
+    const avant = await scenarioInterim({ modifier: (c) => { c.deps.incidents = async () => [inc]; } });
+    await cloturer(avant.setId, avant.deps);
+    assert.equal(avant.etat.signatures, 1, 'incident postérieur à la fenêtre [génération, 17:00:01] : sans effet');
+    const apres = await scenarioInterim({ recuLe: '2026-11-04T18:00:01.000Z', modifier: (c) => { c.deps.incidents = async () => [inc]; } });
+    await sansSignature(apres, /recouvre la fenêtre de candidature/, 'abandon');
+  });
+});
+
+describe('intérim (CDC r9) : saisie locale S1/S2 d\'une notion routée « justine »', () => {
+  const depsSaisie = async (x = {}) => {
+    const sc = await scenarioInterim(x);
+    const reponses = [...sc.lotRelu.cartes.map((c) => c.choix), 'oui'];
+    return { sc, deps: { ...sc.deps, moteur: { ...MOTEUR }, aleatoire: () => 'nonce-test-0002', saisir: async () => reponses.shift() } };
+  };
+  test('S1 puis S2 : décision decision-fonda/v2 figée, preuve observée (entrée, version, SHA), présentation AVANT les cartes', async () => {
+    const { sc, deps } = await depsSaisie();
+    const r = await saisirDecisionLocale(sc.setId, deps);
+    assert.equal(r.figee, true);
+    assert.equal(r.decision.schema, 'decision-fonda/v2');
+    assert.deepEqual(r.decision.relecture_interim, I.blocDecision(FICHIER_INTERIM.entrees[0], versionInterim(FICHIER_INTERIM), SHA_DESIGN));
+    assert.equal(SC2.versionDecision(r.decision), 'decision-fonda/v2');
+    assert.equal(sc.etatI.n, 2, 'S1 et S2');
+    assert.ok(sc.etat.affiche.indexOf('INTÉRIM DE RELECTURE') < sc.etat.affiche.indexOf('Carte 1/'), 'présentation avant la première carte');
+    const ecrit = JSON.parse([...sc.etat.ecrits.values()][0].toString('utf8'));
+    assert.deepEqual(ecrit, r.decision);
+    assert.equal(I.prouverProvenance(r.decision.relecture_interim, r.decision.recu_le, sc.deps.interim.aCommit).ok, true);
+  });
+  test('S1 : aucune entrée applicable -> refus §20.6 AVANT toute carte, rien écrit', async () => {
+    const { sc, deps } = await depsSaisie({ modifier: (c) => { c.etatI.fichier = { schema: 'relecture-interim/v1', entrees: [] }; } });
+    let questions = 0;
+    await assert.rejects(saisirDecisionLocale(sc.setId, { ...deps, saisir: async () => { questions += 1; return 'garder'; } }), /réservée au relecteur « eric ».*intérim : 0 entrée/);
+    assert.equal(questions, 0);
+    assert.equal(sc.etat.ecrits.size, 0);
+  });
+  test('S1 : entrée présente en copie de travail mais ABSENTE de design (observation) -> refus', async () => {
+    // L'autorisation ne lit JAMAIS la copie de travail : seule l'observation de design compte.
+    const { sc, deps } = await depsSaisie({ modifier: (c) => { c.etatI.fichier = { schema: 'relecture-interim/v1', entrees: [] }; } });
+    assert.equal(FICHIER_INTERIM.entrees.length, 1, 'la copie de travail (simulée) porte l\'entrée');
+    await assert.rejects(saisirDecisionLocale(sc.setId, deps), /intérim : 0 entrée/);
+  });
+  test('S1 : fetch en échec -> refus, rien écrit', async () => {
+    const { sc, deps } = await depsSaisie({ modifier: (c) => { c.etatI.panne = true; } });
+    await assert.rejects(saisirDecisionLocale(sc.setId, deps), /intérim non vérifiable \(git fetch : réseau\)/);
+    assert.equal(sc.etat.ecrits.size, 0);
+  });
+  test('retrait entre S1 et S2 (pendant la saisie des cartes) -> refus, RIEN n\'est figé', async () => {
+    const { sc, deps } = await depsSaisie({ observer: (e, n) => { if (n === 2) e.fichier = { schema: 'relecture-interim/v1', entrees: [] }; } });
+    await assert.rejects(saisirDecisionLocale(sc.setId, deps), /modifiée ou retirée pendant la saisie.*rien n'est figé/);
+    assert.equal(sc.etat.ecrits.size, 0);
+  });
+  test('modification de l\'entrée entre S1 et S2 -> refus, rien figé', async () => {
+    const { sc, deps } = await depsSaisie({ observer: (e, n) => { if (n === 2) e.fichier.entrees[0].motif = 'Autre motif.'; } });
+    await assert.rejects(saisirDecisionLocale(sc.setId, deps), /entrée différente/);
+    assert.equal(sc.etat.ecrits.size, 0);
+  });
+  test('expiration pendant la saisie (minuit sur « au ») -> refus, rien figé', async () => {
+    const { sc, deps } = await depsSaisie({ heure: '2026-12-18T22:59:00.000Z' });
+    // S1 au 18/12 (Paris), puis l'horloge passe minuit avant S2 (une seconde par appel).
+    sc.etat.heure = Date.parse('2026-12-18T22:59:58.000Z');
+    await assert.rejects(saisirDecisionLocale(sc.setId, deps), /modifiée ou retirée pendant la saisie/);
+    assert.equal(sc.etat.ecrits.size, 0);
+  });
+  test('relecteur « eric » : saisie INCHANGÉE (decision-fonda/v1, aucune observation d\'intérim)', async () => {
+    const sc = await scenario({ source: 'saisie_locale' });
+    let observe = 0;
+    const reponses = [...sc.lotRelu.cartes.map((c) => c.choix), 'oui'];
+    const r = await saisirDecisionLocale(sc.setId, { ...sc.deps, moteur: { ...MOTEUR }, aleatoire: () => 'n', saisir: async () => reponses.shift(), interim: { observer: async () => { observe += 1; } } });
+    assert.equal(r.decision.schema, 'decision-fonda/v1');
+    assert.equal(observe, 0);
+  });
+});
+
+// ═══ Non-régression v1/v2 contre le code d'AVANT l'intérim (design c215dd0, extrait par git archive) ═══
+describe('non-régression : parcours v1/v2 et vérificateur IDENTIQUES au code d\'avant l\'intérim (c215dd0)', () => {
+  const AVANT = 'c215dd035ed865e7c66ff8e139ac42419d201b19';
+  const racine = path.join(__dirname, '..', '..');
+  const dir = fsN.mkdtempSync(path.join(require('os').tmpdir(), 'fonda-avant-interim-'));
+  require('child_process').execFileSync('sh', ['-c', `git archive ${AVANT} fonda | tar -x -C "${dir}"`], { cwd: racine });
+  const ANCIEN_SC = require(path.join(dir, 'fonda/scripts/signer-cloture.js'));
+  const ANCIEN_S = require(path.join(dir, 'fonda/scripts/attestation-signee.js'));
+  const hexEcrits = (sc) => [...sc.etat.ecrits.entries()].map(([p, o]) => [p, o.toString('hex')]).sort();
+  for (const [nom, x] of [['saisie locale (eric, auto)', { source: 'saisie_locale' }], ['page (tiers, réponse au message)', {}], ['page (eric, auto)', { maths: true }]]) {
+    test(`clôture ${nom} : charge, signature, instantané v1, export et récapitulatif identiques OCTET POUR OCTET`, async () => {
+      const a = await scenario(x);
+      const b = await scenario(x);
+      const ra = await ANCIEN_SC.cloturer(a.setId, a.deps);
+      const rb = await cloturer(b.setId, b.deps);
+      assert.deepEqual(rb.enveloppe, ra.enveloppe);
+      assert.deepEqual(hexEcrits(b), hexEcrits(a));
+      assert.match([...b.etat.ecrits.entries()].find(([p]) => p.endsWith('instantane.json'))[1].toString('utf8'), /"schema": "instantane-fonda\/v1"/);
+    });
+  }
+  test('saisie locale eric : décision decision-fonda/v1 identique octet pour octet', async () => {
+    const a = await scenario({ source: 'saisie_locale' });
+    const b = await scenario({ source: 'saisie_locale' });
+    const dep = (sc) => { const r = [...sc.lotRelu.cartes.map((c) => c.choix), 'oui']; return { ...sc.deps, moteur: { ...MOTEUR }, aleatoire: () => 'nonce-fixe', saisir: async () => r.shift() }; };
+    await ANCIEN_SC.saisirDecisionLocale(a.setId, dep(a));
+    await saisirDecisionLocale(b.setId, dep(b));
+    assert.deepEqual(hexEcrits(b), hexEcrits(a));
+  });
+  test('refus classés identiques (négatifs) : justine en saisie locale SANS intérim, décision non conforme, code faux', async () => {
+    for (const modif of [
+      (sc) => { delete sc.deps.interim; },
+      (sc) => { sc.locales[0].octets = Buffer.from('{ cassé'); },
+      (sc) => { const s = sc.deps.saisir; sc.deps.saisir = async (q) => (/Code/.test(q) ? '0'.repeat(16) : s(q)); },
+    ]) {
+      const fr = async () => { const sc = await scenario({ source: 'page_relecture' }); sc.deps.config.source = 'saisie_locale'; sc.deps.decisionsLocales = async () => [{ nom: 'decision.json', octets: Buffer.from(JSON.stringify({ ...sc.decision('n'), generation: 0, hash_formulaire: 'saisie-locale' })) }]; return sc; };
+      for (const fabrique of [fr, () => scenario({ source: 'saisie_locale' })]) {
+        const a = await fabrique(); const b = await fabrique();
+        modif(a); modif(b);
+        const ea = await ANCIEN_SC.cloturer(a.setId, a.deps).then((r) => ({ r }), (e) => e);
+        const eb = await cloturer(b.setId, b.deps).then((r) => ({ r }), (e) => e);
+        if (ea.r || eb.r) { assert.deepEqual(eb.r && eb.r.enveloppe, ea.r && ea.r.enveloppe); continue; } // même issue : signée à l'identique
+        assert.equal(eb.issue, ea.issue);
+        // Le constat §20.6 garde son libellé ; l'intérim n'ajoute qu'une précision après « ; ».
+        assert.equal(eb.message.replace(/ ; intérim : .*?(?= \(autres constats| \[observation|$)/, ''), ea.message, eb.message);
+        assert.equal(b.etat.signatures, 0);
+      }
+    }
+  });
+  test('vérificateur : invariantsValeur / invariantsDepot / verifierAttestationSignee IDENTIQUES sur des centaines de charges v1/v2 MUTÉES', async () => {
+    const valeurs = [null, '', ' ', 'x', 0, -1, 1.5, true, false, {}, [], 'auto', 'vive_voix', 'eric', 'justine', 'saisie_locale', 'page_relecture', '2026-10-20T09:00:00.000Z',
+      '2026-10-20T09:00:00Z', 'relue_par', 'relue_et_validee', 'relue_par_secours', 'un professeur', 'attestation-cloture/v1', 'attestation-cloture/v2', `sha256:${'a'.repeat(64)}`];
+    const charges = [];
+    for (const x of [{ source: 'saisie_locale' }, {}, { maths: true }]) {
+      const sc = await scenario(x);
+      charges.push({ ch: (await cloturer(sc.setId, sc.deps)).enveloppe.charge, sc });
+    }
+    // VRAIES charges v1 : vecteurs positifs figés (auto, tiers avec levées/incidents, badge sans
+    // nom), clé de test substituée pour être resignées.
+    const VEC = require('../engine/canonique-vecteurs.json').vecteurs;
+    for (const id of ['attestation-auto-nominale', 'attestation-tiers-levees-incidents', 'attestation-badge-sans-nom']) {
+      charges.push({ ch: { ...copie(VEC.find((v) => v.id === id).entree), cle_id: 'cle-test' } });
+    }
+    assert.deepEqual(charges.map((c) => c.ch.schema), ['attestation-cloture/v2', 'attestation-cloture/v2', 'attestation-cloture/v2', 'attestation-cloture/v1', 'attestation-cloture/v1', 'attestation-cloture/v1']);
+    const sous = ['confirmation', 'fidelite_transmission', 'generation', 'badge', 'coeur', 'execution_cloture'];
+    const mutants = [];
+    for (const { ch } of charges) {
+      for (const k of Object.keys(ch)) for (const v of valeurs) mutants.push({ ...copie(ch), [k]: copie(v) });
+      for (const s of sous) if (ch[s]) for (const k of Object.keys(ch[s])) for (const v of valeurs) mutants.push({ ...copie(ch), [s]: { ...copie(ch[s]), [k]: copie(v) } });
+      mutants.push({ ...copie(ch), badge: { ...ch.badge, titulaire: { id: 'justine', nom_affiche: 'Justine Leblanc' } } });
+    }
+    const issue = (f) => { try { return { r: f() }; } catch (e) { return { e: e.message }; } };
+    const n = { 'attestation-cloture/v1': 0, 'attestation-cloture/v2': 0 };
+    for (const m of mutants) {
+      if (m.schema === 'attestation-cloture/v3') continue; // liste fermée ÉTENDUE (v3) : hors comparaison
+      const opts = { modelesAutorises: [MODELE] };
+      const entree = { set_id: m.set_id, notion_id: m.notion_id, palier: m.palier, item_ids: m.coeur && m.coeur.selection, empreinte: m.coeur && m.coeur.empreinte_publiee, moteur: m.moteur, relecteur: m.badge };
+      // Invariants comparés sur les charges que le vérificateur ÉVALUE réellement (forme
+      // canonique valide pour leur schéma) ; la vérification complète, elle, sur TOUTES.
+      if (issue(() => require('../engine/canonique.js').octetsContrat(m.schema, m)).r) {
+        assert.deepEqual(issue(() => S.invariantsValeur(m, opts)), issue(() => ANCIEN_S.invariantsValeur(m, opts)), JSON.stringify(m).slice(0, 200));
+        assert.deepEqual(issue(() => S.invariantsDepot(m, { entree, registre: REGISTRE, referentiel: REFERENTIEL })), issue(() => ANCIEN_S.invariantsDepot(m, { entree, registre: REGISTRE, referentiel: REFERENTIEL })));
+        n[m.schema] += 1;
+      }
+      let env;
+      try { env = { type: 'cloture-signee', charge: m, signature: crypto.sign('sha256', Buffer.from(require('../engine/canonique.js').octetsContrat(m.schema, m)), { key: privateKey, padding: crypto.constants.RSA_PKCS1_PADDING }).toString('base64') }; } catch { env = { type: 'cloture-signee', charge: m, signature: 'QUJD' }; }
+      // Seul écart admis : le libellé de la liste FERMÉE des schémas, étendue à v3.
+      const neuf = S.verifierAttestationSignee(env, { entree, registre: REGISTRE, referentiel: REFERENTIEL, cles: CLES, ...opts }).map((x) => x.replace(' | attestation-cloture/v3 attendu', ' attendu'));
+      assert.deepEqual(neuf, ANCIEN_S.verifierAttestationSignee(env, { entree, registre: REGISTRE, referentiel: REFERENTIEL, cles: CLES, ...opts }));
+    }
+    // Comptes SÉPARÉS des charges de forme canonique valide, comparées invariant par invariant.
+    assert.ok(mutants.length > 7000, `${mutants.length} charges mutées vérifiées`);
+    assert.ok(n['attestation-cloture/v1'] > 1000, `${n['attestation-cloture/v1']} charges v1 de forme valide`);
+    assert.ok(n['attestation-cloture/v2'] > 1500, `${n['attestation-cloture/v2']} charges v2 de forme valide`);
+  });
+});
+
+// ═══ Pièces SIGNÉES d'une charge v3 : verifierPieces (extraction, diagnostic axe I, témoin) ═══
+describe('intérim (CDC r9) : pièces signées v3 — liaison complète, jamais plus laxiste que le signataire', () => {
+  const A = require('./adaptateurs-production.js');
+  const CLI = require('./signataire-cli.js');
+  const D = require('./diagnostic-fonda.js');
+  const Canon = require('../engine/canonique.js');
+  const os = require('os');
+  const signer = (ch) => crypto.sign('sha256', Buffer.from(Canon.octetsContrat(ch.schema, ch)), { key: privateKey, padding: crypto.constants.RSA_PKCS1_PADDING }).toString('base64');
+  const shaDec = (d) => `sha256:${crypto.createHash('sha256').update(Buffer.from(Canon.octetsContrat('decision-fonda/v2', d))).digest('hex')}`;
+  let base; // { sc, inst, charge, dossier }
+  const monter = async () => {
+    if (base) return base;
+    const sc = await scenarioInterim();
+    const { enveloppe } = await cloturer(sc.setId, sc.deps);
+    const inst = JSON.parse([...sc.etat.ecrits.entries()].find(([p]) => p.endsWith('instantane.json'))[1].toString('utf8'));
+    base = { sc, inst, charge: enveloppe.charge, enveloppe };
+    return base;
+  };
+  // Écrit un dossier de lot COHÉRENT avec la charge (chemin canonique, sha256_instantane, code), resigné.
+  const ecrire = (dossier, inst, charge) => {
+    const texte = `${JSON.stringify(inst, null, 2)}\n`;
+    const shaI = crypto.createHash('sha256').update(Buffer.from(texte, 'utf8')).digest('hex');
+    const ch = { ...charge, sha256_instantane: shaI, code_confirmation: shaI.slice(0, 16) };
+    const dl = path.join(dossier, `${ch.set_id}-${ch.code_confirmation}`);
+    fsN.mkdirSync(dl, { recursive: true });
+    fsN.writeFileSync(path.join(dl, 'instantane.json'), texte);
+    fsN.writeFileSync(path.join(dl, 'attestation.json'), `${JSON.stringify({ type: 'cloture-signee', charge: ch, signature: signer(ch) }, null, 2)}\n`);
+    fsN.writeFileSync(path.join(dossier, `${ch.set_id}.signature`), '{}\n');
+    return dl;
+  };
+  const deps = (b) => ({ cles: CLES, registre: REGISTRE, modelesAutorises: [MODELE], resoudre: () => ({ ok: true, referentiel: REFERENTIEL }), resoudreInterim: b.sc.resoudreInterim, aCommit: b.sc.deps.interim.aCommit });
+  const verifier = (b, dl) => A.verifierPieces(dl, deps(b), b.sc.setId);
+  const tmp = () => fsN.mkdtempSync(path.join(os.tmpdir(), 'fonda-pieces-v3-'));
+
+  test('pièces conformes -> vérifiées (décision embarquée, provenance par l\'archive, liaison à la génération)', async () => {
+    const b = await monter();
+    const r = await verifier(b, ecrire(tmp(), b.inst, b.charge));
+    assert.equal(r.attestation.charge.schema, 'attestation-cloture/v3');
+  });
+  const avecDecision = (inst, modifier) => { const i = copie(inst); modifier(i.decision); i.decision_sha256 = shaDec(i.decision); i.relecture_interim = copie(i.decision.relecture_interim); return i; };
+  const cas = [
+    ['set_id (décision)', (i) => avecDecision(i, (d) => { d.set_id = 'set_fonda_comprendre-consigne_nI_93'; d.lot_relu.set_id = d.set_id; }), null, /set_id décision \/ instantané \/ charge/],
+    ['cœur (décision)', (i) => avecDecision(i, (d) => { d.coeur.empreinte_relue = `sha256:${'0'.repeat(64)}`; }), null, /cœur de la décision/],
+    ['lot_relu (décision)', (i) => avecDecision(i, (d) => { d.lot_relu.cartes[0].choix = d.lot_relu.cartes[0].choix === 'garder' ? 'ecarter' : 'garder'; }), null, /lot_relu de la décision/],
+    ['decision_sha256', (i) => ({ ...copie(i), decision_sha256: `sha256:${'0'.repeat(64)}` }), null, /decision_sha256/],
+    ...I.CHAMPS_DECISION.map((k) => [`bloc d'intérim de l'instantané (${k} seul)`, (i) => { const j = copie(i); j.relecture_interim[k] = k === 'source_commit' ? 'e'.repeat(40) : k === 'source_version' ? `sha256:${'1'.repeat(64)}` : `${j.relecture_interim[k]}x`; return j; }, null, /bloc d'intérim ≠ bloc de la décision/]),
+    ['décision non réconciliable avec candidat_lot', (i) => { const j = avecDecision(i, (d) => { d.lot_relu.empreinte_complete = `sha256:${'2'.repeat(64)}`; }); j.lot_relu = copie(j.decision.lot_relu); return j; }, null, /non réconciliable/],
+    ['provenance : commit de la décision hors chaîne', (i) => avecDecision(i, (d) => { d.relecture_interim.source_commit = 'e'.repeat(40); }), null, /hors de la chaîne de confiance/],
+    ['champs métier instantané ≠ charge', (i) => i, (c) => ({ ...c, relecture_interim: { ...c.relecture_interim, motif: 'Autre.' } }), /champs métier de l'intérim ≠ charge/],
+    ['recu_le ≠ fin_saisie_le', (i) => i, (c) => ({ ...c, fin_saisie_le: '2026-11-04T17:00:02.000Z' }), /recu_le ≠ charge\.fin_saisie_le/],
+    ['charge v3 avec instantané v1', (i) => ({ ...copie(i), schema: 'instantane-fonda/v1' }), null, /v3 ⇔ instantane-fonda\/v2/],
+  ];
+  for (const [nom, inst, charge, motif] of cas) {
+    test(`pièces signées incohérentes (${nom}) -> refusées`, async () => {
+      const b = await monter();
+      const dl = ecrire(tmp(), inst(b.inst), charge ? charge(b.charge) : b.charge);
+      await assert.rejects(verifier(b, dl), motif);
+    });
+  }
+  test('charge RESIGNÉE (clé éphémère) où SEULE generation.empreinte_complete diffère -> refusée par l\'extraction, le diagnostic (axe I) ET le témoin', async () => {
+    const b = await monter();
+    const dossier = tmp();
+    ecrire(dossier, b.inst, { ...b.charge, generation: { ...b.charge.generation, empreinte_complete: `sha256:${'3'.repeat(64)}` } });
+    const v = (dl, setId) => A.verifierPieces(dl, deps(b), setId);
+    await assert.rejects(v(A.dossierDuLot(dossier, b.sc.setId), b.sc.setId), /liaison à la génération/);
+    await assert.rejects(CLI.executer({ commande: '--extraire-publication', setId: b.sc.setId }, { sources: { dossier, verifier: v } }), /liaison à la génération/);
+    await assert.rejects(A.temoinIncidents({ dossier, verifier: (dl) => v(dl, null), attestationsCatalogue: async () => [] })([]), /liaison à la génération/);
+    const d = await D.diagnostiquer(b.sc.setId, sourcesDiagnostic(dossier, v));
+    assert.ok(d.applicables.some((x) => x.etat === 'signature_interrompue'));
+    assert.ok(!d.applicables.some((x) => x.etat === 'signe'));
+  });
+  // Sources minimales du diagnostic : seules les pièces locales sont lisibles ; le fichier
+  // d'intérim de la TÊTE est absent (observer en échec) — l'axe I ne doit pas en dépendre.
+  const sourcesDiagnostic = (dossier, v, observer = async () => { throw new Error('fonda/data/relecture-interim.json absent de la tête'); }) => {
+    const ko = async () => { throw new Error('hors ligne'); };
+    return { dossier, verifier: v, interim: { actualiser: async () => ({ sha: SHA_DESIGN }), observer }, aCommit: () => ({ surPremierParent: false }),
+      drive: { lireLotGenere: ko, listerCandidats: ko }, api: { listerExecutions: ko, lireExecution: ko }, workflowGeneration: 'wf', incidents: async () => [],
+      decisionsLocales: async () => [], horloge: () => new Date('2027-01-10T10:00:00.000Z') };
+  };
+  for (const [nom, observer] of [['fichier d\'intérim ABSENT de la tête', undefined], ['fichier ILLISIBLE à la tête', async () => ({ sha: SHA_DESIGN, octetsInterim: Buffer.from('{'), octetsCalendrier: OCT_CAL, octetsDestinataires: OCT_DEST })],
+    ['intérim RETIRÉ et EXPIRÉ (horloge 2027)', async () => ({ sha: SHA_DESIGN, octetsInterim: octetsJson({ schema: 'relecture-interim/v1', entrees: [] }), octetsCalendrier: OCT_CAL, octetsDestinataires: OCT_DEST })]]) {
+    test(`diagnostic axe I : lot signé v3 + ${nom} -> « signe » reconnu (archive historique seule)`, async () => {
+      const b = await monter();
+      const dossier = tmp();
+      ecrire(dossier, b.inst, b.charge);
+      const d = await D.diagnostiquer(b.sc.setId, sourcesDiagnostic(dossier, (dl, setId) => A.verifierPieces(dl, deps(b), setId), observer));
+      assert.ok(d.applicables.some((x) => x.etat === 'signe'), JSON.stringify(d.applicables));
+      assert.ok(!d.applicables.some((x) => x.etat === 'signature_interrompue' || x.etat === 'relecteur_non_local'));
+    });
+  }
+});
+
+// ═══ Diagnostic COMPLET sur des pièces RÉELLEMENT signées (rapprochement, relecteur, autorisation) ═══
+// Lot SIGNÉ (tous lots) : reste « signe », jamais « pret_pour_cloture » ; décision locale abîmée
+// après signature -> problemes_courants, jamais une anomalie qui masquerait « signe ».
+describe('diagnostic : lot signé (eric/v1 ET intérim/v3) — « signe » conservé, problèmes courants à part', () => {
+  const A = require('./adaptateurs-production.js');
+  const D = require('./diagnostic-fonda.js');
+  const os = require('os');
+  // Écrit les pièces produites par cloturer (fs simulé) dans un VRAI dossier, initialisé.
+  const deposer = (sc) => {
+    const dossier = fsN.mkdtempSync(path.join(os.tmpdir(), 'fonda-diag-signe-'));
+    for (const [p, o] of sc.etat.ecrits) {
+      const cible = path.join(dossier, path.relative('/tmp/fonda-cloture-test', p));
+      fsN.mkdirSync(path.dirname(cible), { recursive: true });
+      fsN.writeFileSync(cible, o);
+    }
+    fsN.writeFileSync(path.join(dossier, '.initialise'), '{}\n');
+    return dossier;
+  };
+  const sources = (sc, dossier, { decisions, horloge, observer }) => ({
+    dossier,
+    verifier: (dl, setId) => A.verifierPieces(dl, { cles: CLES, registre: REGISTRE, modelesAutorises: [MODELE], resoudre: () => ({ ok: true, referentiel: REFERENTIEL }),
+      resoudreInterim: sc.resoudreInterim, aCommit: sc.deps.interim ? sc.deps.interim.aCommit : () => ({ surPremierParent: false }) }, setId),
+    interim: { actualiser: async () => ({ sha: SHA_DESIGN }), observer }, aCommit: sc.deps.interim ? sc.deps.interim.aCommit : () => ({ surPremierParent: false }),
+    drive: sc.deps.drive, api: sc.deps.api, workflowGeneration: 'wfGen', journal: sc.deps.journal, referentielArchive: sc.deps.referentielArchive,
+    registre: REGISTRE, modelesAutorises: [MODELE], incidents: async () => [], decisionsLocales: async () => decisions.map((o) => ({ nom: 'decision.json', octets: o })), horloge,
+  });
+  const etats = (d) => d.applicables.map((x) => x.etat);
+
+  test('intérim v3 : décision v2 CONSERVÉE, intérim EXPIRÉ -> « signe », jamais pret_pour_cloture ; autorisation refusée rapportée à part', async () => {
+    const sc = await scenarioInterim();
+    await cloturer(sc.setId, sc.deps);
+    const dossier = deposer(sc);
+    const d = await D.diagnostiquer(sc.setId, sources(sc, dossier, { decisions: [sc.locales[0].octets], horloge: () => new Date('2027-01-10T10:00:00.000Z'),
+      observer: async () => ({ sha: SHA_DESIGN, octetsInterim: octetsJson(FICHIER_INTERIM), octetsCalendrier: OCT_CAL, octetsDestinataires: OCT_DEST }) }));
+    assert.equal(d.etat, 'signe', JSON.stringify(d.applicables));
+    assert.ok(!etats(d).includes('pret_pour_cloture'), 'jamais prêt pour une nouvelle clôture');
+    assert.ok(!etats(d).includes('relecteur_non_local'));
+    assert.equal(d.autorisation_interim.statut, 'refusee');
+    assert.deepEqual(d.problemes_courants, []);
+  });
+  test('intérim v3 : décision v2 conservée, fichier d\'intérim ABSENT de la tête -> « signe », jamais pret_pour_cloture', async () => {
+    const sc = await scenarioInterim();
+    await cloturer(sc.setId, sc.deps);
+    const d = await D.diagnostiquer(sc.setId, sources(sc, deposer(sc), { decisions: [sc.locales[0].octets], horloge: () => new Date('2026-11-05T10:00:00.000Z'),
+      observer: async () => { throw new Error('fonda/data/relecture-interim.json absent de la tête'); } }));
+    assert.equal(d.etat, 'signe', JSON.stringify(d.applicables));
+    assert.ok(!etats(d).includes('pret_pour_cloture'));
+    assert.match(d.autorisation_interim.detail, /absent de la tête/);
+  });
+  test('intérim v3 : même lot SIGNÉ, intérim encore valide -> toujours « signe », jamais pret_pour_cloture (déjà clôturé)', async () => {
+    const sc = await scenarioInterim();
+    await cloturer(sc.setId, sc.deps);
+    const d = await D.diagnostiquer(sc.setId, sources(sc, deposer(sc), { decisions: [sc.locales[0].octets], horloge: () => new Date('2026-11-05T10:00:00.000Z'),
+      observer: async () => ({ sha: SHA_DESIGN, octetsInterim: octetsJson(FICHIER_INTERIM), octetsCalendrier: OCT_CAL, octetsDestinataires: OCT_DEST }) }));
+    assert.equal(d.etat, 'signe');
+    assert.ok(!etats(d).includes('pret_pour_cloture'));
+    assert.equal(d.autorisation_interim.statut, 'autorisee');
+  });
+  for (const [nom, fabrique, observer] of [
+    ['eric/v1', () => scenario({ source: 'saisie_locale' }), undefined],
+    ['intérim/v3', () => scenarioInterim(), async () => ({ sha: SHA_DESIGN, octetsInterim: octetsJson(FICHIER_INTERIM), octetsCalendrier: OCT_CAL, octetsDestinataires: OCT_DEST })],
+  ]) {
+    test(`${nom} : décision locale ABÎMÉE après signature -> « signe » conservé, problème rapporté dans problemes_courants`, async () => {
+      const sc = await fabrique();
+      await cloturer(sc.setId, sc.deps);
+      const dossier = deposer(sc);
+      const d = await D.diagnostiquer(sc.setId, sources(sc, dossier, { decisions: [Buffer.from('{ cassé')], horloge: () => new Date('2026-11-05T10:00:00.000Z'), observer }));
+      assert.equal(d.etat, 'signe', JSON.stringify(d.applicables));
+      assert.ok(!etats(d).includes('decision_non_conforme') && !etats(d).includes('pret_pour_cloture'));
+      assert.match(d.problemes_courants.join(), /décision locale : décision illisible ou non conforme/);
+      // Témoin : AVANT signature (marqueur et pièces absents), la même décision abîmée EST une anomalie.
+      const vierge = fsN.mkdtempSync(path.join(os.tmpdir(), 'fonda-diag-vierge-'));
+      fsN.writeFileSync(path.join(vierge, '.initialise'), '{}\n');
+      const avant = await D.diagnostiquer(sc.setId, sources(sc, vierge, { decisions: [Buffer.from('{ cassé')], horloge: () => new Date('2026-11-05T10:00:00.000Z'), observer }));
+      assert.equal(avant.etat, 'decision_non_conforme');
+      assert.equal(avant.problemes_courants, undefined);
+    });
+  }
+  for (const [nom, fabrique, observer] of [
+    ['eric/v1', () => scenario({ source: 'saisie_locale' }), undefined],
+    ['intérim/v3', () => scenarioInterim(), async () => ({ sha: SHA_DESIGN, octetsInterim: octetsJson(FICHIER_INTERIM), octetsCalendrier: OCT_CAL, octetsDestinataires: OCT_DEST })],
+  ]) {
+    test(`${nom} : décisions locales ILLISIBLES (EACCES) ou actualisation de design en échec après signature -> « signe » conservé, problèmes rapportés à part ; témoin non signé : acces_ko`, async () => {
+      const sc = await fabrique();
+      await cloturer(sc.setId, sc.deps);
+      const dossier = deposer(sc);
+      const enPanne = (s) => ({ ...s, decisionsLocales: async () => { const e = new Error('EACCES: permission refusée'); e.code = 'EACCES'; throw e; },
+        interim: { ...s.interim, actualiser: async () => { throw new Error('git fetch : réseau'); } } });
+      const d = await D.diagnostiquer(sc.setId, enPanne(sources(sc, dossier, { decisions: [], horloge: () => new Date('2026-11-05T10:00:00.000Z'), observer })));
+      assert.equal(d.etat, 'signe', JSON.stringify(d.applicables));
+      assert.ok(!etats(d).includes('acces_ko') && !etats(d).includes('pret_pour_cloture'));
+      assert.match(d.problemes_courants.join(' | '), /actualisation de origin\/design impossible.*\| décisions locales : EACCES/);
+      // Une AUTRE cause d'acces_ko (registre des incidents) reste une anomalie, même signé.
+      const autre = await D.diagnostiquer(sc.setId, { ...enPanne(sources(sc, dossier, { decisions: [], horloge: () => new Date('2026-11-05T10:00:00.000Z'), observer })), incidents: async () => { throw new Error('registre illisible'); } });
+      assert.equal(autre.etat, 'acces_ko');
+      assert.match(String(autre.detail), /registre des incidents/);
+      // Témoin NON signé : les mêmes pannes restent l'anomalie acces_ko (détail : la première cause).
+      const vierge = fsN.mkdtempSync(path.join(os.tmpdir(), 'fonda-diag-vierge-'));
+      fsN.writeFileSync(path.join(vierge, '.initialise'), '{}\n');
+      const avant = await D.diagnostiquer(sc.setId, enPanne(sources(sc, vierge, { decisions: [], horloge: () => new Date('2026-11-05T10:00:00.000Z'), observer })));
+      assert.equal(avant.etat, 'acces_ko');
+      assert.match(String(avant.detail), /actualisation de origin\/design impossible/);
+      assert.equal(avant.problemes_courants, undefined);
+    });
+  }
+  test('eric/v1 : lot signé, décision conforme -> « signe », jamais pret_pour_cloture', async () => {
+    const sc = await scenario({ source: 'saisie_locale' });
+    await cloturer(sc.setId, sc.deps);
+    const d = await D.diagnostiquer(sc.setId, sources(sc, deposer(sc), { decisions: [sc.locales[0].octets], horloge: () => new Date('2026-11-05T10:00:00.000Z') }));
+    assert.equal(d.etat, 'signe', JSON.stringify(d.applicables));
+    assert.ok(!etats(d).includes('pret_pour_cloture') && !etats(d).includes('decision_figee'));
+    assert.deepEqual(d.problemes_courants, []);
+    // Le diagnostic a réellement rapproché la génération (aucune lecture ni constat en échec).
+    assert.ok(!etats(d).some((e) => ['acces_ko', 'candidat_non_conforme', 'observation_contradictoire'].includes(e)), JSON.stringify(d.applicables));
   });
 });

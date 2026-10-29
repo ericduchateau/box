@@ -450,6 +450,215 @@
         },
         "signature": "vNmOWdLyt05nyH0AiEzmxYrPmr3H8eZTK/zbh3uxjvQZjtQdJkzijnxD1vehaoSFM7lFKvnYHnuQFapTrDsIHVwKLQEGvTmsyLazkQ//3zCvlntmqLw3GM5M3IUp3vKTPaK4lmS3yXuuPNNnn3uo8dW9sOMiTEJomG4ICkdtPPTjk6E9H1Hxv3qGrtEvS45sEgrcnjlndeG8B4qV6R7zadv/dUFMmEoy/m6kQultFjhAPdM91njuX8ODcAnkJbvyQCIVbTeGRS1lBvOQ9m+ZLtpu/prBHME6zguXO00/82tcp7ry8dbmdLME8pcpnmhpvKpB0p95kREGG6n3Pp+dFgDbzMZDciRrjhJZgHl9oTXyttdD30y+5wDt1RJsE5j2j8f5tJ/eunVWjqjkkxkVGc9GltstiW9rPwqsKWim4K5oOCTiH56FHCKIy3uoqAEgjxxsUqYQWm3LLm8ISJsJbhgd2m8vA+DlUb1tVMhLdLz+TgOCgWjJ8jjIRtDQ2sel"
       }
+    },
+    {
+      "set_id": "set_fonda_grandeurs-mesures_nI_02",
+      "notion_id": "maths.grandeurs-mesures",
+      "palier": "nI",
+      "fichier": "lots/set_fonda_grandeurs-mesures_nI_02.json",
+      "item_ids": [
+        "it01",
+        "it02",
+        "it03",
+        "it04",
+        "it05",
+        "it06"
+      ],
+      "empreinte": "sha256:a8d22f5103c2e6f33eca7e566e27cad651711e5f1eae5bbc7fce8a0e0e93e298",
+      "moteur": {
+        "version": "v1",
+        "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+      },
+      "relecteur": {
+        "forme": "relue_par",
+        "nom_affiche": "Éric Duchateau",
+        "id": "eric"
+      },
+      "attestation": {
+        "type": "cloture-signee",
+        "charge": {
+          "schema": "attestation-cloture/v2",
+          "set_id": "set_fonda_grandeurs-mesures_nI_02",
+          "notion_id": "maths.grandeurs-mesures",
+          "palier": "nI",
+          "coeur": {
+            "action": "accepter",
+            "selection": [
+              "it01",
+              "it02",
+              "it03",
+              "it04",
+              "it05",
+              "it06"
+            ],
+            "ecartees": [],
+            "empreinte_relue": "sha256:a8d22f5103c2e6f33eca7e566e27cad651711e5f1eae5bbc7fce8a0e0e93e298",
+            "empreinte_publiee": "sha256:a8d22f5103c2e6f33eca7e566e27cad651711e5f1eae5bbc7fce8a0e0e93e298",
+            "moteur": {
+              "version": "v1",
+              "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+            }
+          },
+          "sha256_instantane": "aa2865429cf55699d4d4b7dbb90a1881119d780d3a0abf5949481127aa76d596",
+          "code_confirmation": "aa2865429cf55699",
+          "confirmation": {
+            "mode": "auto",
+            "par": "eric",
+            "recue_par": "eric",
+            "le": "2026-10-27T11:40:56.417Z"
+          },
+          "fidelite_transmission": {
+            "atteste_par": "eric",
+            "le": "2026-10-27T11:41:02.196Z"
+          },
+          "relecteur_attribue": "eric",
+          "relecteur_egal_cloturer": true,
+          "provenances": [],
+          "nb_fichiers_decision": 1,
+          "referentiel_version": "sha256:c7db61c6a1a0934aa2089a4e8f3cd7bf2139e44d13456e730a951719b15297b4",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          },
+          "execution_cloture": null,
+          "source_decisions": "saisie_locale",
+          "generation": {
+            "execution_id": "279890",
+            "workflow_id": "vrqgtS5kQMvP9Ok5",
+            "statut": "success",
+            "demarree_le": "2026-10-27T10:38:53.280Z",
+            "terminee_le": "2026-10-27T10:39:17.530Z",
+            "modele": "claude-sonnet-5-5",
+            "empreinte_complete": "sha256:5a50261a14100d890b9bcd5f30727187ee7ce8edee42b8fd987a057ee8486a1d",
+            "journal_commit": "d410a6fdd1c42033f0c1328e84481d5ee67af8b8",
+            "listing_debut_le": "2026-10-27T11:39:55.513Z",
+            "listing_fin_le": "2026-10-27T11:39:57.967Z"
+          },
+          "fin_saisie_le": "2026-10-27T10:57:28.312Z",
+          "revoque_le": null,
+          "levees": [],
+          "incidents_connus": [],
+          "cloture_le": "2026-10-27T11:41:02.205Z",
+          "badge": {
+            "forme": "relue_par",
+            "nom_affiche": "Éric Duchateau",
+            "id": "eric"
+          },
+          "cle_id": "eric-2026"
+        },
+        "signature": "Ps6Rlhk0+vj2UaVl9bIpVSRZkztvtRAjkdOc3B/EhjyRX7kVcRBvMNYfG75RDrp6Bep57cEMEzBEPRWKrDEiq/Wgxncjlcl9L0wAipmNzanx6Rn6ASIJa66ADcEws/3O/1Zn8ZXcCyr5jCHOd19xJN12iXpp4UXmBPwsG1U9B6LMth7pfhOeKroywTYGQLXKLWrOtkZeAFLIFmNulA12fb6av91W8s5AFnngP3e6KLpszH/bt7qcwl7Knnp9zwCjsZ1tqQeYqHGx+9PG0J4mFDTO82XPUcBBbVCKtukurd1DsWqZR3Of3yKsX+vV8K55d8gvJN8fnY/gB91324VpaoyjscDn3BUFmwdh8l/o2bij6JL3EhiY8RSo4P8anc1SNeJUrgTbaEk6xFXTXog/7x73bfyNqWgshyhspcv+WcxNFfGiBamlDEpG2ad5z7PWryjFtx21EU4PD9NW4hX1PK3xqjQSdiR0aQ8mr0MrQ9jbcwwuF1EgHYzAEyaefloW"
+      }
+    },
+    {
+      "set_id": "set_fonda_comprendre-consigne_nI_02",
+      "notion_id": "fr.comprendre-consigne",
+      "palier": "nI",
+      "fichier": "lots/set_fonda_comprendre-consigne_nI_02.json",
+      "item_ids": [
+        "it01",
+        "it03",
+        "it04"
+      ],
+      "empreinte": "sha256:c61c39332e7652008845678529508ff46bfac9e6b8c42809b5ef0fcd169d183b",
+      "moteur": {
+        "version": "v1",
+        "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+      },
+      "relecteur": {
+        "forme": "relue_par_secours",
+        "nom_affiche": "Éric Duchateau",
+        "id": "eric",
+        "titulaire": {
+          "id": "justine",
+          "nom_affiche": "Justine Leblanc"
+        }
+      },
+      "attestation": {
+        "type": "cloture-signee",
+        "charge": {
+          "schema": "attestation-cloture/v3",
+          "set_id": "set_fonda_comprendre-consigne_nI_02",
+          "notion_id": "fr.comprendre-consigne",
+          "palier": "nI",
+          "coeur": {
+            "action": "accepter",
+            "selection": [
+              "it01",
+              "it03",
+              "it04"
+            ],
+            "ecartees": [
+              "it02"
+            ],
+            "empreinte_relue": "sha256:2021f306ed5a99481607a69f8e48d7b1edb73cdbc88ef79c91bf86a08d760c1b",
+            "empreinte_publiee": "sha256:c61c39332e7652008845678529508ff46bfac9e6b8c42809b5ef0fcd169d183b",
+            "moteur": {
+              "version": "v1",
+              "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+            }
+          },
+          "sha256_instantane": "a743d98d27748cb2835ceea0dc705c1038cb4c4c60ed5624a109d87564b9cbca",
+          "code_confirmation": "a743d98d27748cb2",
+          "confirmation": {
+            "mode": "auto",
+            "par": "eric",
+            "recue_par": "eric",
+            "le": "2026-10-28T21:06:59.875Z"
+          },
+          "fidelite_transmission": {
+            "atteste_par": "eric",
+            "le": "2026-10-28T21:07:03.552Z"
+          },
+          "relecteur_attribue": "justine",
+          "relecteur_egal_cloturer": false,
+          "relecture_interim": {
+            "relecteur_titulaire": "justine",
+            "relecteur_de_secours": "eric",
+            "motif": "Intérim de relecture du français pour P2, pendant la mise en place du parcours titulaire.",
+            "periode": "P2",
+            "du": "2026-10-28",
+            "au": "2026-12-18",
+            "source_version": "sha256:a2648c8e4217174f1de6812567ea6de99212a412fad3cf14eae1d96b0cfbfa9f"
+          },
+          "provenances": [],
+          "nb_fichiers_decision": 1,
+          "referentiel_version": "sha256:c7db61c6a1a0934aa2089a4e8f3cd7bf2139e44d13456e730a951719b15297b4",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          },
+          "execution_cloture": null,
+          "source_decisions": "saisie_locale",
+          "generation": {
+            "execution_id": "279930",
+            "workflow_id": "vrqgtS5kQMvP9Ok5",
+            "statut": "success",
+            "demarree_le": "2026-10-28T20:53:20.875Z",
+            "terminee_le": "2026-10-28T20:53:45.113Z",
+            "modele": "claude-sonnet-5-5",
+            "empreinte_complete": "sha256:f069dbbb867d020736da4dd5238cdba00a6d8969a130895a1855668156291060",
+            "journal_commit": "6c3c1a53b9c6fcea8307ec4efaa4d1b94f723ab2",
+            "listing_debut_le": "2026-10-28T21:06:41.909Z",
+            "listing_fin_le": "2026-10-28T21:06:46.149Z"
+          },
+          "fin_saisie_le": "2026-10-28T21:05:08.209Z",
+          "revoque_le": null,
+          "levees": [],
+          "incidents_connus": [],
+          "cloture_le": "2026-10-28T21:07:04.129Z",
+          "badge": {
+            "forme": "relue_par_secours",
+            "nom_affiche": "Éric Duchateau",
+            "id": "eric",
+            "titulaire": {
+              "id": "justine",
+              "nom_affiche": "Justine Leblanc"
+            }
+          },
+          "cle_id": "eric-2026"
+        },
+        "signature": "3tDS3kNPm5nw1qElPpNDnkADbHXqhlSXo9l1yF8dYeVUS2+Z/4UIx/NnEgbK0B7cY/q2GwKpJskJk6oW0QHZborw3IbZYy5Nl0164bL6v5P+gUF3QPgW/aFaclqXHx4J6cf0XES9w5o6+SkPm+nZ/KznVXq40iJHTKYBly2qlWTfV7/e0OjBzmC+ldcHokEySiD0gU2Tm4DiH5uRhJJBZ+V5krKHEGhtVkNdwCSEJY1s0hX2HzKrxmYe2SNrz6nVDdYCtuCeqJ+SQAZQK6U+a3xj5xn/d/DrjKzYieM1b/0ZuiMphaQ2cKU9g0HZvH9NCqMWnW9sQWKgBMiMOXRv1bDatV6kfpYBwdrbUlKWtjgYxF8+F065lfLhAOho4jtga1RMOWwY8DDaU1k5CFn6VstKuRfTFG+qwxsFxnqPD9DM5dhFOTMPiKZJAlgi1Y/GbqYPXKb4m+14iRiWuxCKoKCO0cuo8RHGnZYuMsT1o5yxZ8jQYw/uh5MsEgeeEfD9"
+      }
     }
   ]
 }

@@ -76,7 +76,7 @@ const App = {
       attente.textContent = 'Le mode FONDA est indisponible pour le moment — réessaie plus tard.';
     };
     const s = document.createElement('script');
-    s.src = 'fonda/page/bootstrap.js?v=3';
+    s.src = 'fonda/page/bootstrap.js?v=5';
     s.onerror = indisponible;
     s.onload = indisponible; // sans effet si bootstrap.js a bien pris la main
     setTimeout(indisponible, App.DELAI_BOOTSTRAP_MS);
@@ -86,16 +86,15 @@ const App = {
   DELAI_BOOTSTRAP_MS: 20000,
 
   // Switch BOX -> FONDA (navbar, thème clair) : navigation plein-rechargement vers
-  // ?fonda=1&page=niveau, jamais un repaint de l'écran courant (BOX reste 100%
-  // inchangé, cf. docs/box-fonda-design/BRIEF.md §1/§2). Réutilise le dernier niveau
-  // choisi (localStorage, écrit par fonda/page/bootstrap.js au retour vers BOX) s'il
-  // existe, sinon atterrit sur le sélecteur de niveau (zéro donnée inventée).
+  // l'accueil ?fonda=1 (« Notions de la semaine »), jamais un repaint de l'écran courant
+  // (BOX reste 100% inchangé, cf. docs/box-fonda-design/BRIEF.md §1/§2). Réutilise le
+  // dernier niveau choisi (localStorage, écrit par fonda/page/bootstrap.js) s'il existe,
+  // sinon l'accueil affiche d'abord le sélecteur de niveau (zéro donnée inventée).
   goFonda() {
     let niveau = null;
     try { niveau = localStorage.getItem('box_fonda_niveau'); } catch { niveau = null; }
     const params = new URLSearchParams();
     params.set('fonda', '1');
-    params.set('page', 'niveau');
     if (niveau) params.set('niveau', niveau);
     window.location.href = window.location.pathname + '?' + params.toString();
   },

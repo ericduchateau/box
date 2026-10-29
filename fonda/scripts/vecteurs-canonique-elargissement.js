@@ -13,7 +13,10 @@
 // sous-schéma est partagé entre contrats (garantie champ par champ, contrat par contrat).
 // Ces vecteurs n'ont pas d'octets attendus. La vérité reste canonique-vecteurs.json :
 // cet outil ne l'écrit jamais ; il reconstruit les vecteurs et les compare au fichier
-// figé (index 114 et suivants, après les 71 v8.2 et les 43 de la brique 1).
+// figé. Repérage par IDENTIFIANT STABLE (préfixe « refus-larg- »), jamais par index : le
+// premier bloc (index 114 à 1333, après les 71 v8.2 et les 43 de la brique 1) reste à
+// l'octet près ; les contrats de l'intérim (decision-fonda/v2, attestation-cloture/v3, CDC
+// r9) ajoutent leurs vecteurs APRÈS le bloc d'intérim (vecteurs-canonique-interim.js).
 //
 // Usage : node fonda/scripts/vecteurs-canonique-elargissement.js   (sortie 0 = identiques)
 
@@ -24,7 +27,9 @@ const H = require('./champs-canonique.js');
 
 const RACINE = path.join(__dirname, '..', '..');
 const FICHIER = path.join(RACINE, 'fonda/engine/canonique-vecteurs.json');
-const NB_AVANT = 114;
+const NB_AVANT = 114; // début du PREMIER bloc d'élargissement (historique, inchangé)
+const PREFIXE = 'refus-larg-';
+const estElargissement = (x) => typeof x.id === 'string' && x.id.startsWith(PREFIXE);
 
 // Base de chaque contrat : vecteur positif figé (tableaux non vides).
 const BASES = Object.freeze({
@@ -37,6 +42,8 @@ const BASES = Object.freeze({
   'lot_relu-fonda/v1': 'lot-relu-nominal',
   'decision-fonda/v1': 'decision-saisie-locale',
   'attestation-cloture/v2': 'attestation-v2-incidents-badge-nul',
+  'decision-fonda/v2': 'decision-v2-interim',
+  'attestation-cloture/v3': 'attestation-v3-structure-complete',
 });
 
 // Remplace la valeur au chemin (« a.b[].c » : premier élément de chaque tableau).
@@ -94,19 +101,21 @@ function construire(figes) {
   return sortie;
 }
 
+// Vecteurs d'élargissement du fichier (par identifiant) ; bases = tous les AUTRES vecteurs.
+const elargissements = (vecteurs) => vecteurs.filter(estElargissement);
 function auditer(vecteurs) {
   const ecarts = [];
-  const figes = vecteurs.slice(NB_AVANT);
-  const construits = construire(vecteurs.slice(0, NB_AVANT));
+  const figes = elargissements(vecteurs);
+  const construits = construire(vecteurs.filter((x) => !estElargissement(x)));
   if (figes.length !== construits.length) ecarts.push(`nombre : figé ${figes.length}, reconstruit ${construits.length}`);
   for (let i = 0; i < Math.max(figes.length, construits.length); i += 1) {
     const f = figes[i], c = construits[i];
-    if (JSON.stringify(f) !== JSON.stringify(c)) ecarts.push(`index ${NB_AVANT + i} : figé ${f ? f.id : '(absent)'} ≠ reconstruit ${c ? c.id : '(absent)'}`);
+    if (JSON.stringify(f) !== JSON.stringify(c)) ecarts.push(`élargissement n° ${i} : figé ${f ? f.id : '(absent)'} ≠ reconstruit ${c ? c.id : '(absent)'}`);
   }
   return ecarts;
 }
 
-module.exports = { construire, auditer, remplacer, typesInterdits, BASES, NB_AVANT };
+module.exports = { construire, auditer, remplacer, typesInterdits, elargissements, estElargissement, BASES, NB_AVANT, PREFIXE };
 
 if (require.main === module) {
   const vecteurs = JSON.parse(fs.readFileSync(FICHIER, 'utf8')).vecteurs;
@@ -115,5 +124,5 @@ if (require.main === module) {
     for (const e of ecarts.slice(0, 20)) console.error('✗ ' + e);
     process.exit(1);
   }
-  console.log(`✓ vecteurs d'élargissement : ${vecteurs.length - NB_AVANT} reconstruits depuis la liste du CDC, identiques au fichier figé`);
+  console.log(`✓ vecteurs d'élargissement : ${elargissements(vecteurs).length} reconstruits depuis la liste du CDC, identiques au fichier figé`);
 }

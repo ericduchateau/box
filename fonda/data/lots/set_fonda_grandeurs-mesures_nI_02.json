@@ -1,0 +1,113 @@
+{
+  "schema": "lot-fonda/v1",
+  "set_id": "set_fonda_grandeurs-mesures_nI_02",
+  "notion_id": "maths.grandeurs-mesures",
+  "palier": "nI",
+  "matiere": "Mathématiques",
+  "notion": "Maîtriser grandeurs, mesures et unités",
+  "niveau": "Fondamentaux — Initial (accessible)",
+  "revue_carte_par_carte": true,
+  "nb_cartes": 6,
+  "date_creation": "2026-10-27",
+  "cartes": [
+    {
+      "item_id": "it01",
+      "numero": 1,
+      "question": "Un sentier de randonnée mesure 3,5 km. Quelle est sa longueur en mètres ?",
+      "reponse": "3 500 m",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "3500 m",
+        "3 500 m",
+        "3500",
+        "3 500"
+      ],
+      "contexte": "randonnee-conversion-km-en-m",
+      "set_id": "set_fonda_grandeurs-mesures_nI_02",
+      "notion_id": "maths.grandeurs-mesures",
+      "unite": "m"
+    },
+    {
+      "item_id": "it02",
+      "numero": 2,
+      "question": "Un film dure 2 h 15 min. Quelle est sa durée totale en minutes ?",
+      "reponse": "135 min",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "135 min",
+        "135"
+      ],
+      "contexte": "film-duree-heures-en-minutes",
+      "set_id": "set_fonda_grandeurs-mesures_nI_02",
+      "notion_id": "maths.grandeurs-mesures",
+      "unite": "min"
+    },
+    {
+      "item_id": "it03",
+      "numero": 3,
+      "question": "Un potager rectangulaire mesure 12 m de long et 5 m de large. Quelle est son aire ?",
+      "reponse": "60 m²",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "60 m²",
+        "60 m2",
+        "60"
+      ],
+      "contexte": "potager-aire-rectangle",
+      "set_id": "set_fonda_grandeurs-mesures_nI_02",
+      "notion_id": "maths.grandeurs-mesures",
+      "unite": "m²"
+    },
+    {
+      "item_id": "it04",
+      "numero": 4,
+      "question": "On veut donner la surface (l'aire) d'un terrain de football. Quelle unité convient ? A. m²   B. m   C. m³",
+      "reponse": "A",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "A"
+      ],
+      "contexte": "terrain-football-unite-aire",
+      "set_id": "set_fonda_grandeurs-mesures_nI_02",
+      "notion_id": "maths.grandeurs-mesures"
+    },
+    {
+      "item_id": "it05",
+      "numero": 5,
+      "question": "On veut donner le volume d'eau contenu dans une piscine. Quelle unité convient ? A. m²   B. m³   C. kg",
+      "reponse": "B",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "B"
+      ],
+      "contexte": "piscine-unite-volume",
+      "set_id": "set_fonda_grandeurs-mesures_nI_02",
+      "notion_id": "maths.grandeurs-mesures"
+    },
+    {
+      "item_id": "it06",
+      "numero": 6,
+      "question": "On veut donner la masse d'un paquet de farine. Quelle unité convient ? A. L   B. cm   C. kg",
+      "reponse": "C",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "C"
+      ],
+      "contexte": "farine-unite-masse",
+      "set_id": "set_fonda_grandeurs-mesures_nI_02",
+      "notion_id": "maths.grandeurs-mesures"
+    }
+  ]
+}

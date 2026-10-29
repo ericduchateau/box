@@ -35,9 +35,31 @@ Le seed v1 partait de la pré-pondération nationale PRD §14 (ratio ambre/gris)
 
 ---
 
-## `calendar.json` — PRD §3.3
+## `calendar.json` — v2 (calendrier FONDA réel, 2026-10-27)
 
-Enveloppe choisie : `{ version, last_updated, semaines: [] }`, où chaque élément de `semaines` suit exactement la forme `semaine` du PRD (`iso_week, du, au, entrees[]`). Vide à T1 — rempli par le Moteur A (Lot 2).
+Extension additive du PRD §3.3 : `semaines[]` reste au premier niveau (lu par `fonda/engine/liens.js` et la page niveau).
+```
+{ version: 2, last_updated, annee_scolaire: "2026-2027", zone: "B",
+  source_vacances,                                   // source officielle citée (data.education.gouv.fr)
+  vacances: [ { libelle, du, au, reprise } ],        // du/au = jours sans cours inclus ; reprise = 1er jour de classe
+  periodes: [ { id: "P1".."P9", libelle, du, au,
+                bandes: { "<bande>": { genere, bilan, justification } } } ],
+  semaines: [ { iso_week, du (lundi), au (vendredi), periode_id,
+                entrees: [ { notion_id, matiere, palier, bande,
+                             difficulte: { valeur: "rouge"|"ambre"|"vert", source: "priorite_initiale"|"stats_cartes" },
+                             statut: "publie"|"planifie",
+                             set_id } ] } ] }        // set_id SEULEMENT si statut = publie
+```
+- **Bandes** (`BANDES`, `fonda/engine/liens.js`) : `c3` = 6e (601–605), `c4-milieu` = 5e + 4e (501–505, 401–405), `c4-fin` = 3e (301–305). `classes.json` reste la liste fermée, inchangée ; un test vérifie que chaque classe est dans une seule bande.
+- **Contrainte dure** : une entrée `publie` pointe un `set_id` publié au catalogue pour la même notion et le même palier ; une entrée `planifie` n'a pas de `set_id` (case grisée, jamais de lien). Revérifié à l'affichage contre le catalogue chargé.
+- **Couleur** : la page lit `difficulte.valeur`. Au départ `source: priorite_initiale` (valeur = celle du référentiel, vérifiée) ; passer aux statistiques agrégées des cartes = réécrire `valeur` avec `source: stats_cartes`, sans toucher la page. Une valeur « nouvelle » (notion pas encore mesurée) sera ajoutée à l'enum avec ces statistiques.
+- **Étoiles** : `palier` (★ nI, ★★ nF). **Grisage** : par case (planifiée) ; une période n'est grisée en entier que si elle n'a aucune entrée pour la bande. `genere: true` = toutes les entrées de la période/bande publiées, et bilan obligatoire.
+- Au plus une fiche par matière, par bande et par semaine (1 maths + 1 français) ; notions exclues (`NOTIONS_EXCLUES_FIGURES`, ex. géométrie) refusées.
+- Cohérence calendaire : `zone` = `"B"` (Lille) ; `annee_scolaire` AAAA-(AAAA+1), qui encadre toutes les dates ; semaine pleine `au = du + 4` (une semaine légitimement tronquée par un férié en bord de période devra faire l'objet d'une exception documentée) ; chaque `reprise` est le début d'une période, avec une seule exception explicite : les vacances d'été (identifiées par leur début, à partir du 1er juin BBBB), dont la reprise est la rentrée suivante (entre le 15 août et le 30 septembre BBBB) ; toutes les autres dates (vacances, périodes, semaines) restent dans l'année scolaire ; aucun chevauchement.
+- Le « jour » de l'affichage est la date à **Paris**, quel que soit le fuseau de l'appareil ; la semaine affichée court du lundi au dimanche (le week-end garde les notions de la semaine) — même règle (vacances prioritaires) pour l'accueil, le calendrier et la page niveau ouverte sans `semaine=`. `calendar.json` et `catalogue-fonda.json` sont lus en `cache: 'no-cache'` : une fiche publiée s'affiche aussitôt.
+- Vacances zone B 2026-2027 (Lille) : jeu `fr-en-calendrier-scolaire`, consulté le 2026-10-27. Le pont de l'Ascension (7 mai 2027) n'est pas une semaine de vacances et n'est pas modélisé.
+
+Pages : `?fonda=1` = accueil « Notions de la semaine » (sélecteur de niveau d'abord si aucun niveau mémorisé ; en vacances, les fiches de la semaine de reprise) ; `?fonda=1&page=calendrier&bande=…` = affichage par période.
 
 ## `coverage.json` — PRD §3.4
 
@@ -116,6 +138,10 @@ Liste fermée des 20 classes de l'année, format canonique **3 chiffres sans let
 
 Structure par niveau (`6e`/`5e`/`4e`/`3e`, vide) et **identifiants** de relecteurs (`eric`, `justine`) avec leur nom affichable. **Aucune adresse e-mail dans le dépôt** (public) : les adresses vivent dans n8n (chaîne FONDA, PRD §2 bis). Le relecteur **attribué** à une notion vient de `referentiel.json` (champ `relecteur`), jamais du libellé de matière.
 
+## `relecture-interim.json` — relecteur de secours en intérim (CDC r9 §20.6)
+
+`{ "schema": "relecture-interim/v1", "entrees": [ { relecteur_titulaire, relecteur_de_secours, motif, periode, du, au } ] }`. Une entrée autorise le **secours** (seul « eric » signe en saisie locale) à relire une notion dont le relecteur attribué (référentiel, **inchangé**) est le **titulaire**, du `du` au `au` inclus (heure de Paris), dans la période `periode` de `calendar.json` (`au` ≤ fin de la période ; `du` peut la précéder). Clés exactes, relecteurs connus, titulaire ≠ secours, motif **public et fonctionnel** (aucun détail privé ni financier), aucune fenêtre chevauchante pour un même titulaire. Validé par `validate.js` (fonda/scripts/interim.js, seule source des règles). Lu par le signataire **sur design** (fetch explicite), jamais dans la copie de travail ; retirer l'entrée interdit toute nouvelle saisie ou clôture sans toucher aux attestations déjà signées. Procédure : `fonda/scripts/SIGNATAIRE.md`.
+
 ## `catalogue-fonda.json` + `lots/` — lots PUBLIÉS (contrats v1, 2026-10-13)
 
 Ce que l'élève lit (servi par GitHub Pages, aucun webhook) : `catalogue-fonda.json` (`catalogue-fonda/v1`) liste les lots publiés ; chaque lot est dans `lots/<set_id>.json` (`lot-fonda/v1`). Contrats et validation : [`fonda/engine/catalogue.js`](../engine/catalogue.js) (partagé par le front, `fonda/scripts/publier-lot.js` et le test CI `fonda/data/catalogue.test.js`).
@@ -146,7 +172,7 @@ Zéro dépendance (Node natif uniquement, pas de `package.json`). Vérifie, pour
 - `frequence_base_semaines` entier positif ;
 - **ne valide plus** `categorie`/`programme_refs`/`eval_nat_domaine` (retirés du contrat, voir ci-dessus) ; **ne valide pas** `ordre`/`note`/`disciplines`/`micro_competence`/`enonce_modele`/`taux_eval` (laissés souples).
 
-Et aussi : enveloppe minimale de `calendar.json`/`coverage.json`/`dashboard.json` ; schéma et types de chaque événement de `events.sample.json`, **liste blanche stricte des 11 champs du schéma** (tout champ supplémentaire est rejeté, cf. G3), enums (`palier`, `ctx`, `result`), cohérence `rang_local`/`dt_jours`, et — contrôle déjà présent avant la révision v2, c'est lui qui a détecté la divergence de la fixture au moment du changement de référentiel — que chaque `notion_id` référencé existe bien dans `referentiel.json`.
+Et aussi : `calendar.json` v2 complet (`validerCalendrier`, contre le référentiel et le catalogue publié) ; enveloppe minimale de `coverage.json`/`dashboard.json` ; schéma et types de chaque événement de `events.sample.json`, **liste blanche stricte des 11 champs du schéma** (tout champ supplémentaire est rejeté, cf. G3), enums (`palier`, `ctx`, `result`), cohérence `rang_local`/`dt_jours`, et — contrôle déjà présent avant la révision v2, c'est lui qui a détecté la divergence de la fixture au moment du changement de référentiel — que chaque `notion_id` référencé existe bien dans `referentiel.json`.
 
 Code de sortie non nul si une vérification échoue (utilisable en CI plus tard). `fonda/scripts/validate.js` exporte aussi, sans lecture disque (réutilisables/testés dans `validate.test.js`) :
 - `validerEvenement(event, notionIds)` (T3) — réutilisé par [`fonda/engine/evenements.js`](../engine/evenements.js) avant toute mise en file ;

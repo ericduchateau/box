@@ -166,18 +166,232 @@ function validateReferentiel() {
 }
 
 // ---------------------------------------------------------------------------
-// calendar.json / coverage.json / dashboard.json — enveloppes vides T1
+// calendar.json — v2 (calendrier FONDA réel : vacances zone B, périodes, bandes)
 // ---------------------------------------------------------------------------
 
+// Bandes : source unique fonda/engine/liens.js (BANDES). Notions exclues (figures
+// indispensables) : source unique fonda/scripts/generer-lot-fonda.js. Chargés à la
+// demande : liens.js -> evenements.js -> ce fichier (dépendance circulaire au chargement).
+function sourcesCalendrier() {
+  return {
+    BANDES: require('../engine/liens.js').BANDES,
+    NOTIONS_EXCLUES_FIGURES: require('./generer-lot-fonda.js').NOTIONS_EXCLUES_FIGURES,
+  };
+}
+
+const STATUTS_ENTREE = new Set(['publie', 'planifie']);
+// « nouvelle » (notion pas encore mesurée) n'aura de sens qu'avec source stats_cartes :
+// à ajouter ici le jour où les statistiques agrégées existent, pas avant.
+const DIFFICULTES = new Set(['rouge', 'ambre', 'vert']);
+const SOURCES_DIFFICULTE = new Set(['priorite_initiale', 'stats_cartes']);
+const CHAMPS_ENTREE = new Set(['notion_id', 'matiere', 'palier', 'bande', 'difficulte', 'statut', 'set_id']);
+const PERIODE_ID = /^P[1-9]$/;
+const JOUR_MS = 86400000;
+
+// 'AAAA-MM-JJ' -> jours depuis l'époque (UTC), ou NaN si la date n'existe pas.
+function jourIso(v) {
+  if (!isString(v) || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return NaN;
+  const t = Date.UTC(Number(v.slice(0, 4)), Number(v.slice(5, 7)) - 1, Number(v.slice(8, 10)));
+  return new Date(t).toISOString().slice(0, 10) === v ? t / JOUR_MS : NaN;
+}
+
+function semaineIso(jour) {
+  const d = new Date(jour * JOUR_MS);
+  const jeudi = jour + 3 - ((d.getUTCDay() + 6) % 7);
+  const an = new Date(jeudi * JOUR_MS).getUTCFullYear();
+  return 1 + Math.floor((jeudi - Date.UTC(an, 0, 1) / JOUR_MS) / 7);
+}
+
+function intervalle(o, ou) {
+  const du = jourIso(o && o.du);
+  const au = jourIso(o && o.au);
+  assert(!Number.isNaN(du), `${ou} : "du" doit être une date AAAA-MM-JJ valide`);
+  assert(!Number.isNaN(au), `${ou} : "au" doit être une date AAAA-MM-JJ valide`);
+  assert(du <= au, `${ou} : "du" postérieur à "au"`);
+  return [du, au];
+}
+
+const seChevauchent = (a, b) => a[0] <= b[1] && b[0] <= a[1];
+
+/**
+ * Valide calendar.json v2 contre le référentiel et le catalogue PUBLIÉ, sans disque.
+ * Contrainte dure : une entrée ne pointe un set_id QUE s'il est publié au catalogue
+ * (même notion, même palier) ; une entrée planifiée n'a pas de set_id.
+ * @returns {{ valide: true } | { valide: false, erreurs: string[] }}
+ */
+function validerCalendrier(cal, { referentiel, catalogue } = {}) {
+  const { BANDES, NOTIONS_EXCLUES_FIGURES } = sourcesCalendrier();
+  const erreurs = [];
+  const verifier = (fn) => { try { fn(); } catch (e) { erreurs.push(e.message); } };
+  const notions = new Map(((referentiel && referentiel.notions) || []).map((n) => [n.id, n]));
+  const publies = new Map(((catalogue && catalogue.lots) || []).map((l) => [l.set_id, l]));
+  const c = cal || {};
+
+  verifier(() => {
+    assert(c.version === 2, '"version" doit valoir 2');
+    assert(isString(c.last_updated), '"last_updated" doit être une chaîne');
+    assert(isString(c.annee_scolaire) && /^\d{4}-\d{4}$/.test(c.annee_scolaire), '"annee_scolaire" attendu AAAA-AAAA');
+    assert(Number(c.annee_scolaire.slice(5)) === Number(c.annee_scolaire.slice(0, 4)) + 1, `"annee_scolaire" ${c.annee_scolaire} : années non consécutives`);
+    assert(c.zone === 'B', `"zone" "${c.zone}" : le collège (Lille) est en zone B`);
+    assert(isNonEmptyString(c.source_vacances), '"source_vacances" manquante (dates officielles citées)');
+    ['vacances', 'periodes', 'semaines'].forEach((k) => assert(isArray(c[k]), `"${k}" doit être un tableau`));
+  });
+  if (erreurs.length) return { valide: false, erreurs };
+
+  // L'année scolaire AAAA-BBBB encadre toutes les dates : du 15 août AAAA au 31 juillet
+  // BBBB. Seules les vacances d'été — identifiées par leur DÉBUT (à partir du 1er juin
+  // BBBB) — ont leur fin et leur reprise (la rentrée suivante, du 15 août au 30 septembre
+  // BBBB) hors de l'année ; toutes les autres reprennent dans l'année, sur une période.
+  const debutAnnee = jourIso(`${c.annee_scolaire.slice(0, 4)}-08-15`);
+  const finAnnee = jourIso(`${c.annee_scolaire.slice(5)}-07-31`);
+  const rentreeSuivante = jourIso(`${c.annee_scolaire.slice(5)}-08-15`);
+  const debutEte = jourIso(`${c.annee_scolaire.slice(5)}-06-01`);
+  const estEte = (v) => jourIso(v.du) >= debutEte;
+  const limiteEte = jourIso(`${c.annee_scolaire.slice(5)}-09-30`);
+  const dansAnnee = (jour, ou) => assert(jour >= debutAnnee && jour <= finAnnee, `${ou} hors de l'année scolaire ${c.annee_scolaire}`);
+
+  const vacances = [];
+  c.vacances.forEach((v, i) => verifier(() => {
+    const ou = `vacances[${i}]`;
+    assert(isNonEmptyString(v.libelle), `${ou} : libelle manquant`);
+    const iv = intervalle(v, ou);
+    const reprise = jourIso(v.reprise);
+    assert(!Number.isNaN(reprise) && reprise > iv[1], `${ou} : "reprise" doit être une date après "au"`);
+    dansAnnee(iv[0], `${ou} : début`);
+    if (estEte(v)) {
+      assert(reprise >= rentreeSuivante && reprise <= limiteEte, `${ou} : reprise hors de la rentrée suivante (15 août – 30 septembre)`);
+    } else {
+      dansAnnee(iv[1], `${ou} : fin`);
+      dansAnnee(reprise, `${ou} : reprise`);
+    }
+    vacances.forEach((w) => assert(!seChevauchent(iv, w.iv), `${ou} chevauche ${w.libelle}`));
+    vacances.push({ libelle: v.libelle, iv });
+  }));
+
+  const periodes = new Map();
+  c.periodes.forEach((p, i) => verifier(() => {
+    const ou = `periodes[${i}] (${p && p.id})`;
+    assert(PERIODE_ID.test(p.id || ''), `${ou} : id attendu P1..P9`);
+    assert(!periodes.has(p.id), `${ou} : id en doublon`);
+    assert(isNonEmptyString(p.libelle), `${ou} : libelle manquant`);
+    const iv = intervalle(p, ou);
+    dansAnnee(iv[0], `${ou} : début`);
+    dansAnnee(iv[1], `${ou} : fin`);
+    periodes.forEach((q, id) => assert(!seChevauchent(iv, q.iv), `${ou} chevauche ${id}`));
+    vacances.forEach((v) => assert(!seChevauchent(iv, v.iv), `${ou} chevauche ${v.libelle}`));
+    assert(p.bandes && typeof p.bandes === 'object' && !isArray(p.bandes), `${ou} : "bandes" doit être un objet`);
+    Object.entries(p.bandes).forEach(([b, etat]) => {
+      assert(Object.prototype.hasOwnProperty.call(BANDES, b), `${ou} : bande "${b}" inconnue`);
+      assert(etat && typeof etat.genere === 'boolean', `${ou}.${b} : "genere" doit être un booléen`);
+      assert(isString(etat.bilan) && isString(etat.justification), `${ou}.${b} : "bilan" et "justification" doivent être des chaînes`);
+      if (etat.genere) assert(etat.bilan.trim().length > 0, `${ou}.${b} : période générée sans bilan`);
+    });
+    periodes.set(p.id, { iv, bandes: p.bandes, entrees: [] });
+  }));
+
+  const semainesVues = new Set();
+  c.semaines.forEach((s, i) => verifier(() => {
+    const ou = `semaines[${i}] (S${s && s.iso_week})`;
+    assert(isInt(s.iso_week) && s.iso_week >= 1 && s.iso_week <= 53, `${ou} : iso_week invalide`);
+    assert(!semainesVues.has(s.iso_week), `${ou} : iso_week en doublon`);
+    semainesVues.add(s.iso_week);
+    const iv = intervalle(s, ou);
+    assert(new Date(iv[0] * JOUR_MS).getUTCDay() === 1, `${ou} : "du" doit être un lundi`);
+    // Semaine de classe pleine, du lundi au vendredi. Une semaine légitimement tronquée
+    // (férié en bord de période) devra faire l'objet d'une exception documentée ici.
+    assert(iv[1] - iv[0] === 4, `${ou} : "au" doit être le vendredi (du + 4 jours)`);
+    assert(semaineIso(iv[0]) === s.iso_week, `${ou} : "du" n'est pas dans la semaine ISO ${s.iso_week}`);
+    const periode = periodes.get(s.periode_id);
+    assert(periode, `${ou} : periode_id "${s.periode_id}" inconnu`);
+    assert(iv[0] >= periode.iv[0] && iv[1] <= periode.iv[1], `${ou} : hors de sa période ${s.periode_id}`);
+    vacances.forEach((v) => assert(!seChevauchent(iv, v.iv), `${ou} : semaine de cours pendant ${v.libelle}`));
+    assert(isArray(s.entrees), `${ou} : "entrees" doit être un tableau`);
+
+    const matieresParBande = new Set();
+    s.entrees.forEach((e, j) => {
+      const oe = `${ou}.entrees[${j}]`;
+      assert(e && typeof e === 'object' && !isArray(e), `${oe} : objet attendu`);
+      Object.keys(e).forEach((k) => assert(CHAMPS_ENTREE.has(k), `${oe} : champ "${k}" hors schéma`));
+      const n = notions.get(e.notion_id);
+      assert(n, `${oe} : notion_id "${e.notion_id}" absent du référentiel`);
+      assert(!NOTIONS_EXCLUES_FIGURES.has(e.notion_id), `${oe} : notion "${e.notion_id}" exclue (figures)`);
+      assert(e.matiere === n.matiere, `${oe} : matiere "${e.matiere}" ≠ référentiel (${n.matiere})`);
+      assert(PALIERS.has(e.palier), `${oe} : palier "${e.palier}" invalide`);
+      assert(Object.prototype.hasOwnProperty.call(BANDES, e.bande), `${oe} : bande "${e.bande}" invalide`);
+      const d = e.difficulte || {};
+      assert(DIFFICULTES.has(d.valeur), `${oe} : difficulte.valeur "${d.valeur}" invalide`);
+      assert(SOURCES_DIFFICULTE.has(d.source), `${oe} : difficulte.source "${d.source}" invalide`);
+      if (d.source === 'priorite_initiale') {
+        assert(d.valeur === n.priorite_initiale, `${oe} : difficulte ${d.valeur} ≠ priorite_initiale ${n.priorite_initiale}`);
+      }
+      assert(STATUTS_ENTREE.has(e.statut), `${oe} : statut "${e.statut}" invalide`);
+      if (e.statut === 'planifie') {
+        assert(!('set_id' in e), `${oe} : une entrée planifiée n'a pas de set_id`);
+      } else {
+        const lot = publies.get(e.set_id);
+        assert(lot, `${oe} : set_id "${e.set_id}" non publié au catalogue`);
+        assert(lot.notion_id === e.notion_id && lot.palier === e.palier,
+          `${oe} : set_id "${e.set_id}" publié pour ${lot.notion_id}/${lot.palier}, pas ${e.notion_id}/${e.palier}`);
+      }
+      const cle = `${e.bande}|${e.matiere}`;
+      assert(!matieresParBande.has(cle), `${oe} : deux entrées ${e.matiere} pour la bande ${e.bande} la même semaine`);
+      matieresParBande.add(cle);
+      periode.entrees.push(e);
+    });
+  }));
+
+  // Continuité : chaque reprise ouvre une période. Seule exception, explicite : la reprise
+  // des vacances d'été, qui est la rentrée de l'année suivante (>= 15 août BBBB).
+  c.vacances.forEach((v, i) => verifier(() => {
+    const reprise = jourIso(v.reprise);
+    if (Number.isNaN(reprise) || estEte(v)) return;
+    assert([...periodes.values()].some((p) => p.iv[0] === reprise),
+      `vacances[${i}] (${v.libelle}) : la reprise ${v.reprise} n'est le début d'aucune période`);
+  }));
+
+  periodes.forEach((p, id) => verifier(() => {
+    Object.entries(p.bandes).forEach(([b, etat]) => {
+      if (!etat.genere) return;
+      const entrees = p.entrees.filter((e) => e.bande === b);
+      assert(entrees.length > 0 && entrees.every((e) => e.statut === 'publie'),
+        `${id}.${b} : "genere" exige que toutes les entrées de la période soient publiées`);
+    });
+  }));
+
+  return erreurs.length ? { valide: false, erreurs } : { valide: true };
+}
+
 function validateCalendar() {
-  const file = path.join(DATA_DIR, 'calendar.json');
-  const data = readJson(file);
-  check('calendar.json : enveloppe', () => {
-    assert(isInt(data.version), '"version" doit être un entier');
-    assert(isString(data.last_updated), '"last_updated" doit être une chaîne');
-    assert(isArray(data.semaines), '"semaines" doit être un tableau');
+  const data = readJson(path.join(DATA_DIR, 'calendar.json'));
+  const referentiel = readJson(path.join(DATA_DIR, 'referentiel.json'));
+  const catalogue = readJson(path.join(DATA_DIR, 'catalogue-fonda.json'));
+  const r = validerCalendrier(data, { referentiel, catalogue });
+  check('calendar.json : schéma v2, référentiel et catalogue publié', () => {
+    assert(r.valide, (r.erreurs || []).join(' ; '));
   });
 }
+
+// ---------------------------------------------------------------------------
+// relecture-interim.json (CDC r9 §20.6) — validation COMPLÈTE (intrinsèque + calendaire
+// contre calendar.json du MÊME état) : fonda/scripts/interim.js, seule source des règles.
+// ---------------------------------------------------------------------------
+
+function validerRelectureInterim(fichier, options) {
+  return require('./interim.js').validerRelectureInterim(fichier, options);
+}
+
+function validateRelectureInterim() {
+  const fichier = readJson(path.join(DATA_DIR, 'relecture-interim.json'));
+  const calendrier = readJson(path.join(DATA_DIR, 'calendar.json'));
+  const e = validerRelectureInterim(fichier, { calendrier });
+  check('relecture-interim.json : entrées conformes, aucune fenêtre chevauchante, au ≤ fin de période', () => {
+    assert(e.length === 0, e.join(' ; '));
+  });
+}
+
+// ---------------------------------------------------------------------------
+// coverage.json / dashboard.json — enveloppes vides T1
+// ---------------------------------------------------------------------------
 
 function validateCoverage() {
   const file = path.join(DATA_DIR, 'coverage.json');
@@ -288,7 +502,7 @@ function validerEvenement(e, notionIds) {
   }
 }
 
-module.exports = { validerEvenement, EVENT_FIELDS_LIST, validerNotion, validerEnveloppeReferentiel };
+module.exports = { validerEvenement, EVENT_FIELDS_LIST, validerNotion, validerEnveloppeReferentiel, validerCalendrier, validerRelectureInterim };
 
 // ---------------------------------------------------------------------------
 // run
@@ -299,6 +513,7 @@ function main() {
     [
       'data/referentiel.json',
       'data/calendar.json',
+      'data/relecture-interim.json',
       'data/coverage.json',
       'data/dashboard.json',
       'fixtures/events.sample.json',
@@ -311,6 +526,7 @@ function main() {
   if (errors.length === 0) {
     notionIds = validateReferentiel();
     validateCalendar();
+    validateRelectureInterim();
     validateCoverage();
     validateDashboard();
     validateEventsSample(notionIds);

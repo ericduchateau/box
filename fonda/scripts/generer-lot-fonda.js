@@ -472,17 +472,17 @@ function lireJournalLocal() {
 }
 
 // Journal de l'AUTORITÉ (design), lu via git — jamais la copie locale. L'actualisation
-// (git fetch origin design) est OBLIGATOIRE et doit réussir ; le journal est lu sur
-// le SHA ainsi fixé (affiché). Ne prétend pas à une transaction distribuée : réduit
-// la fenêtre d'une référence périmée, sans la supprimer.
-function lireJournalDesign() {
-  const git = (a) => execFileSync('git', a, { cwd: path.join(ROOT, '..'), stdio: ['ignore', 'pipe', 'pipe'] }).toString();
-  try { git(['fetch', '--quiet', 'origin', 'design']); } catch { throw new Error('actualisation de origin/design impossible (réseau ?) — arrêt, aucun appel API'); }
+// est OBLIGATOIRE et doit réussir : refspec EXPLICITE (+refs/heads/design:refs/remotes/
+// origin/design, interim.js), indépendante de remote.origin.fetch — jamais de poursuite sur
+// une référence seulement préexistante ; le journal est lu sur le SHA ainsi fixé (affiché).
+// Ne prétend pas à une transaction distribuée : réduit la fenêtre d'une référence périmée,
+// sans la supprimer. `git` injectable (tests : vrai dépôt temporaire) ; args -> Buffer.
+function lireJournalDesign(git = (a) => execFileSync('git', a, { cwd: path.join(ROOT, '..'), stdio: ['ignore', 'pipe', 'pipe'] })) {
   let sha;
+  try { ({ sha } = require('./interim.js').actualiser(git)); } catch { throw new Error('actualisation de origin/design impossible (réseau ?) — arrêt, aucun appel API'); }
   let texte;
   try {
-    sha = git(['rev-parse', '--verify', 'origin/design^{commit}']).trim();
-    texte = git(['show', `${sha}:${JOURNAL_GIT}`]);
+    texte = git(['show', `${sha}:${JOURNAL_GIT}`]).toString();
   } catch {
     throw new Error('journal introuvable sur origin/design (la réservation est-elle fusionnée ?) — arrêt');
   }
@@ -736,6 +736,7 @@ module.exports = {
   setIdsExistants,
   verifierAvantGeneration,
   genererReserve,
+  lireJournalDesign,
 };
 
 if (require.main === module) {

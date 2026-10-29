@@ -111,16 +111,30 @@ describe('chaîne publiée FONDA — cohérence complète', () => {
       const registre = require('../engine/moteurs.json');
       const refs = RA.refsDeConfiance();
       const resoudre = (version) => RA.resoudreReferentiel({ version, refs });
+      // Charge v3 (intérim, CDC r9) : archive de relecture-interim.json à source_version, même
+      // historique de confiance — jamais le fichier courant ni le calendrier.
+      const resoudreInterim = require('../scripts/interim.js').resoudreInterimGit({ refs });
       const modelesAutorises = require('../scripts/attestation-signee.js').lireModelesAutorises(fs.readFileSync(path.join(DATA, 'modeles-autorises.json'), 'utf8'));
-      assert.deepEqual(verifierClotureDuCatalogue(e, { resoudre, cles: clesDuDepot(), registre, modelesAutorises }), []);
+      assert.deepEqual(verifierClotureDuCatalogue(e, { resoudre, resoudreInterim, cles: clesDuDepot(), registre, modelesAutorises }), []);
     });
   }
 
+  // Calendrier v2 : une entrée « publie » pointe un set_id publié ; une entrée
+  // « planifie » (fiche pas encore produite) n'a AUCUN set_id — jamais de lien mort.
   test('calendrier : tout set_id programmé est publié au catalogue', () => {
     const publies = new Set(CATALOGUE.lots.map((e) => e.set_id));
+    let programmes = 0;
     for (const s of CALENDRIER.semaines || []) {
-      for (const en of s.entrees || []) assert.ok(publies.has(en.set_id), `set_id programmé non publié : ${en.set_id}`);
+      for (const en of s.entrees || []) {
+        if (en.statut === 'planifie') {
+          assert.ok(!('set_id' in en), `entrée planifiée avec un set_id : ${en.notion_id} (S${s.iso_week})`);
+          continue;
+        }
+        programmes += 1;
+        assert.ok(publies.has(en.set_id), `set_id programmé non publié : ${en.set_id}`);
+      }
     }
+    assert.ok(programmes > 0, 'le calendrier réel doit programmer au moins une fiche publiée');
   });
 
   test('lots de calibration : conformes, NON relus, jamais au catalogue, set_id distincts des publiés', () => {
@@ -151,4 +165,27 @@ describe('aucun secret ni coordonnée dans les données FONDA du dépôt public'
       if (f.endsWith('.json')) assert.doesNotMatch(t, /"(code_suppression|prof_email|review_key|review_token)"\s*:/, 'champ secret');
     });
   }
+});
+
+// Plage _90–_99 RÉSERVÉE aux set_id FICTIFS des tests (lot 8 : la vraie réservation de
+// set_fonda_grandeurs-mesures_nI_02 heurtait des scénarios de test qui l'utilisaient comme
+// numéro fictif). Aucun set_id RÉEL ne doit jamais y entrer : la séquence réelle s'arrête
+// donc à _89 par (notion, palier) — élargir la plage des tests plutôt que d'y empiéter.
+describe('plage _90–_99 réservée aux set_id fictifs des tests', () => {
+  const PLAGE_TESTS = /_n[IF]_9\d$/;
+  const G = require('../scripts/generer-lot-fonda.js');
+  const J = require('../engine/journal-set-ids.js');
+  test('aucun set_id réel dans la plage réservée : journal RÉEL, catalogue RÉEL, fichiers de calibration et lots publiés', () => {
+    const journal = J.lireJournalTexte(fs.readFileSync(path.join(DATA, 'set_ids-journal.json'), 'utf8'));
+    const sources = {
+      journal: journal.lignes.map((l) => l.set_id),
+      catalogue: CATALOGUE.lots.map((e) => e.set_id),
+      'calibration + lots publiés (setIdsExistants)': G.setIdsExistants(null),
+    };
+    for (const [source, ids] of Object.entries(sources)) {
+      const fautifs = [...new Set(ids.filter((id) => PLAGE_TESTS.test(id)))];
+      assert.deepEqual(fautifs, [], `set_id réel dans la plage réservée aux tests (${source}) : ${fautifs.join(', ')}`);
+    }
+    assert.ok(sources.journal.length > 0 && sources.catalogue.length > 0, 'sources réelles non vides');
+  });
 });

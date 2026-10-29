@@ -67,3 +67,11 @@
 /fonda/scripts/attestation-signee-v2.test.js @ericduchateau
 /fonda/scripts/fixtures/                   @ericduchateau
 /fonda/data/modeles-autorises.json         @ericduchateau
+# Intérim (CDC r9 §20.6, §20.9 v3) : autorisation du relecteur de secours, noms signés dans le
+# badge, module d'autorisation/provenance, vecteurs v3 et leurs tests.
+/fonda/data/relecture-interim.json         @ericduchateau
+/fonda/data/destinataires.json             @ericduchateau
+/fonda/scripts/interim.js                  @ericduchateau
+/fonda/scripts/interim.test.js             @ericduchateau
+/fonda/scripts/attestation-signee-v3.test.js @ericduchateau
+/fonda/scripts/vecteurs-canonique-interim.js @ericduchateau

@@ -185,11 +185,12 @@ for (const [nomCopie, C] of Object.entries(COPIES)) describe(`étape 4.0 (${nomC
     assert.throws(() => C.texte(null, { type: 'nullable', de: { type: 'nullable', de: 'chaine' } }), /nullable imbriqué/);
     assert.throws(() => C.texte(null, { type: 'nullable', de: 'inconnu' }), /schéma invalide/);
   });
-  test('contrats acceptés : v1 + brique 1 (§20) ; seul l\'instantané reste REFUSÉ (octets bruts, sans forme canonique)', () => {
-    assert.deepEqual([...C.contrats()].sort(), ['attestation-cloture/v1', 'attestation-cloture/v2', 'coeur-decision-fonda/v1', 'decision-fonda/v1',
-      'generation-fonda/v1', 'lot-complet-fonda/v1', 'lot_relu-fonda/v1', 'moteur-fonda/v1', 'recapitulatif-fonda/v1']);
-    assert.deepEqual([...C.contratsIncomplets()], ['instantane-fonda/v1']);
+  test('contrats acceptés : v1 + brique 1 (§20) + intérim (r9 : décision v2, charge v3) ; seul l\'instantané (v1, v2) reste REFUSÉ (octets bruts, sans forme canonique)', () => {
+    assert.deepEqual([...C.contrats()].sort(), ['attestation-cloture/v1', 'attestation-cloture/v2', 'attestation-cloture/v3', 'coeur-decision-fonda/v1', 'decision-fonda/v1',
+      'decision-fonda/v2', 'generation-fonda/v1', 'lot-complet-fonda/v1', 'lot_relu-fonda/v1', 'moteur-fonda/v1', 'recapitulatif-fonda/v1']);
+    assert.deepEqual([...C.contratsIncomplets()], ['instantane-fonda/v1', 'instantane-fonda/v2']);
     assert.throws(() => C.hexContrat('instantane-fonda/v1', {}), /forme incomplète/);
+    assert.throws(() => C.hexContrat('instantane-fonda/v2', {}), /forme incomplète/);
     assert.throws(() => C.hexContrat('decision-fonda/v1', {}), /champ manquant/);
   });
   test('charge : jamais de champ signature ; ordre de sortie = ordre du §11 quel que soit l\'ordre reçu', () => {
@@ -201,6 +202,21 @@ for (const [nomCopie, C] of Object.entries(COPIES)) describe(`étape 4.0 (${nomC
     assert.deepEqual(cles, ['schema', 'set_id', 'notion_id', 'palier', 'coeur', 'sha256_instantane', 'code_confirmation', 'confirmation',
       'fidelite_transmission', 'relecteur_attribue', 'relecteur_egal_cloturer', 'provenances', 'nb_fichiers_decision', 'referentiel_version',
       'moteur', 'execution_cloture', 'revoque_le', 'levees', 'incidents_connus', 'cloture_le', 'badge', 'cle_id']);
+  });
+  test('charge v3 (intérim, annexe A) : ordre exact ; jamais de signature ; v1, v2 et v3 non interchangeables', () => {
+    const x = V.vecteurs.find((v) => v.id === 'attestation-v3-interim');
+    assert.equal(C.hexContrat('attestation-cloture/v3', Object.fromEntries(Object.entries(x.entree).reverse())), x.hex);
+    assert.throws(() => C.hexContrat('attestation-cloture/v3', { ...x.entree, signature: 's' }), /signature : champ inconnu/);
+    for (const autre of ['attestation-cloture/v1', 'attestation-cloture/v2']) assert.throws(() => C.hexContrat(autre, x.entree), /canonique : /);
+    assert.deepEqual(Object.keys(JSON.parse(C.texteContrat('attestation-cloture/v3', x.entree))), ['schema', 'set_id', 'notion_id', 'palier', 'coeur',
+      'sha256_instantane', 'code_confirmation', 'confirmation', 'fidelite_transmission', 'relecteur_attribue', 'relecteur_egal_cloturer', 'relecture_interim',
+      'provenances', 'nb_fichiers_decision', 'referentiel_version', 'moteur', 'execution_cloture', 'source_decisions', 'generation',
+      'fin_saisie_le', 'revoque_le', 'levees', 'incidents_connus', 'cloture_le', 'badge', 'cle_id']);
+    const d = V.vecteurs.find((v) => v.id === 'decision-v2-interim');
+    assert.deepEqual(Object.keys(JSON.parse(C.texteContrat('decision-fonda/v2', d.entree))), ['schema', 'set_id', 'generation', 'nonce', 'recu_le', 'coeur',
+      'lot_relu', 'hash_formulaire', 'relecture_interim']);
+    assert.deepEqual(Object.keys(JSON.parse(C.texteContrat('decision-fonda/v2', d.entree)).relecture_interim), ['relecteur_titulaire', 'relecteur_de_secours',
+      'motif', 'periode', 'du', 'au', 'source_version', 'source_commit']);
   });
   test('charge v2 : ordre exact du §20.9 ; jamais de signature ; v1 et v2 non interchangeables', () => {
     for (const id of ['attestation-v2-saisie-locale', 'attestation-v2-page-relecture']) {

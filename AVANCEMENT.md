@@ -5,23 +5,23 @@
 ## Objectif
 Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correction par profil, mesure par groupe, fiches générées puis relues par un humain), sans casser BOX. Dépôt AAP CARDIE-SEPIA, échéance **21/10/2026**. Source de vérité : `docs/PRD-Box-FONDA.md` ; règles : `AGENTS.md`.
 
-## État actuel (design = `9414354`, main = `71299fa` : tout FONDA y est arrivé par l'incident #28, gardé ; réconcilié par #32)
-- **BOX prod** : 9 workflows n8n actifs, Google Form + Tally, relecture carte par carte (`/box-select`), front `https://ericduchateau.github.io/box/` (`main`).
-- **FONDA sur `design`** : thème sombre, correction par profil, index `?fonda=1&page=entrainement` ; **chaîne séparée (bloc 1, PR #6/#7 mergées)** : `catalogue-fonda.json` + `fonda/data/lots/` (8 lots relus, empreintes figées `HISTORIQUES_FIGES`), CI `tests (node --test)` obligatoire sur `design`/`main`.
-- **CDC relecture v8.3 VALIDÉE** (§20 r5, `9b567ee`, branche `feat/box-fonda-relecture`, non mergée) : brique 1 additive (génération, projection complète, lot_relu, décision, charge v2, properties Drive, Sonnet épinglé, purge → refus). Preuve C8 faite.
+## État actuel (2026-10-28, design = `c215dd0`)
+- **BOX prod** : 9 workflows n8n actifs, front `https://ericduchateau.github.io/box/` (`main`).
+- **Brique 1, étape 5 : lots 1–8 faits.** Génération `vrqgtS5kQMvP9Ok5` et portier `MkYrdhgTo52nA3av` INACTIFS hors fenêtre ; modèle épinglé `claude-sonnet-5-5` ; clôture signée en saisie locale (relecteur eric). Correctif runtime n8n (#42) ; plage `_90–_99` réservée aux set_id fictifs (#47).
+- **Publiés par la chaîne signée** : `set_fonda_nombres-fractions-relatifs_nI_03` (#44) et `set_fonda_grandeurs-mesures_nI_02` (pilote maths 5e/4e, exéc. 279890, #49).
+- Calendrier FONDA réel fusionné (#50).
+- Fiche français `comprendre-consigne` (relectrice justine) : débloquée par l'intérim ci-dessous une fois fusionné.
+- Sondes/copies n8n `ZQASW4PKigh1JaHt`, `4pDA91YG9ssSus3X`, `XrSG2nt5q40SNvf4` : à archiver par Éric (jamais supprimer : preuves).
 
-## Étape 2 : moteur de correction élève (M1) — **mergée** (PR #8, 2026-10-14)
-- `fonda/engine/moteur-correction-v1.js` immuable (registre `moteurs.json`, SRI, CI `immuabilite`) ; 8 lots historiques liés au moteur v1 et au badge « relue par Éric Duchateau » (figés dans `catalogue.js`). Détails et preuves : `AVANCEMENT-archive.md`.
+## En cours : relecteur de secours en intérim (`feat/relecture-interim`, sensible)
+- Plan r6 approuvé (6 passes Codex high) ; `relecture-interim.json` (justine → eric, P2, 2026-10-28 → 2026-12-18) ; `interim.js` (autorisation au SHA de design par fetch EXPLICITE, provenance, archive) ; décision v2, instantané v2 (décision embarquée), charge `attestation-cloture/v3`, badge `relue_par_secours` ; vérificateur, catalogue, front, diagnostic à deux axes, export n8n régénéré (génération identique).
+- Suite 5603/0 ; non-régression octet pour octet contre c215dd0 (7312 mutations, 1440 v1 + 2025 v2 de forme valide) ; #44 et #49 se revérifient. Codex high du code : 4 passes, verdict final vert (diagnostic : lot signé toujours « signe », problèmes courants à part ; fetch du journal à refspec explicite). PR vers design -> architecte -> Éric. CDC r9 : PR séparée sur la lignée `docs/cdc-r8-modele-epingle`.
+- Après fusion seulement, sur go architecte + Éric : resync du workflow n8n de génération en ligne (INACTIF).
 
 ## Prochaines étapes
-1. **Mergés** : étape 3 (canonique, journal + M2, immuabilité + CODEOWNERS ; `immuabilite` requis sur `design`/`main`) ; 4.0 (CDC v8.2 §11 bis + schémas canoniques, PR #14) ; 4a (PR #15, publication Type 2 vérifiée) ; 4b-code (PR #16, `signer-cloture.js`, garde maîtresse) ; cérémonie de clé `eric-2026` (publique dans `fonda/data/cles/`, privée chiffrée hors dépôt, jamais lue par les agents).
-2. **Brique 1 (ordre §20.14)** : étapes 1–4 et dette A mergées (PR #18–#24 ; workflow de génération `vrqgtS5kQMvP9Ok5` INACTIF). **Étape 5** (plan validé, branche `docs/plan-etape5-propre` ; l'ancienne `docs/plan-etape5` contient l'inventaire F3 → suppression distante à décider par Éric) :
-   - lots 1–5 mergés : clé FONDA, recette, portier `MkYrdhgTo52nA3av` (#26), dette C (#27), adaptateurs + CLI + diagnostic + `--palier` (#28, arrivé sur main par erreur puis réconcilié par #32) ; `.gitignore` des secrets (`chore/gitignore-secrets`) ;
-   - **lot 6 mergé** : sonde §20.8 (`ZQASW4PKigh1JaHt`, inactive, à archiver dans l'UI sans la supprimer : exécutions 279791 = 404 sur l'id daté, 279792 = `model` `claude-sonnet-5-5`) ; règle G5 `modeleEpingle` (daté OU sans date, liste noire des alias pré-4.6, CDC r8 sur `docs/cdc-r8-modele-epingle`) (#29) ; `modeles-autorises.json` = `["claude-sonnet-5-5"]` + génération épinglée dessus, aucun repli (#34) ;
-   - **lot 7 mergé** (#36) : garde de `cloturer` INCHANGÉE ; `main()` n'accepte que `saisie_locale` (page refusée avant réseau et clé) ; `cloturerSaisieLocale` se valide elle-même, clé préparée avant, rattachement « poison » ; recette d'ACCÈS du signataire consignée (#35, 2026-10-22 : acces_ok, aucune_generation) ;
-   - **GATE LOT 8 (bloquant)** : Bloc de CONSIGNATION de `RECETTE-INSTANCE.md` à remplir par Éric et relire : (a) réglages Save executions observés dans Settings ; (b) `EXECUTIONS_DATA_PRUNE=false` constaté sur le conteneur. Pas de lot 8 avant.
-3. **Dette `--etendu` FERMÉE** (PR #21) : 1220 vecteurs de refus d'élargissement (un par type interdit au CDC — null, nombre, chaîne, booléen, objet, tableau — sur chaque chemin de chaque contrat), liste tenue À LA MAIN contre le CDC (`fonda/scripts/champs-canonique.js`, confrontée aux schémas chargés) ; `--etendu` : 506/506 détectées, en CI.
-4. Réglages à confirmer (Éric) : « Allow rebase merging » décoché ; « Do not allow bypassing » ; CODEOWNERS sur `main`. — bloc 3 (prod, feu vert) : orpheline `box_7e7tcooh`. `feat/box-delete-hardening` ; Moteur A + dette `defi_id` ; collecte `/box-fonda-events` ; recette `canonique.js` en vrai nœud n8n.
+1. Après l'intérim : génération et relecture (secours) des fiches français planifiées de P2 avant leurs semaines ; parcours page de Justine plus tard.
+2. Champ `bande` dans la métadonnée des lots (lot séparé) ; bilans de période à rédiger avant chaque génération (P3 avant le 4 janvier).
+3. Réglages à confirmer (Éric) : « Allow rebase merging » décoché ; « Do not allow bypassing » ; CODEOWNERS sur `main`. Bloc 3 (prod) : orpheline `box_7e7tcooh`, `feat/box-delete-hardening`, Moteur A + dette `defi_id`, collecte `/box-fonda-events`.
 
 ## 🔖 Check-list AVANT PUBLICATION / usage élève réel
 1. **Régénérer la clé API Anthropic** (a circulé en clair) : scripts locaux + nœud `Claude API` (HTTP, header en clair) de `BOX - Generation Flashcards` ; idéalement passer par un credential n8n.
@@ -30,11 +30,6 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 4. **Orpheline `box_7e7tcooh`** au catalogue Drive (fichier déjà en corbeille) : la retirer via `/box-delete` (code connu) ou à la main après sauvegarde du catalogue — feu vert Éric requis.
 5. **Fidélité du banc de test** : contexte navigateur unique (vm partagé), parcours depuis `App.initFonda()` — à prioriser avant d'élargir FONDA à d'autres notions.
 6. **Correcteur tolérant au mot après le nombre** (« 2 bus » noté faux sans `unite` ; avec `unite`, le nombre seul donne « presque, unité oubliée »).
-
-## Dettes OBLIGATOIRES avant activation du workflow de génération (étape 5, avant le vrai run §20.8)
-- **A — pinData null (API n8n)** [PR `fix/box-fonda-pindata-null` + CDC r7 `caeaf2c` ; Codex « propre pour merge » ; feu vert Claude attendu] : l'API publique crée `pinData: null` (non accepté en écriture) et les exécutions le recopient. `rapprocher` + CDC : absent | null | `{}` acceptés ; objet non vide, tableau, autre type (falsy compris) → abandon. Le contournement par l'éditeur devient inutile après merge.
-- **B — appel mal formé (Codex r1 #4)** : correctif CÔTÉ WORKFLOW, pas signataire (le signataire a raison) : le nœud d'entrée émet TOUJOURS `{set_id, ref}` pour tout corps valide ; le malformé est rejeté à la frontière du webhook (4xx) sans exécution auditée non attribuable ; test jusqu'au signataire.
-- **C — dépôts concurrents (Codex r1 #5)** : dépôt idempotent ou exclusion mutuelle, reprises réseau incertaines comprises. En l'état : sûr (abandon), atténué par « un appel à la fois par set_id ».
 
 ## Autres dettes (non bloquantes)
 - `?action=delete` public (seul le code protège) ; anciens liens Valider/Rejeter en GET, HMAC sans expiration ; QR code, favicon/lockup FONDA absents ; `non-regression.test.js` en quarantaine (comparer à `main`).
@@ -48,11 +43,12 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - **Historique de confiance = chaîne du premier parent** de la référence et de `design` (états réellement publiés) : les commits intermédiaires d'une PR ne comptent pas, son merge oui. Suppose merge commit ou squash (rebase-merge et push direct exclus). Le CI **détecte** une violation, la **protection de branche l'empêche**. Reporté au CDC §17 + annexe A.
 
 ## Pièges
+- Intérim : l'autorisation se lit TOUJOURS sur design (fetch explicite), jamais dans la copie de travail ; les pièces signées se vérifient par l'archive historique seule. Retirer l'entrée = arrêt des nouvelles opérations, attestations existantes intactes.
 - Chrome met `css/style.css` en cache : désactiver le cache pour toute preuve visuelle ; figer `Math.random` (sinon deux captures du même état BOX diffèrent). Scripts injectés dynamiquement : ordre garanti par `await` séquentiel, preuve de chargement = export sur `window`.
-- `fonda/data/calendar.json` a `semaines: []` : « Aucun défi programmé » est l'état réel, pas un bug.
+- Calendrier : une entrée `planifie` n'a jamais de `set_id` (validateur + CI) ; un retrait de lot doit retirer ses entrées du calendrier dans le même commit.
 - Profil `orthographe` : ne jamais normaliser accents/pluriels (c'est ce qu'on mesure).
 - Moteur publié **immuable** : toute retouche de `moteur-correction-v1.js` change son SHA-256 → interdit après merge ; nouveau comportement = `v2` + nouveaux `set_id`.
 - Le classificateur auto-mode bloque les commandes contenant la clé API : Éric lance lui-même les générations.
 - Branches (AGENTS.md) : PR toujours vers `design` (liens `compare/design...<branche>`), fusion en merge commit ; jamais de fast-forward de `design` (casse la chaîne du premier parent).
 
-_Dernière mise à jour : 2026-10-22 — Claude Code (Opus 5.5)._
+_Dernière mise à jour : 2026-10-28 — Claude Code (Opus 5.5)._

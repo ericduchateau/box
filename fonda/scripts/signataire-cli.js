@@ -1,7 +1,8 @@
 // CLI du signataire (plan étape 5, lot 5) — appelée par `signer-cloture.js --<commande>`.
-//   --actualiser                     git fetch origin design (SEULE commande qui écrit dans .git)
+//   --actualiser                     git fetch de design, refspec EXPLICITE (interim.js) : écrit dans .git
 //   --initialiser                    registre des incidents (jamais de remise à zéro)
-//   --diagnostic [<set_id>]          lecture seule HERMÉTIQUE (aucune clé de signature)
+//   --diagnostic [<set_id>]          aucune clé de signature ; écrit dans .git (même fetch
+//                                    explicite que --actualiser, CDC r9) et affiche le SHA
 //   --saisir <set_id>                décision locale figée (saisirDecisionLocale)
 //   --extraire-publication <set_id>  lot-relu.json depuis les pièces SIGNÉES vérifiées
 // La clôture `<set_id>` reste dans signer-cloture.js : GARDE MAÎTRESSE en place (lot 7).
@@ -11,6 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const A = require('./adaptateurs-production.js');
+const I = require('./interim.js');
 
 function analyserArguments(argv) {
   const [commande, setId, ...reste] = argv;
@@ -36,8 +38,11 @@ function ecrireLotRelu(chemin, texte) {
 
 async function executer(args, o = {}) {
   if (args.commande === '--actualiser') {
-    execFileSync('git', ['fetch', '--quiet', 'origin', 'design'], { cwd: o.racine || path.join(__dirname, '..', '..'), stdio: 'inherit' });
-    return { actualise: 'origin/design' };
+    // Même refspec EXPLICITE que l'intérim : la référence de suivi est mise à jour quelle que
+    // soit la configuration remote.origin.fetch.
+    const racine = o.racine || path.join(__dirname, '..', '..');
+    const git = o.git || ((a) => execFileSync('git', a, { cwd: racine, stdio: ['ignore', 'pipe', 'inherit'] }));
+    return { actualise: 'origin/design', sha: I.actualiser(git).sha };
   }
   // Commandes LOCALES : aucun secret réseau requis.
   if (args.commande === '--initialiser') return (o.sources || A.sourcesLocales(o)).initialiser();

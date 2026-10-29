@@ -13,9 +13,17 @@ const assert = require('node:assert/strict');
 const CLASSES = require('../data/classes.json');
 const REFERENTIEL = require('../data/referentiel.json');
 const CATALOGUE = require('../data/catalogue-fonda.json');
+// Lot HISTORIQUE épinglé (6 cartes, relu par Éric) : toujours ouvert par ?set=, jamais par
+// notion/palier — ce lien-là sert le lot le PLUS RÉCENT du couple, qui change à chaque publication.
 const SET_CONSIGNE_NI = 'set_fonda_comprendre-consigne_nI_01';
 const CHEMIN_CONSIGNE_NI = 'fonda/data/lots/set_fonda_comprendre-consigne_nI_01.json';
 const LOT_CONSIGNE_NI = require('../data/lots/set_fonda_comprendre-consigne_nI_01.json');
+const LIEN_CONSIGNE_NI = `?fonda=1&page=carte&set=${SET_CONSIGNE_NI}`;
+// Lot le plus récent de fr.comprendre-consigne/nI, DÉRIVÉ du catalogue (plus grande séquence).
+const sequence = (setId) => Number(/_(\d{2})$/.exec(setId)[1]);
+const LOTS_CONSIGNE_NI = CATALOGUE.lots.filter((e) => e.notion_id === 'fr.comprendre-consigne' && e.palier === 'nI');
+const PLUS_RECENT_CONSIGNE_NI = LOTS_CONSIGNE_NI.slice().sort((a, b) => sequence(b.set_id) - sequence(a.set_id))[0];
+const LOT_PLUS_RECENT_CONSIGNE_NI = require(`../data/${PLUS_RECENT_CONSIGNE_NI.fichier}`);
 
 const SEMAINE_41 = {
   iso_week: 41,
@@ -130,7 +138,7 @@ function creerFetchFactice({ calendrier = CALENDRIER, lots = {}, catalogue = CAT
   };
 }
 
-async function demarrerBootstrap({ search, calendrier, lots, catalogue, journalFetch, echecs, journalScripts, remplacements }) {
+async function demarrerBootstrap({ search, calendrier, lots, catalogue, journalFetch, journalOptions, echecs, journalScripts, remplacements }) {
   const doc = creerDocumentFactice({ echecs, journalScripts, remplacements });
   // document.body.appendChild('fondaRoot' div) -> on l'intercepte pour pouvoir le relire
   const originalAppendChild = doc.body.appendChild.bind(doc.body);
@@ -139,9 +147,11 @@ async function demarrerBootstrap({ search, calendrier, lots, catalogue, journalF
   global.document = doc;
   global.window = { location: { search, origin: 'https://ericduchateau.github.io', pathname: '/box/index.html' } };
   const fetchFactice = creerFetchFactice({ calendrier, lots, ...(catalogue !== undefined ? { catalogue } : {}) });
-  global.fetch = journalFetch
-    ? (chemin) => { journalFetch.push(chemin); return fetchFactice(chemin); }
-    : fetchFactice;
+  global.fetch = (chemin, options) => {
+    if (journalFetch) journalFetch.push(chemin);
+    if (journalOptions) journalOptions.push([chemin, options]);
+    return fetchFactice(chemin);
+  };
 
   delete require.cache[require.resolve('./bootstrap.js')];
   require('./bootstrap.js');
@@ -197,7 +207,7 @@ describe('defi résolu avec succès -> le lot programmé (set_id du calendrier) 
   });
 
   test('set_id programmé mais absent du catalogue publié -> « pas disponible », rien rendu', async () => {
-    const cal = { ...CALENDRIER, semaines: [{ ...SEMAINE_41, entrees: [{ ...SEMAINE_41.entrees[0], set_id: 'set_fonda_resolution-problemes_nI_02' }] }] };
+    const cal = { ...CALENDRIER, semaines: [{ ...SEMAINE_41, entrees: [{ ...SEMAINE_41.entrees[0], set_id: 'set_fonda_resolution-problemes_nI_92' }] }] };
     const root = await demarrerBootstrap({ search: '?fonda=1&defi=defi_2026-w41_601_resolution-problemes', calendrier: cal });
     assert.match(texteDe(root), /pas disponible/);
     assert.doesNotMatch(texteDe(root), /Carte 1/);
@@ -389,11 +399,12 @@ describe('?page=carte — rendu réel d\'un paquet FONDA (plus de stub "contenu 
     assert.match(texteDe(root), /Carte 1 \/ 6/);
   });
 
-  test('compat ancien lien notion/palier : résolu par le catalogue (même lot)', async () => {
+  test('compat ancien lien notion/palier : résolu par le catalogue vers le lot le PLUS RÉCENT du couple (dérivé)', async () => {
     const journal = [];
     const root = await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI', journalFetch: journal });
-    assert.match(texteDe(root), /Carte 1 \/ 6/);
-    assert.ok(journal.includes(CHEMIN_CONSIGNE_NI));
+    assert.match(texteDe(root), new RegExp(`Carte 1 / ${LOT_PLUS_RECENT_CONSIGNE_NI.cartes.length}(?!\\d)`));
+    assert.ok(journal.includes(`fonda/data/${PLUS_RECENT_CONSIGNE_NI.fichier}`), 'le lot servi est le plus récent du catalogue');
+    for (const e of LOTS_CONSIGNE_NI.filter((x) => x !== PLUS_RECENT_CONSIGNE_NI)) assert.ok(!journal.includes(`fonda/data/${e.fichier}`), `${e.set_id} : plus ancien, jamais servi par ce lien`);
   });
 
   test('lot introuvable (fetch échoue) : message clair, pas de page blanche', async () => {
@@ -403,8 +414,8 @@ describe('?page=carte — rendu réel d\'un paquet FONDA (plus de stub "contenu 
     assert.doesNotMatch(texte, /contenu à venir/, 'le stub ne doit plus jamais apparaître');
   });
 
-  test('paquet réel (fr.comprendre-consigne/nI, fichier committé) : carte 1 rendue avec le relecteur ATTESTÉ ("Éric Duchateau")', async () => {
-    const root = await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI', calendrier: CALENDRIER });
+  test('paquet réel ÉPINGLÉ (set=…_nI_01, fichier committé) : carte 1 rendue avec le relecteur ATTESTÉ ("Éric Duchateau")', async () => {
+    const root = await demarrerBootstrap({ search: LIEN_CONSIGNE_NI, calendrier: CALENDRIER });
     const texte = (root.textContent || '').trim() || root.children.map((c) => c.textContent).join(' ');
     assert.match(texte, /Comprendre une consigne/, 'le titre du lot doit apparaître');
     assert.match(texte, /Carte 1 \/ 6/, 'le compteur doit annoncer 6 cartes (lot réel committé)');
@@ -418,7 +429,7 @@ describe('?page=carte — rendu réel d\'un paquet FONDA (plus de stub "contenu 
   });
 
   test('"Carte suivante" fait avancer le paquet jusqu\'à l\'écran de fin', async () => {
-    const root = await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI', calendrier: CALENDRIER });
+    const root = await demarrerBootstrap({ search: LIEN_CONSIGNE_NI, calendrier: CALENDRIER });
 
     const trouverBouton = trouverBoutonParTexte;
 
@@ -477,7 +488,7 @@ describe('G4 — seuls les lots du catalogue publié, intacts et attestés, sont
     ['question modifiée après attestation (empreinte ≠)', (l) => ({ ...l, cartes: [{ ...l.cartes[0], question: l.cartes[0].question + ' ' }, ...l.cartes.slice(1)] })],
     ['champ hors liste blanche (code_suppression)', (l) => ({ ...l, code_suppression: 'SUP-AAAA1111' })],
     ['champ hors liste blanche dans une carte (prof_email)', (l) => ({ ...l, cartes: [{ ...l.cartes[0], prof_email: 'x@y.z' }, ...l.cartes.slice(1)] })],
-    ['set_id du fichier ≠ entrée', (l) => ({ ...l, set_id: 'set_fonda_comprendre-consigne_nI_02' })],
+    ['set_id du fichier ≠ entrée', (l) => ({ ...l, set_id: 'set_fonda_comprendre-consigne_nI_92' })],
     ['cartes réordonnées (item_ids ≠ entrée)', (l) => ({ ...l, cartes: [l.cartes[1], l.cartes[0], ...l.cartes.slice(2)] })],
   ];
   for (const [libelle, alterer] of alterations) {
@@ -512,10 +523,10 @@ describe('G4 — seuls les lots du catalogue publié, intacts et attestés, sont
 
 describe('chargement des dépendances FONDA en conditions navigateur (aucun global pré-injecté)', () => {
   const ORDRE = [
-    'fonda/engine/catalogue.js?v=3',
+    'fonda/engine/catalogue.js?v=4',
     'fonda/engine/evenements.js?v=3',
-    'fonda/engine/liens.js?v=3',
-    'fonda/engine/carte-reponse-produite.js?v=3',
+    'fonda/engine/liens.js?v=4',
+    'fonda/engine/carte-reponse-produite.js?v=4',
   ];
   const MOTEUR = 'fonda/engine/moteur-correction-v1.js';
 
@@ -677,7 +688,7 @@ describe('lot validé EN ENTIER avant affichage (relecture Codex PR #2, #9)', ()
   for (const [libelle, abimer] of casMalformes) {
     test(`${libelle} : refusé AVANT la 1re carte, message visible`, async () => {
       const root = await demarrerBootstrap({
-        search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI',
+        search: LIEN_CONSIGNE_NI,
         lots: { [CHEMIN]: abimer(VRAI) },
       });
       assert.match(texteDe(root), /pas disponible/);
@@ -760,7 +771,7 @@ describe('réponses non textuelles (relecture Codex PR #2 v2, #4)', () => {
   // d'onErreur).
   test('au clic : si la lecture de la saisie plante, message visible + « Carte suivante » révélé', async () => {
     const root = await demarrerBootstrap({
-      search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI',
+      search: LIEN_CONSIGNE_NI,
       lots: { [CHEMIN]: VRAI },
     });
     const carteHote = root.children.find((c) => c && c.classList && (c.children || []).some((x) => x.className === 'fonda-question'));
@@ -778,7 +789,7 @@ describe('réponses non textuelles (relecture Codex PR #2 v2, #4)', () => {
   test('au clic : si l\'évaluation plante dans le moteur, message visible + « Carte suivante » révélé', async () => {
     const lot = JSON.parse(JSON.stringify(VRAI));
     const root = await demarrerBootstrap({
-      search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI',
+      search: LIEN_CONSIGNE_NI,
       lots: { [CHEMIN]: lot },
     });
     lot.cartes[1].reponses_acceptees.push({ toString: null });
@@ -815,30 +826,52 @@ function liensIndex(root) {
 }
 
 describe('construireEntreesIndex — dérivé du catalogue publié, libellés du référentiel', () => {
-  test('une ligne par notion du catalogue, triées par `ordre` du référentiel, un lien par set_id', () => {
+  // Attendus DÉRIVÉS du catalogue publié (jamais figés) : une nouvelle notion ou un nouveau lot
+  // publié ne casse pas ce test ; l'ordre exact est vérifié sur une fixture synthétique ci-dessous.
+  const BASE = { nI: 'Initial', nF: 'Final' };
+  const paliersAttendus = (cat, notionId) => ['nI', 'nF'].flatMap((p) => {
+    const ids = cat.lots.filter((e) => e.notion_id === notionId && e.palier === p).map((e) => e.set_id).sort();
+    return ids.map((setId, i) => ({ palier: p, setId, libelle: ids.length > 1 ? `${BASE[p]} ${i + 1}` : BASE[p] }));
+  });
+  test('une ligne par notion du catalogue, triées par `ordre` du référentiel, un lien par lot (attendus dérivés du catalogue)', () => {
     const { construireEntreesIndex } = obtenirExportsBootstrap();
     const entrees = construireEntreesIndex(CATALOGUE, REFERENTIEL);
-    assert.deepEqual(entrees.map((e) => e.notionId),
-      ['fr.comprendre-consigne', 'maths.grandeurs-mesures', 'maths.resolution-problemes', 'fr.inference-implicite', 'maths.nombres-fractions-relatifs']);
-    // Première fiche signée (lot 8) : notion de maths, ordre 8 du référentiel, palier nI seulement.
-    const nfr = entrees.find((e) => e.notionId === 'maths.nombres-fractions-relatifs');
-    assert.equal(nfr.libelle, REFERENTIEL.notions.find((n) => n.id === 'maths.nombres-fractions-relatifs').libelle);
-    assert.equal(nfr.matiere, 'maths');
-    assert.deepEqual(nfr.paliers, [{ palier: 'nI', setId: 'set_fonda_nombres-fractions-relatifs_nI_03', libelle: 'Initial' }]);
-    const consigne = entrees[0];
-    assert.equal(consigne.libelle, REFERENTIEL.notions.find((n) => n.id === 'fr.comprendre-consigne').libelle);
-    assert.equal(consigne.matiere, 'français');
-    assert.deepEqual(consigne.paliers, [
-      { palier: 'nI', setId: 'set_fonda_comprendre-consigne_nI_01', libelle: 'Initial' },
-      { palier: 'nF', setId: 'set_fonda_comprendre-consigne_nF_01', libelle: 'Final' },
-    ]);
+    const notions = [...new Set(CATALOGUE.lots.map((e) => e.notion_id))];
+    assert.deepEqual(entrees.map((e) => e.notionId).slice().sort(), notions.slice().sort(), 'une ligne par notion du catalogue, ni plus ni moins');
+    const ordre = (id) => REFERENTIEL.notions.find((n) => n.id === id).ordre;
+    entrees.forEach((e, i) => { if (i > 0) assert.ok(ordre(entrees[i - 1].notionId) <= ordre(e.notionId), `ordre du référentiel : ${entrees[i - 1].notionId} avant ${e.notionId}`); });
+    for (const e of entrees) {
+      const n = REFERENTIEL.notions.find((x) => x.id === e.notionId);
+      assert.equal(e.libelle, n.libelle, e.notionId);
+      assert.equal(e.matiere, n.matiere, e.notionId);
+      assert.deepEqual(e.paliers, paliersAttendus(CATALOGUE, e.notionId), `${e.notionId} : un lien par lot publié`);
+    }
+    // Repères stables : le lot historique et la première fiche signée restent listés.
+    assert.ok(entrees.find((e) => e.notionId === 'fr.comprendre-consigne').paliers.some((x) => x.setId === SET_CONSIGNE_NI));
+    assert.equal(entrees.find((e) => e.notionId === 'fr.comprendre-consigne').paliers.filter((x) => x.palier === 'nI').length, LOTS_CONSIGNE_NI.length);
+    assert.ok(entrees.find((e) => e.notionId === 'maths.nombres-fractions-relatifs').paliers.some((x) => x.setId === 'set_fonda_nombres-fractions-relatifs_nI_03'));
+  });
+
+  test('ordre exact (fixture synthétique) : `ordre` du référentiel d\'abord, puis ordre d\'apparition au catalogue ; nI avant nF', () => {
+    const { construireEntreesIndex } = obtenirExportsBootstrap();
+    const ref = { notions: [
+      { id: 'x.b', libelle: 'B', matiere: 'maths', ordre: 2 }, { id: 'x.a', libelle: 'A', matiere: 'français', ordre: 1 },
+      { id: 'x.c', libelle: 'C', matiere: 'maths', ordre: 2 },
+    ] };
+    const cat = { lots: [
+      { set_id: 'set_fonda_c_nF_01', notion_id: 'x.c', palier: 'nF' }, { set_id: 'set_fonda_b_nI_01', notion_id: 'x.b', palier: 'nI' },
+      { set_id: 'set_fonda_a_nF_01', notion_id: 'x.a', palier: 'nF' }, { set_id: 'set_fonda_c_nI_01', notion_id: 'x.c', palier: 'nI' },
+    ] };
+    const entrees = construireEntreesIndex(cat, ref);
+    assert.deepEqual(entrees.map((e) => [e.notionId, e.paliers.map((p) => p.setId)]),
+      [['x.a', ['set_fonda_a_nF_01']], ['x.c', ['set_fonda_c_nI_01', 'set_fonda_c_nF_01']], ['x.b', ['set_fonda_b_nI_01']]]);
   });
 
   test('pas de liste en dur : un lot ajouté au catalogue apparaît ; deux lots du même couple sont numérotés', () => {
     const { construireEntreesIndex } = obtenirExportsBootstrap();
     const cat = { lots: [
       { set_id: 'set_fonda_comprendre-consigne_nI_01', notion_id: 'fr.comprendre-consigne', palier: 'nI' },
-      { set_id: 'set_fonda_comprendre-consigne_nI_02', notion_id: 'fr.comprendre-consigne', palier: 'nI' },
+      { set_id: 'set_fonda_comprendre-consigne_nI_92', notion_id: 'fr.comprendre-consigne', palier: 'nI' },
       { set_id: 'set_fonda_fictive_nF_01', notion_id: 'x.fictive', palier: 'nF' },
     ] };
     const entrees = construireEntreesIndex(cat, REFERENTIEL);
@@ -878,7 +911,7 @@ describe('?page=entrainement — index des lots publiés', () => {
     const journalScripts = [];
     await demarrerBootstrap({ search: '?fonda=1&page=entrainement', journalFetch: journal, journalScripts });
     assert.deepEqual(journal, ['fonda/data/catalogue-fonda.json', 'fonda/data/referentiel.json']);
-    assert.deepEqual(journalScripts, ['fonda/engine/catalogue.js?v=3']);
+    assert.deepEqual(journalScripts, ['fonda/engine/catalogue.js?v=4']);
   });
 
   test('référentiel indisponible : la liste s\'affiche quand même (identifiants)', async () => {
@@ -902,7 +935,7 @@ describe('retour vers l\'index depuis un paquet libre', () => {
   const versIndex = (root) => (root.children || []).find((c) => c && c.textContent === '← Toutes les notions');
 
   test('paquet libre (page=carte) : lien « ← Toutes les notions » présent, puis encore sur l\'écran de fin', async () => {
-    const root = await demarrerBootstrap({ search: '?fonda=1&page=carte&notion=fr.comprendre-consigne&palier=nI' });
+    const root = await demarrerBootstrap({ search: LIEN_CONSIGNE_NI });
     assert.ok(versIndex(root), 'retour index absent pendant le paquet');
     assert.match(versIndex(root).href, /\?fonda=1&page=entrainement$/);
     for (let i = 0; i < 6; i += 1) {
@@ -1078,5 +1111,436 @@ describe('obtenirMoteur — version + empreinte + SRI, registre non réassignabl
     await assert.rejects(obtenirMoteur('v2', V2b.sha256), /instance\.version/);
     await assert.rejects(obtenirMoteur('v2', V2b.sha256), /instance\.version/);
     assert.equal(journal.length, 2);
+  });
+});
+
+// --- Calendrier FONDA v2 : accueil « Notions de la semaine » et page=calendrier -----
+// Données RÉELLES (calendar.json, catalogue, référentiel committés) ; la date est
+// pilotée (mock de Date uniquement — setTimeout reste réel pour le harnais).
+const { mock: mockCal } = require('node:test');
+const CALENDRIER_REEL = require('../data/calendar.json');
+
+// ═══ PROGRAMME P2 DE RÉFÉRENCE (intentionnel) ═══════════════════════════════════════════════
+// Semaines du programme P2 VALIDÉ par l'architecte (S45 à S51, bande 5e–4e). Même statut que les
+// dates officielles de la zone B : une référence fixe, pas un état de publication. Tout
+// CHANGEMENT DE PROGRAMME (semaine ajoutée, retirée ou déplacée) impose de revoir les tests qui
+// l'utilisent — la garde « programme P2 de référence = calendar.json » ci-dessous le signale.
+// Les PUBLICATIONS, elles, ne touchent jamais à cette constante (comptes dérivés).
+const PROGRAMME_P2_REFERENCE = Object.freeze({
+  periode: 'P2',
+  semaines: Object.freeze([45, 46, 47, 48, 49, 50, 51]),
+  S45: Object.freeze({ iso: 45, jour: '2026-11-04', dimanche: '2026-11-08' }), // reprise de la Toussaint
+  S46: Object.freeze({ iso: 46, jour: '2026-11-10' }),
+  S48: Object.freeze({ iso: 48, jour: '2026-11-25' }),
+});
+const REF = PROGRAMME_P2_REFERENCE;
+
+// Attendus DÉRIVÉS de calendar.json + du catalogue publié (jamais figés) : passer une entrée de
+// « planifie » à « publie » (ou en ajouter) fait suivre ces comptes sans toucher aux tests.
+const PUBLIES_CAL = new Set(CATALOGUE.lots.map((e) => e.set_id));
+const BANDE_MILIEU = 'c4-milieu';
+const ORDRE_MATIERE = { maths: 0, 'français': 1 };
+const parMatiere = (a, b) => ORDRE_MATIERE[a.matiere] - ORDRE_MATIERE[b.matiere];
+const estLiee = (e) => e.statut === 'publie' && PUBLIES_CAL.has(e.set_id);
+const entreesDe = (iso, bande = BANDE_MILIEU) => {
+  const sem = CALENDRIER_REEL.semaines.find((x) => x.iso_week === iso);
+  return sem ? sem.entrees.filter((e) => e.bande === bande).slice().sort(parMatiere) : [];
+};
+// Semaines de la période PORTANT la bande (comme la vue : une semaine sans entrée n'y figure pas).
+const semainesDe = (periodeId, bande = BANDE_MILIEU) => {
+  const p = CALENDRIER_REEL.periodes.find((x) => x.id === periodeId);
+  return CALENDRIER_REEL.semaines.filter((x) => x.du >= p.du && x.du <= p.au && x.entrees.some((e) => e.bande === bande));
+};
+const entreesPeriode = (periodeId, bande = BANDE_MILIEU) => semainesDe(periodeId, bande).flatMap((x) => entreesDe(x.iso_week, bande));
+const entreesBande = (bande = BANDE_MILIEU) => CALENDRIER_REEL.semaines.flatMap((x) => entreesDe(x.iso_week, bande));
+const classesDu = (niveau) => CLASSES.filter((c) => c.startsWith(niveau[0]));
+const slugDe = (notionId) => notionId.slice(notionId.indexOf('.') + 1);
+// Page niveau : un lien par classe du niveau et par fiche LIÉE de la semaine.
+const liensAttendus = (niveau, iso) => classesDu(niveau).length * entreesDe(iso).filter(estLiee).length;
+// Couples EXACTS (classe × notion), multiplicité comprise : attendus (dérivés) et obtenus (page).
+const couplesAttendus = (niveau, iso, cal = CALENDRIER_REEL) => {
+  const sem = cal.semaines.find((x) => x.iso_week === iso);
+  const lies = sem.entrees.filter((e) => e.bande === BANDE_MILIEU && e.statut === 'publie' && PUBLIES_CAL.has(e.set_id));
+  return classesDu(niveau).flatMap((c) => lies.map((e) => `${c}×${slugDe(e.notion_id)}`)).sort();
+};
+const couplesObtenus = (root, iso, cal = CALENDRIER_REEL) => {
+  const slugs = cal.semaines.find((x) => x.iso_week === iso).entrees.map((e) => slugDe(e.notion_id));
+  // Classe ET notion lues dans le defi_id de l'URL (defi_<année>-w<semaine>_<classe>_<slug>) ;
+  // le libellé affiché doit concorder avec la classe du lien.
+  return tousParClasse(root, 'fonda-lien-classe').map((li) => {
+    const href = decodeURIComponent(li.children[1].href);
+    const m = /[?&]defi=defi_\d{4}-w(\d{1,2})_(\d{3})_([a-z0-9-]+)$/.exec(href);
+    assert.ok(m, `defi_id illisible : ${href}`);
+    assert.equal(Number(m[1]), iso, `semaine du defi_id : ${href}`);
+    assert.equal(li.children[0].textContent, m[2], `libellé ≠ classe du lien : ${href}`);
+    return `${m[2]}×${slugs.includes(m[3]) ? m[3] : 'AUTRE'}`;
+  }).sort();
+};
+const PALIER_TXT = { nI: 'Initial', nF: 'Final' };
+const DIFFICULTE_TXT = { rouge: 'difficulté forte', ambre: 'difficulté moyenne', vert: 'difficulté faible' };
+// Calendrier SYNTHÉTIQUE mixte (indépendant des données réelles) : S45 bande milieu = maths
+// PUBLIÉE (au catalogue) + français PLANIFIÉE — garantit toujours les deux branches.
+const CALENDRIER_MIXTE = (() => {
+  const c = JSON.parse(JSON.stringify(CALENDRIER_REEL));
+  c.semaines.find((x) => x.iso_week === REF.S45.iso).entrees = [
+    { notion_id: 'fr.comprendre-consigne', matiere: 'français', palier: 'nI', bande: BANDE_MILIEU, difficulte: { valeur: 'ambre', source: 'priorite_initiale' }, statut: 'planifie' },
+    { notion_id: 'maths.grandeurs-mesures', matiere: 'maths', palier: 'nI', bande: BANDE_MILIEU, difficulte: { valeur: 'rouge', source: 'priorite_initiale' }, statut: 'publie', set_id: 'set_fonda_grandeurs-mesures_nI_02' },
+  ];
+  return c;
+})();
+
+function tousParClasse(el, fragment, acc = []) {
+  for (const c of (el && el.children) || []) {
+    if (c && typeof c.className === 'string' && c.className.split(' ').includes(fragment)) acc.push(c);
+    tousParClasse(c, fragment, acc);
+  }
+  return acc;
+}
+function tousParTag(el, tag, acc = []) {
+  for (const c of (el && el.children) || []) {
+    if (c && c.tagName === tag) acc.push(c);
+    tousParTag(c, tag, acc);
+  }
+  return acc;
+}
+
+async function demarrerLe(dateIso, opts) {
+  mockCal.timers.enable({ apis: ['Date'], now: new Date(`${dateIso}T10:00:00`) });
+  try {
+    return await demarrerBootstrap({ calendrier: CALENDRIER_REEL, ...opts });
+  } finally {
+    mockCal.timers.reset();
+  }
+}
+
+describe('programme P2 de référence (intentionnel) = calendar.json', () => {
+  test('les semaines de PROGRAMME_P2_REFERENCE existent en P2 du calendrier, aux dates attendues (sinon : revoir ces tests)', () => {
+    const p2 = CALENDRIER_REEL.semaines.filter((x) => x.periode_id === REF.periode).map((x) => x.iso_week);
+    assert.deepEqual(p2, [...REF.semaines], 'programme P2 modifié : revoir les tests qui utilisent PROGRAMME_P2_REFERENCE');
+    for (const k of ['S45', 'S46', 'S48']) {
+      const sem = CALENDRIER_REEL.semaines.find((x) => x.iso_week === REF[k].iso);
+      assert.ok(sem.du <= REF[k].jour && REF[k].jour <= sem.au, `${k} : ${REF[k].jour} hors de la semaine`);
+      assert.ok(sem.entrees.some((e) => e.bande === BANDE_MILIEU), `${k} : programmée pour la bande 5e–4e`);
+    }
+  });
+});
+
+describe('calendrier v2 — fonctions de vue pures', () => {
+  test('etatDuJour : vacances, semaine (week-end compris), hors calendrier', () => {
+    const { etatDuJour, texteBandeau } = obtenirExportsBootstrap();
+    const vac = etatDuJour(CALENDRIER_REEL, new Date('2026-10-27T10:00:00'));
+    assert.equal(vac.type, 'vacances');
+    assert.equal(texteBandeau(vac), 'Vacances de la Toussaint · reprise lun 2 nov');
+    const sem = etatDuJour(CALENDRIER_REEL, new Date(`${REF.S45.jour}T10:00:00`));
+    assert.equal(sem.type, 'semaine');
+    assert.equal(texteBandeau(sem), `Semaine ${REF.S45.iso} · P2 en cours`);
+    assert.equal(etatDuJour(CALENDRIER_REEL, new Date('2026-11-08T18:00:00+01:00')).semaine.iso_week, REF.S45.iso, 'le dimanche (heure de Paris) reste dans la semaine');
+    // Jour de P3 SANS semaine programmée : fixture où P3 est explicitement vidée (le calendrier
+    // réel pourra programmer janvier sans casser ce test).
+    const p3Vide = { ...CALENDRIER_REEL, semaines: CALENDRIER_REEL.semaines.filter((x) => x.periode_id !== 'P3') };
+    const p3 = etatDuJour(p3Vide, new Date('2027-01-12T10:00:00'));
+    assert.equal(p3.type, 'periode');
+    assert.equal(texteBandeau(p3), 'P3 en cours');
+    // Calendrier réel : une semaine programmée ce jour-là l'emporte, sinon « P3 en cours ».
+    const reel = etatDuJour(CALENDRIER_REEL, new Date('2027-01-12T10:00:00'));
+    const prog = CALENDRIER_REEL.semaines.find((x) => x.du <= '2027-01-12' && '2027-01-12' <= x.au);
+    assert.equal(reel.type, prog ? 'semaine' : 'periode');
+    assert.equal(texteBandeau(etatDuJour({}, new Date('2026-08-01T10:00:00'))), 'Hors période scolaire');
+  });
+
+  test('plageCourte : même mois / deux mois', () => {
+    const { plageCourte } = obtenirExportsBootstrap();
+    assert.equal(plageCourte('2026-11-02', '2026-11-06'), '2–6 nov');
+    assert.equal(plageCourte('2026-11-30', '2026-12-04'), '30 nov–4 déc');
+  });
+
+  test('caseDepuisEntree : couleur LUE dans difficulte.valeur, étoiles du palier, lien seulement si publiée ET au catalogue', () => {
+    const { caseDepuisEntree } = obtenirExportsBootstrap();
+    const notions = new Map(REFERENTIEL.notions.map((n) => [n.id, n]));
+    const publies = new Set(['set_fonda_grandeurs-mesures_nI_02']);
+    const base = { notion_id: 'maths.grandeurs-mesures', matiere: 'maths', palier: 'nI', bande: 'c4-milieu', statut: 'publie', set_id: 'set_fonda_grandeurs-mesures_nI_02', difficulte: { valeur: 'rouge', source: 'priorite_initiale' } };
+    const c = caseDepuisEntree(base, { notions, publies });
+    assert.equal(c.setId, 'set_fonda_grandeurs-mesures_nI_02');
+    assert.equal(c.difficulte, 'rouge');
+    assert.equal(c.etoiles, '★');
+    assert.equal(c.notion, notions.get('maths.grandeurs-mesures').libelle);
+    assert.equal(caseDepuisEntree({ ...base, difficulte: { valeur: 'vert', source: 'stats_cartes' } }, { notions, publies }).difficulte, 'vert');
+    assert.equal(caseDepuisEntree({ ...base, palier: 'nF' }, { notions, publies }).etoiles, '★★');
+    assert.equal(caseDepuisEntree(base, { notions, publies: new Set() }).setId, null, 'set_id absent du catalogue chargé : pas de lien');
+    const planifiee = { ...base, statut: 'planifie' };
+    delete planifiee.set_id;
+    assert.equal(caseDepuisEntree(planifiee, { notions, publies }).setId, null);
+    // Le STATUT compte à lui seul : planifiée mais set_id PRÉSENT au catalogue -> jamais un lien.
+    assert.equal(caseDepuisEntree({ ...base, statut: 'planifie' }, { notions, publies }).setId, null, 'planifiée + set_id au catalogue : pas de lien');
+  });
+
+  test('construireVueCalendrier (bande milieu) : P2 affichée, cases et cases liées DÉRIVÉES du calendrier ; P3–P5 vides (grisées)', () => {
+    const { construireVueCalendrier } = obtenirExportsBootstrap();
+    const vue = construireVueCalendrier({ calendrier: CALENDRIER_REEL, catalogue: CATALOGUE, referentiel: REFERENTIEL, bande: 'c4-milieu', maintenant: new Date(`${REF.S46.jour}T10:00:00`) });
+    const [p2, ...autres] = vue.periodes;
+    assert.equal(p2.id, 'P2');
+    assert.equal(p2.vide, false, 'P2 a des entrées : jamais grisée en entier, même genere:false');
+    assert.equal(p2.genere, false);
+    assert.equal(p2.statut, 'en_cours');
+    assert.equal(p2.semaines.length, semainesDe('P2').length);
+    assert.equal(p2.semaines.filter((s) => s.courante).map((s) => s.isoWeek).join(), String(REF.S46.iso));
+    const cases = p2.semaines.flatMap((s) => s.cases);
+    const attendues = entreesPeriode('P2');
+    assert.equal(cases.length, attendues.length);
+    // Case par case : liée (set_id) SSI l'entrée est publiée ET au catalogue ; sinon grisée (null).
+    assert.deepEqual(cases.map((c) => [c.matiere, c.setId]), attendues.map((e) => [e.matiere, estLiee(e) ? e.set_id : null]));
+    // Ordre RELATIF des matières présentes dans chaque semaine : maths avant français.
+    assert.ok(p2.semaines.every((s) => s.cases.every((c, i) => i === 0 || ORDRE_MATIERE[s.cases[i - 1].matiere] <= ORDRE_MATIERE[c.matiere])));
+    assert.deepEqual(autres.map((p) => [p.id, p.vide]), autres.map((p) => [p.id, entreesPeriode(p.id).length === 0]));
+    const c3 = construireVueCalendrier({ calendrier: CALENDRIER_REEL, catalogue: CATALOGUE, referentiel: REFERENTIEL, bande: 'c3', maintenant: new Date(`${REF.S46.jour}T10:00:00`) });
+    assert.ok(c3.periodes.every((p) => p.vide === (entreesPeriode(p.id, 'c3').length === 0)), 'bande c3 : vide SSI aucune entrée');
+  });
+
+  test('ordre maths -> français IMPOSÉ par la vue (fixture synthétique reçue français -> maths)', () => {
+    const { construireVueCalendrier, notionsDeLaSemaine } = obtenirExportsBootstrap();
+    const vue = construireVueCalendrier({ calendrier: CALENDRIER_MIXTE, catalogue: CATALOGUE, referentiel: REFERENTIEL, bande: BANDE_MILIEU, maintenant: new Date(`${REF.S45.jour}T10:00:00`) });
+    const s45 = vue.periodes[0].semaines.find((x) => x.isoWeek === REF.S45.iso);
+    assert.deepEqual(s45.cases.map((c) => [c.matiere, c.setId]), [['maths', 'set_fonda_grandeurs-mesures_nI_02'], ['français', null]]);
+    const n = notionsDeLaSemaine({ calendrier: CALENDRIER_MIXTE, catalogue: CATALOGUE, referentiel: REFERENTIEL, bande: BANDE_MILIEU, maintenant: new Date(`${REF.S45.jour}T10:00:00`) });
+    assert.deepEqual(n.cases.map((c) => c.matiere), ['maths', 'français']);
+  });
+
+  test('notionsDeLaSemaine : semaine courante ; en vacances, la semaine de la reprise', () => {
+    const { notionsDeLaSemaine } = obtenirExportsBootstrap();
+    const args = { calendrier: CALENDRIER_REEL, catalogue: CATALOGUE, referentiel: REFERENTIEL, bande: 'c4-milieu' };
+    const s48 = notionsDeLaSemaine({ ...args, maintenant: new Date(`${REF.S48.jour}T10:00:00`) });
+    assert.equal(s48.semaine.isoWeek, REF.S48.iso);
+    assert.equal(s48.reprise, false);
+    assert.deepEqual(s48.cases.map((c) => c.setId), entreesDe(REF.S48.iso).map((e) => (estLiee(e) ? e.set_id : null)));
+    const toussaint = notionsDeLaSemaine({ ...args, maintenant: new Date('2026-10-27T10:00:00') });
+    assert.equal(toussaint.reprise, true);
+    assert.equal(toussaint.semaine.isoWeek, REF.S45.iso);
+    assert.deepEqual(toussaint.cases.map((c) => c.setId), entreesDe(REF.S45.iso).map((e) => (estLiee(e) ? e.set_id : null)));
+    const noel = notionsDeLaSemaine({ ...args, maintenant: new Date('2026-12-24T10:00:00') });
+    // Reprise de janvier : la semaine programmée au début de P3 (toutes bandes), sinon rien
+    // d'inventé ; ses cases = les entrées de la bande milieu de cette semaine (éventuellement aucune).
+    const p3 = CALENDRIER_REEL.periodes.find((x) => x.id === 'P3');
+    const repriseP3 = CALENDRIER_REEL.semaines.find((x) => x.du === p3.du);
+    if (repriseP3) {
+      assert.equal(noel.semaine.isoWeek, repriseP3.iso_week);
+      assert.deepEqual(noel.cases.map((c) => c.setId), entreesDe(repriseP3.iso_week).map((e) => (estLiee(e) ? e.set_id : null)));
+    } else assert.equal(noel.semaine, null, 'reprise de janvier non programmée : rien d\'inventé');
+    // Fixture : reprise NON programmée (semaines de P3 retirées) -> toujours exercé.
+    const sansP3 = { ...CALENDRIER_REEL, semaines: CALENDRIER_REEL.semaines.filter((x) => x.du < p3.du) };
+    assert.equal(notionsDeLaSemaine({ ...args, calendrier: sansP3, maintenant: new Date('2026-12-24T10:00:00') }).semaine, null, 'reprise non programmée : rien d\'inventé');
+    assert.equal(notionsDeLaSemaine({ ...args, bande: 'c3', maintenant: new Date(`${REF.S48.jour}T10:00:00`) }).cases.length, entreesDe(REF.S48.iso, 'c3').length);
+  });
+});
+
+describe('?fonda=1 — accueil « Notions de la semaine » (porte : sélecteur de niveau)', () => {
+  test('sans niveau (rien en mémoire) : sélecteur d\'abord, liens vers l\'accueil (pas la page niveau)', async () => {
+    global.localStorage = { getItem: () => null, setItem() {} };
+    const root = await demarrerLe(REF.S45.jour, { search: '?fonda=1' });
+    delete global.localStorage;
+    const boutons = tousParClasse(root, 'fonda-niveau-picker__bouton');
+    assert.deepEqual(boutons.map((b) => b.textContent), ['6e', '5e', '4e', '3e']);
+    assert.ok(boutons.every((b) => /\?fonda=1&niveau=[3-6]e$/.test(b.href)), boutons.map((b) => b.href).join());
+  });
+
+  test('niveau 5e : les fiches de la semaine (liée SSI publiée au catalogue, sinon grisée sans lien), choix mémorisé', async () => {
+    const ecritures = [];
+    global.localStorage = { getItem: () => null, setItem: (k, v) => ecritures.push([k, v]) };
+    const root = await demarrerLe(REF.S45.jour, { search: '?fonda=1&niveau=5e' });
+    delete global.localStorage;
+    assert.deepEqual(ecritures, [['box_fonda_niveau', '5e']]);
+    assert.ok(tousParTag(root, 'h2').some((h) => h.textContent === 'Notions de la semaine'));
+    const tuiles = tousParClasse(root, 'fonda-cal-tuile');
+    const attendues = entreesDe(REF.S45.iso);
+    assert.equal(tuiles.length, attendues.length);
+    // Nom accessible = texte de la tuile : matière, notion, palier (texte lecteur d'écran),
+    // difficulté et état — jamais la couleur seule, jamais d'aria-label sur une div.
+    const MATIERE = { maths: 'Mathématiques', 'français': 'Français' };
+    attendues.forEach((e, i) => {
+      const t = tuiles[i];
+      assert.match(t.textContent, new RegExp(`${MATIERE[e.matiere]}.*palier ${PALIER_TXT[e.palier]}\\.`));
+      if (estLiee(e)) {
+        assert.equal(t.tagName, 'a', `${e.notion_id} publiée : lien`);
+        assert.equal(t.href.slice(t.href.indexOf('?')), `?fonda=1&page=carte&set=${e.set_id}`);
+        assert.match(t.textContent, new RegExp(`${DIFFICULTE_TXT[e.difficulte.valeur]}.*Disponible`));
+      } else {
+        assert.equal(t.tagName, 'div', `${e.notion_id} planifiée : jamais un lien`);
+        assert.ok(t.className.includes('fonda-cal-tuile--planifiee'));
+        assert.match(t.textContent, /En préparation/);
+      }
+    });
+    assert.ok(tuiles.every((t) => !('aria-label' in t.attributes)));
+    const liens = tousParTag(root, 'a').map((a) => a.href);
+    assert.ok(liens.some((h) => /page=calendrier&bande=c4-milieu$/.test(h)), 'lien vers le calendrier de la bande');
+    assert.ok(liens.some((h) => /choix=niveau$/.test(h)), 'changer de niveau');
+    const prof = tousParClasse(root, 'fonda-cal-prof');
+    assert.equal(prof.length, 1, 'accès enseignant mis en avant');
+    assert.match(prof[0].href, new RegExp(`page=niveau&niveau=5e&semaine=${REF.S45.iso}$`), 'la semaine affichée est transmise');
+  });
+
+  test('scénario MIXTE synthétique (toujours exercé) : tuile maths liée, tuile français div planifiée « En préparation »', async () => {
+    const root = await demarrerLe(REF.S45.jour, { search: '?fonda=1&niveau=5e', calendrier: CALENDRIER_MIXTE });
+    const tuiles = tousParClasse(root, 'fonda-cal-tuile');
+    assert.equal(tuiles.length, 2);
+    assert.equal(tuiles[0].tagName, 'a');
+    assert.match(tuiles[0].href, /\?fonda=1&page=carte&set=set_fonda_grandeurs-mesures_nI_02$/);
+    assert.match(tuiles[0].textContent, /Mathématiques.*palier Initial\..*difficulté forte.*Disponible/);
+    assert.equal(tuiles[1].tagName, 'div', 'case planifiée : jamais un lien');
+    assert.ok(tuiles[1].className.includes('fonda-cal-tuile--planifiee'));
+    assert.match(tuiles[1].textContent, /Français.*palier Initial\..*difficulté moyenne.*En préparation/);
+  });
+
+  test('niveau mémorisé (switch BOX -> FONDA sans paramètre) : accueil direct ; ?choix=niveau rouvre le sélecteur', async () => {
+    global.localStorage = { getItem: () => '4e', setItem() {} };
+    const root = await demarrerLe(REF.S45.jour, { search: '?fonda=1' });
+    assert.equal(tousParClasse(root, 'fonda-cal-tuile').length, entreesDe(REF.S45.iso).length);
+    const choix = await demarrerLe(REF.S45.jour, { search: '?fonda=1&choix=niveau' });
+    delete global.localStorage;
+    assert.equal(tousParClasse(choix, 'fonda-niveau-picker__bouton').length, 4);
+  });
+
+  test('pendant les vacances : bandeau vacances + les fiches de la reprise', async () => {
+    const root = await demarrerLe('2026-10-27', { search: '?fonda=1&niveau=5e' });
+    const flaps = tousParClasse(root, 'fonda-flaps')[0];
+    assert.equal(flaps.attributes['aria-label'], 'Vacances de la Toussaint · reprise lun 2 nov');
+    assert.ok(tousParClasse(root, 'fonda-cal-intro').some((p) => new RegExp(`^À la reprise — semaine ${REF.S45.iso}`).test(p.textContent)));
+    assert.equal(tousParClasse(root, 'fonda-cal-tuile').length, entreesDe(REF.S45.iso).length);
+  });
+
+  test('niveau 6e (bande c3) : tuiles = entrées de la semaine ; sans entrée, message ; aucune exception', async () => {
+    const root = await demarrerLe(REF.S45.jour, { search: '?fonda=1&niveau=6e' });
+    assert.equal(tousParClasse(root, 'fonda-cal-tuile').length, entreesDe(REF.S45.iso, 'c3').length);
+    if (entreesDe(REF.S45.iso, 'c3').length === 0) assert.ok(tousParClasse(root, 'fonda-cal-intro').some((p) => /Pas de fiche programmée/.test(p.textContent)));
+    // Bande VIDE garantie (fixture synthétique) : message toujours exercé.
+    const vide = JSON.parse(JSON.stringify(CALENDRIER_REEL));
+    vide.semaines.forEach((x) => { x.entrees = x.entrees.filter((e) => e.bande !== 'c3'); });
+    const r2 = await demarrerLe(REF.S45.jour, { search: '?fonda=1&niveau=6e', calendrier: vide });
+    assert.equal(tousParClasse(r2, 'fonda-cal-tuile').length, 0);
+    assert.ok(tousParClasse(r2, 'fonda-cal-intro').some((p) => /Pas de fiche programmée/.test(p.textContent)));
+  });
+
+  test('catalogue indisponible : message visible, jamais de page blanche', async () => {
+    const root = await demarrerLe(REF.S45.jour, { search: '?fonda=1&niveau=5e', catalogue: null });
+    assert.match(texteDe(root), /Calendrier indisponible/);
+  });
+});
+
+describe('?fonda=1&page=calendrier — page d\'affichage par période', () => {
+  test('bande milieu : P2 dépliable, tuiles et liens DÉRIVÉS du calendrier ; P3–P5 grisées « Non générée »', async () => {
+    const root = await demarrerLe(REF.S45.jour, { search: '?fonda=1&page=calendrier' });
+    const periodes = tousParClasse(root, 'fonda-cal-periode');
+    assert.equal(periodes.length, CALENDRIER_REEL.periodes.length);
+    assert.equal(periodes[0].className, 'fonda-cal-periode');
+    assert.equal(tousParClasse(root, 'fonda-cal-periode--vide').length, CALENDRIER_REEL.periodes.filter((p) => entreesPeriode(p.id).length === 0).length);
+    const tuiles = tousParClasse(periodes[0], 'fonda-cal-tuile');
+    assert.equal(tuiles.length, entreesPeriode('P2').length);
+    assert.equal(tuiles.filter((t) => t.tagName === 'a').length, entreesPeriode('P2').filter(estLiee).length);
+    assert.deepEqual(tuiles.filter((t) => t.tagName === 'a').map((t) => t.href.slice(t.href.indexOf('set=') + 4)), entreesPeriode('P2').filter(estLiee).map((e) => e.set_id));
+    assert.equal(tousParClasse(root, 'fonda-cal-tuile--planifiee').length, entreesBande().filter((e) => !estLiee(e)).length);
+    const tete = tousParClasse(periodes[0], 'fonda-cal-periode__tete')[0];
+    assert.equal(tete.attributes['aria-expanded'], 'true', 'période en cours dépliée');
+    const semaines = tousParClasse(periodes[0], 'fonda-cal-semaines')[0];
+    tete.__click();
+    assert.equal(semaines.hidden, true);
+    assert.equal(tete.attributes['aria-expanded'], 'false');
+    assert.equal(tousParClasse(root, 'fonda-cal-semaine--courante').length, 1);
+    if (entreesPeriode(CALENDRIER_REEL.periodes[1].id).length === 0) assert.match(texteDe(periodes[1]), /À générer avant la reprise/);
+  });
+
+  test('sélecteur de bande : 3 bandes, active marquée ; bande c4-fin vide -> « Pas encore de programme »', async () => {
+    const root = await demarrerLe(REF.S45.jour, { search: '?fonda=1&page=calendrier&bande=c4-fin' });
+    const liens = tousParClasse(root, 'fonda-cal-bandes__lien');
+    assert.deepEqual(liens.map((a) => a.textContent), ['6e', '5e – 4e', '3e']);
+    assert.equal(liens[2].attributes['aria-current'], 'page');
+    assert.ok(liens.every((a) => /page=calendrier&bande=/.test(a.href)));
+    if (entreesBande('c4-fin').length === 0) {
+      assert.ok(tousParClasse(root, 'fonda-message').some((p) => /Pas encore de programme pour les 3e/.test(p.textContent)));
+      assert.equal(tousParClasse(root, 'fonda-cal-tuile').length, 0);
+    } else assert.equal(tousParClasse(root, 'fonda-cal-tuile').length, entreesBande('c4-fin').length);
+  });
+
+  test('bande inconnue dans l\'URL : repli sur la bande milieu, jamais une valeur arbitraire', async () => {
+    const root = await demarrerLe(REF.S45.jour, { search: '?fonda=1&page=calendrier&bande=__proto__' });
+    const actif = tousParClasse(root, 'fonda-cal-bandes__lien--actif');
+    assert.equal(actif.length, 1);
+    assert.equal(actif[0].textContent, '5e – 4e');
+  });
+
+  test('page niveau (parcours existant) avec le vrai calendrier v2 : liens des seules fiches PUBLIÉES de la semaine, jamais de lien planifié', async () => {
+    const root = await demarrerLe(REF.S45.jour, { search: '?fonda=1&page=niveau&niveau=4e' });
+    const liens = tousParClasse(root, 'fonda-lien-classe');
+    assert.equal(liens.length, liensAttendus('4e', REF.S45.iso), 'un lien par classe de 4e et par fiche publiée de la semaine');
+    assert.deepEqual(couplesObtenus(root, REF.S45.iso), couplesAttendus('4e', REF.S45.iso), 'couples classe × notion EXACTS (aucun doublon, aucun manque, jamais une planifiée)');
+  });
+
+  test('page niveau, scénario MIXTE synthétique : liens maths seulement, jamais la fiche planifiée', async () => {
+    const root = await demarrerLe(REF.S45.jour, { search: '?fonda=1&page=niveau&niveau=4e', calendrier: CALENDRIER_MIXTE });
+    const attendus = couplesAttendus('4e', REF.S45.iso, CALENDRIER_MIXTE);
+    assert.equal(attendus.length, classesDu('4e').length);
+    assert.ok(attendus.every((c) => c.endsWith('×grandeurs-mesures')));
+    assert.deepEqual(couplesObtenus(root, REF.S45.iso, CALENDRIER_MIXTE), attendus);
+  });
+});
+
+describe('calendrier v2 — corrections après relecture Codex', () => {
+  test('jour du calendrier = date à Paris, quel que soit le fuseau de l\'appareil', () => {
+    const { etatDuJour } = obtenirExportsBootstrap();
+    // 8 nov. 2026, 23 h 30 UTC = 9 nov., 0 h 30 à Paris : semaine 46, pas 45.
+    assert.equal(etatDuJour(CALENDRIER_REEL, new Date('2026-11-08T23:30:00Z')).semaine.iso_week, REF.S46.iso);
+    assert.equal(etatDuJour(CALENDRIER_REEL, new Date('2026-11-08T22:30:00Z')).semaine.iso_week, REF.S45.iso);
+  });
+
+  test('week-end : l\'accueil (S45) et « Défis par classe » montrent la même semaine', async () => {
+    const accueil = await demarrerLe(REF.S45.dimanche, { search: '?fonda=1&niveau=4e' });
+    const prof = tousParClasse(accueil, 'fonda-cal-prof')[0];
+    assert.match(prof.href, new RegExp(`semaine=${REF.S45.iso}$`));
+    const page = await demarrerLe(REF.S45.dimanche, { search: prof.href.slice(prof.href.indexOf('?')) });
+    assert.equal(tousParClasse(page, 'fonda-lien-classe').length, liensAttendus('4e', REF.S45.iso), 'liens par classe de S45, pas « Aucun défi »');
+    assert.deepEqual(couplesObtenus(page, REF.S45.iso), couplesAttendus('4e', REF.S45.iso));
+  });
+
+  test('vacances : « Défis par classe » vise la semaine de la reprise', async () => {
+    const accueil = await demarrerLe('2026-10-27', { search: '?fonda=1&niveau=5e' });
+    assert.match(tousParClasse(accueil, 'fonda-cal-prof')[0].href, new RegExp(`semaine=${REF.S45.iso}$`));
+  });
+
+  test('page niveau : un set_id absent du catalogue chargé ne donne aucun lien (calendrier en retard sur un retrait)', async () => {
+    // MÉCANIQUE de retrait sur la fixture MIXTE (une fiche publiée garantie, indépendante de l'état
+    // de publication du calendrier réel) : son set_id retiré du catalogue chargé -> aucun lien.
+    const avant = await demarrerLe(REF.S45.jour, { search: '?fonda=1&page=niveau&niveau=5e', calendrier: CALENDRIER_MIXTE });
+    assert.ok(tousParClasse(avant, 'fonda-lien-classe').length > 0, 'témoin : la fiche publiée de la fixture donne des liens');
+    const catalogue = { ...CATALOGUE, lots: CATALOGUE.lots.filter((l) => l.set_id !== 'set_fonda_grandeurs-mesures_nI_02') };
+    const root = await demarrerLe(REF.S45.jour, { search: '?fonda=1&page=niveau&niveau=5e', catalogue, calendrier: CALENDRIER_MIXTE });
+    assert.equal(tousParClasse(root, 'fonda-lien-classe').length, 0);
+    assert.match(texteDe(root), /Aucun défi programmé pour 5e/);
+  });
+
+  test('calendrier et catalogue lus en cache « no-cache » (fiche publiée visible aussitôt)', async () => {
+    const journalOptions = [];
+    await demarrerLe(REF.S45.jour, { search: '?fonda=1&niveau=5e', journalOptions });
+    const opts = new Map(journalOptions);
+    assert.deepEqual(opts.get('fonda/data/calendar.json'), { cache: 'no-cache' });
+    assert.deepEqual(opts.get('fonda/data/catalogue-fonda.json'), { cache: 'no-cache' });
+  });
+});
+
+describe('page niveau ouverte directement : même règle de jour que l\'accueil (Paris, lundi→dimanche)', () => {
+  test('dimanche 8 nov. et 2 nov. 0 h 30 à Paris : semaine 45, comme l\'accueil', () => {
+    const { semaineCourante, etatDuJour } = obtenirExportsBootstrap();
+    for (const instant of ['2026-11-08T12:00:00Z', '2026-11-01T23:30:00Z']) {
+      const d = new Date(instant);
+      assert.equal(semaineCourante(CALENDRIER_REEL, d).iso_week, REF.S45.iso, instant);
+      assert.equal(etatDuJour(CALENDRIER_REEL, d).semaine.iso_week, REF.S45.iso, instant);
+    }
+    assert.equal(semaineCourante(CALENDRIER_REEL, new Date('2026-11-01T22:30:00Z')), null, 'encore en vacances à Paris');
+    for (const jour of ['2026-12-19T10:00:00Z', '2026-12-20T10:00:00Z']) {
+      assert.equal(semaineCourante(CALENDRIER_REEL, new Date(jour)), null, `${jour} : vacances de Noël prioritaires`);
+      assert.equal(etatDuJour(CALENDRIER_REEL, new Date(jour)).type, 'vacances');
+    }
+  });
+
+  test('accès direct sans semaine= le dimanche : liens par classe affichés', async () => {
+    const root = await demarrerLe(REF.S45.dimanche, { search: '?fonda=1&page=niveau&niveau=4e' });
+    assert.equal(tousParClasse(root, 'fonda-lien-classe').length, liensAttendus('4e', REF.S45.iso));
+    assert.deepEqual(couplesObtenus(root, REF.S45.iso), couplesAttendus('4e', REF.S45.iso));
   });
 });
