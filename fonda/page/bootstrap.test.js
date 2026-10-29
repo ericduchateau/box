@@ -1208,9 +1208,16 @@ describe('calendrier v2 — fonctions de vue pures', () => {
     assert.equal(sem.type, 'semaine');
     assert.equal(texteBandeau(sem), 'Semaine 45 · P2 en cours');
     assert.equal(etatDuJour(CALENDRIER_REEL, new Date('2026-11-08T18:00:00+01:00')).semaine.iso_week, 45, 'le dimanche (heure de Paris) reste dans la semaine');
-    const p3 = etatDuJour(CALENDRIER_REEL, new Date('2027-01-12T10:00:00'));
+    // Jour de P3 SANS semaine programmée : fixture où P3 est explicitement vidée (le calendrier
+    // réel pourra programmer janvier sans casser ce test).
+    const p3Vide = { ...CALENDRIER_REEL, semaines: CALENDRIER_REEL.semaines.filter((x) => x.periode_id !== 'P3') };
+    const p3 = etatDuJour(p3Vide, new Date('2027-01-12T10:00:00'));
     assert.equal(p3.type, 'periode');
     assert.equal(texteBandeau(p3), 'P3 en cours');
+    // Calendrier réel : une semaine programmée ce jour-là l'emporte, sinon « P3 en cours ».
+    const reel = etatDuJour(CALENDRIER_REEL, new Date('2027-01-12T10:00:00'));
+    const prog = CALENDRIER_REEL.semaines.find((x) => x.du <= '2027-01-12' && '2027-01-12' <= x.au);
+    assert.equal(reel.type, prog ? 'semaine' : 'periode');
     assert.equal(texteBandeau(etatDuJour({}, new Date('2026-08-01T10:00:00'))), 'Hors période scolaire');
   });
 
