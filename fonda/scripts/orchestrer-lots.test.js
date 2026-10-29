@@ -18,8 +18,8 @@ const A = 'set_fonda_comprendre-consigne_nI_92';
 const B = 'set_fonda_grandeurs-mesures_nI_93';
 
 // Monde simulé : un état de diagnostic par lot, qui avance UNIQUEMENT par les commandes.
-function monde({ etats = {}, verrou = {}, n8n = { generation: true, portier: true }, sur = {} } = {}) {
-  const w = { appels: [], affiche: [], journal: [], publies: new Set(), sale: false, modifies: [], nouveau: null, etats: { ...etats }, verrou: { ...verrou } };
+function monde({ etats = {}, verrou = {}, n8n = { generation: true, portier: true }, sur = {}, design = [], terminal = { stdin: true, stdout: true } } = {}) {
+  const w = { appels: [], affiche: [], journal: [], publies: new Set(), sale: false, modifies: [], nouveau: null, etats: { ...etats }, verrou: { ...verrou }, distante: false, pousses: 0 };
   const ok = (stdout = '') => ({ code: 0, stdout, stderr: '' });
   const js = (o) => ok(JSON.stringify(o));
   w.lancer = (exe, args, opts) => {
@@ -28,8 +28,11 @@ function monde({ etats = {}, verrou = {}, n8n = { generation: true, portier: tru
     if (exe === 'git') {
       const [c] = args;
       if (c === 'status') return ok(args.includes('--untracked-files=no') ? (w.sale ? ' M AVANCEMENT.md\n' : w.modifies.map((f) => ` M ${f}\n`).join('')) : '');
-      if (c === 'rev-parse') return { code: 1, stdout: '', stderr: '' };
-      if (c === 'show') return ok(JSON.stringify({ lots: [...w.publies].map((set_id) => ({ set_id })) }));
+      if (c === 'rev-parse') return args.includes('--verify') ? { code: 1, stdout: '', stderr: '' } : ok(`${w.distante ? 'abc' : 'zzz'}\n`);
+      if (c === 'ls-remote') return ok(w.distante ? 'abc\trefs/heads/publie/test-batch\n' : '');
+      if (c === 'merge-base' || c === 'rev-list' || c === 'diff-tree') return ok('');
+      if (c === 'push') { w.pousses += 1; if (w.pushKo) return { code: 1, stdout: '', stderr: 'réseau' }; w.distante = true; return ok(); }
+      if (c === 'show') return ok(JSON.stringify({ lots: (args[1].startsWith('refs/remotes/origin/design') ? design : [...w.publies]).map((set_id) => ({ set_id })) }));
       if (c === 'ls-files') return ok(w.nouveau ? `${w.nouveau}\n` : '');
       if (c === 'add') return ok();
       if (c === 'diff') return ok(w.modifies.concat(w.nouveau ? [w.nouveau] : []).join('\n'));
@@ -55,7 +58,7 @@ function monde({ etats = {}, verrou = {}, n8n = { generation: true, portier: tru
   };
   w.deps = {
     lancer: w.lancer, n8nActifs: async () => (n8n instanceof Error ? Promise.reject(n8n) : n8n), afficher: (t) => w.affiche.push(t), consigner: (e) => w.journal.push(e),
-    dormir: async () => {}, attenteGenerationMs: 60000, pasAttenteMs: 15000,
+    dormir: async () => {}, attenteGenerationMs: 60000, pasAttenteMs: 15000, terminal: () => terminal,
   };
   return w;
 }
@@ -68,11 +71,14 @@ describe('séquence nominale (monde simulé, aucune vraie signature)', () => {
     const w = monde({ etats: { [A]: 'aucune_generation', [B]: 'aucune_generation' } });
     const r = await lancer(w, [{ setId: A, ref: 'ref-a' }, { setId: B, ref: 'ref-b' }]);
     assert.deepEqual(r.resultats.map((x) => [x.setId, x.issue]), [[A, 'publie'], [B, 'publie']]);
-    assert.deepEqual(cmds(w).slice(0, 10), [
+    const dl = `/clotures/${A}-0123456789abcdef`;
+    assert.deepEqual(cmds(w).slice(0, 15), [
       `signer-cloture.js --diagnostic ${A}`, `declencher-generation.js --etat ${A}`, `declencher-generation.js ${A} ref-a`, `signer-cloture.js --diagnostic ${A}`,
       `signer-cloture.js --saisir ${A}`, `signer-cloture.js --diagnostic ${A}`, `signer-cloture.js ${A}`, `signer-cloture.js --diagnostic ${A}`,
-      `signer-cloture.js --extraire-publication ${A}`, `publier-lot.js /clotures/${A}-0123456789abcdef/lot-relu.json /clotures/${A}-0123456789abcdef/attestation.json --dry-run`,
-    ]);
+      `signer-cloture.js --diagnostic ${A}`, `signer-cloture.js --extraire-publication ${A}`, `publier-lot.js ${dl}/lot-relu.json ${dl}/attestation.json --dry-run`,
+      `signer-cloture.js --diagnostic ${A}`, `publier-lot.js ${dl}/lot-relu.json ${dl}/attestation.json`, `signer-cloture.js --diagnostic ${A}`,
+      `signer-cloture.js --diagnostic ${B}`,
+    ], 'diagnostic avant extraction, avant publication réelle, avant commit');
     const commits = w.appels.filter((a) => a.exe === 'git' && a.args[0] === 'commit');
     assert.equal(commits.length, 2);
     const adds = w.appels.filter((a) => a.exe === 'git' && a.args[0] === 'add').map((a) => a.args.slice(2));
@@ -108,7 +114,7 @@ describe('actes humains : jamais automatisés ni fournis', () => {
   test('le code source ne fournit JAMAIS d\'entrée à un processus enfant ni ne lit/stocke de passphrase', () => {
     const code = fs.readFileSync(path.join(__dirname, 'orchestrer-lots.js'), 'utf8').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
     assert.doesNotMatch(code, /\binput\s*:/, 'aucune option input');
-    assert.doesNotMatch(code, /stdin\.write|\.stdin\b/, 'aucune écriture sur stdin');
+    assert.doesNotMatch(code, /stdin\.(write|pipe|end)|stdin\s*:\s*['"]pipe/, 'aucune écriture sur stdin (seul isTTY est LU)');
     // (Les bandeaux affichés peuvent NOMMER la passphrase ; le code ne la manipule jamais.)
     assert.doesNotMatch(code, /\bpassphrase\s*[:=(]|\.priv\.pem|readline|lirePhrase|preparerSignataire|createPrivateKey/i);
     assert.doesNotMatch(code, /require\(['"]\.\/(signer-cloture|attestation-signee|publier-lot|interim|referentiel-archive)\.js['"]\)/, 'aucun chargement du cœur probant : commandes seulement');
@@ -145,7 +151,7 @@ describe('fail-closed : STOP du lot (consigné), lot suivant', () => {
     assert.equal(cmds(w).filter((c) => c === `signer-cloture.js --diagnostic ${A}`).length, 1 + 4, '1 initial + 60 s / 15 s relevés');
   });
   test('après saisie, décision figée mais pas prête -> STOP, signature JAMAIS lancée', () => unLotStoppe({ etats: { [A]: 'pret_pour_saisie', [B]: 'pret_pour_saisie' }, sur: { lancer: (exe, args, o, m) => { if (args[1] === '--saisir' && args[2] === A) { m.etats[A] = 'decision_figee'; return { code: 0, stdout: '', stderr: '' }; } return null; } } }, /decision_figee/, [`signer-cloture.js ${A}`]));
-  test('après signature : signature_interrompue -> STOP, extraction JAMAIS lancée', () => unLotStoppe({ etats: { [A]: 'pret_pour_cloture', [B]: 'pret_pour_saisie' }, sur: { lancer: (exe, args, o, m) => { if (args.length === 2 && args[0] === O.SIGNATAIRE && args[1] === A) { m.etats[A] = 'signature_interrompue'; return { code: 1, stdout: '', stderr: '' }; } return null; } } }, /signature_interrompue/, [`--extraire-publication ${A}`]));
+  test('après signature (code 0) : signature_interrompue -> STOP, extraction JAMAIS lancée', () => unLotStoppe({ etats: { [A]: 'pret_pour_cloture', [B]: 'pret_pour_saisie' }, sur: { lancer: (exe, args, o, m) => { if (args.length === 2 && args[0] === O.SIGNATAIRE && args[1] === A) { m.etats[A] = 'signature_interrompue'; return { code: 0, stdout: '', stderr: '' }; } return null; } } }, /signature_interrompue/, [`--extraire-publication ${A}`]));
   test('dry-run refusé -> STOP, publication réelle JAMAIS lancée', async () => {
     const w = await unLotStoppe({ etats: { [A]: 'signe', [B]: 'pret_pour_saisie' }, sur: { lancer: (exe, args) => (args[0] === O.PUBLICATION && args.includes('--dry-run') && args[1].includes(A) ? { code: 1, stdout: '', stderr: 'publication refusée : attestation non vérifiée' } : null) } }, /dry-run.*attestation non vérifiée/);
     assert.ok(!w.appels.some((a) => a.args[0] === O.PUBLICATION && a.args[1].includes(A) && !a.args.includes('--dry-run')));
@@ -154,7 +160,14 @@ describe('fail-closed : STOP du lot (consigné), lot suivant', () => {
     await unLotStoppe({ etats: { [A]: 'pret_pour_saisie', [B]: 'pret_pour_saisie' }, sur: { lancer: (exe, args) => (args[1] === '--diagnostic' && args[2] === A ? { code: 0, stdout: 'pas du json', stderr: '' } : null) } }, /sortie illisible/, [`--saisir ${A}`]);
     await unLotStoppe({ etats: { [A]: 'pret_pour_saisie', [B]: 'pret_pour_saisie' }, sur: { lancer: (exe, args) => (args[1] === '--diagnostic' && args[2] === A ? { code: 1, stdout: '', stderr: '✗ accès' } : null) } }, /code de sortie 1/, [`--saisir ${A}`]);
   });
-  test('commit : un fichier suivi inattendu modifié -> STOP, rien de commité pour ce lot', () => unLotStoppe({ etats: { [A]: 'signe', [B]: 'pret_pour_saisie' }, sur: { lancer: (exe, args, o, m) => { if (exe === 'git' && args[0] === 'status' && m.enCours === A && m.modifies.length) return { code: 0, stdout: ' M fonda/data/catalogue-fonda.json\n M fonda/data/set_ids-journal.json\n M fonda/scripts/signer-cloture.js\n', stderr: '' }; return null; } } }, /fichiers suivis modifiés ≠ catalogue \+ journal/));
+  test('commit : un fichier suivi inattendu modifié -> STOP du BATCH (arbre incertain), consignes B, rien commité, lot suivant NON traité', async () => {
+    const w = monde({ etats: { [A]: 'signe', [B]: 'pret_pour_saisie' }, sur: { lancer: (exe, args, o, m) => { if (exe === 'git' && args[0] === 'status' && m.enCours === A && m.modifies.length) return { code: 0, stdout: ' M fonda/data/catalogue-fonda.json\n M fonda/data/set_ids-journal.json\n M fonda/scripts/signer-cloture.js\n', stderr: '' }; return null; } } });
+    const r = await lancer(w, [{ setId: A, ref: 'ref-a' }, { setId: B, ref: 'ref-b' }]);
+    assert.deepEqual(r.resultats.map((x) => x.issue), ['stoppe_batch', 'non_traite']);
+    assert.match(r.resultats[0].raison, /fichiers suivis modifiés ≠ catalogue \+ journal[\s\S]*git add -- fonda\/data\/lots\/set_fonda_comprendre-consigne_nI_92\.json[\s\S]*git restore --/);
+    assert.ok(!w.appels.some((a) => a.exe === 'git' && a.args[0] === 'commit'));
+    assert.equal(r.ok, false);
+  });
 });
 
 describe('relance et branche', () => {
@@ -173,7 +186,9 @@ describe('relance et branche', () => {
     await assert.rejects(O.orchestrer({ lots: [{ setId: A, ref: 'r' }], branche: 'main' }, monde().deps), /branche refusée/);
     const w = monde({ etats: { [A]: 'pret_pour_saisie' } });
     w.sale = true;
-    await assert.rejects(lancer(w), /modifications suivies non commitées/);
+    const r = await lancer(w);
+    assert.equal(r.ok, false);
+    assert.match(w.affiche.join('\n'), /BATCH ARRÊTÉ AVANT TOUT LOT — démarrage : modifications suivies non commitées/);
     assert.deepEqual(cmds(w), []);
   });
   test('liste des lots : format strict, doublons refusés', () => {
@@ -189,7 +204,7 @@ describe('relance et branche', () => {
     assert.ok(!w.appels.some((a) => a.exe === 'git' && ['merge', 'rebase', 'reset'].includes(a.args[0])));
     for (const p of w.appels.filter((a) => a.exe === 'git' && a.args[0] === 'push')) assert.ok(!p.args.some((x) => /:refs\/heads\/(main|design)$/.test(x)));
     const code = fs.readFileSync(path.join(__dirname, 'orchestrer-lots.js'), 'utf8');
-    assert.doesNotMatch(code, /['"]gh['"]|pulls|merge/i);
+    assert.doesNotMatch(code, /['"]gh['"]|pulls|['"](merge|rebase|reset)['"]/i, 'jamais git merge/rebase/reset ni gh');
   });
 });
 
@@ -215,5 +230,74 @@ describe('cœur probant intouché par l\'orchestrateur (octet pour octet)', () =
     const src = fs.readFileSync(path.join(__dirname, 'signer-cloture.js'), 'utf8');
     assert.ok(src.includes("if (typeof deps.rattachement !== 'function') refuser('contrat de rattachement exécution n8n <-> lot NON DÉFINI (§11 bis) : signature refusée', 'precondition');"));
     assert.ok(src.includes("const RATTACHEMENT_SAISIE_LOCALE = () => refuser('parcours page_relecture non défini : rattachement exécution n8n <-> lot absent (seule la saisie_locale est levée, lot 7)', 'precondition');"));
+  });
+});
+
+describe('corrections après relecture Codex (9 points)', () => {
+  test('1. échec de --saisir (code ≠ 0) -> STOP du lot même si le diagnostic suivant serait vert ; signature jamais lancée', async () => {
+    const w = monde({ etats: { [A]: 'pret_pour_saisie' }, sur: { lancer: (exe, args, o, m) => (args[1] === '--saisir' ? (m.etats[A] = 'pret_pour_cloture', { code: 1, stdout: '', stderr: '' }) : null) } });
+    const r = await lancer(w);
+    assert.match(r.resultats[0].raison, /--saisir a échoué \(code 1\)/);
+    assert.ok(!humains(w).some((a) => a.args.length === 2));
+    assert.equal(r.ok, false);
+  });
+  test('1. échec de la signature (code ≠ 0) -> STOP du lot même si « signe » ; extraction jamais lancée', async () => {
+    const w = monde({ etats: { [A]: 'pret_pour_cloture' }, sur: { lancer: (exe, args, o, m) => (args.length === 2 && args[0] === O.SIGNATAIRE && args[1] === A ? (m.etats[A] = 'signe', { code: 1, stdout: '', stderr: '' }) : null) } });
+    const r = await lancer(w);
+    assert.match(r.resultats[0].raison, /signer-cloture\.js a échoué \(code 1\)/);
+    assert.ok(!cmds(w).some((c) => c.includes('--extraire-publication')));
+  });
+  test('2/A. generation_incoherente pendant l\'attente -> STOP (jamais tolérée), même si prête ensuite', async () => {
+    let n = 0;
+    const w = monde({ etats: { [A]: 'aucune_generation' }, sur: { lancer: (exe, args, o, m) => { if (args[0] === O.DECLENCHEUR && args[1] !== '--etat') { m.etats[A] = 'generation_incoherente'; return { code: 0, stdout: JSON.stringify({ issue: 'accepte', statut: 202 }), stderr: '' }; } if (args[1] === '--diagnostic' && m.etats[A] === 'generation_incoherente') { n += 1; if (n > 1) m.etats[A] = 'pret_pour_saisie'; } return null; } } });
+    const r = await lancer(w);
+    assert.match(r.resultats[0].raison, /generation_incoherente/);
+    assert.ok(!cmds(w).some((c) => c.includes('--saisir')));
+  });
+  test('2/A. attente tolérée SEULEMENT après acceptation : verrou « refuse » -> nouvel envoi, mais issue ≠ 202 -> STOP sans attente', async () => {
+    const w = monde({ etats: { [A]: 'aucune_generation' }, sur: { lancer: (exe, args) => (args[0] === O.DECLENCHEUR && args[1] !== '--etat' ? { code: 0, stdout: JSON.stringify({ issue: 'refuse', statut: 400 }), stderr: '' } : null) } });
+    const r = await lancer(w);
+    assert.match(r.resultats[0].raison, /issue « refuse » \(HTTP 400\)/);
+    assert.equal(cmds(w).filter((c) => c.includes('--diagnostic')).length, 1, 'aucun relevé d\'attente');
+  });
+  test('3. stdin OU stdout non relié à un terminal -> refus de démarrer, AUCUNE commande', async () => {
+    for (const terminal of [{ stdin: false, stdout: true }, { stdin: true, stdout: false }, null]) {
+      const w = monde({ etats: { [A]: 'pret_pour_saisie' }, terminal });
+      await assert.rejects(lancer(w), /non reliée à un terminal/);
+      assert.deepEqual(w.appels, []);
+    }
+  });
+  test('4. diagnostic REFAIT avant extraction, avant publication réelle et avant commit ; anomalie apparue -> STOP', async () => {
+    const w1 = monde({ etats: { [A]: 'signe' }, sur: { lancer: (exe, args, o, m) => { if (args[1] === '--extraire-publication') m.etats[A] = 'incident_ouvert'; return null; } } });
+    const r1 = await lancer(w1);
+    assert.match(r1.resultats[0].raison, /avant publication : état « incident_ouvert »/);
+    assert.ok(!w1.appels.some((a) => a.args[0] === O.PUBLICATION && !a.args.includes('--dry-run')), 'publication réelle jamais lancée');
+    const w2 = monde({ etats: { [A]: 'signe' }, sur: { lancer: (exe, args, o, m) => { if (args[0] === O.PUBLICATION && !args.includes('--dry-run')) m.etats[A] = 'incident_ouvert'; return null; } } });
+    const r2 = await lancer(w2);
+    assert.equal(r2.resultats[0].issue, 'stoppe_batch', 'après publication : arbre modifié -> STOP du batch');
+    assert.match(r2.resultats[0].raison, /avant commit : état « incident_ouvert »[\s\S]*git restore --/);
+    assert.ok(!w2.appels.some((a) => a.exe === 'git' && a.args[0] === 'commit'));
+  });
+  test('5. lot déjà au catalogue d\'origin/design -> STOP du lot, aucune commande pour lui ; lot suivant traité', async () => {
+    const w = monde({ etats: { [A]: 'signe', [B]: 'signe' }, design: [A] });
+    const r = await lancer(w, [{ setId: A, ref: 'a' }, { setId: B, ref: 'b' }]);
+    assert.equal(r.resultats[0].issue, 'stoppe');
+    assert.match(r.resultats[0].raison, /déjà au catalogue d'origin\/design/);
+    assert.ok(!cmds(w).some((c) => c.includes(A)));
+    assert.equal(r.resultats[1].issue, 'publie');
+  });
+  test('6. push en échec -> STOP du batch (commit local conservé) ; résumé SANS « poussée » ni URL', async () => {
+    const w = monde({ etats: { [A]: 'signe' } });
+    w.pushKo = true;
+    const r = await lancer(w);
+    assert.equal(r.resultats[0].issue, 'stoppe_batch');
+    assert.equal(r.url, null);
+    assert.equal(r.pousse, false);
+    assert.doesNotMatch(w.affiche.join('\n'), /Branche poussée/);
+    assert.match(w.affiche.join('\n'), /commit LOCAL conservé ; relancer l'orchestrateur : le push sera retenté et vérifié/);
+  });
+  test('9. code de sortie : ok=false dès qu\'un lot est stoppé ; ok=true seulement si tout est publié ET poussé', async () => {
+    assert.equal((await lancer(monde({ etats: { [A]: 'signe' } }))).ok, true);
+    assert.equal((await lancer(monde({ etats: { [A]: 'relecteur_non_local' } }))).ok, false);
   });
 });

@@ -82,7 +82,11 @@ Précisions :
 4. `--diagnostic` → `signe` ; `--extraire-publication` ; `publier-lot.js --dry-run` puis réel ;
 5. un commit par lot (exactement lot + catalogue + journal) sur la branche de batch, poussée.
 
-Toute anomalie, état inconnu, sortie illisible ou code ≠ 0 → **STOP du lot** (consigné dans `~/FONDA-clotures/orchestrations/<branche>.jsonl`), lot suivant ; résumé final. Relançable : l'état est relu par `--diagnostic` et les étapes faites sont sautées. **Plafond** : branche poussée + URL compare et titre/description affichés — l'ouverture de la PR et la fusion restent des gestes humains ; jamais de push sur `main`/`design`. Rappel en fin de run si n8n a été sollicité : penser à désactiver les workflows.
+- **Terminal exigé** : refus de démarrer si stdin ou stdout n'est pas un terminal.
+- **Diagnostic vert à chaque garde**, refait avant extraction, avant publication réelle et avant commit ; pendant l'attente d'une génération acceptée (202), seuls `aucune_generation` et `generation_en_cours` sont tolérés, dans un délai borné.
+- **STOP du lot** (lot sauté, arbre propre, batch continue) : échec de `--saisir` ou de la signature (code ≠ 0), anomalie à une garde, lot déjà au catalogue d'`origin/design`.
+- **STOP du batch** (tout s'arrête) : publication locale non commitée (consignes précises : diff à examiner, 3 fichiers attendus, commande de commit OU d'annulation — jamais d'auto-commit), commit ou push refusé, branche divergente, ne descendant pas d'`origin/design` ou portant un commit non conforme.
+- Journal : `~/FONDA-clotures/orchestrations/<branche>.jsonl` ; résumé final ; code de sortie ≠ 0 dès qu'un lot est stoppé. Relançable : l'état est relu par `--diagnostic` et les étapes faites sont sautées ; « poussée » n'est annoncé qu'après vérification contre la branche distante (re-push si besoin). **Plafond** : branche poussée + URL compare et titre/description affichés — l'ouverture de la PR et la fusion restent des gestes humains ; jamais de push sur `main`/`design`. Rappel en fin de run si n8n a été sollicité : penser à désactiver les workflows.
 
 ## Registre des incidents : témoin dérivé (option a)
 
