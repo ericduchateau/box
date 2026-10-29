@@ -301,3 +301,18 @@ describe('corrections après relecture Codex (9 points)', () => {
     assert.equal((await lancer(monde({ etats: { [A]: 'relecteur_non_local' } }))).ok, false);
   });
 });
+
+describe('A strict : attente tolérée SEULEMENT après un 202 reçu par CE run', () => {
+  test('verrou déjà « accepte » au départ (provenance non prouvée) + generation_en_cours -> STOP, aucune attente', async () => {
+    const w = monde({ etats: { [A]: 'aucune_generation' }, verrou: { [A]: 'accepte' }, sur: { lancer: (exe, args, o, m) => { if (args[1] === '--diagnostic' && m.vu) m.etats[A] = 'generation_en_cours'; if (args[1] === '--diagnostic') m.vu = true; return null; } } });
+    const r = await lancer(w);
+    assert.match(r.resultats[0].raison, /état « generation_en_cours » après génération acceptée — /);
+    assert.equal(cmds(w).filter((c) => c.includes('--diagnostic')).length, 2, 'aucun relevé supplémentaire');
+    assert.ok(!cmds(w).some((c) => c === `declencher-generation.js ${A} ref-a`), 'jamais de nouvel envoi');
+  });
+  test('verrou déjà « accepte » + génération prête -> poursuite normale (pret_pour_saisie exigé tout de suite)', async () => {
+    const w = monde({ etats: { [A]: 'aucune_generation' }, verrou: { [A]: 'accepte' }, sur: { lancer: (exe, args, o, m) => { if (args[1] === '--diagnostic' && m.vu && m.etats[A] === 'aucune_generation') m.etats[A] = 'pret_pour_saisie'; if (args[1] === '--diagnostic') m.vu = true; return null; } } });
+    const r = await lancer(w);
+    assert.equal(r.resultats[0].issue, 'publie');
+  });
+});

@@ -148,19 +148,84 @@ describe('couche Git RÉELLE de l\'orchestrateur', () => {
     assert.ok(!w.appels.some((a) => a[0] === 'git' && ['merge', 'rebase', 'reset'].includes(a[1])));
   });
 
-  test('interruption publication <-> commit (arbre : catalogue + journal modifiés, lot non suivi) -> STOP du batch, consignes B PRÉCISES, rien commité', async () => {
+  // Consigne B d'annulation EXÉCUTÉE telle qu'affichée : l'arbre redevient propre.
+  const annuler = (d, texte) => {
+    const cmd = /3b\. OU annuler \(indexé ou non\) : (.+)$/m.exec(texte)[1];
+    execFileSync('sh', ['-c', cmd], { cwd: d.work });
+    assert.equal(d.g(d.work, 'status', '--porcelain', '--untracked-files=all', '--', 'fonda').trim(), '', 'annulation : arbre propre');
+  };
+  for (const [nom, indexer] of [['AVANT git add (lot non suivi)', false], ['APRÈS git add (3 fichiers indexés)', true]]) {
+    test(`interruption publication <-> commit, ${nom} -> STOP du batch, consignes B PRÉCISES, rien commité ; l'annulation affichée remet l'arbre propre`, async () => {
+      const d = depot();
+      publier(d.work, A);
+      if (indexer) d.g(d.work, 'add', '--', `fonda/data/lots/${A}.json`, CAT, JOU);
+      const avant = d.g(d.work, 'rev-parse', 'HEAD').trim();
+      const w = deps(d, { etats: { [A]: 'signe' } });
+      const r = await run(d, w);
+      assert.equal(r.ok, false);
+      const t = w.affiche.join('\n');
+      assert.match(t, /publication locale NON commitée/);
+      assert.match(t, /git diff && git diff --cached/);
+      assert.match(t, new RegExp(`git add -- fonda/data/lots/${A}\\.json fonda/data/catalogue-fonda\\.json fonda/data/set_ids-journal\\.json && git commit -m "FONDA : publication de ${A}"`));
+      assert.equal(d.g(d.work, 'rev-parse', 'HEAD').trim(), avant, 'jamais d\'auto-commit');
+      assert.ok(!w.appels.some((a) => a[0] !== 'git'));
+      annuler(d, t);
+    });
+  }
+
+  test('commit REFUSÉ après git add (hook pre-commit) -> STOP du batch ; relance : publication indexée reconnue, consignes B, annulation effective', async () => {
     const d = depot();
-    publier(d.work, A);
-    const avant = d.g(d.work, 'rev-parse', 'HEAD').trim();
+    const hook = path.join(d.work, '.git', 'hooks', 'pre-commit');
+    fs.writeFileSync(hook, '#!/bin/sh\necho "commit refusé par le test" >&2\nexit 1\n', { mode: 0o755 });
+    const w1 = deps(d, { etats: { [A]: 'signe' } });
+    const r1 = await run(d, w1);
+    assert.equal(r1.resultats[0].issue, 'stoppe_batch');
+    assert.match(r1.resultats[0].raison, /commit[\s\S]*git restore --staged --worktree/);
+    assert.match(d.g(d.work, 'status', '--porcelain'), new RegExp(`A  fonda/data/lots/${A}\\.json`), 'lot resté indexé');
+    fs.unlinkSync(hook);
+    const w2 = deps(d, { etats: { [A]: 'signe' } });
+    const r2 = await run(d, w2);
+    assert.equal(r2.ok, false);
+    const t = w2.affiche.join('\n');
+    assert.match(t, new RegExp(`BATCH ARRÊTÉ AVANT TOUT LOT — démarrage : publication locale NON commitée[\\s\\S]*fonda/data/lots/${A}\\.json`));
+    annuler(d, t);
+  });
+
+  test('push refusé sur le lot B APRÈS le push de A -> STOP du batch, AUCUN push ultérieur (pas de re-push automatique) ; remote reste sur A', async () => {
+    const d = depot();
+    const w0 = deps(d, { etats: { [A]: 'signe' } });
+    assert.equal((await run(d, w0)).ok, true);
+    const surA = distante(d);
+    fs.writeFileSync(path.join(d.nu, 'hooks', 'pre-receive'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    const w = deps(d, { etats: { [B]: 'signe' } });
+    const r = await run(d, w, [B]);
+    assert.equal(r.resultats[0].issue, 'stoppe_batch');
+    assert.equal(w.appels.filter((a) => a[0] === 'git' && a[1] === 'push').length, 1, 'une seule tentative, aucune après le STOP du batch');
+    assert.equal(distante(d), surA);
+    assert.equal(r.url, null);
+    assert.doesNotMatch(w.affiche.join('\n'), /Branche poussée/);
+  });
+
+  test('origin/design AVANCE pendant un diagnostic (actualisation) -> conformité recontrôlée : STOP du batch AVANT la publication réelle, rien écrit', async () => {
+    const d = depot();
+    const autre = path.join(d.tmp, 'autre');
+    d.g(d.tmp, 'clone', '-q', '-b', 'design', d.nu, autre);
+    d.g(autre, 'config', 'user.email', 't@e.invalid'); d.g(autre, 'config', 'user.name', 't');
     const w = deps(d, { etats: { [A]: 'signe' } });
+    let n = 0;
+    const lancerOrig = w.deps.lancer;
+    w.deps.lancer = (exe, args, o) => {
+      if (exe !== 'git' && args[1] === '--diagnostic' && (n += 1) === 2) {
+        fs.writeFileSync(path.join(autre, 'AUTRE.md'), 'design avance\n'); d.g(autre, 'add', '-A'); d.g(autre, 'commit', '-qm', 'design avance'); d.g(autre, 'push', '-q', 'origin', 'design');
+        d.g(d.work, 'fetch', '-q', 'origin', '+refs/heads/design:refs/remotes/origin/design'); // ce que fait l'actualisation du diagnostic
+      }
+      return lancerOrig(exe, args, o);
+    };
     const r = await run(d, w);
-    assert.equal(r.ok, false);
-    const t = w.affiche.join('\n');
-    assert.match(t, /publication locale NON commitée/);
-    assert.match(t, new RegExp(`git add -- fonda/data/lots/${A}\\.json fonda/data/catalogue-fonda\\.json fonda/data/set_ids-journal\\.json && git commit -m "FONDA : publication de ${A}"`));
-    assert.match(t, new RegExp(`git restore -- fonda/data/catalogue-fonda\\.json fonda/data/set_ids-journal\\.json && rm -- fonda/data/lots/${A}\\.json`));
-    assert.equal(d.g(d.work, 'rev-parse', 'HEAD').trim(), avant, 'jamais d\'auto-commit');
-    assert.ok(!w.appels.some((a) => a[0] !== 'git'));
+    assert.equal(r.resultats[0].issue, 'stoppe_batch');
+    assert.match(r.resultats[0].raison, /ne descend pas d'origin\/design/);
+    assert.ok(!w.appels.some((a) => a[0] !== 'git' && a.includes(O.PUBLICATION) && !a.includes('--dry-run')), 'publication réelle jamais lancée');
+    assert.equal(d.g(d.work, 'status', '--porcelain', '--untracked-files=all', '--', 'fonda').trim(), '');
   });
 
   test('lot déjà au catalogue d\'origin/design -> STOP du lot (aucune commande FONDA pour lui), lot suivant publié', async () => {

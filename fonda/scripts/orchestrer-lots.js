@@ -75,10 +75,10 @@ function consignesB(setId) {
   const id = setId || '<set_id>';
   return [
     'publication locale NON commitée (arbre incertain) — rien n\'est commité ni annulé automatiquement.',
-    '  1. examiner : git status --short && git diff -- fonda/data/catalogue-fonda.json fonda/data/set_ids-journal.json',
+    '  1. examiner (non indexé ET indexé) : git status --short && git diff && git diff --cached',
     `  2. fichiers attendus (exactement) : ${lot}, fonda/data/catalogue-fonda.json, fonda/data/set_ids-journal.json`,
     `  3a. committer après relecture : git add -- ${lot} fonda/data/catalogue-fonda.json fonda/data/set_ids-journal.json && git commit -m "FONDA : publication de ${id}"`,
-    `  3b. OU annuler : git restore -- fonda/data/catalogue-fonda.json fonda/data/set_ids-journal.json && rm -- ${lot}`,
+    `  3b. OU annuler (indexé ou non) : git restore --staged --worktree -- fonda/data/catalogue-fonda.json fonda/data/set_ids-journal.json && git rm -q --cached --ignore-unmatch -- ${lot} && rm -f -- ${lot}`,
     '  (publication interrompue par publier-lot.js lui-même, marqueur .git/fonda-publication-<set_id> : publier-lot.js <lot-relu> <attestation> --reprendre)',
     '  puis relancer l\'orchestrateur.',
   ].join('\n');
@@ -145,6 +145,7 @@ async function traiterLot(lot, ctx, deps) {
   if (d.etat === 'aucune_generation') {
     const v = json(node(DECLENCHEUR, '--etat', setId), 'génération (--etat)');
     if (v.etat === 'envoi' || v.etat === 'inconnu') throw new Stop('génération', `verrou à l'état « ${v.etat} » : lot EN VOL ou indéterminé — jamais de nouvel envoi ; observer : declencher-generation.js --etat ${setId} (puis --liberer à la main si rien n'est observé)`);
+    let accepte202 = false;
     if (v.etat !== 'accepte') {
       if (![null, 'refuse', 'libere'].includes(v.etat)) throw new Stop('génération', `état du verrou inconnu (${v.etat})`);
       let actifs;
@@ -156,11 +157,13 @@ async function traiterLot(lot, ctx, deps) {
       const r = json(node(DECLENCHEUR, setId, ref), 'génération (déclenchement)');
       deps.consigner({ set_id: setId, evt: 'declenchement', issue: r.issue, statut: r.statut });
       if (r.issue !== 'accepte' || r.statut !== 202) throw new Stop('génération', `issue « ${r.issue} » (HTTP ${r.statut})${r.consigne ? ` — ${r.consigne}` : ''}`);
+      accepte202 = true;
     }
-    // Ici, et SEULEMENT ici, la génération est ACCEPTÉE (202 de ce run, ou « accepte » au verrou) :
-    // attente BORNÉE ; seuls aucune_generation et generation_en_cours sont tolérés ; toute autre
-    // anomalie (dont generation_incoherente) -> STOP. Jamais de second envoi.
-    const TOLERES = ['aucune_generation', 'generation_en_cours'];
+    // Attente BORNÉE SEULEMENT après un 202 reçu PAR CE RUN : seuls aucune_generation et
+    // generation_en_cours sont tolérés ; toute autre anomalie (dont generation_incoherente) -> STOP.
+    // Verrou déjà « accepte » au départ (peut-être par simple observation, sans 202 prouvé) : aucune
+    // tolérance, pret_pour_saisie exigé tout de suite. Jamais de second envoi.
+    const TOLERES = accepte202 ? ['aucune_generation', 'generation_en_cours'] : [];
     const releves = Math.max(1, Math.ceil(deps.attenteGenerationMs / deps.pasAttenteMs));
     for (let n = 1; ; n += 1) {
       d = diag('attente de la génération');
@@ -203,6 +206,9 @@ async function traiterLot(lot, ctx, deps) {
   const sec = node(PUBLICATION, x.chemin, attestation, '--dry-run');
   if (sec.code !== 0 || !sec.stdout.includes(`(dry-run) ${setId} publiable`)) throw new Stop('publication (dry-run)', `refusée : ${(sec.stdout + sec.stderr).trim().split('\n').slice(-3).join(' | ')}`);
   exiger(diag('avant publication'), 'signe', 'avant publication');
+  // Le diagnostic actualise origin/design : conformité de la branche et présence du lot RECONTRÔLÉES.
+  ctx.recontroler();
+  if (ctx.publieSurDesign(setId)) throw new Stop('avant publication', `${setId} arrivé au catalogue d'origin/design entre-temps — lot sauté`);
   const pub = node(PUBLICATION, x.chemin, attestation);
   if (pub.code !== 0 || !pub.stdout.includes(`✓ ${setId} publié`)) {
     // Arbre resté propre -> STOP du lot ; sinon publication partielle -> STOP du batch (consignes B).
@@ -214,6 +220,8 @@ async function traiterLot(lot, ctx, deps) {
   let d9;
   try { d9 = diag('avant commit'); } catch (e) { throw new StopBatch('avant commit', `${e.message}\n${consignesB(setId)}`); }
   if (d9.etat !== 'signe') throw new StopBatch('avant commit', `état « ${d9.etat} » (attendu « signe ») — ${detail(d9)}\n${consignesB(setId)}`);
+  try { ctx.recontroler(); } catch (e) { throw new StopBatch('avant commit', `${e.message}\n${consignesB(setId)}`); }
+  if (ctx.publieSurDesign(setId)) throw new StopBatch('avant commit', `${setId} arrivé au catalogue d'origin/design entre-temps\n${consignesB(setId)}`);
   ctx.commit(setId);
   deps.consigner({ set_id: setId, evt: 'publie_commite' });
   ctx.pousser();
@@ -235,9 +243,13 @@ function preparerBranche(branche, deps) {
   // Arbre suivi propre exigé ; une publication non commitée -> consignes B, rien n'est fait.
   const sale = lignes(git(deps, 'status', '--porcelain', '--untracked-files=no')).map((l) => l.slice(3)).sort();
   if (sale.length) {
-    const pub = JSON.stringify(sale) === JSON.stringify(['fonda/data/catalogue-fonda.json', 'fonda/data/set_ids-journal.json']);
-    const lots = lignes(git(deps, 'ls-files', '--others', '--exclude-standard', '--', 'fonda/data/lots'));
-    const setId = pub && lots.length === 1 ? path.basename(lots[0], '.json') : null;
+    // Publication non commitée, avant git add (lot non suivi) ou après (lot indexé).
+    const LOT = /^fonda\/data\/lots\/(set_fonda_[a-z0-9-]+_n[IF]_\d{2})\.json$/;
+    const autres = sale.filter((f) => !LOT.test(f));
+    const indexes = sale.filter((f) => LOT.test(f));
+    const pub = JSON.stringify(autres) === JSON.stringify(['fonda/data/catalogue-fonda.json', 'fonda/data/set_ids-journal.json']) && indexes.length <= 1;
+    const lots = indexes.length ? indexes : lignes(git(deps, 'ls-files', '--others', '--exclude-standard', '--', 'fonda/data/lots'));
+    const setId = pub && lots.length === 1 && LOT.test(lots[0]) ? LOT.exec(lots[0])[1] : null;
     throw new StopBatch('démarrage', pub ? consignesB(setId) : `modifications suivies non commitées (${sale.join(', ')}) : arrêt, rien n'est fait`);
   }
   git(deps, 'fetch', '--quiet', 'origin', `+refs/heads/design:${REF_DESIGN}`);
@@ -269,6 +281,7 @@ function contexteGit(branche, deps) {
     publieSurDesign: (setId) => catalogue(REF_DESIGN).some((e) => e.set_id === setId),
     publieSurBranche: (setId) => catalogue('HEAD').some((e) => e.set_id === setId),
     arbreSuiviPropre: () => git(deps, 'status', '--porcelain', '--untracked-files=no').trim() === '',
+    recontroler: () => verifierBranche(branche, git(deps, 'ls-remote', '--heads', 'origin', `refs/heads/${branche}`).trim() !== '', deps),
     lotNonSuivi: (setId) => git(deps, 'ls-files', '--others', '--exclude-standard', '--', FICHIERS_PUBLICATION(setId)[0]).trim() !== '',
     commit(setId) {
       const attendus = FICHIERS_PUBLICATION(setId);
@@ -340,7 +353,9 @@ async function orchestrer({ lots, branche }, deps) {
   }
   const publies = resultats.filter((r) => r.issue === 'publie' || r.issue === 'deja_publie');
   let pousse = false;
-  if (ctx && publies.length) {
+  // Après un STOP du batch : AUCUNE mutation distante (ni push ni re-push) ; reprise au prochain
+  // lancement explicite. Sinon, vérification (et re-push éventuel) de la branche.
+  if (ctx && publies.length && !arretBatch) {
     try { pousse = ctx.verifierPousse(); } catch (e) { deps.afficher(`✗ vérification du push : ${e.message}`); }
   }
   const url = `${DEPOT}/compare/design...${branche}`;
