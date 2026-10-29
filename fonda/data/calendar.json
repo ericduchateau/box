@@ -100,7 +100,8 @@
             "valeur": "rouge",
             "source": "priorite_initiale"
           },
-          "statut": "planifie"
+          "statut": "publie",
+          "set_id": "set_fonda_comprendre-consigne_nI_02"
         }
       ]
     },
