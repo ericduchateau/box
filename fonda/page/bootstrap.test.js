@@ -1120,6 +1120,28 @@ describe('obtenirMoteur — version + empreinte + SRI, registre non réassignabl
 const { mock: mockCal } = require('node:test');
 const CALENDRIER_REEL = require('../data/calendar.json');
 
+// Attendus DÉRIVÉS de calendar.json + du catalogue publié (jamais figés) : passer une entrée de
+// « planifie » à « publie » (ou en ajouter) fait suivre ces comptes sans toucher aux tests.
+const PUBLIES_CAL = new Set(CATALOGUE.lots.map((e) => e.set_id));
+const BANDE_MILIEU = 'c4-milieu';
+const ORDRE_MATIERE = { maths: 0, 'français': 1 };
+const parMatiere = (a, b) => ORDRE_MATIERE[a.matiere] - ORDRE_MATIERE[b.matiere];
+const estLiee = (e) => e.statut === 'publie' && PUBLIES_CAL.has(e.set_id);
+const entreesDe = (iso, bande = BANDE_MILIEU) => {
+  const sem = CALENDRIER_REEL.semaines.find((x) => x.iso_week === iso);
+  return sem ? sem.entrees.filter((e) => e.bande === bande).slice().sort(parMatiere) : [];
+};
+const semainesDe = (periodeId) => {
+  const p = CALENDRIER_REEL.periodes.find((x) => x.id === periodeId);
+  return CALENDRIER_REEL.semaines.filter((x) => x.du >= p.du && x.du <= p.au);
+};
+const entreesPeriode = (periodeId, bande = BANDE_MILIEU) => semainesDe(periodeId).flatMap((x) => entreesDe(x.iso_week, bande));
+const entreesBande = (bande = BANDE_MILIEU) => CALENDRIER_REEL.semaines.flatMap((x) => entreesDe(x.iso_week, bande));
+const classesDu = (niveau) => CLASSES.filter((c) => c.startsWith(niveau[0]));
+const slugDe = (notionId) => notionId.slice(notionId.indexOf('.') + 1);
+// Page niveau : un lien par classe du niveau et par fiche LIÉE de la semaine.
+const liensAttendus = (niveau, iso) => classesDu(niveau).length * entreesDe(iso).filter(estLiee).length;
+
 function tousParClasse(el, fragment, acc = []) {
   for (const c of (el && el.children) || []) {
     if (c && typeof c.className === 'string' && c.className.split(' ').includes(fragment)) acc.push(c);
@@ -1184,7 +1206,7 @@ describe('calendrier v2 — fonctions de vue pures', () => {
     assert.equal(caseDepuisEntree(planifiee, { notions, publies }).setId, null);
   });
 
-  test('construireVueCalendrier (bande milieu) : P2 affichée, 14 cases dont 3 liées ; P3–P5 vides (grisées)', () => {
+  test('construireVueCalendrier (bande milieu) : P2 affichée, cases et cases liées DÉRIVÉES du calendrier ; P3–P5 vides (grisées)', () => {
     const { construireVueCalendrier } = obtenirExportsBootstrap();
     const vue = construireVueCalendrier({ calendrier: CALENDRIER_REEL, catalogue: CATALOGUE, referentiel: REFERENTIEL, bande: 'c4-milieu', maintenant: new Date('2026-11-10T10:00:00') });
     const [p2, ...autres] = vue.periodes;
@@ -1192,14 +1214,14 @@ describe('calendrier v2 — fonctions de vue pures', () => {
     assert.equal(p2.vide, false, 'P2 a des entrées : jamais grisée en entier, même genere:false');
     assert.equal(p2.genere, false);
     assert.equal(p2.statut, 'en_cours');
-    assert.equal(p2.semaines.length, 7);
+    assert.equal(p2.semaines.length, semainesDe('P2').length);
     assert.equal(p2.semaines.filter((s) => s.courante).map((s) => s.isoWeek).join(), '46');
     const cases = p2.semaines.flatMap((s) => s.cases);
-    assert.equal(cases.length, 14);
-    assert.deepEqual(cases.filter((c) => c.setId).map((c) => c.setId), [
-      'set_fonda_grandeurs-mesures_nI_02', 'set_fonda_nombres-fractions-relatifs_nI_03', 'set_fonda_grandeurs-mesures_nI_02',
-    ]);
-    assert.ok(cases.every((c) => c.matiere !== 'français' || c.setId === null), 'français : tout planifié');
+    const attendues = entreesPeriode('P2');
+    assert.equal(cases.length, attendues.length);
+    // Case par case : liée (set_id) SSI l'entrée est publiée ET au catalogue ; sinon grisée (null).
+    assert.deepEqual(cases.map((c) => [c.matiere, c.setId]), attendues.map((e) => [e.matiere, estLiee(e) ? e.set_id : null]));
+    assert.ok(cases.some((c) => c.setId) && cases.some((c) => c.setId === null), 'P2 mêle des cases liées et grisées');
     assert.ok(p2.semaines.every((s) => s.cases[0].matiere === 'maths' && s.cases[1].matiere === 'français'));
     assert.deepEqual(autres.map((p) => [p.id, p.vide]), [['P3', true], ['P4', true], ['P5', true]]);
     const c3 = construireVueCalendrier({ calendrier: CALENDRIER_REEL, catalogue: CATALOGUE, referentiel: REFERENTIEL, bande: 'c3', maintenant: new Date('2026-11-10T10:00:00') });
@@ -1212,11 +1234,11 @@ describe('calendrier v2 — fonctions de vue pures', () => {
     const s48 = notionsDeLaSemaine({ ...args, maintenant: new Date('2026-11-25T10:00:00') });
     assert.equal(s48.semaine.isoWeek, 48);
     assert.equal(s48.reprise, false);
-    assert.deepEqual(s48.cases.map((c) => c.setId), ['set_fonda_nombres-fractions-relatifs_nI_03', null]);
+    assert.deepEqual(s48.cases.map((c) => c.setId), entreesDe(48).map((e) => (estLiee(e) ? e.set_id : null)));
     const toussaint = notionsDeLaSemaine({ ...args, maintenant: new Date('2026-10-27T10:00:00') });
     assert.equal(toussaint.reprise, true);
     assert.equal(toussaint.semaine.isoWeek, 45);
-    assert.equal(toussaint.cases.length, 2);
+    assert.deepEqual(toussaint.cases.map((c) => c.setId), entreesDe(45).map((e) => (estLiee(e) ? e.set_id : null)));
     const noel = notionsDeLaSemaine({ ...args, maintenant: new Date('2026-12-24T10:00:00') });
     assert.equal(noel.semaine, null, 'reprise de janvier non programmée : rien d\'inventé');
     assert.equal(notionsDeLaSemaine({ ...args, bande: 'c3', maintenant: new Date('2026-11-25T10:00:00') }).cases.length, 0);
@@ -1233,7 +1255,7 @@ describe('?fonda=1 — accueil « Notions de la semaine » (porte : sélecteur d
     assert.ok(boutons.every((b) => /\?fonda=1&niveau=[3-6]e$/.test(b.href)), boutons.map((b) => b.href).join());
   });
 
-  test('niveau 5e : les 2 fiches de la semaine (maths liée, français grisé sans lien), choix mémorisé', async () => {
+  test('niveau 5e : les fiches de la semaine (liée SSI publiée au catalogue, sinon grisée sans lien), choix mémorisé', async () => {
     const ecritures = [];
     global.localStorage = { getItem: () => null, setItem: (k, v) => ecritures.push([k, v]) };
     const root = await demarrerLe('2026-11-04', { search: '?fonda=1&niveau=5e' });
@@ -1241,15 +1263,24 @@ describe('?fonda=1 — accueil « Notions de la semaine » (porte : sélecteur d
     assert.deepEqual(ecritures, [['box_fonda_niveau', '5e']]);
     assert.ok(tousParTag(root, 'h2').some((h) => h.textContent === 'Notions de la semaine'));
     const tuiles = tousParClasse(root, 'fonda-cal-tuile');
-    assert.equal(tuiles.length, 2);
-    assert.equal(tuiles[0].tagName, 'a');
-    assert.match(tuiles[0].href, /\?fonda=1&page=carte&set=set_fonda_grandeurs-mesures_nI_02$/);
+    const attendues = entreesDe(45);
+    assert.equal(tuiles.length, attendues.length);
     // Nom accessible = texte de la tuile : matière, notion, palier (texte lecteur d'écran),
     // difficulté et état — jamais la couleur seule, jamais d'aria-label sur une div.
-    assert.match(tuiles[0].textContent, /Mathématiques.*palier Initial\..*difficulté forte.*Disponible/);
-    assert.equal(tuiles[1].tagName, 'div', 'case planifiée : jamais un lien');
-    assert.ok(tuiles[1].className.includes('fonda-cal-tuile--planifiee'));
-    assert.match(tuiles[1].textContent, /Français.*palier Initial\..*En préparation/);
+    const MATIERE = { maths: 'Mathématiques', 'français': 'Français' };
+    attendues.forEach((e, i) => {
+      const t = tuiles[i];
+      assert.match(t.textContent, new RegExp(`${MATIERE[e.matiere]}.*palier Initial\\.`));
+      if (estLiee(e)) {
+        assert.equal(t.tagName, 'a', `${e.notion_id} publiée : lien`);
+        assert.equal(t.href.slice(t.href.indexOf('?')), `?fonda=1&page=carte&set=${e.set_id}`);
+        assert.match(t.textContent, /difficulté forte.*Disponible/);
+      } else {
+        assert.equal(t.tagName, 'div', `${e.notion_id} planifiée : jamais un lien`);
+        assert.ok(t.className.includes('fonda-cal-tuile--planifiee'));
+        assert.match(t.textContent, /En préparation/);
+      }
+    });
     assert.ok(tuiles.every((t) => !('aria-label' in t.attributes)));
     const liens = tousParTag(root, 'a').map((a) => a.href);
     assert.ok(liens.some((h) => /page=calendrier&bande=c4-milieu$/.test(h)), 'lien vers le calendrier de la bande');
@@ -1262,7 +1293,7 @@ describe('?fonda=1 — accueil « Notions de la semaine » (porte : sélecteur d
   test('niveau mémorisé (switch BOX -> FONDA sans paramètre) : accueil direct ; ?choix=niveau rouvre le sélecteur', async () => {
     global.localStorage = { getItem: () => '4e', setItem() {} };
     const root = await demarrerLe('2026-11-04', { search: '?fonda=1' });
-    assert.equal(tousParClasse(root, 'fonda-cal-tuile').length, 2);
+    assert.equal(tousParClasse(root, 'fonda-cal-tuile').length, entreesDe(45).length);
     const choix = await demarrerLe('2026-11-04', { search: '?fonda=1&choix=niveau' });
     delete global.localStorage;
     assert.equal(tousParClasse(choix, 'fonda-niveau-picker__bouton').length, 4);
@@ -1273,7 +1304,7 @@ describe('?fonda=1 — accueil « Notions de la semaine » (porte : sélecteur d
     const flaps = tousParClasse(root, 'fonda-flaps')[0];
     assert.equal(flaps.attributes['aria-label'], 'Vacances de la Toussaint · reprise lun 2 nov');
     assert.ok(tousParClasse(root, 'fonda-cal-intro').some((p) => /^À la reprise — semaine 45/.test(p.textContent)));
-    assert.equal(tousParClasse(root, 'fonda-cal-tuile').length, 2);
+    assert.equal(tousParClasse(root, 'fonda-cal-tuile').length, entreesDe(45).length);
   });
 
   test('niveau 6e (bande sans contenu) : message, aucune tuile, aucune exception', async () => {
@@ -1289,16 +1320,17 @@ describe('?fonda=1 — accueil « Notions de la semaine » (porte : sélecteur d
 });
 
 describe('?fonda=1&page=calendrier — page d\'affichage par période', () => {
-  test('bande milieu : P2 dépliable avec 14 tuiles dont 3 liens ; P3–P5 grisées « Non générée »', async () => {
+  test('bande milieu : P2 dépliable, tuiles et liens DÉRIVÉS du calendrier ; P3–P5 grisées « Non générée »', async () => {
     const root = await demarrerLe('2026-11-04', { search: '?fonda=1&page=calendrier' });
     const periodes = tousParClasse(root, 'fonda-cal-periode');
     assert.equal(periodes.length, 4);
     assert.equal(periodes[0].className, 'fonda-cal-periode');
     assert.equal(tousParClasse(root, 'fonda-cal-periode--vide').length, 3);
     const tuiles = tousParClasse(periodes[0], 'fonda-cal-tuile');
-    assert.equal(tuiles.length, 14);
-    assert.equal(tuiles.filter((t) => t.tagName === 'a').length, 3);
-    assert.equal(tousParClasse(root, 'fonda-cal-tuile--planifiee').length, 11);
+    assert.equal(tuiles.length, entreesPeriode('P2').length);
+    assert.equal(tuiles.filter((t) => t.tagName === 'a').length, entreesPeriode('P2').filter(estLiee).length);
+    assert.deepEqual(tuiles.filter((t) => t.tagName === 'a').map((t) => t.href.slice(t.href.indexOf('set=') + 4)), entreesPeriode('P2').filter(estLiee).map((e) => e.set_id));
+    assert.equal(tousParClasse(root, 'fonda-cal-tuile--planifiee').length, entreesBande().filter((e) => !estLiee(e)).length);
     const tete = tousParClasse(periodes[0], 'fonda-cal-periode__tete')[0];
     assert.equal(tete.attributes['aria-expanded'], 'true', 'période en cours dépliée');
     const semaines = tousParClasse(periodes[0], 'fonda-cal-semaines')[0];
@@ -1326,11 +1358,14 @@ describe('?fonda=1&page=calendrier — page d\'affichage par période', () => {
     assert.equal(actif[0].textContent, '5e – 4e');
   });
 
-  test('page niveau (parcours existant) avec le vrai calendrier v2 : liens de la seule fiche publiée, jamais de lien planifié', async () => {
+  test('page niveau (parcours existant) avec le vrai calendrier v2 : liens des seules fiches PUBLIÉES de la semaine, jamais de lien planifié', async () => {
     const root = await demarrerLe('2026-11-04', { search: '?fonda=1&page=niveau&niveau=4e' });
     const liens = tousParClasse(root, 'fonda-lien-classe');
-    assert.equal(liens.length, 5, '401..405 pour grandeurs-mesures uniquement');
-    assert.ok(liens.every((li) => /_grandeurs-mesures$/.test(decodeURIComponent(li.children[1].href))));
+    assert.equal(liens.length, liensAttendus('4e', 45), 'un lien par classe de 4e et par fiche publiée de S45');
+    const slugsLies = entreesDe(45).filter(estLiee).map((e) => slugDe(e.notion_id));
+    const slugsPlanifies = entreesDe(45).filter((e) => !estLiee(e)).map((e) => slugDe(e.notion_id));
+    assert.ok(liens.every((li) => slugsLies.some((sl) => decodeURIComponent(li.children[1].href).endsWith(`_${sl}`))), 'chaque lien vise une fiche publiée');
+    assert.ok(liens.every((li) => !slugsPlanifies.some((sl) => decodeURIComponent(li.children[1].href).endsWith(`_${sl}`))), 'jamais une fiche planifiée');
   });
 });
 
@@ -1347,7 +1382,7 @@ describe('calendrier v2 — corrections après relecture Codex', () => {
     const prof = tousParClasse(accueil, 'fonda-cal-prof')[0];
     assert.match(prof.href, /semaine=45$/);
     const page = await demarrerLe('2026-11-08', { search: prof.href.slice(prof.href.indexOf('?')) });
-    assert.equal(tousParClasse(page, 'fonda-lien-classe').length, 5, '401..405, pas « Aucun défi »');
+    assert.equal(tousParClasse(page, 'fonda-lien-classe').length, liensAttendus('4e', 45), 'liens par classe de S45, pas « Aucun défi »');
   });
 
   test('vacances : « Défis par classe » vise la semaine de la reprise', async () => {
@@ -1356,7 +1391,10 @@ describe('calendrier v2 — corrections après relecture Codex', () => {
   });
 
   test('page niveau : un set_id absent du catalogue chargé ne donne aucun lien (calendrier en retard sur un retrait)', async () => {
-    const catalogue = { ...CATALOGUE, lots: CATALOGUE.lots.filter((l) => l.set_id !== 'set_fonda_grandeurs-mesures_nI_02') };
+    // Tous les set_id publiés de la semaine retirés du catalogue chargé (dérivé du calendrier).
+    const retires = new Set(entreesDe(45).filter(estLiee).map((e) => e.set_id));
+    assert.ok(retires.size > 0, 'S45 a au moins une fiche publiée');
+    const catalogue = { ...CATALOGUE, lots: CATALOGUE.lots.filter((l) => !retires.has(l.set_id)) };
     const root = await demarrerLe('2026-11-04', { search: '?fonda=1&page=niveau&niveau=5e', catalogue });
     assert.equal(tousParClasse(root, 'fonda-lien-classe').length, 0);
     assert.match(texteDe(root), /Aucun défi programmé pour 5e/);
@@ -1388,6 +1426,6 @@ describe('page niveau ouverte directement : même règle de jour que l\'accueil 
 
   test('accès direct sans semaine= le dimanche : liens par classe affichés', async () => {
     const root = await demarrerLe('2026-11-08', { search: '?fonda=1&page=niveau&niveau=4e' });
-    assert.equal(tousParClasse(root, 'fonda-lien-classe').length, 5);
+    assert.equal(tousParClasse(root, 'fonda-lien-classe').length, liensAttendus('4e', 45));
   });
 });
