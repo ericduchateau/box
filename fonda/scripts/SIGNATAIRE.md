@@ -73,6 +73,17 @@ Précisions :
 - un fetch **observe** l'état distant, il ne **verrouille** pas `design` : il subsiste une fenêtre résiduelle, non atomique, entre la dernière observation (C3) et l'appel au signataire ;
 - on ne prouve pas cryptographiquement que S2 a été exécuté (la provenance prouve que l'état revendiqué **pouvait** autoriser la saisie).
 
+## Orchestrateur multi-lots (`orchestrer-lots.js`)
+
+`node fonda/scripts/orchestrer-lots.js --lots <fichier> --branche publie/<nom>` (une ligne « `<set_id> <ref>` » par lot, réservations déjà fusionnées sur `design`). Il enchaîne, lot par lot, les commandes EXISTANTES et ne s'arrête qu'aux deux actes humains :
+1. génération : `declencher-generation.js --etat`, puis un seul déclenchement si rien n'est en vol — workflows n8n vérifiés **actifs** (jamais (dés)activés par l'orchestrateur) ; verrou « envoi »/« inconnu » → STOP (jamais de `--liberer`/`--reparer` automatique) ;
+2. `--diagnostic` → `pret_pour_saisie` ; **acte humain** : `--saisir` lancé avec ton terminal (stdin hérité) ;
+3. `--diagnostic` → `pret_pour_cloture` ; **acte humain** : `signer-cloture.js <set_id>` (ta passphrase, dans ton terminal ; l'orchestrateur ne la voit ni ne la fournit) ;
+4. `--diagnostic` → `signe` ; `--extraire-publication` ; `publier-lot.js --dry-run` puis réel ;
+5. un commit par lot (exactement lot + catalogue + journal) sur la branche de batch, poussée.
+
+Toute anomalie, état inconnu, sortie illisible ou code ≠ 0 → **STOP du lot** (consigné dans `~/FONDA-clotures/orchestrations/<branche>.jsonl`), lot suivant ; résumé final. Relançable : l'état est relu par `--diagnostic` et les étapes faites sont sautées. **Plafond** : branche poussée + URL compare et titre/description affichés — l'ouverture de la PR et la fusion restent des gestes humains ; jamais de push sur `main`/`design`. Rappel en fin de run si n8n a été sollicité : penser à désactiver les workflows.
+
 ## Registre des incidents : témoin dérivé (option a)
 
 Le registre doit contenir **au moins** tous les incidents cités dans `charge.incidents_connus` par les attestations signées :

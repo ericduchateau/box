@@ -13,10 +13,9 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - Fiche français `comprendre-consigne` (relectrice justine) : débloquée par l'intérim ci-dessous une fois fusionné.
 - Sondes/copies n8n `ZQASW4PKigh1JaHt`, `4pDA91YG9ssSus3X`, `XrSG2nt5q40SNvf4` : à archiver par Éric (jamais supprimer : preuves).
 
-## En cours : relecteur de secours en intérim (`feat/relecture-interim`, sensible)
-- Plan r6 approuvé (6 passes Codex high) ; `relecture-interim.json` (justine → eric, P2, 2026-10-28 → 2026-12-18) ; `interim.js` (autorisation au SHA de design par fetch EXPLICITE, provenance, archive) ; décision v2, instantané v2 (décision embarquée), charge `attestation-cloture/v3`, badge `relue_par_secours` ; vérificateur, catalogue, front, diagnostic à deux axes, export n8n régénéré (génération identique).
-- Suite 5603/0 ; non-régression octet pour octet contre c215dd0 (7312 mutations, 1440 v1 + 2025 v2 de forme valide) ; #44 et #49 se revérifient. Codex high du code : 4 passes, verdict final vert (diagnostic : lot signé toujours « signe », problèmes courants à part ; fetch du journal à refspec explicite). PR vers design -> architecte -> Éric. CDC r9 : PR séparée sur la lignée `docs/cdc-r8-modele-epingle`.
-- Après fusion seulement, sur go architecte + Éric : resync du workflow n8n de génération en ligne (INACTIF).
+## En cours : orchestrateur multi-lots (`feat/orchestrateur-lots`)
+- `orchestrer-lots.js` : enchaîne génération → saisie (humaine, stdin hérité) → signature (humaine, passphrase) → extraction → publication (dry-run puis réel) → un commit par lot sur une branche de batch poussée ; STOP du lot au moindre diagnostic non vert ; plafond = URL compare (PR et fusion manuelles). Aucun fichier probant modifié.
+- Fait avant : intérim (#51), 1re fiche sous intérim publiée (`comprendre-consigne_nI_02`, #53), tests dynamiques (#54–#56), calendrier S45 complet (#57).
 
 ## Prochaines étapes
 1. Après l'intérim : génération et relecture (secours) des fiches français planifiées de P2 avant leurs semaines ; parcours page de Justine plus tard.
@@ -51,4 +50,4 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - Le classificateur auto-mode bloque les commandes contenant la clé API : Éric lance lui-même les générations.
 - Branches (AGENTS.md) : PR toujours vers `design` (liens `compare/design...<branche>`), fusion en merge commit ; jamais de fast-forward de `design` (casse la chaîne du premier parent).
 
-_Dernière mise à jour : 2026-10-28 — Claude Code (Opus 5.5)._
+_Dernière mise à jour : 2026-10-29 — Claude Code (Opus 5.5)._
