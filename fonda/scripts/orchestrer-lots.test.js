@@ -28,6 +28,7 @@ function monde({ etats = {}, verrou = {}, n8n = { generation: true, portier: tru
     if (exe === 'git') {
       const [c] = args;
       if (c === 'status') return ok(args.includes('--untracked-files=no') ? (w.sale ? ' M AVANCEMENT.md\n' : w.modifies.map((f) => ` M ${f}\n`).join('')) : '');
+      if (c === 'symbolic-ref') return ok(`${w.head ?? 'refs/heads/publie/test-batch'}\n`);
       if (c === 'rev-parse') return args.includes('--verify') ? { code: 1, stdout: '', stderr: '' } : ok(`${w.distante ? 'abc' : 'zzz'}\n`);
       if (c === 'ls-remote') return ok(w.distante ? 'abc\trefs/heads/publie/test-batch\n' : '');
       if (c === 'merge-base' || c === 'rev-list' || c === 'diff-tree') return ok('');
@@ -206,6 +207,14 @@ describe('relance et branche', () => {
     for (const p of w.appels.filter((a) => a.exe === 'git' && a.args[0] === 'push')) assert.ok(!p.args.some((x) => /:refs\/heads\/(main|design)$/.test(x)));
     for (const p of w.appels.filter((a) => a.exe === 'git' && a.args[0] === 'push')) assert.ok(!p.args.some((x) => /^--force|^\+/.test(x)), 'push SIMPLE, jamais forcé');
     assert.doesNotMatch(fs.readFileSync(path.join(__dirname, 'orchestrer-lots.js'), 'utf8'), /--force|force-with-lease/, 'aucun push forcé dans le code');
+    // « vérifié == poussé » : refspec EXPLICITE, la même référence que celle contrôlée ; jamais HEAD ni motif.
+    const pushes = w.appels.filter((a) => a.exe === 'git' && a.args[0] === 'push');
+    assert.ok(pushes.length > 0);
+    for (const p of pushes) assert.deepEqual(p.args, ['push', '--quiet', '-u', 'origin', 'refs/heads/publie/test-batch:refs/heads/publie/test-batch']);
+    const src = fs.readFileSync(path.join(__dirname, 'orchestrer-lots.js'), 'utf8');
+    const appelsPush = src.match(/\(deps, 'push',[^\n]*/g);
+    assert.deepEqual(appelsPush, ["(deps, 'push', '--quiet', '-u', 'origin', `${refLocale(branche)}:${refLocale(branche)}`);"], 'un seul push, refspec explicite refLocale:refLocale');
+    assert.doesNotMatch(src, /merge-base[^\n]*'HEAD'|rev-list[^\n]*\.\.HEAD|rev-parse', 'HEAD'/, 'aucun contrôle sur HEAD : la référence contrôlée est refs/heads/<branche>');
     const code = fs.readFileSync(path.join(__dirname, 'orchestrer-lots.js'), 'utf8');
     assert.doesNotMatch(code, /['"]gh['"]|pulls|['"](merge|rebase|reset)['"]/i, 'jamais git merge/rebase/reset ni gh');
   });

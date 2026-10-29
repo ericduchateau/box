@@ -85,10 +85,10 @@ function consignesB(setId) {
 }
 
 // Consigne quand le commit OBTENU n'est pas conforme (jamais de reset ni de push automatiques).
-function consignesCommitNonConforme(setId) {
+function consignesCommitNonConforme(setId, branche) {
   return [
-    'commit local NON conforme (modifié par un hook ?) — rien n\'est poussé, défait ni corrigé automatiquement.',
-    '  0. examiner le commit : git show --stat HEAD',
+    'commit local NON conforme (modifié par un hook ?) — ce commit n\'est pas poussé ; rien n\'est défait ni corrigé automatiquement.',
+    `  0. revenir sur la branche et examiner le commit : git switch ${branche} && git show --stat refs/heads/${branche}`,
     '  0b. le défaire en gardant les fichiers : git reset --soft HEAD~1 (tout fichier en trop reste indexé : à traiter à la main)',
     consignesB(setId),
   ].join('\n');
@@ -253,6 +253,13 @@ const essai = (deps, ...args) => deps.lancer('git', args, { humain: false });
 const lignes = (t) => t.split('\n').filter(Boolean);
 const REF_DESIGN = 'refs/remotes/origin/design';
 const refDistante = (branche) => `refs/remotes/origin/${branche}`;
+// LA référence vérifiée ET poussée (même chaîne, par construction) : jamais HEAD, jamais de motif.
+const refLocale = (branche) => `refs/heads/${branche}`;
+// HEAD doit pointer sur la branche de batch (un hook a pu basculer ailleurs).
+function verifierHead(branche, deps) {
+  const head = essai(deps, 'symbolic-ref', '--quiet', 'HEAD');
+  if (head.code !== 0 || head.stdout.trim() !== refLocale(branche)) throw new StopBatch('branche', `HEAD ne pointe pas sur ${refLocale(branche)} (${head.stdout.trim() || 'HEAD détaché'}) — reprise : examiner, git switch ${branche}, puis relancer l'orchestrateur ; rien n'est fait`);
+}
 
 function preparerBranche(branche, deps) {
   // Arbre suivi propre exigé ; une publication non commitée -> consignes B, rien n'est fait.
@@ -279,10 +286,12 @@ function preparerBranche(branche, deps) {
 // Branche CONFORME : descend d'origin/design ; locale = distante ou en avance (push manqué), jamais
 // divergente ; uniquement des commits « publication » de EXACTEMENT 3 fichiers, sans fusion.
 function verifierBranche(branche, distante, deps) {
-  if (essai(deps, 'merge-base', '--is-ancestor', REF_DESIGN, 'HEAD').code !== 0) throw new StopBatch('branche', `${branche} ne descend pas d'origin/design (design a avancé ou branche réécrite) — rebase/recréation MANUELS, rien n'est fait`);
-  if (distante && essai(deps, 'merge-base', '--is-ancestor', refDistante(branche), 'HEAD').code !== 0) throw new StopBatch('branche', `${branche} locale DIVERGE de origin/${branche} — réconciliation manuelle, rien n'est fait`);
-  if (git(deps, 'rev-list', '--merges', `${REF_DESIGN}..HEAD`).trim()) throw new StopBatch('branche', `${branche} contient un commit de fusion — non conforme`);
-  for (const c of lignes(git(deps, 'rev-list', `${REF_DESIGN}..HEAD`))) {
+  verifierHead(branche, deps);
+  const ref = refLocale(branche);
+  if (essai(deps, 'merge-base', '--is-ancestor', REF_DESIGN, ref).code !== 0) throw new StopBatch('branche', `${branche} ne descend pas d'origin/design (design a avancé ou branche réécrite) — rebase/recréation MANUELS, rien n'est fait`);
+  if (distante && essai(deps, 'merge-base', '--is-ancestor', refDistante(branche), ref).code !== 0) throw new StopBatch('branche', `${branche} locale DIVERGE de origin/${branche} — réconciliation manuelle, rien n'est fait`);
+  if (git(deps, 'rev-list', '--merges', `${REF_DESIGN}..${ref}`).trim()) throw new StopBatch('branche', `${branche} contient un commit de fusion — non conforme`);
+  for (const c of lignes(git(deps, 'rev-list', `${REF_DESIGN}..${ref}`))) {
     const fichiers = lignes(git(deps, 'diff-tree', '--no-commit-id', '--name-only', '-r', c)).sort();
     const lot = fichiers.find((f) => /^fonda\/data\/lots\/set_fonda_[a-z0-9-]+_n[IF]_\d{2}\.json$/.test(f));
     const attendus = lot ? FICHIERS_PUBLICATION(path.basename(lot, '.json')).slice().sort() : null;
@@ -295,7 +304,7 @@ function contexteGit(branche, deps) {
     n8nSollicites: false,
     pousses: 0, // push ACCEPTÉS par le distant pendant ce lancement
     publieSurDesign: (setId) => catalogue(REF_DESIGN).some((e) => e.set_id === setId),
-    publieSurBranche: (setId) => catalogue('HEAD').some((e) => e.set_id === setId),
+    publieSurBranche: (setId) => catalogue(refLocale(branche)).some((e) => e.set_id === setId),
     arbreSuiviPropre: () => git(deps, 'status', '--porcelain', '--untracked-files=no').trim() === '',
     // origin/design ET la distante de batch REFETCHÉES avant le contrôle (jamais une référence périmée).
     recontroler: () => {
@@ -318,15 +327,17 @@ function contexteGit(branche, deps) {
         indexe = lignes(git(deps, 'diff', '--cached', '--name-only')).sort();
       } catch (e) { throw B(e.message); }
       if (JSON.stringify(indexe) !== JSON.stringify([...attendus].sort())) throw B(`index ≠ 3 fichiers de publication (${indexe.join(', ')})`);
+      verifierHead(branche, deps);
       try { git(deps, 'commit', '--quiet', '-m', `FONDA : publication de ${setId}\n\nLot relu en saisie locale et signé (une passphrase), publié par orchestrer-lots.js :\nlot, entrée du catalogue, transition publie du journal.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`); } catch (e) { throw B(e.message); }
       // Le commit OBTENU est revérifié (un hook peut l'avoir modifié) : non conforme -> STOP du batch, rien poussé.
-      try { verifierBranche(branche, false, deps); } catch (e) { throw new StopBatch('commit', `${e.message}\n${consignesCommitNonConforme(setId)}`); }
+      try { verifierBranche(branche, false, deps); } catch (e) { throw new StopBatch('commit', `${e.message}\n${consignesCommitNonConforme(setId, branche)}`); }
     },
     // SEUL point de passage vers le distant : conformité recontrôlée à neuf (origin/design + distante
     // refetchées) juste avant ; push SIMPLE (jamais forcé) : un rejet non fast-forward -> STOP du batch.
     pousser() {
-      try { this.recontroler(); } catch (e) { throw new StopBatch('push', `${e.message} — AUCUN push, commit LOCAL conservé ; reprise : examiner git log origin/design..HEAD, remettre la branche en conformité À LA MAIN, puis relancer l'orchestrateur`); }
-      const r = essai(deps, 'push', '--quiet', '-u', 'origin', `refs/heads/${branche}:refs/heads/${branche}`);
+      try { this.recontroler(); } catch (e) { throw new StopBatch('push', `${e.message} — AUCUN push, commit LOCAL conservé ; reprise : examiner git log origin/design..${refLocale(branche)}, remettre la branche en conformité À LA MAIN, puis relancer l'orchestrateur`); }
+      // Refspec EXPLICITE = la référence vérifiée par recontroler() : « vérifié == poussé ».
+      const r = essai(deps, 'push', '--quiet', '-u', 'origin', `${refLocale(branche)}:${refLocale(branche)}`);
       if (r.code !== 0) throw new StopBatch('push', `push de ${branche} en échec (${(r.stderr || '').trim().split('\n').pop()}) — commit LOCAL conservé ; relancer l'orchestrateur : le push sera retenté et vérifié`);
       this.pousses += 1;
     },
@@ -340,13 +351,13 @@ function contexteGit(branche, deps) {
       return `origin/${branche} = ${l.split(/\s/)[0].slice(0, 7)} (lots poussés : ${lots.join(', ') || 'aucun'})`;
     },
     // Conformité RECONTRÔLÉE contre le design COURANT avant tout push (non conforme -> STOP du batch).
-    // « Poussée » seulement si la branche distante (refetchée) = HEAD ; sinon re-push puis revérification.
+    // « Poussée » seulement si la branche distante (refetchée) = la branche locale ; sinon re-push puis revérification.
     verifierPousse() {
       this.recontroler();
       const egale = () => {
         if (git(deps, 'ls-remote', '--heads', 'origin', `refs/heads/${branche}`).trim() === '') return false;
         git(deps, 'fetch', '--quiet', 'origin', `+refs/heads/${branche}:${refDistante(branche)}`);
-        return git(deps, 'rev-parse', 'HEAD').trim() === git(deps, 'rev-parse', refDistante(branche)).trim();
+        return git(deps, 'rev-parse', refLocale(branche)).trim() === git(deps, 'rev-parse', refDistante(branche)).trim();
       };
       if (egale()) return true;
       this.pousser();

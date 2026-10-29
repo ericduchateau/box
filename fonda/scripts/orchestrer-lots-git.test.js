@@ -246,7 +246,7 @@ describe('couche Git RÉELLE de l\'orchestrateur', () => {
     const r = await run(d, w);
     assert.equal(r.resultats[0].issue, 'stoppe_batch');
     assert.match(r.resultats[0].raison, /non conforme \(README\.md, /);
-    assert.match(r.resultats[0].raison, /git show --stat HEAD[\s\S]*git reset --soft HEAD~1[\s\S]*publication locale NON commitée/);
+    assert.match(r.resultats[0].raison, /ce commit n'est pas poussé[\s\S]*git switch publie\/test-git && git show --stat refs\/heads\/publie\/test-git[\s\S]*git reset --soft HEAD~1[\s\S]*publication locale NON commitée/);
     assert.deepEqual(filesDu(d, 'HEAD'), ['README.md', CAT, `fonda/data/lots/${A}.json`, JOU].sort(), 'le hook a bien modifié le commit');
     assert.equal(w.appels.filter((a) => a[0] === 'git' && a[1] === 'push').length, 0, 'aucun push');
     assert.equal(distante(d), null);
@@ -353,4 +353,31 @@ describe('couche Git RÉELLE de l\'orchestrateur', () => {
     assert.equal(r.url, null);
     assert.equal(r.ok, false);
   });
+
+  // CE7 : la référence contrôlée doit être celle poussée. Deux variantes du hook qui ajoute un fichier
+  // puis bascule sur design : bascule APRÈS le commit (post-commit : le commit à 4 fichiers est sur la
+  // branche, HEAD sur design) et PENDANT (pre-commit : ici git abandonne le commit -> consignes B).
+  for (const [nom, hooks, motif] of [
+    ['bascule après le commit (post-commit)', { 'pre-commit': 'echo intrus > README.md && git add README.md', 'post-commit': 'git switch -q design' },
+      /HEAD ne pointe pas sur refs\/heads\/publie\/test-git \(refs\/heads\/design\)[\s\S]*ce commit n'est pas poussé/],
+    ['bascule pendant le commit (pre-commit)', { 'pre-commit': 'echo intrus > README.md && git add README.md && git switch -q design' },
+      /^commit : [\s\S]*publication locale NON commitée/],
+  ]) {
+    test(`CE7 : hook ajoutant un fichier puis ${nom} -> la référence VÉRIFIÉE est celle POUSSÉE : STOP du batch, 0 push, distante inchangée`, async () => {
+      const d = depot();
+      assert.equal((await run(d, deps(d, { etats: { [A]: 'signe' } }))).ok, true, 'A poussé');
+      const surA = distante(d);
+      for (const [h, corps] of Object.entries(hooks)) fs.writeFileSync(path.join(d.work, '.git', 'hooks', h), `#!/bin/sh\n${corps}\n`, { mode: 0o755 });
+      const w = deps(d, { etats: { [B]: 'signe' } });
+      const r = await run(d, w, [B]);
+      assert.equal(r.resultats[0].issue, 'stoppe_batch');
+      assert.match(r.resultats[0].raison, motif);
+      assert.equal(w.appels.filter((a) => a[0] === 'git' && a[1] === 'push').length, 0, '0 push');
+      assert.equal(distante(d), surA, 'distante inchangée (reste sur A)');
+      assert.match(w.affiche.join('\n'), /1 push accepté|aucun nouveau push dans ce lancement/);
+      assert.doesNotMatch(w.affiche.join('\n'), /Branche poussée/);
+      assert.equal(r.url, null);
+      assert.equal(r.ok, false);
+    });
+  }
 });
