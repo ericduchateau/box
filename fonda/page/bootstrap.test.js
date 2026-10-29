@@ -1136,7 +1136,7 @@ const semainesDe = (periodeId, bande = BANDE_MILIEU) => {
   const p = CALENDRIER_REEL.periodes.find((x) => x.id === periodeId);
   return CALENDRIER_REEL.semaines.filter((x) => x.du >= p.du && x.du <= p.au && x.entrees.some((e) => e.bande === bande));
 };
-const entreesPeriode = (periodeId, bande = BANDE_MILIEU) => semainesDe(periodeId).flatMap((x) => entreesDe(x.iso_week, bande));
+const entreesPeriode = (periodeId, bande = BANDE_MILIEU) => semainesDe(periodeId, bande).flatMap((x) => entreesDe(x.iso_week, bande));
 const entreesBande = (bande = BANDE_MILIEU) => CALENDRIER_REEL.semaines.flatMap((x) => entreesDe(x.iso_week, bande));
 const classesDu = (niveau) => CLASSES.filter((c) => c.startsWith(niveau[0]));
 const slugDe = (notionId) => notionId.slice(notionId.indexOf('.') + 1);
@@ -1150,9 +1150,15 @@ const couplesAttendus = (niveau, iso, cal = CALENDRIER_REEL) => {
 };
 const couplesObtenus = (root, iso, cal = CALENDRIER_REEL) => {
   const slugs = cal.semaines.find((x) => x.iso_week === iso).entrees.map((e) => slugDe(e.notion_id));
+  // Classe ET notion lues dans le defi_id de l'URL (defi_<année>-w<semaine>_<classe>_<slug>) ;
+  // le libellé affiché doit concorder avec la classe du lien.
   return tousParClasse(root, 'fonda-lien-classe').map((li) => {
     const href = decodeURIComponent(li.children[1].href);
-    return `${li.children[0].textContent}×${slugs.find((sl) => href.endsWith(`_${sl}`)) || 'AUTRE'}`;
+    const m = /[?&]defi=defi_\d{4}-w(\d{1,2})_(\d{3})_([a-z0-9-]+)$/.exec(href);
+    assert.ok(m, `defi_id illisible : ${href}`);
+    assert.equal(Number(m[1]), iso, `semaine du defi_id : ${href}`);
+    assert.equal(li.children[0].textContent, m[2], `libellé ≠ classe du lien : ${href}`);
+    return `${m[2]}×${slugs.includes(m[3]) ? m[3] : 'AUTRE'}`;
   }).sort();
 };
 const PALIER_TXT = { nI: 'Initial', nF: 'Final' };
@@ -1277,7 +1283,14 @@ describe('calendrier v2 — fonctions de vue pures', () => {
     assert.equal(toussaint.semaine.isoWeek, 45);
     assert.deepEqual(toussaint.cases.map((c) => c.setId), entreesDe(45).map((e) => (estLiee(e) ? e.set_id : null)));
     const noel = notionsDeLaSemaine({ ...args, maintenant: new Date('2026-12-24T10:00:00') });
-    assert.equal(noel.semaine, null, 'reprise de janvier non programmée : rien d\'inventé');
+    // Reprise de janvier : la semaine programmée au début de P3 (bande milieu), sinon rien d'inventé.
+    const p3 = CALENDRIER_REEL.periodes.find((x) => x.id === 'P3');
+    const repriseP3 = CALENDRIER_REEL.semaines.find((x) => x.du === p3.du && x.entrees.some((e) => e.bande === BANDE_MILIEU));
+    if (repriseP3) assert.equal(noel.semaine.isoWeek, repriseP3.iso_week);
+    else assert.equal(noel.semaine, null, 'reprise de janvier non programmée : rien d\'inventé');
+    // Fixture : reprise NON programmée (semaines de P3 retirées) -> toujours exercé.
+    const sansP3 = { ...CALENDRIER_REEL, semaines: CALENDRIER_REEL.semaines.filter((x) => x.du < p3.du) };
+    assert.equal(notionsDeLaSemaine({ ...args, calendrier: sansP3, maintenant: new Date('2026-12-24T10:00:00') }).semaine, null, 'reprise non programmée : rien d\'inventé');
     assert.equal(notionsDeLaSemaine({ ...args, bande: 'c3', maintenant: new Date('2026-11-25T10:00:00') }).cases.length, entreesDe(48, 'c3').length);
   });
 });
