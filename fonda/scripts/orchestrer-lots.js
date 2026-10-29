@@ -293,6 +293,7 @@ function contexteGit(branche, deps) {
   const catalogue = (ref) => { const cat = JSON.parse(git(deps, 'show', `${ref}:fonda/data/catalogue-fonda.json`)); return Array.isArray(cat.lots) ? cat.lots : []; };
   return {
     n8nSollicites: false,
+    pousses: 0, // push ACCEPTÉS par le distant pendant ce lancement
     publieSurDesign: (setId) => catalogue(REF_DESIGN).some((e) => e.set_id === setId),
     publieSurBranche: (setId) => catalogue('HEAD').some((e) => e.set_id === setId),
     arbreSuiviPropre: () => git(deps, 'status', '--porcelain', '--untracked-files=no').trim() === '',
@@ -321,9 +322,22 @@ function contexteGit(branche, deps) {
       // Le commit OBTENU est revérifié (un hook peut l'avoir modifié) : non conforme -> STOP du batch, rien poussé.
       try { verifierBranche(branche, false, deps); } catch (e) { throw new StopBatch('commit', `${e.message}\n${consignesCommitNonConforme(setId)}`); }
     },
+    // SEUL point de passage vers le distant : conformité recontrôlée à neuf (origin/design + distante
+    // refetchées) juste avant ; push SIMPLE (jamais forcé) : un rejet non fast-forward -> STOP du batch.
     pousser() {
+      try { this.recontroler(); } catch (e) { throw new StopBatch('push', `${e.message} — AUCUN push, commit LOCAL conservé ; reprise : examiner git log origin/design..HEAD, remettre la branche en conformité À LA MAIN, puis relancer l'orchestrateur`); }
       const r = essai(deps, 'push', '--quiet', '-u', 'origin', `refs/heads/${branche}:refs/heads/${branche}`);
       if (r.code !== 0) throw new StopBatch('push', `push de ${branche} en échec (${(r.stderr || '').trim().split('\n').pop()}) — commit LOCAL conservé ; relancer l'orchestrateur : le push sera retenté et vérifié`);
+      this.pousses += 1;
+    },
+    // État RÉEL de origin/<branche> (lecture seule) : sha et lots qu'elle porte au-delà d'origin/design.
+    etatDistant() {
+      const l = git(deps, 'ls-remote', '--heads', 'origin', `refs/heads/${branche}`).trim();
+      if (!l) return `origin/${branche} absente (rien n'y a été poussé)`;
+      git(deps, 'fetch', '--quiet', 'origin', `+refs/heads/${branche}:${refDistante(branche)}`);
+      const lots = lignes(git(deps, 'rev-list', '--reverse', refDistante(branche), '--not', REF_DESIGN))
+        .flatMap((c) => lignes(git(deps, 'diff-tree', '--no-commit-id', '--name-only', '-r', c)).filter((f) => f.startsWith('fonda/data/lots/')).map((f) => path.basename(f, '.json')));
+      return `origin/${branche} = ${l.split(/\s/)[0].slice(0, 7)} (lots poussés : ${lots.join(', ') || 'aucun'})`;
     },
     // Conformité RECONTRÔLÉE contre le design COURANT avant tout push (non conforme -> STOP du batch).
     // « Poussée » seulement si la branche distante (refetchée) = HEAD ; sinon re-push puis revérification.
@@ -384,7 +398,7 @@ async function orchestrer({ lots, branche }, deps) {
     try { pousse = ctx.verifierPousse(); } catch (e) {
       if (!(e instanceof StopBatch)) throw e;
       arretBatch = e;
-      deps.afficher(`✗ BATCH ARRÊTÉ AU PUSH FINAL — ${e.message} — rien n'est poussé`);
+      deps.afficher(`✗ BATCH ARRÊTÉ AU PUSH FINAL — ${e.message}`);
       deps.consigner({ evt: 'stop_batch', raison: e.message });
     }
   }
@@ -395,6 +409,12 @@ async function orchestrer({ lots, branche }, deps) {
     `Stoppés / non traités (${resultats.length - publies.length}) :${resultats.filter((r) => r.issue !== 'publie' && r.issue !== 'deja_publie').map((r) => `\n  - ${r.setId} [${r.issue}] : ${r.raison}`).join('') || ' —'}`,
   ];
   if (arretBatch) resume.push(`\nBATCH ARRÊTÉ : ${arretBatch.message}`);
+  // Jamais « rien n'est poussé » sans preuve : état RÉEL du distant et push de CE lancement.
+  if (ctx && (arretBatch || publies.length)) {
+    let etat;
+    try { etat = ctx.etatDistant(); } catch (e) { etat = `état de origin/${branche} NON vérifiable (${e.message})`; }
+    resume.push(`Distant : ${etat} — ${ctx.pousses ? `${ctx.pousses} push accepté(s) dans ce lancement` : 'aucun nouveau push dans ce lancement'}`);
+  }
   if (publies.length && pousse) {
     resume.push(`\nBranche poussée (vérifiée contre origin/${branche}) : PR à OUVRIR À LA MAIN (jamais fusionnée ici) :\n  ${url}`,
       `Titre : FONDA : publication de ${publies.length} lot(s) (${publies.map((r) => r.setId).join(', ')})`,

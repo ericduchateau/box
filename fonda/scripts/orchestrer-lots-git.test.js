@@ -329,4 +329,28 @@ describe('couche Git RÉELLE de l\'orchestrateur', () => {
     assert.equal(r.pousse, false);
     assert.equal(r.ok, false);
   });
+
+  test('CE5 : design AVANCE sur le remote PENDANT le commit (hook) -> push RECONTRÔLÉ à neuf : STOP du batch, 0 push, distante inchangée, résumé = état RÉEL du distant', async () => {
+    const d = depot();
+    assert.equal((await run(d, deps(d, { etats: { [A]: 'signe' } }))).ok, true, 'A poussé');
+    const surA = distante(d);
+    const autre = path.join(d.tmp, 'autre');
+    d.g(d.tmp, 'clone', '-q', '-b', 'design', d.nu, autre);
+    d.g(autre, 'config', 'user.email', 't@e.invalid'); d.g(autre, 'config', 'user.name', 't');
+    // Environnement git du commit en cours neutralisé (env -i) : le hook agit sur un AUTRE clone.
+    fs.writeFileSync(path.join(d.work, '.git', 'hooks', 'pre-commit'), `#!/bin/sh\nenv -i PATH="$PATH" HOME="$HOME" sh -c 'cd "${autre}" && echo avance >> AUTRE.md && git add -A && git commit -qm "design avance" && git push -q origin design'\n`, { mode: 0o755 });
+    const w = deps(d, { etats: { [B]: 'signe' } });
+    const r = await run(d, w, [B]);
+    assert.equal(r.resultats[0].issue, 'stoppe_batch');
+    assert.match(r.resultats[0].raison, /^push : branche : publie\/test-git ne descend pas d'origin\/design[\s\S]*AUCUN push, commit LOCAL conservé/);
+    assert.notEqual(d.g(d.nu, 'rev-parse', 'refs/heads/design').trim(), d.g(d.work, 'rev-parse', `${surA}`).trim());
+    assert.equal(w.appels.filter((a) => a[0] === 'git' && a[1] === 'push').length, 0, '0 push');
+    assert.equal(distante(d), surA, 'distante inchangée (reste sur A)');
+    assert.deepEqual(filesDu(d, 'HEAD'), [CAT, `fonda/data/lots/${B}.json`, JOU].sort(), 'commit local de B conservé');
+    const t = w.affiche.join('\n');
+    assert.match(t, new RegExp(`Distant : origin/publie/test-git = ${surA.slice(0, 7)} \\(lots poussés : ${A}\\) — aucun nouveau push dans ce lancement`));
+    assert.doesNotMatch(t, /rien n'est poussé|Branche poussée/);
+    assert.equal(r.url, null);
+    assert.equal(r.ok, false);
+  });
 });

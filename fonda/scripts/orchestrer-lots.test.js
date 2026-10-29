@@ -204,6 +204,8 @@ describe('relance et branche', () => {
     assert.ok(!w.appels.some((a) => a.exe === 'gh'));
     assert.ok(!w.appels.some((a) => a.exe === 'git' && ['merge', 'rebase', 'reset'].includes(a.args[0])));
     for (const p of w.appels.filter((a) => a.exe === 'git' && a.args[0] === 'push')) assert.ok(!p.args.some((x) => /:refs\/heads\/(main|design)$/.test(x)));
+    for (const p of w.appels.filter((a) => a.exe === 'git' && a.args[0] === 'push')) assert.ok(!p.args.some((x) => /^--force|^\+/.test(x)), 'push SIMPLE, jamais forcé');
+    assert.doesNotMatch(fs.readFileSync(path.join(__dirname, 'orchestrer-lots.js'), 'utf8'), /--force|force-with-lease/, 'aucun push forcé dans le code');
     const code = fs.readFileSync(path.join(__dirname, 'orchestrer-lots.js'), 'utf8');
     assert.doesNotMatch(code, /['"]gh['"]|pulls|['"](merge|rebase|reset)['"]/i, 'jamais git merge/rebase/reset ni gh');
   });
