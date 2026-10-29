@@ -296,4 +296,37 @@ describe('couche Git RÉELLE de l\'orchestrateur', () => {
     assert.ok(!w.appels.some((a) => a[0] !== 'git'), 'aucune commande FONDA');
     assert.equal(w.appels.filter((a) => a[0] === 'git' && a[1] === 'push').length, 0);
   });
+
+  test('CE4 : A commité non poussé ; à la relance, le diagnostic de B fait avancer design puis renvoie incident_ouvert -> push final RECONTRÔLÉ contre le design COURANT : STOP du batch, 0 push', async () => {
+    const d = depot();
+    const hook = path.join(d.nu, 'hooks', 'pre-receive');
+    fs.writeFileSync(hook, '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    const r1 = await run(d, deps(d, { etats: { [A]: 'signe' } }));
+    assert.equal(r1.resultats[0].issue, 'stoppe_batch', 'push de A refusé');
+    fs.unlinkSync(hook); // un push serait désormais ACCEPTÉ : seul le recontrôle peut l'empêcher
+    const autre = path.join(d.tmp, 'autre');
+    d.g(d.tmp, 'clone', '-q', '-b', 'design', d.nu, autre);
+    d.g(autre, 'config', 'user.email', 't@e.invalid'); d.g(autre, 'config', 'user.name', 't');
+    const w = deps(d, { etats: { [B]: 'incident_ouvert' } });
+    const lancerOrig = w.deps.lancer;
+    w.deps.lancer = (exe, args, o) => {
+      if (exe !== 'git' && args[1] === '--diagnostic' && args[2] === B) {
+        // design avance sur le remote ; PAS de fetch local ici : le recontrôle doit le faire lui-même.
+        fs.writeFileSync(path.join(autre, 'AUTRE.md'), 'design avance\n'); d.g(autre, 'add', '-A'); d.g(autre, 'commit', '-qm', 'design avance'); d.g(autre, 'push', '-q', 'origin', 'design');
+      }
+      return lancerOrig(exe, args, o);
+    };
+    const r = await run(d, w, [A, B]);
+    assert.deepEqual(r.resultats.map((x) => x.issue), ['deja_publie', 'stoppe']);
+    assert.match(r.resultats[1].raison, /incident_ouvert/);
+    assert.equal(w.appels.filter((a) => a[0] === 'git' && a[1] === 'push').length, 0, '0 push');
+    assert.equal(distante(d), null, 'distante inchangée (jamais créée)');
+    const t = w.affiche.join('\n');
+    assert.match(t, /BATCH ARRÊTÉ AU PUSH FINAL — branche : publie\/test-git ne descend pas d'origin\/design/);
+    assert.match(t, /BATCH ARRÊTÉ : branche : .*ne descend pas d'origin\/design/);
+    assert.doesNotMatch(t, /Branche poussée/);
+    assert.equal(r.url, null);
+    assert.equal(r.pousse, false);
+    assert.equal(r.ok, false);
+  });
 });

@@ -296,8 +296,9 @@ function contexteGit(branche, deps) {
     publieSurDesign: (setId) => catalogue(REF_DESIGN).some((e) => e.set_id === setId),
     publieSurBranche: (setId) => catalogue('HEAD').some((e) => e.set_id === setId),
     arbreSuiviPropre: () => git(deps, 'status', '--porcelain', '--untracked-files=no').trim() === '',
-    // Distante REFETCHÉE avant le contrôle (jamais une référence périmée).
+    // origin/design ET la distante de batch REFETCHÉES avant le contrôle (jamais une référence périmée).
     recontroler: () => {
+      git(deps, 'fetch', '--quiet', 'origin', `+refs/heads/design:${REF_DESIGN}`);
       const distante = git(deps, 'ls-remote', '--heads', 'origin', `refs/heads/${branche}`).trim() !== '';
       if (distante) git(deps, 'fetch', '--quiet', 'origin', `+refs/heads/${branche}:${refDistante(branche)}`);
       verifierBranche(branche, distante, deps);
@@ -324,8 +325,10 @@ function contexteGit(branche, deps) {
       const r = essai(deps, 'push', '--quiet', '-u', 'origin', `refs/heads/${branche}:refs/heads/${branche}`);
       if (r.code !== 0) throw new StopBatch('push', `push de ${branche} en échec (${(r.stderr || '').trim().split('\n').pop()}) — commit LOCAL conservé ; relancer l'orchestrateur : le push sera retenté et vérifié`);
     },
+    // Conformité RECONTRÔLÉE contre le design COURANT avant tout push (non conforme -> STOP du batch).
     // « Poussée » seulement si la branche distante (refetchée) = HEAD ; sinon re-push puis revérification.
     verifierPousse() {
+      this.recontroler();
       const egale = () => {
         if (git(deps, 'ls-remote', '--heads', 'origin', `refs/heads/${branche}`).trim() === '') return false;
         git(deps, 'fetch', '--quiet', 'origin', `+refs/heads/${branche}:${refDistante(branche)}`);
@@ -378,7 +381,12 @@ async function orchestrer({ lots, branche }, deps) {
   // Après un STOP du batch : AUCUNE mutation distante (ni push ni re-push) ; reprise au prochain
   // lancement explicite. Sinon, vérification (et re-push éventuel) de la branche.
   if (ctx && publies.length && !arretBatch) {
-    try { pousse = ctx.verifierPousse(); } catch (e) { deps.afficher(`✗ vérification du push : ${e.message}`); }
+    try { pousse = ctx.verifierPousse(); } catch (e) {
+      if (!(e instanceof StopBatch)) throw e;
+      arretBatch = e;
+      deps.afficher(`✗ BATCH ARRÊTÉ AU PUSH FINAL — ${e.message} — rien n'est poussé`);
+      deps.consigner({ evt: 'stop_batch', raison: e.message });
+    }
   }
   const url = `${DEPOT}/compare/design...${branche}`;
   const resume = [
