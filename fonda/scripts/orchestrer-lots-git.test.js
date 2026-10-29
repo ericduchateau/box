@@ -61,7 +61,7 @@ function deps(d, { etats = {} } = {}) {
       return { code: 99, stdout: '', stderr: 'inattendu' };
     },
     n8nActifs: async () => ({ generation: false, portier: false }), afficher: (t) => w.affiche.push(t), consigner: () => {},
-    dormir: async () => {}, attenteGenerationMs: 1, pasAttenteMs: 1, terminal: () => ({ stdin: true, stdout: true }),
+    dormir: async () => {}, maintenant: () => Date.now(), attenteGenerationMs: 1, pasAttenteMs: 1, delaiDiagnosticMs: 60000, terminal: () => ({ stdin: true, stdout: true }),
   };
   return w;
 }
@@ -237,5 +237,63 @@ describe('couche Git RÉELLE de l\'orchestrateur', () => {
     assert.match(r.resultats[0].raison, /déjà au catalogue d'origin\/design/);
     assert.ok(!w.appels.some((a) => a[0] !== 'git' && a.join(' ').includes(A)));
     assert.equal(r.ok, false, 'un lot stoppé -> code ≠ 0');
+  });
+
+  test('hook pre-commit AJOUTANT un fichier au commit -> commit OBTENU revérifié : STOP du batch, AUCUN push, consignes manuelles (jamais de reset auto)', async () => {
+    const d = depot();
+    fs.writeFileSync(path.join(d.work, '.git', 'hooks', 'pre-commit'), '#!/bin/sh\necho intrus > README.md && git add README.md\n', { mode: 0o755 });
+    const w = deps(d, { etats: { [A]: 'signe' } });
+    const r = await run(d, w);
+    assert.equal(r.resultats[0].issue, 'stoppe_batch');
+    assert.match(r.resultats[0].raison, /non conforme \(README\.md, /);
+    assert.match(r.resultats[0].raison, /git show --stat HEAD[\s\S]*git reset --soft HEAD~1[\s\S]*publication locale NON commitée/);
+    assert.deepEqual(filesDu(d, 'HEAD'), ['README.md', CAT, `fonda/data/lots/${A}.json`, JOU].sort(), 'le hook a bien modifié le commit');
+    assert.equal(w.appels.filter((a) => a[0] === 'git' && a[1] === 'push').length, 0, 'aucun push');
+    assert.equal(distante(d), null);
+    assert.ok(!w.appels.some((a) => a[0] === 'git' && ['reset', 'revert'].includes(a[1])), 'jamais de reset/revert auto');
+    assert.equal(w.appels.filter((a) => a[0] === 'git' && a[1] === 'commit').length, 1, 'un seul commit');
+    assert.equal(r.ok, false);
+  });
+
+  test('branche DISTANTE qui diverge EN COURS de traitement -> recontrôle avec la distante REFETCHÉE : STOP du batch avant la publication réelle, rien écrit ni poussé', async () => {
+    const d = depot();
+    assert.equal((await run(d, deps(d, { etats: { [A]: 'signe' } }))).ok, true);
+    const autre = path.join(d.tmp, 'autre');
+    d.g(d.tmp, 'clone', '-q', '-b', BRANCHE, d.nu, autre);
+    d.g(autre, 'config', 'user.email', 't@e.invalid'); d.g(autre, 'config', 'user.name', 't');
+    const w = deps(d, { etats: { [B]: 'signe' } });
+    let n = 0;
+    const lancerOrig = w.deps.lancer;
+    w.deps.lancer = (exe, args, o) => {
+      if (exe !== 'git' && args[1] === '--diagnostic' && (n += 1) === 2) {
+        const C = 'set_fonda_grandeurs-mesures_nI_94';
+        publier(autre, C); d.g(autre, 'add', '-A'); d.g(autre, 'commit', '-qm', 'publication concurrente'); d.g(autre, 'push', '-q', 'origin', BRANCHE);
+      }
+      return lancerOrig(exe, args, o);
+    };
+    const avant = distante(d);
+    const r = await run(d, w, [B]);
+    assert.equal(r.resultats[0].issue, 'stoppe_batch');
+    assert.match(r.resultats[0].raison, /locale DIVERGE de origin\/publie\/test-git/);
+    assert.ok(!w.appels.some((a) => a[0] !== 'git' && a.includes(O.PUBLICATION) && !a.includes('--dry-run')), 'publication réelle jamais lancée');
+    assert.equal(w.appels.filter((a) => a[0] === 'git' && a[1] === 'push').length, 0);
+    assert.notEqual(distante(d), avant, 'la distante a bien bougé (concurrent)');
+    assert.equal(d.g(d.work, 'status', '--porcelain', '--untracked-files=all', '--', 'fonda').trim(), '');
+  });
+
+  test('branche contenant un commit de FUSION (commits latéraux conformes) -> STOP du batch avant tout lot', async () => {
+    const d = depot();
+    d.g(d.work, 'switch', '-q', '-c', BRANCHE);
+    d.g(d.work, 'switch', '-q', '-c', 'lateral', 'design');
+    publier(d.work, B); d.g(d.work, 'add', '-A'); d.g(d.work, 'commit', '-qm', 'publication latérale');
+    d.g(d.work, 'switch', '-q', BRANCHE);
+    d.g(d.work, 'merge', '-q', '--no-ff', '-m', 'fusion', 'lateral');
+    d.g(d.work, 'switch', '-q', 'design');
+    const w = deps(d, { etats: { [A]: 'signe' } });
+    const r = await run(d, w);
+    assert.equal(r.ok, false);
+    assert.match(w.affiche.join('\n'), /BATCH ARRÊTÉ AVANT TOUT LOT — branche : publie\/test-git contient un commit de fusion/);
+    assert.ok(!w.appels.some((a) => a[0] !== 'git'), 'aucune commande FONDA');
+    assert.equal(w.appels.filter((a) => a[0] === 'git' && a[1] === 'push').length, 0);
   });
 });

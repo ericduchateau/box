@@ -19,7 +19,7 @@ const B = 'set_fonda_grandeurs-mesures_nI_93';
 
 // Monde simulé : un état de diagnostic par lot, qui avance UNIQUEMENT par les commandes.
 function monde({ etats = {}, verrou = {}, n8n = { generation: true, portier: true }, sur = {}, design = [], terminal = { stdin: true, stdout: true } } = {}) {
-  const w = { appels: [], affiche: [], journal: [], publies: new Set(), sale: false, modifies: [], nouveau: null, etats: { ...etats }, verrou: { ...verrou }, distante: false, pousses: 0 };
+  const w = { horloge: 0, appels: [], affiche: [], journal: [], publies: new Set(), sale: false, modifies: [], nouveau: null, etats: { ...etats }, verrou: { ...verrou }, distante: false, pousses: 0 };
   const ok = (stdout = '') => ({ code: 0, stdout, stderr: '' });
   const js = (o) => ok(JSON.stringify(o));
   w.lancer = (exe, args, opts) => {
@@ -58,7 +58,8 @@ function monde({ etats = {}, verrou = {}, n8n = { generation: true, portier: tru
   };
   w.deps = {
     lancer: w.lancer, n8nActifs: async () => (n8n instanceof Error ? Promise.reject(n8n) : n8n), afficher: (t) => w.affiche.push(t), consigner: (e) => w.journal.push(e),
-    dormir: async () => {}, attenteGenerationMs: 60000, pasAttenteMs: 15000, terminal: () => terminal,
+    // Horloge simulée : seule l'attente (ou un diagnostic lent simulé) la fait avancer.
+    dormir: async (ms) => { w.horloge += ms; }, maintenant: () => w.horloge, attenteGenerationMs: 60000, pasAttenteMs: 15000, delaiDiagnosticMs: 120000, terminal: () => terminal,
   };
   return w;
 }
@@ -314,5 +315,43 @@ describe('A strict : attente tolérée SEULEMENT après un 202 reçu par CE run'
     const w = monde({ etats: { [A]: 'aucune_generation' }, verrou: { [A]: 'accepte' }, sur: { lancer: (exe, args, o, m) => { if (args[1] === '--diagnostic' && m.vu && m.etats[A] === 'aucune_generation') m.etats[A] = 'pret_pour_saisie'; if (args[1] === '--diagnostic') m.vu = true; return null; } } });
     const r = await lancer(w);
     assert.equal(r.resultats[0].issue, 'publie');
+  });
+});
+
+describe('A en temps réel : échéance et délai de processus des diagnostics', () => {
+  test('A. diagnostic LENT (horloge) : échéance dépassée -> STOP « délai d\'attente écoulé », même si le lot devient prêt ensuite ; saisie jamais lancée', async () => {
+    // Budget 60 s ; chaque diagnostic d'attente dure 50 s : le 2e se termine à 115 s, « prêt », mais trop tard.
+    let attente = 0;
+    const w = monde({ etats: { [A]: 'aucune_generation' }, sur: { lancer: (exe, args, o, m) => {
+      if (args[0] === O.DECLENCHEUR && args.length === 3 && args[1] === A) { m.etats[A] = 'generation_en_cours'; return { code: 0, stdout: JSON.stringify({ issue: 'accepte', statut: 202 }), stderr: '' }; }
+      if (args[1] === '--diagnostic' && m.etats[A] !== 'aucune_generation') { m.horloge += 50000; if ((attente += 1) === 2) m.etats[A] = 'pret_pour_saisie'; }
+      return null;
+    } } });
+    const r = await lancer(w);
+    assert.equal(r.resultats[0].issue, 'stoppe');
+    assert.match(r.resultats[0].raison, /délai d'attente écoulé \(60000 ms, état « pret_pour_saisie »\)/);
+    assert.equal(attente, 2, 'aucun relevé après l\'échéance');
+    assert.ok(!cmds(w).some((c) => c.includes('--saisir')));
+    assert.equal(cmds(w).filter((c) => c === `declencher-generation.js ${A} ref-a`).length, 1, 'jamais de renvoi');
+    assert.equal(r.ok, false);
+  });
+  test('A. délai de processus : TOUS les diagnostics en ont un ; publier-lot, extraction, génération et actes humains JAMAIS', async () => {
+    const w = monde({ etats: { [A]: 'aucune_generation' } });
+    await lancer(w);
+    const fonda = w.appels.filter((a) => a.exe !== 'git');
+    for (const a of fonda) {
+      if (a.args[1] === '--diagnostic') assert.equal(a.opts.delaiMs, 120000, 'diagnostic borné');
+      else assert.equal(a.opts.delaiMs, undefined, `jamais de délai : ${path.basename(a.args[0])} ${a.args.slice(1).join(' ')}`);
+    }
+    assert.ok(fonda.some((a) => a.args[0] === O.PUBLICATION && !a.args.includes('--dry-run')), 'publication réelle vue');
+    const vus = [];
+    const spawn = (exe, args, opts) => { vus.push(opts); return { status: null, error: Object.assign(new Error('t'), { code: 'ETIMEDOUT' }), stdout: '', stderr: '' }; };
+    const r = O.lancerProduction(process.execPath, [O.SIGNATAIRE, '--diagnostic', A], { humain: false, delaiMs: 120000 }, spawn);
+    assert.equal(vus[0].timeout, 120000);
+    assert.equal(vus[0].stdio[0], 'ignore', 'stdin toujours fermé');
+    assert.deepEqual([r.code, /délai de 120000 ms dépassé/.test(r.stderr)], [1, true]);
+    O.lancerProduction(process.execPath, [O.PUBLICATION, 'x', 'y'], { humain: false }, spawn);
+    O.lancerProduction(process.execPath, [O.SIGNATAIRE, A], { humain: true }, spawn);
+    assert.ok(!('timeout' in vus[1]) && !('timeout' in vus[2]), 'publication et actes humains : aucun délai');
   });
 });

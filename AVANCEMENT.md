@@ -14,7 +14,7 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - Sondes/copies n8n `ZQASW4PKigh1JaHt`, `4pDA91YG9ssSus3X`, `XrSG2nt5q40SNvf4` : à archiver par Éric (jamais supprimer : preuves).
 
 ## En cours : orchestrateur multi-lots (`feat/orchestrateur-lots`)
-- `orchestrer-lots.js` : enchaîne génération → saisie (humaine, stdin hérité) → signature (humaine, passphrase) → extraction → publication (dry-run puis réel) → un commit par lot sur une branche de batch poussée ; STOP du lot au moindre diagnostic non vert ; plafond = URL compare (PR et fusion manuelles). Aucun fichier probant modifié.
+- `orchestrer-lots.js` : enchaîne génération → saisie (humaine, stdin hérité) → signature (humaine, passphrase) → extraction → publication (dry-run puis réel) → un commit par lot sur une branche de batch poussée ; STOP du lot au moindre diagnostic non vert ; plafond = URL compare (PR et fusion manuelles). Aucun fichier probant modifié. 3 passes Codex corrigées ; passe 4 (2026-10-29) : commit obtenu revérifié avant push, distante refetchée au recontrôle, attente bornée en temps réel + délai 2 min des diagnostics. Certification de l'ensemble en cours.
 - Fait avant : intérim (#51), 1re fiche sous intérim publiée (`comprendre-consigne_nI_02`, #53), tests dynamiques (#54–#56), calendrier S45 complet (#57).
 
 ## Prochaines étapes

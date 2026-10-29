@@ -84,6 +84,16 @@ function consignesB(setId) {
   ].join('\n');
 }
 
+// Consigne quand le commit OBTENU n'est pas conforme (jamais de reset ni de push automatiques).
+function consignesCommitNonConforme(setId) {
+  return [
+    'commit local NON conforme (modifié par un hook ?) — rien n\'est poussé, défait ni corrigé automatiquement.',
+    '  0. examiner le commit : git show --stat HEAD',
+    '  0b. le défaire en gardant les fichiers : git reset --soft HEAD~1 (tout fichier en trop reste indexé : à traiter à la main)',
+    consignesB(setId),
+  ].join('\n');
+}
+
 // --- Arguments ------------------------------------------------------------------------------
 function lireListe(texte) {
   const lots = [];
@@ -117,14 +127,16 @@ function json(r, quoi) {
 
 // --- Cœur : un lot ---------------------------------------------------------------------------
 // deps : { lancer(exe, args, { humain }) -> { code, stdout, stderr }, n8nActifs() -> { generation, portier },
-//          afficher(texte), consigner(evt), dormir(ms), attenteGenerationMs, pasAttenteMs }
+//          afficher(texte), consigner(evt), dormir(ms), maintenant() -> ms, attenteGenerationMs,
+//          pasAttenteMs, delaiDiagnosticMs }
 async function traiterLot(lot, ctx, deps) {
   const { setId, ref } = lot;
   const node = (script, ...args) => deps.lancer(NODE, [script, ...args], { humain: false });
   const humain = (script, ...args) => deps.lancer(NODE, [script, ...args], { humain: true });
   const detail = (d) => (typeof d.detail === 'string' ? d.detail : JSON.stringify(d.detail));
   const diag = (quoi) => {
-    const d = json(node(SIGNATAIRE, '--diagnostic', setId), `${quoi} (--diagnostic)`);
+    // Délai de processus sur les DIAGNOSTICS seuls (jamais sur publier-lot : pas de coupure en pleine écriture).
+    const d = json(deps.lancer(NODE, [SIGNATAIRE, '--diagnostic', setId], { humain: false, delaiMs: deps.delaiDiagnosticMs }), `${quoi} (--diagnostic)`);
     if (!d || typeof d.etat !== 'string' || !Array.isArray(d.applicables)) throw new Stop(quoi, 'diagnostic sans état typé');
     deps.consigner({ set_id: setId, evt: 'diagnostic', quoi, etat: d.etat });
     return d;
@@ -164,9 +176,12 @@ async function traiterLot(lot, ctx, deps) {
     // Verrou déjà « accepte » au départ (peut-être par simple observation, sans 202 prouvé) : aucune
     // tolérance, pret_pour_saisie exigé tout de suite. Jamais de second envoi.
     const TOLERES = accepte202 ? ['aucune_generation', 'generation_en_cours'] : [];
+    // Bornée en TEMPS RÉEL (échéance, même si un diagnostic est lent) ET en nombre de relevés.
     const releves = Math.max(1, Math.ceil(deps.attenteGenerationMs / deps.pasAttenteMs));
+    const echeance = deps.maintenant() + deps.attenteGenerationMs;
     for (let n = 1; ; n += 1) {
       d = diag('attente de la génération');
+      if (deps.maintenant() >= echeance) throw new Stop('génération', `délai d'attente écoulé (${deps.attenteGenerationMs} ms, état « ${d.etat} ») — relancer plus tard, rien n'est renvoyé`);
       if (d.etat === 'pret_pour_saisie') break;
       const tolere = TOLERES.includes(d.etat);
       if (!tolere || n >= releves) throw new Stop('génération', `état « ${d.etat} » après génération acceptée${tolere ? ' (délai d\'attente écoulé)' : ''} — ${detail(d)}`);
@@ -281,7 +296,12 @@ function contexteGit(branche, deps) {
     publieSurDesign: (setId) => catalogue(REF_DESIGN).some((e) => e.set_id === setId),
     publieSurBranche: (setId) => catalogue('HEAD').some((e) => e.set_id === setId),
     arbreSuiviPropre: () => git(deps, 'status', '--porcelain', '--untracked-files=no').trim() === '',
-    recontroler: () => verifierBranche(branche, git(deps, 'ls-remote', '--heads', 'origin', `refs/heads/${branche}`).trim() !== '', deps),
+    // Distante REFETCHÉE avant le contrôle (jamais une référence périmée).
+    recontroler: () => {
+      const distante = git(deps, 'ls-remote', '--heads', 'origin', `refs/heads/${branche}`).trim() !== '';
+      if (distante) git(deps, 'fetch', '--quiet', 'origin', `+refs/heads/${branche}:${refDistante(branche)}`);
+      verifierBranche(branche, distante, deps);
+    },
     lotNonSuivi: (setId) => git(deps, 'ls-files', '--others', '--exclude-standard', '--', FICHIERS_PUBLICATION(setId)[0]).trim() !== '',
     commit(setId) {
       const attendus = FICHIERS_PUBLICATION(setId);
@@ -297,6 +317,8 @@ function contexteGit(branche, deps) {
       } catch (e) { throw B(e.message); }
       if (JSON.stringify(indexe) !== JSON.stringify([...attendus].sort())) throw B(`index ≠ 3 fichiers de publication (${indexe.join(', ')})`);
       try { git(deps, 'commit', '--quiet', '-m', `FONDA : publication de ${setId}\n\nLot relu en saisie locale et signé (une passphrase), publié par orchestrer-lots.js :\nlot, entrée du catalogue, transition publie du journal.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`); } catch (e) { throw B(e.message); }
+      // Le commit OBTENU est revérifié (un hook peut l'avoir modifié) : non conforme -> STOP du batch, rien poussé.
+      try { verifierBranche(branche, false, deps); } catch (e) { throw new StopBatch('commit', `${e.message}\n${consignesCommitNonConforme(setId)}`); }
     },
     pousser() {
       const r = essai(deps, 'push', '--quiet', '-u', 'origin', `refs/heads/${branche}:refs/heads/${branche}`);
@@ -382,9 +404,11 @@ async function orchestrer({ lots, branche }, deps) {
 // humains, sans aucun pipe ni entrée fournie par l'orchestrateur.
 const OPTIONS_HUMAIN = Object.freeze({ cwd: RACINE, stdio: 'inherit' });
 const OPTIONS_MECANIQUE = Object.freeze({ cwd: RACINE, stdio: Object.freeze(['ignore', 'pipe', 'pipe']), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-function lancerProduction(exe, args, { humain }, spawn = spawnSync) {
-  const r = spawn(exe, args, humain ? OPTIONS_HUMAIN : OPTIONS_MECANIQUE);
-  return { code: r.status === null ? 1 : r.status, stdout: humain ? '' : (r.stdout || ''), stderr: humain ? '' : (r.stderr || '') };
+function lancerProduction(exe, args, { humain, delaiMs }, spawn = spawnSync) {
+  const opts = humain ? OPTIONS_HUMAIN : (delaiMs ? { ...OPTIONS_MECANIQUE, timeout: delaiMs } : OPTIONS_MECANIQUE);
+  const r = spawn(exe, args, opts);
+  const delai = r.error && r.error.code === 'ETIMEDOUT' ? `délai de ${delaiMs} ms dépassé (processus arrêté)` : '';
+  return { code: r.status === null || delai ? 1 : r.status, stdout: humain ? '' : (r.stdout || ''), stderr: humain ? '' : `${r.stderr || ''}${delai}` };
 }
 // Activité des workflows (lecture seule, clé d'API n8n du signataire ; jamais affichée).
 async function n8nActifsProduction({ dossierCles = path.join(os.homedir(), '.fonda-cles'), url = 'https://n8n.srv868991.hstgr.cloud', fetch: f = globalThis.fetch } = {}) {
@@ -409,7 +433,8 @@ async function main(argv = process.argv.slice(2)) {
     const r = await orchestrer({ lots, branche }, {
       lancer: lancerProduction, n8nActifs: () => n8nActifsProduction(), afficher: (t) => console.log(t), consigner: consignerFichier(branche),
       terminal: () => ({ stdin: process.stdin.isTTY === true, stdout: process.stdout.isTTY === true }),
-      dormir: (ms) => new Promise((res) => setTimeout(res, ms)), attenteGenerationMs: 10 * 60 * 1000, pasAttenteMs: 15 * 1000,
+      dormir: (ms) => new Promise((res) => setTimeout(res, ms)), maintenant: () => Date.now(),
+      attenteGenerationMs: 10 * 60 * 1000, pasAttenteMs: 15 * 1000, delaiDiagnosticMs: 2 * 60 * 1000,
     });
     // Code ≠ 0 dès qu'un lot est stoppé, le batch arrêté ou le push non vérifié.
     process.exitCode = r.ok ? 0 : 1;
