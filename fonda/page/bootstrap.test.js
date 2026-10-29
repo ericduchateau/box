@@ -1283,11 +1283,14 @@ describe('calendrier v2 — fonctions de vue pures', () => {
     assert.equal(toussaint.semaine.isoWeek, 45);
     assert.deepEqual(toussaint.cases.map((c) => c.setId), entreesDe(45).map((e) => (estLiee(e) ? e.set_id : null)));
     const noel = notionsDeLaSemaine({ ...args, maintenant: new Date('2026-12-24T10:00:00') });
-    // Reprise de janvier : la semaine programmée au début de P3 (bande milieu), sinon rien d'inventé.
+    // Reprise de janvier : la semaine programmée au début de P3 (toutes bandes), sinon rien
+    // d'inventé ; ses cases = les entrées de la bande milieu de cette semaine (éventuellement aucune).
     const p3 = CALENDRIER_REEL.periodes.find((x) => x.id === 'P3');
-    const repriseP3 = CALENDRIER_REEL.semaines.find((x) => x.du === p3.du && x.entrees.some((e) => e.bande === BANDE_MILIEU));
-    if (repriseP3) assert.equal(noel.semaine.isoWeek, repriseP3.iso_week);
-    else assert.equal(noel.semaine, null, 'reprise de janvier non programmée : rien d\'inventé');
+    const repriseP3 = CALENDRIER_REEL.semaines.find((x) => x.du === p3.du);
+    if (repriseP3) {
+      assert.equal(noel.semaine.isoWeek, repriseP3.iso_week);
+      assert.deepEqual(noel.cases.map((c) => c.setId), entreesDe(repriseP3.iso_week).map((e) => (estLiee(e) ? e.set_id : null)));
+    } else assert.equal(noel.semaine, null, 'reprise de janvier non programmée : rien d\'inventé');
     // Fixture : reprise NON programmée (semaines de P3 retirées) -> toujours exercé.
     const sansP3 = { ...CALENDRIER_REEL, semaines: CALENDRIER_REEL.semaines.filter((x) => x.du < p3.du) };
     assert.equal(notionsDeLaSemaine({ ...args, calendrier: sansP3, maintenant: new Date('2026-12-24T10:00:00') }).semaine, null, 'reprise non programmée : rien d\'inventé');
