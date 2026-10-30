@@ -380,4 +380,20 @@ describe('couche Git RÉELLE de l\'orchestrateur', () => {
       assert.equal(r.ok, false);
     });
   }
+
+  test('CE8 : push.followTags=true + tag annoté sur le commit poussé -> SEULE la branche arrive sur le remote, AUCUN tag', async () => {
+    const d = depot();
+    const hook = path.join(d.nu, 'hooks', 'pre-receive');
+    fs.writeFileSync(hook, '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    assert.equal((await run(d, deps(d, { etats: { [A]: 'signe' } }))).resultats[0].issue, 'stoppe_batch', 'A commité, push refusé');
+    fs.unlinkSync(hook);
+    d.g(d.work, 'config', 'push.followTags', 'true');
+    d.g(d.work, 'tag', '-a', 'hors-batch', '-m', 'tag annoté', `refs/heads/${BRANCHE}`);
+    const r = await run(d, deps(d, { etats: { [A]: 'signe' } }));
+    assert.equal(r.ok, true);
+    assert.equal(r.pousse, true);
+    assert.equal(distante(d), d.g(d.work, 'rev-parse', `refs/heads/${BRANCHE}`).trim(), 'branche poussée');
+    assert.deepEqual(d.g(d.nu, 'for-each-ref', '--format=%(refname)').split('\n').filter(Boolean).sort(), ['refs/heads/design', `refs/heads/${BRANCHE}`].sort(), 'SEULE la branche est arrivée');
+    assert.equal(d.g(d.nu, 'tag', '--list').trim(), '', 'aucun tag sur le remote');
+  });
 });

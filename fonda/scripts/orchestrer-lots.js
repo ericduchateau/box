@@ -336,8 +336,9 @@ function contexteGit(branche, deps) {
     // refetchées) juste avant ; push SIMPLE (jamais forcé) : un rejet non fast-forward -> STOP du batch.
     pousser() {
       try { this.recontroler(); } catch (e) { throw new StopBatch('push', `${e.message} — AUCUN push, commit LOCAL conservé ; reprise : examiner git log origin/design..${refLocale(branche)}, remettre la branche en conformité À LA MAIN, puis relancer l'orchestrateur`); }
-      // Refspec EXPLICITE = la référence vérifiée par recontroler() : « vérifié == poussé ».
-      const r = essai(deps, 'push', '--quiet', '-u', 'origin', `${refLocale(branche)}:${refLocale(branche)}`);
+      // Refspec EXPLICITE = la référence vérifiée par recontroler() : « vérifié == poussé ». Aucune
+      // config locale ne peut y ajouter de référence : ni tags (push.followTags) ni sous-modules.
+      const r = essai(deps, 'push', '--quiet', '--no-follow-tags', '--recurse-submodules=no', '-u', 'origin', `${refLocale(branche)}:${refLocale(branche)}`);
       if (r.code !== 0) throw new StopBatch('push', `push de ${branche} en échec (${(r.stderr || '').trim().split('\n').pop()}) — commit LOCAL conservé ; relancer l'orchestrateur : le push sera retenté et vérifié`);
       this.pousses += 1;
     },

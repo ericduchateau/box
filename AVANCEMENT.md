@@ -14,7 +14,7 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - Sondes/copies n8n `ZQASW4PKigh1JaHt`, `4pDA91YG9ssSus3X`, `XrSG2nt5q40SNvf4` : à archiver par Éric (jamais supprimer : preuves).
 
 ## En cours : orchestrateur multi-lots (`feat/orchestrateur-lots`)
-- `orchestrer-lots.js` : enchaîne génération → saisie (humaine, stdin hérité) → signature (humaine, passphrase) → extraction → publication (dry-run puis réel) → un commit par lot sur une branche de batch poussée ; STOP du lot au moindre diagnostic non vert ; plafond = URL compare (PR et fusion manuelles). Aucun fichier probant modifié. 3 passes Codex corrigées ; passe 4 (2026-10-29) : commit obtenu revérifié avant push, distante refetchée au recontrôle, attente bornée en temps réel + délai 2 min des diagnostics ; passe 5 : push final recontrôlé (CE4) ; passe 6 : recontrôle à neuf dans pousser(), seul point de passage (CE5), résumé = état réel du distant, fenêtre fetch→push assumée. Passe 7 : référence vérifiée == référence poussée (CE7). Certification de l'ensemble en cours.
+- `orchestrer-lots.js` : enchaîne génération → saisie (humaine, stdin hérité) → signature (humaine, passphrase) → extraction → publication (dry-run puis réel) → un commit par lot sur une branche de batch poussée ; STOP du lot au moindre diagnostic non vert ; plafond = URL compare (PR et fusion manuelles). Aucun fichier probant modifié. 3 passes Codex corrigées ; passe 4 (2026-10-29) : commit obtenu revérifié avant push, distante refetchée au recontrôle, attente bornée en temps réel + délai 2 min des diagnostics ; passe 5 : push final recontrôlé (CE4) ; passe 6 : recontrôle à neuf dans pousser(), seul point de passage (CE5), résumé = état réel du distant, fenêtre fetch→push assumée. Passe 7 : référence vérifiée == référence poussée (CE7). Passe 8 : push sans tags ni sous-modules (CE8). Certification de l'ensemble en cours.
 - Fait avant : intérim (#51), 1re fiche sous intérim publiée (`comprendre-consigne_nI_02`, #53), tests dynamiques (#54–#56), calendrier S45 complet (#57).
 
 ## Prochaines étapes
@@ -50,4 +50,4 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - Le classificateur auto-mode bloque les commandes contenant la clé API : Éric lance lui-même les générations.
 - Branches (AGENTS.md) : PR toujours vers `design` (liens `compare/design...<branche>`), fusion en merge commit ; jamais de fast-forward de `design` (casse la chaîne du premier parent).
 
-_Dernière mise à jour : 2026-10-29 — Claude Code (Opus 5.5)._
+_Dernière mise à jour : 2026-10-30 — Claude Code (Opus 5.5)._

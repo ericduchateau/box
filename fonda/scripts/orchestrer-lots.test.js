@@ -210,10 +210,10 @@ describe('relance et branche', () => {
     // « vérifié == poussé » : refspec EXPLICITE, la même référence que celle contrôlée ; jamais HEAD ni motif.
     const pushes = w.appels.filter((a) => a.exe === 'git' && a.args[0] === 'push');
     assert.ok(pushes.length > 0);
-    for (const p of pushes) assert.deepEqual(p.args, ['push', '--quiet', '-u', 'origin', 'refs/heads/publie/test-batch:refs/heads/publie/test-batch']);
+    for (const p of pushes) assert.deepEqual(p.args, ['push', '--quiet', '--no-follow-tags', '--recurse-submodules=no', '-u', 'origin', 'refs/heads/publie/test-batch:refs/heads/publie/test-batch']);
     const src = fs.readFileSync(path.join(__dirname, 'orchestrer-lots.js'), 'utf8');
     const appelsPush = src.match(/\(deps, 'push',[^\n]*/g);
-    assert.deepEqual(appelsPush, ["(deps, 'push', '--quiet', '-u', 'origin', `${refLocale(branche)}:${refLocale(branche)}`);"], 'un seul push, refspec explicite refLocale:refLocale');
+    assert.deepEqual(appelsPush, ["(deps, 'push', '--quiet', '--no-follow-tags', '--recurse-submodules=no', '-u', 'origin', `${refLocale(branche)}:${refLocale(branche)}`);"], 'un seul push, refspec explicite refLocale:refLocale');
     assert.doesNotMatch(src, /merge-base[^\n]*'HEAD'|rev-list[^\n]*\.\.HEAD|rev-parse', 'HEAD'/, 'aucun contrôle sur HEAD : la référence contrôlée est refs/heads/<branche>');
     const code = fs.readFileSync(path.join(__dirname, 'orchestrer-lots.js'), 'utf8');
     assert.doesNotMatch(code, /['"]gh['"]|pulls|['"](merge|rebase|reset)['"]/i, 'jamais git merge/rebase/reset ni gh');
