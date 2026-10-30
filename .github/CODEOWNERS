@@ -75,3 +75,7 @@
 /fonda/scripts/interim.test.js             @ericduchateau
 /fonda/scripts/attestation-signee-v3.test.js @ericduchateau
 /fonda/scripts/vecteurs-canonique-interim.js @ericduchateau
+# Orchestrateur de la cérémonie multi-lots : enchaîne signature, extraction et publication.
+/fonda/scripts/orchestrer-lots.js          @ericduchateau
+/fonda/scripts/orchestrer-lots.test.js     @ericduchateau
+/fonda/scripts/orchestrer-lots-git.test.js @ericduchateau

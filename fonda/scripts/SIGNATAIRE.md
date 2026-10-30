@@ -73,6 +73,22 @@ Précisions :
 - un fetch **observe** l'état distant, il ne **verrouille** pas `design` : il subsiste une fenêtre résiduelle, non atomique, entre la dernière observation (C3) et l'appel au signataire ;
 - on ne prouve pas cryptographiquement que S2 a été exécuté (la provenance prouve que l'état revendiqué **pouvait** autoriser la saisie).
 
+## Orchestrateur multi-lots (`orchestrer-lots.js`)
+
+`node fonda/scripts/orchestrer-lots.js --lots <fichier> --branche publie/<nom>` (une ligne « `<set_id> <ref>` » par lot, réservations déjà fusionnées sur `design`). Il enchaîne, lot par lot, les commandes EXISTANTES et ne s'arrête qu'aux deux actes humains :
+1. génération : `declencher-generation.js --etat`, puis un seul déclenchement si rien n'est en vol — workflows n8n vérifiés **actifs** (jamais (dés)activés par l'orchestrateur) ; verrou « envoi »/« inconnu » → STOP (jamais de `--liberer`/`--reparer` automatique) ;
+2. `--diagnostic` → `pret_pour_saisie` ; **acte humain** : `--saisir` lancé avec ton terminal (stdin hérité) ;
+3. `--diagnostic` → `pret_pour_cloture` ; **acte humain** : `signer-cloture.js <set_id>` (ta passphrase, dans ton terminal ; l'orchestrateur ne la voit ni ne la fournit) ;
+4. `--diagnostic` → `signe` ; `--extraire-publication` ; `publier-lot.js --dry-run` puis réel ;
+5. un commit par lot (exactement lot + catalogue + journal) sur la branche de batch, poussée.
+
+- **Terminal exigé** : refus de démarrer si stdin ou stdout n'est pas un terminal.
+- **Diagnostic vert à chaque garde**, refait avant extraction, avant publication réelle et avant commit ; pendant l'attente d'une génération acceptée (202), seuls `aucune_generation` et `generation_en_cours` sont tolérés, dans un délai borné en temps réel (10 min) ; chaque diagnostic est arrêté au bout de 2 min (jamais `publier-lot.js` ni les actes humains).
+- **STOP du lot** (lot sauté, arbre propre, batch continue) : échec de `--saisir` ou de la signature (code ≠ 0), anomalie à une garde, lot déjà au catalogue d'`origin/design`.
+- **STOP du batch** (tout s'arrête) : publication locale non commitée (consignes précises : diff à examiner, 3 fichiers attendus, commande de commit OU d'annulation — jamais d'auto-commit), commit ou push refusé, branche divergente (`origin/design` et la distante refetchées à chaque recontrôle, et à neuf juste avant CHAQUE push : `pousser()` est le seul point de passage vers le distant, push simple, jamais forcé, refspec explicite `refs/heads/<branche>:refs/heads/<branche>` — la référence même qui est contrôlée, jamais `HEAD` — avec `--no-follow-tags --recurse-submodules=no` : aucune config locale ne peut ajouter de référence au push ; `HEAD` doit en outre pointer sur la branche à chaque contrôle et avant le commit), ne descendant pas d'`origin/design` ou portant un commit non conforme — y compris le commit qu'on vient de créer, revérifié avant tout push (un hook peut l'avoir modifié : consignes manuelles, jamais de reset automatique).
+- Journal : `~/FONDA-clotures/orchestrations/<branche>.jsonl` ; résumé final ; code de sortie ≠ 0 dès qu'un lot est stoppé. Relançable : l'état est relu par `--diagnostic` et les étapes faites sont sautées ; « poussée » n'est annoncé qu'après vérification contre la branche distante (re-push si besoin). **Plafond** : branche poussée + URL compare et titre/description affichés — l'ouverture de la PR et la fusion restent des gestes humains ; jamais de push sur `main`/`design`. Rappel en fin de run si n8n a été sollicité : penser à désactiver les workflows. Le résumé affiche l'état RÉEL d'`origin/<branche>` (sha, lots poussés) et le nombre de push acceptés pendant le lancement.
+- **Fenêtre résiduelle assumée (arbitrage du 2026-10-29)** : entre le dernier fetch et le push, `origin/design` peut encore avancer — fenêtre irréductible en git (un fetch observe, il ne verrouille pas). Elle est inoffensive : on ne pousse que sur `publie/…` (jamais `design`), la fusion est manuelle après relecture architecte, et GitHub signale la branche « out-of-date » à la fusion. Même classe que la fenêtre C3 → signataire ci-dessus.
+
 ## Registre des incidents : témoin dérivé (option a)
 
 Le registre doit contenir **au moins** tous les incidents cités dans `charge.incidents_connus` par les attestations signées :
