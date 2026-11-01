@@ -1,0 +1,93 @@
+{
+  "schema": "lot-fonda/v1",
+  "set_id": "set_fonda_proportionnalite_nI_02",
+  "notion_id": "maths.proportionnalite",
+  "palier": "nI",
+  "matiere": "Mathématiques",
+  "notion": "Raisonner avec proportionnalité et pourcentages",
+  "niveau": "Fondamentaux — Initial (accessible)",
+  "revue_carte_par_carte": true,
+  "nb_cartes": 5,
+  "date_creation": "2026-11-01",
+  "cartes": [
+    {
+      "item_id": "it01",
+      "numero": 1,
+      "question": "Pour 10 crêpes, la recette demande 250 mL de lait. Quelle quantité de lait faut-il pour 30 crêpes ?",
+      "reponse": "750 mL",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "750 mL",
+        "750"
+      ],
+      "contexte": "pate-a-crepes-lait",
+      "set_id": "set_fonda_proportionnalite_nI_02",
+      "notion_id": "maths.proportionnalite",
+      "unite": "mL"
+    },
+    {
+      "item_id": "it02",
+      "numero": 2,
+      "question": "Quelle situation est proportionnelle ?\nA. L'âge d'une personne et sa taille.\nB. Le nombre de jours écoulés depuis janvier et la température du jour.\nC. Le nombre de baguettes achetées et le prix total (chaque baguette coûte le même prix).\nRéponds par une lettre.",
+      "reponse": "C",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "C"
+      ],
+      "contexte": "baguettes-prix-total-proportionnel",
+      "set_id": "set_fonda_proportionnalite_nI_02",
+      "notion_id": "maths.proportionnalite"
+    },
+    {
+      "item_id": "it03",
+      "numero": 3,
+      "question": "Tableau de proportionnalité : 4 cahiers coûtent 10 €. Combien coûtent 6 cahiers ?\nA. 12 €\nB. 15 €\nC. 16 €\nRéponds par une lettre.",
+      "reponse": "B",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "B"
+      ],
+      "contexte": "cahiers-tableau-proportionnalite",
+      "set_id": "set_fonda_proportionnalite_nI_02",
+      "notion_id": "maths.proportionnalite"
+    },
+    {
+      "item_id": "it04",
+      "numero": 4,
+      "question": "Un jeu vidéo coûte 40 €. Une réduction de 15 % est appliquée. Quel est le montant de la réduction ?",
+      "reponse": "6 €",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "6 €",
+        "6"
+      ],
+      "contexte": "jeu-video-reduction",
+      "set_id": "set_fonda_proportionnalite_nI_02",
+      "notion_id": "maths.proportionnalite",
+      "unite": "€"
+    },
+    {
+      "item_id": "it05",
+      "numero": 5,
+      "question": "Un club de sport compte 150 adhérents. 20 % sont des enfants. Quel calcul donne le nombre d'enfants ?\nA. 150 × 0,2\nB. 150 + 20\nC. 150 × 20\nRéponds par une lettre.",
+      "reponse": "A",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "A"
+      ],
+      "contexte": "club-sport-adherents-enfants",
+      "set_id": "set_fonda_proportionnalite_nI_02",
+      "notion_id": "maths.proportionnalite"
+    }
+  ]
+}

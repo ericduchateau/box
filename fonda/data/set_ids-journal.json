@@ -198,6 +198,12 @@
       "transition": "reserve",
       "le": "2026-11-01",
       "ref": "2026-11-01-cb1883e894a2"
+    },
+    {
+      "set_id": "set_fonda_proportionnalite_nI_02",
+      "transition": "publie",
+      "le": "2026-11-01T21:38:55.054Z",
+      "ref": "2026-11-01-cb1883e894a2:publie"
     }
   ]
 }
