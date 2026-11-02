@@ -1,0 +1,104 @@
+{
+  "schema": "lot-fonda/v1",
+  "set_id": "set_fonda_phrase-orthographe_nI_01",
+  "notion_id": "fr.phrase-orthographe",
+  "palier": "nI",
+  "matiere": "Français",
+  "notion": "Maîtriser la phrase et l'orthographe grammaticale",
+  "niveau": "Fondamentaux — Initial (accessible)",
+  "revue_carte_par_carte": true,
+  "nb_cartes": 6,
+  "date_creation": "2026-11-02",
+  "cartes": [
+    {
+      "item_id": "it01",
+      "numero": 1,
+      "question": "Conjugue le verbe au présent : « Le chien des voisins, malgré les cris des enfants, (aboyer) toute la nuit. »",
+      "reponse": "aboie",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "orthographe",
+      "reponses_acceptees": [
+        "aboie"
+      ],
+      "contexte": "chien-voisins-aboyer-sujet-eloigne",
+      "set_id": "set_fonda_phrase-orthographe_nI_01",
+      "notion_id": "fr.phrase-orthographe"
+    },
+    {
+      "item_id": "it02",
+      "numero": 2,
+      "question": "Dans la phrase « Les rosiers que mamie a plantés fleurissent déjà. », quel est le sujet du verbe « fleurissent » ?\nA. mamie\nB. Les rosiers\nC. déjà",
+      "reponse": "B",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "B"
+      ],
+      "contexte": "rosiers-mamie-sujet-relative",
+      "set_id": "set_fonda_phrase-orthographe_nI_01",
+      "notion_id": "fr.phrase-orthographe"
+    },
+    {
+      "item_id": "it03",
+      "numero": 3,
+      "question": "Dans la phrase « Léa parle à son frère. », quelle est la fonction du groupe « à son frère » ?\nA. complément circonstanciel\nB. complément d'objet direct (COD)\nC. complément d'objet indirect (COI)",
+      "reponse": "C",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "C"
+      ],
+      "contexte": "lea-parle-frere-fonction-coi",
+      "set_id": "set_fonda_phrase-orthographe_nI_01",
+      "notion_id": "fr.phrase-orthographe"
+    },
+    {
+      "item_id": "it04",
+      "numero": 4,
+      "question": "Écris le participe passé du verbe entre parenthèses, correctement accordé : « Mes cousines sont (arriver) hier soir. »",
+      "reponse": "arrivées",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "orthographe",
+      "reponses_acceptees": [
+        "arrivées"
+      ],
+      "contexte": "cousines-arriver-participe-etre",
+      "set_id": "set_fonda_phrase-orthographe_nI_01",
+      "notion_id": "fr.phrase-orthographe"
+    },
+    {
+      "item_id": "it05",
+      "numero": 5,
+      "question": "Accorde l'adjectif entre parenthèses : « Ses bottes et son manteau sont (mouillé). »",
+      "reponse": "mouillés",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "orthographe",
+      "reponses_acceptees": [
+        "mouillés"
+      ],
+      "contexte": "bottes-manteau-adjectif-genres-mixtes",
+      "set_id": "set_fonda_phrase-orthographe_nI_01",
+      "notion_id": "fr.phrase-orthographe"
+    },
+    {
+      "item_id": "it06",
+      "numero": 6,
+      "question": "Choisis la bonne forme : « Théo ___ trompé de chemin. »\nA. s'est\nB. c'est\nC. ces",
+      "reponse": "A",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "A"
+      ],
+      "contexte": "theo-trompe-chemin-homophone-se",
+      "set_id": "set_fonda_phrase-orthographe_nI_01",
+      "notion_id": "fr.phrase-orthographe"
+    }
+  ]
+}
