@@ -252,6 +252,12 @@
       "transition": "reserve",
       "le": "2026-11-02",
       "ref": "2026-11-02-0aead17bf0ac"
+    },
+    {
+      "set_id": "set_fonda_inference-implicite_nI_02",
+      "transition": "publie",
+      "le": "2026-11-02T12:57:18.574Z",
+      "ref": "2026-11-02-54b548b299e5:publie"
     }
   ]
 }

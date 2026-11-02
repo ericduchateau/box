@@ -1,0 +1,113 @@
+{
+  "schema": "lot-fonda/v1",
+  "set_id": "set_fonda_inference-implicite_nI_02",
+  "notion_id": "fr.inference-implicite",
+  "palier": "nI",
+  "matiere": "Français",
+  "notion": "Comprendre l'implicite et faire une inférence",
+  "niveau": "Fondamentaux — Initial (accessible)",
+  "revue_carte_par_carte": true,
+  "nb_cartes": 6,
+  "date_creation": "2026-11-02",
+  "cartes": [
+    {
+      "item_id": "it01",
+      "numero": 1,
+      "question": "Texte : « Léa entre en classe, accroche son manteau dégoulinant et secoue son parapluie sur le paillasson. » Quel temps fait-il dehors ? Réponds en un ou deux mots.",
+      "reponse": "Il pleut",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "sens",
+      "reponses_acceptees": [
+        "il pleut",
+        "pluie",
+        "pluvieux",
+        "la pluie",
+        "temps pluvieux"
+      ],
+      "contexte": "eleve-manteau-trempe-meteo",
+      "set_id": "set_fonda_inference-implicite_nI_02",
+      "notion_id": "fr.inference-implicite"
+    },
+    {
+      "item_id": "it02",
+      "numero": 2,
+      "question": "Texte : « Hugo regarde sa montre pour la quatrième fois, soupire, puis se lève pour guetter par la fenêtre. Le bus de ses amis devrait être arrivé depuis vingt minutes. » Que ressent Hugo ?\nA. La fierté\nB. L'impatience\nC. La joie\nRéponds par la lettre.",
+      "reponse": "B",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "B"
+      ],
+      "contexte": "hugo-arret-de-bus-attente",
+      "set_id": "set_fonda_inference-implicite_nI_02",
+      "notion_id": "fr.inference-implicite"
+    },
+    {
+      "item_id": "it03",
+      "numero": 3,
+      "question": "Texte : « M. Armand serre contre lui sa vieille valise en cuir et regarde défiler par la vitre du train les champs qu'il n'a pas revus depuis quarante ans. » Que peut-on déduire ?\nA. Il part en vacances pour la première fois.\nB. Il fuit la police.\nC. Il revient dans la région où il a vécu autrefois.\nRéponds par la lettre.",
+      "reponse": "C",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "C"
+      ],
+      "contexte": "vieil-homme-train-retour-enfance",
+      "set_id": "set_fonda_inference-implicite_nI_02",
+      "notion_id": "fr.inference-implicite"
+    },
+    {
+      "item_id": "it04",
+      "numero": 4,
+      "question": "Texte : « Avant même le dîner, Tom avait rangé sa chambre, lavé la vaisselle et sorti les poubelles, sans que personne ne le lui demande. » Quelle qualité le narrateur met-il en avant chez Tom ?\nA. Il est serviable.\nB. Il est paresseux.\nC. Il est timide.\nRéponds par la lettre.",
+      "reponse": "A",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "A"
+      ],
+      "contexte": "tom-taches-menageres-qualite",
+      "set_id": "set_fonda_inference-implicite_nI_02",
+      "notion_id": "fr.inference-implicite"
+    },
+    {
+      "item_id": "it05",
+      "numero": 5,
+      "question": "Texte : « Les enfants ramassent des châtaignes sous les arbres, dont les feuilles roussies tombent une à une. Mamie ressort les gros pulls du placard. » Quelle est la saison ?",
+      "reponse": "Automne",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "sens",
+      "reponses_acceptees": [
+        "automne",
+        "l'automne",
+        "en automne"
+      ],
+      "contexte": "enfants-chataignes-saison",
+      "set_id": "set_fonda_inference-implicite_nI_02",
+      "notion_id": "fr.inference-implicite"
+    },
+    {
+      "item_id": "it06",
+      "numero": 6,
+      "question": "Texte : « Chaque matin à quatre heures, Karim allume le four, pétrit la pâte, puis range de longues baguettes dorées derrière son comptoir. » Quel est son métier ? Réponds en un mot.",
+      "reponse": "Boulanger",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "sens",
+      "reponses_acceptees": [
+        "boulanger",
+        "boulangère",
+        "un boulanger",
+        "artisan boulanger"
+      ],
+      "contexte": "karim-four-quatre-heures-metier",
+      "set_id": "set_fonda_inference-implicite_nI_02",
+      "notion_id": "fr.inference-implicite"
+    }
+  ]
+}
