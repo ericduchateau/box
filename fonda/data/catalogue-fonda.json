@@ -755,6 +755,102 @@
         },
         "signature": "AgjO3Zq77xgFoHfP6Xr4yklBrKaASwCFpGwdhHlR6bWmgUMJbPl03Z0E+EuVa+lqyu+Bfrj4swoVRP1ZmeEzHXSf7l+oA5P2MvzkpY+faBs7BP0JKh8tpHmmHGkvsSribUJ2rm8oFopcNQlUshDDJKTzhRcwO06MEEMqbreVgyCj8wqLwV9R82NJbOtz7MB1+pDO6t1IYiXXLPNqjCObc/gBs+nrCn4aFupJ4tbiPaWD7th7hHVKIL/2lGi9VbZU41+HS4Zdc/eR8jukqgyqA1PUsO0SOgfMXzIH0xyHV1tDS28cxQBbyr/nYgAseVuz2lCYp6PAnGuCrGhT4g2Mmb2G244/ETucVAeJeol7HcGkhsGsJoGLpwcdOVHhjq92/Se/O3Eh6LwoJvuLCDEUFo8s3DY2WAn6sDZwMlAKeneChvI6NGLxOeFxjpUFGOaiMNjgzYVnLvNri5ju6+HSCZce+y2xDbHj/3gtK855gOodGgRtX6o3kw3+W6msT4/U"
       }
+    },
+    {
+      "set_id": "set_fonda_resolution-problemes_nI_02",
+      "notion_id": "maths.resolution-problemes",
+      "palier": "nI",
+      "fichier": "lots/set_fonda_resolution-problemes_nI_02.json",
+      "item_ids": [
+        "it01",
+        "it02",
+        "it03",
+        "it04",
+        "it05"
+      ],
+      "empreinte": "sha256:02541de5edce0c8d13e74dc9a0261f178c5816df64348e78f7ed05f70a098659",
+      "moteur": {
+        "version": "v1",
+        "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+      },
+      "relecteur": {
+        "forme": "relue_par",
+        "nom_affiche": "Éric Duchateau",
+        "id": "eric"
+      },
+      "attestation": {
+        "type": "cloture-signee",
+        "charge": {
+          "schema": "attestation-cloture/v2",
+          "set_id": "set_fonda_resolution-problemes_nI_02",
+          "notion_id": "maths.resolution-problemes",
+          "palier": "nI",
+          "coeur": {
+            "action": "accepter",
+            "selection": [
+              "it01",
+              "it02",
+              "it03",
+              "it04",
+              "it05"
+            ],
+            "ecartees": [],
+            "empreinte_relue": "sha256:02541de5edce0c8d13e74dc9a0261f178c5816df64348e78f7ed05f70a098659",
+            "empreinte_publiee": "sha256:02541de5edce0c8d13e74dc9a0261f178c5816df64348e78f7ed05f70a098659",
+            "moteur": {
+              "version": "v1",
+              "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+            }
+          },
+          "sha256_instantane": "f36ef87ad2d6c3664fe55b8ba54368d40f6c3e4c279e119e2cc19920b72b34b8",
+          "code_confirmation": "f36ef87ad2d6c366",
+          "confirmation": {
+            "mode": "auto",
+            "par": "eric",
+            "recue_par": "eric",
+            "le": "2026-11-02T07:36:22.451Z"
+          },
+          "fidelite_transmission": {
+            "atteste_par": "eric",
+            "le": "2026-11-02T07:36:25.350Z"
+          },
+          "relecteur_attribue": "eric",
+          "relecteur_egal_cloturer": true,
+          "provenances": [],
+          "nb_fichiers_decision": 1,
+          "referentiel_version": "sha256:c7db61c6a1a0934aa2089a4e8f3cd7bf2139e44d13456e730a951719b15297b4",
+          "moteur": {
+            "version": "v1",
+            "sha256": "ce14c3e497949913a37fd8daf6c57d2f0a96306e08f064bf9231600572ad1753"
+          },
+          "execution_cloture": null,
+          "source_decisions": "saisie_locale",
+          "generation": {
+            "execution_id": "280110",
+            "workflow_id": "vrqgtS5kQMvP9Ok5",
+            "statut": "success",
+            "demarree_le": "2026-11-02T07:30:36.186Z",
+            "terminee_le": "2026-11-02T07:31:04.276Z",
+            "modele": "claude-sonnet-5-5",
+            "empreinte_complete": "sha256:71594fd1190f4c1294ac0eaea9484ffba7d0e58c2f7573d7f62f53d113eabe70",
+            "journal_commit": "7e3e79ff184813823c43dc46a7e25ce0f210f0ec",
+            "listing_debut_le": "2026-11-02T07:36:03.042Z",
+            "listing_fin_le": "2026-11-02T07:36:12.629Z"
+          },
+          "fin_saisie_le": "2026-11-02T07:35:39.451Z",
+          "revoque_le": null,
+          "levees": [],
+          "incidents_connus": [],
+          "cloture_le": "2026-11-02T07:36:25.355Z",
+          "badge": {
+            "forme": "relue_par",
+            "nom_affiche": "Éric Duchateau",
+            "id": "eric"
+          },
+          "cle_id": "eric-2026"
+        },
+        "signature": "GHoVoCGhQN3SGRiz/wS/WGON++FFdDhf8SvWI234iurQQ7L2WTPeMzWdOlVhqlppXuDwJqBapYgpIfh1UAW5iLRYoJqzqKvg/UC57MVgDvLqi9pjLzWpDrfodKgaF0EM6y5TXWifC3zh9YF3HJ/GXknFTeH+IrszBJKM8cWSb0xUtUwcx5vkYekB7ScY24j2CCFgga3CJX4cN9OnNnAEi0APiqFJi4CawFfMe1I6r9hbRCpldoMAlRw8HfFn1wJzqNIWzPSKQoN8kWXHgjrLCTM4jjAJKNhXHJvfAtrpbrchygnbgr2ilyHs0Y5KLDAQ0YQgq/LHFc44zicJApBEU5U+b4WRzoBCOwhwYH9hrMl3SGXbX80qYoiRAJN8TRST6uJm06J7HASHZwdzG+UYQcqrmFjCKeECIJ7LEnWyTwT8J9yo80FPy76c6tl4SfCT0NlMxUkX/WK6jFm1zEt1rHfkYG9/ErahjSvuSBLRMmFNBCGibHxX9PoB2BPI8oaw"
+      }
     }
   ]
 }

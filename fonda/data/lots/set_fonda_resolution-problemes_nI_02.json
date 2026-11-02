@@ -1,0 +1,95 @@
+{
+  "schema": "lot-fonda/v1",
+  "set_id": "set_fonda_resolution-problemes_nI_02",
+  "notion_id": "maths.resolution-problemes",
+  "palier": "nI",
+  "matiere": "Mathématiques",
+  "notion": "Résoudre un problème à plusieurs étapes",
+  "niveau": "Fondamentaux — Initial (accessible)",
+  "revue_carte_par_carte": true,
+  "nb_cartes": 5,
+  "date_creation": "2026-11-02",
+  "cartes": [
+    {
+      "item_id": "it01",
+      "numero": 1,
+      "question": "À la boulangerie, Inès achète 3 baguettes à 1,10 € l'unité et 2 croissants à 1,20 € l'unité. Quelle somme doit-elle payer en tout ?",
+      "reponse": "5,70 €",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "5,70 €",
+        "5,70",
+        "5,7",
+        "5,7 €"
+      ],
+      "contexte": "boulangerie-achat-baguettes-croissants",
+      "set_id": "set_fonda_resolution-problemes_nI_02",
+      "notion_id": "maths.resolution-problemes",
+      "unite": "€"
+    },
+    {
+      "item_id": "it02",
+      "numero": 2,
+      "question": "Léa marche 2 h à la vitesse de 4 km/h, puis 1 h à la vitesse de 3 km/h. Quelle distance a-t-elle parcourue en tout ?",
+      "reponse": "11 km",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "numerique",
+      "reponses_acceptees": [
+        "11 km",
+        "11"
+      ],
+      "contexte": "randonnee-deux-allures-distance",
+      "set_id": "set_fonda_resolution-problemes_nI_02",
+      "notion_id": "maths.resolution-problemes",
+      "unite": "km"
+    },
+    {
+      "item_id": "it03",
+      "numero": 3,
+      "question": "Théo a 50 €. Il achète 3 livres à 8 € chacun et un jeu à 12 €. Quelle expression donne l'argent qui lui reste ?\nA) 50 − 3 + 8 − 12\nB) (50 − 3) × 8 − 12\nC) 50 − 3 × 8 − 12",
+      "reponse": "C",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "C"
+      ],
+      "contexte": "boutique-jeux-argent-restant-expression",
+      "set_id": "set_fonda_resolution-problemes_nI_02",
+      "notion_id": "maths.resolution-problemes"
+    },
+    {
+      "item_id": "it04",
+      "numero": 4,
+      "question": "Un lot de 5 cahiers identiques coûte 7,50 €. Quel est le prix de 8 de ces cahiers, au même tarif ?\nA) 10,50 €\nB) 12,00 €\nC) 13,50 €",
+      "reponse": "B",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "B"
+      ],
+      "contexte": "papeterie-prix-cahiers-lot",
+      "set_id": "set_fonda_resolution-problemes_nI_02",
+      "notion_id": "maths.resolution-problemes"
+    },
+    {
+      "item_id": "it05",
+      "numero": 5,
+      "question": "Un collège a 6 classes de 28 élèves. Pour une sortie, 45 élèves partent. Combien d'élèves restent au collège ?\nA) 123\nB) 133\nC) 213",
+      "reponse": "A",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "A"
+      ],
+      "contexte": "college-sortie-scolaire-eleves-restants",
+      "set_id": "set_fonda_resolution-problemes_nI_02",
+      "notion_id": "maths.resolution-problemes"
+    }
+  ]
+}
