@@ -1,0 +1,104 @@
+{
+  "schema": "lot-fonda/v1",
+  "set_id": "set_fonda_lexique_nI_02",
+  "notion_id": "fr.lexique",
+  "palier": "nI",
+  "matiere": "Français",
+  "notion": "Mobiliser précisément le lexique",
+  "niveau": "Fondamentaux — Initial (accessible)",
+  "revue_carte_par_carte": true,
+  "nb_cartes": 6,
+  "date_creation": "2026-11-02",
+  "cartes": [
+    {
+      "item_id": "it01",
+      "numero": 1,
+      "question": "Deux de ces mots ont un sens proche. Quel mot a un sens différent des deux autres ?\nA. joyeux\nB. soucieux\nC. radieux\nRéponds par une lettre.",
+      "reponse": "B",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "B"
+      ],
+      "contexte": "intrus-adjectifs-emotion",
+      "set_id": "set_fonda_lexique_nI_02",
+      "notion_id": "fr.lexique"
+    },
+    {
+      "item_id": "it02",
+      "numero": 2,
+      "question": "Choisis le mot qui complète la phrase : « Le médecin a ___ des médicaments contre la grippe. »\nA. inscrit\nB. proscrit\nC. prescrit\nRéponds par une lettre.",
+      "reponse": "C",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "C"
+      ],
+      "contexte": "paronymes-ordonnance-medecin",
+      "set_id": "set_fonda_lexique_nI_02",
+      "notion_id": "fr.lexique"
+    },
+    {
+      "item_id": "it03",
+      "numero": 3,
+      "question": "Quel mot a un sens proche de « hostile » dans la phrase « Le voisin nous a réservé un accueil hostile » ?\nA. malveillant\nB. chaleureux\nC. discret\nRéponds par une lettre.",
+      "reponse": "A",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "A"
+      ],
+      "contexte": "synonyme-accueil-hostile",
+      "set_id": "set_fonda_lexique_nI_02",
+      "notion_id": "fr.lexique"
+    },
+    {
+      "item_id": "it04",
+      "numero": 4,
+      "question": "« Mon cœur battait à tout rompre, mes mains tremblaient et je n'osais plus avancer dans le couloir obscur. »\nQuel mot décrit l'état du narrateur ?\nA. rassuré\nB. amusé\nC. effrayé\nRéponds par une lettre.",
+      "reponse": "C",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "C"
+      ],
+      "contexte": "etat-personnage-couloir-sombre",
+      "set_id": "set_fonda_lexique_nI_02",
+      "notion_id": "fr.lexique"
+    },
+    {
+      "item_id": "it05",
+      "numero": 5,
+      "question": "Une somme dérisoire est une somme :\nA. énorme\nB. très faible\nC. interdite\nRéponds par une lettre.",
+      "reponse": "B",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "B"
+      ],
+      "contexte": "sens-adjectif-somme-derisoire",
+      "set_id": "set_fonda_lexique_nI_02",
+      "notion_id": "fr.lexique"
+    },
+    {
+      "item_id": "it06",
+      "numero": 6,
+      "question": "Quel mot est le contraire de « prodigue » (qui dépense sans compter) ?\nA. avare\nB. généreux\nC. riche\nRéponds par une lettre.",
+      "reponse": "A",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "A"
+      ],
+      "contexte": "antonyme-prodigue-argent",
+      "set_id": "set_fonda_lexique_nI_02",
+      "notion_id": "fr.lexique"
+    }
+  ]
+}
