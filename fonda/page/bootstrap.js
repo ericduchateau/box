@@ -1129,7 +1129,7 @@
     root.appendChild(construireBandeau(vue.bandeau));
     const titre = el('h2', '', 'Calendrier des fondamentaux');
     root.appendChild(titre);
-    root.appendChild(el('p', 'fonda-cal-intro', 'En général, chaque semaine : une fiche de numératie (maths) et une de littératie (français). Certaines semaines n\'en ont qu\'une, quand la notion prévue ne se travaille pas sur écran. La couleur marque la difficulté, les étoiles le palier.'));
+    root.appendChild(el('p', 'fonda-cal-intro', 'En général, chaque semaine : une fiche de numératie (maths) et une de littératie (français). Certaines semaines n\'en ont qu\'une, quand la notion prévue nécessite un document visuel que BOX ne propose pas encore. La couleur marque la difficulté, les étoiles le palier.'));
     root.appendChild(construireSelecteurBande(bande, 'calendrier'));
     root.appendChild(construireLegende());
     if (vue.periodes.every((p) => p.vide)) {

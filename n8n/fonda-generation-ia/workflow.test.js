@@ -404,11 +404,48 @@ describe('export régénéré (intérim, CDC r9) : génération identique à l\'
 // un commentaire ajouté, une seconde déclaration, un autre nœud ou un module modifié reste visible.
 describe('exclusion documents composites : export = export d\'avant le chantier, à une ligne littérale près', () => {
   const AVANT_EXCLUSION = '28b7deae2788a1ebc64e5fdb718d806604414c72';
-  const exportAvant = JSON.parse(require('child_process').execFileSync('git', ['show', `${AVANT_EXCLUSION}:n8n/fonda-generation-ia/box-fonda-generation-ia.json`], { cwd: RACINE, maxBuffer: 64 * 1024 * 1024 }).toString('utf8'));
+  const octetsAvant = require('child_process').execFileSync('git', ['show', `${AVANT_EXCLUSION}:n8n/fonda-generation-ia/box-fonda-generation-ia.json`], { cwd: RACINE, maxBuffer: 64 * 1024 * 1024 });
+  const exportAvant = JSON.parse(octetsAvant.toString('utf8'));
+  // Contrôle PRIMAIRE, au niveau OCTET : l'export figé, après remplacement littéral UNIQUE de la
+  // séquence JSON échappée de la ligne du Set (1 occurrence avant, 0 après), est identique octet pour
+  // octet au fichier commité. Le contrôle d'objet (deepEqual) ci-dessous reste un contrôle secondaire.
+  const echappee = (ids) => JSON.stringify(ligneExclues(ids)).slice(1, -1);
+  const occurrences = (texte, motif) => texte.split(motif).length - 1;
+  const octetsAttendus = (() => {
+    const texte = octetsAvant.toString('utf8');
+    assert.ok(Buffer.from(texte, 'utf8').equals(octetsAvant), 'export figé : UTF-8 sans perte');
+    const avant = echappee(IDS_EXCLUES_AVANT);
+    const apres = echappee(IDS_EXCLUES);
+    assert.equal(occurrences(texte, avant), 1, 'ancienne séquence : exactement 1 occurrence');
+    assert.equal(occurrences(texte, apres), 0, 'nouvelle séquence : 0 occurrence avant remplacement');
+    return Buffer.from(texte.replace(avant, () => apres), 'utf8');
+  })();
+  const octetsActuels = fs.readFileSync(EXPORT);
+  test('OCTETS : fichier commité = export figé après l\'unique remplacement littéral (contrôle primaire)', () => {
+    assert.ok(octetsActuels.equals(octetsAttendus), `export ≠ attendu octet pour octet (${octetsActuels.length} vs ${octetsAttendus.length} octets)`);
+  });
+  test('OCTETS : témoins de sérialisation — chacun échoue au contrôle d\'octets, même quand l\'objet est identique', () => {
+    const texte = octetsActuels.toString('utf8');
+    const obj = JSON.parse(texte);
+    const premierAccent = texte.indexOf('é');
+    assert.ok(premierAccent > 0);
+    const [premiereCle] = Object.keys(obj);
+    const temoins = [
+      ['clés réordonnées', JSON.stringify(Object.fromEntries(Object.entries(obj).reverse()), null, 2) + '\n'],
+      ['clé dupliquée (masquée au parsing)', texte.replace(`{\n  "${premiereCle}": `, `{\n  "${premiereCle}": "doublon",\n  "${premiereCle}": `)],
+      ['échappement Unicode équivalent', texte.slice(0, premierAccent) + '\\u00e9' + texte.slice(premierAccent + 1)],
+      ['indentation', JSON.stringify(obj, null, 4) + '\n'],
+    ];
+    for (const [nom, mute] of temoins) {
+      assert.notEqual(mute, texte, `${nom} : témoin inopérant`);
+      assert.deepEqual(JSON.parse(mute), obj, `${nom} : le témoin doit garder l'objet identique (mutation d'octets seulement)`);
+      assert.equal(Buffer.from(mute, 'utf8').equals(octetsAttendus), false, `${nom} : non détecté au niveau octet`);
+    }
+  });
   test('le Set du dépôt est exactement celui attendu (ordre compris)', () => {
     assert.deepEqual([...G.NOTIONS_EXCLUES_FIGURES], IDS_EXCLUES);
   });
-  test('objet complet identique après le seul remplacement littéral', () => {
+  test('objet complet identique après le seul remplacement littéral (contrôle secondaire)', () => {
     assert.deepEqual(WF, avecExclusionsCourantes(exportAvant));
   });
   test('la ligne embarquée est celle du Set du dépôt, une seule fois, dans « Preparer generation » seulement', () => {
