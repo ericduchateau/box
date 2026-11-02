@@ -34,19 +34,45 @@ function faux(routes) {
 }
 
 describe('API n8n', () => {
-  test('liste NON filtrée en statut, filtrée en workflowId, pagination complète, filtre côté client', async () => {
+  test('liste sans status : AUCUN status= envoyé ; avec status : status= envoyé AU SERVEUR, résultat rendu tel quel ; pagination complète', async () => {
     const f = faux([[/executions\?/, (u) => {
       const q = new URL(u).searchParams;
       assert.equal(q.get('workflowId'), 'wf');
-      assert.equal(q.has('status'), false, 'jamais status= (masquerait new/crashed)');
+      if (q.has('status')) {
+        assert.equal(q.get('status'), 'running');
+        return { json: { data: [{ id: '2', workflowId: 'wf', status: 'running', startedAt: 'a' }, { id: '4', workflowId: 'wf', status: 'new', startedAt: null }], nextCursor: null } };
+      }
       return q.get('cursor') === 'c2'
         ? { json: { data: [{ id: '3', workflowId: 'wf', status: 'crashed', startedAt: 'a', stoppedAt: 'b' }], nextCursor: null } }
-        : { json: { data: [{ id: '1', workflowId: 'wf', status: 'new', startedAt: null }, { id: '2', workflowId: 'wf', status: 'running', startedAt: 'a' }], nextCursor: 'c2' } };
+        : { json: { data: [{ id: '1', workflowId: 'wf', status: 'new', startedAt: null }], nextCursor: 'c2' } };
     }]]);
     const api = A.apiN8n({ cle: 'k', fetch: f });
-    assert.deepEqual((await api.listerExecutions({ workflowId: 'wf' })).map((x) => [x.id, x.status]), [['1', 'new'], ['2', 'running'], ['3', 'crashed']]);
-    assert.deepEqual((await api.listerExecutions({ workflowId: 'wf', status: 'running' })).map((x) => x.id), ['2']);
+    assert.deepEqual((await api.listerExecutions({ workflowId: 'wf' })).map((x) => [x.id, x.status]), [['1', 'new'], ['3', 'crashed']]);
+    // Rendu TEL QUEL (jamais refiltré côté client) : un « new » renvoyé par le filtre serveur est conservé.
+    assert.deepEqual((await api.listerExecutions({ workflowId: 'wf', status: 'running' })).map((x) => [x.id, x.status]), [['2', 'running'], ['4', 'new']]);
     assert.equal(f.appels[0].init.headers['X-N8N-API-KEY'], 'k');
+  });
+  test('observer() à travers apiN8n voit les exécutions ACTIVES que la liste sans filtre exclut (sémantique n8n 2.6.3)', async () => {
+    // Faux serveur fidèle à n8n 2.6.3 : sans status, les exécutions actives (running) sont EXCLUES ;
+    // status=running les renvoie ; status=waiting renvoie les waiting.
+    const executions = [
+      { id: '10', workflowId: 'wf', status: 'success', startedAt: '2026-11-02T10:00:00.000Z', stoppedAt: '2026-11-02T10:00:30.000Z' },
+      { id: '11', workflowId: 'wf', status: 'running', startedAt: '2026-11-02T10:05:00.000Z', stoppedAt: null },
+      { id: '12', workflowId: 'wf', status: 'waiting', startedAt: '2026-11-02T10:06:00.000Z', stoppedAt: null },
+    ];
+    const actives = new Set(['11']);
+    const f = faux([[/executions\?/, (u) => {
+      const q = new URL(u).searchParams;
+      const st = q.get('status');
+      const data = st ? executions.filter((x) => x.status === st) : executions.filter((x) => !actives.has(x.id));
+      return { json: { data, nextCursor: null } };
+    }]]);
+    const api = A.apiN8n({ cle: 'k', fetch: f });
+    const SC = require('./signer-cloture.js');
+    const vues = await SC.observer(api, 'wf');
+    assert.deepEqual(vues.map((x) => [String(x.id), x.status]).sort(), [['10', 'success'], ['11', 'running'], ['12', 'waiting']]);
+    const statuts = f.appels.map((a) => new URL(a.url).searchParams.get('status'));
+    assert.deepEqual(statuts, ['running', 'waiting', null], 'running, waiting, puis liste complète');
   });
   test('erreurs HTTP avec .statut (401 -> incident côté signataire) ; curseur en boucle refusé', async () => {
     const api = A.apiN8n({ cle: 'k', fetch: faux([[/executions\?/, () => ({ status: 401 })]]) });
