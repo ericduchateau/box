@@ -228,6 +228,12 @@
       "transition": "reserve",
       "le": "2026-11-02",
       "ref": "2026-11-02-25297c045adf"
+    },
+    {
+      "set_id": "set_fonda_phrase-orthographe_nI_01",
+      "transition": "publie",
+      "le": "2026-11-02T09:47:07.558Z",
+      "ref": "2026-11-02-862136d4d88c:publie"
     }
   ]
 }
