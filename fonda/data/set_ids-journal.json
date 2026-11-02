@@ -210,6 +210,12 @@
       "transition": "reserve",
       "le": "2026-11-02",
       "ref": "2026-11-02-38adceb1fc73"
+    },
+    {
+      "set_id": "set_fonda_resolution-problemes_nI_02",
+      "transition": "publie",
+      "le": "2026-11-02T07:37:18.413Z",
+      "ref": "2026-11-02-38adceb1fc73:publie"
     }
   ]
 }
