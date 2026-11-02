@@ -1,6 +1,6 @@
 # Cahier des charges — Relecture FONDA `/fonda-select` (Bloc 2, étape 7) — **v8.3**
 
-> Statut : **v8.3 (2026-10-16) : amendement ADDITIF brique 1 — génération n8n et liaison de génération (§20)** ; v8.2 (2026-10-15) : formes exactes des sous-objets de la charge et du récapitulatif (§11 bis) ; v8 rédigée le 2026-10-13 (correctifs bornés de la relecture v7 : B1–B4 et points listés ; preuve C8 faite), modèle **« l'humain garantit, la technique est un filet »** (option B). À valider par Éric, puis relecture Codex ciblée. **Aucun workflow** avant validation ; workflows en JSON **inactifs**, activation sur feu vert explicite. **Annexe A : rien n'est appliqué sur GitHub sans relecture d'Éric.** **Séquencement du build : §18.** Décisions d'Éric : §19.
+> Statut : **r10 (2026-11-02, proposition) : parcours page — rattachement exécution n8n ↔ lot, candidat, page carte par carte (§21)** ; **v8.3 (2026-10-16) : amendement ADDITIF brique 1 — génération n8n et liaison de génération (§20)** ; v8.2 (2026-10-15) : formes exactes des sous-objets de la charge et du récapitulatif (§11 bis) ; v8 rédigée le 2026-10-13 (correctifs bornés de la relecture v7 : B1–B4 et points listés ; preuve C8 faite), modèle **« l'humain garantit, la technique est un filet »** (option B). À valider par Éric, puis relecture Codex ciblée. **Aucun workflow** avant validation ; workflows en JSON **inactifs**, activation sur feu vert explicite. **Annexe A : rien n'est appliqué sur GitHub sans relecture d'Éric.** **Séquencement du build : §18.** Décisions d'Éric : §19.
 
 ## 0. Garantie, filet, limites
 
@@ -379,6 +379,7 @@ Une **fixture synthétique** d'exécution complète (réussie, erreur sans dép�
 5. Levée de la garde maîtresse **après** 1 à 4, revue Codex et lecture d'Éric ; première génération et signature réelles sur le lot du §20.1.
 
 ### 20.15 Correspondance avec les 10 blocages de la critique Codex (2026-10-16)
+r10 (2026-11-02, proposition) : §21 — sorties `confirmation-fonda/v1` (type `rejet` ajouté) et `cloture-fonda/v1`, table d'extraction E1–E12 et rapprochement R1–R6 (nonce lié au contenu), pré-lecture des détails dans le listing borné, cycle du candidat, page carte par carte, CDC à ramener sur `design` (r9 consigné a posteriori).
 r8 (2026-10-21) : G5 (§20.8) — identifiant épinglé = snapshot à poids fixes : daté, ou sans date en génération ≥ 4.6 (doc Anthropic citée) ; alias pré-4.6 refusés ; la liste `modeles-autorises.json` reste la vraie épingle (sonde §20.8 du lot 6 : `claude-sonnet-5-5-20261001` inexistant, `claude-sonnet-5-5` répond avec `model` = `claude-sonnet-5-5`).
 r7 (2026-10-20) : `pinData` null admis comme « rien d'épinglé » (§20.3, extraction) — l'API publique n8n crée les workflows avec `pinData: null`, que leurs exécutions recopient ; objet non vide, tableau ou autre type restent inexploitables (dette A de l'étape 4, décision d'Éric).
 r6 (2026-10-19) : règle d'observation incomplète ajoutée au §20.13 (relecture Codex de l'étape 3).
@@ -386,3 +387,141 @@ r5 (2026-10-16) : table §20.3 alignée sur `properties` ; SHA de `HEAD` consign
 r4 (2026-10-16) : `properties` publiques au lieu d'`appProperties`, propriété absente = abandon, test de lecture à l'activation, item du déclencheur manquant = incident (§20.2) ; reprise de publication par états intermédiaires attendus depuis `HEAD`, sans restauration (§20.11).
 r3 (2026-10-16) corrige la seconde relecture Codex : lien fichier ↔ exécution par `appProperties` et classement des tentatives avant la table (§20.2), reprise de confirmation sans reconstruction (§20.13), chronologie commune et page (§20.9), reprise de publication et longueur des `ref` (§20.11).
 1 promesse/sémantique : §20.0, Nature, §20.6 (exceptions) · 2 schémas et égalités : §20.3–20.5 · 3 réservation/réessais/concurrence : §20.2 · 4 parcours humain : §20.1, §20.6 · 5 confirmation finale : §20.6 · 6 listing, purge, issues : §20.7, §20.10, §20.13 · 7 G3/G5 : §20.8 · 8 charge v2 : §20.9 · 9 publication/promotion : §20.11 · 10 référentiel : §20.12.
+
+## 21. Amendement r10 — Parcours page : rattachement exécution n8n ↔ lot, candidat, page carte par carte (ADDITIF, 2026-11-02, P0 — aucun code)
+
+> **Statut** : proposition r10, à relire par Éric puis par Codex (effort high) **avant tout code** (P1). Comble ce que §11 bis renvoyait « au chantier des workflows » : la **sortie métier stable** de chaque workflow de relecture et la **règle d'extraction** du rattachement. **Strictement additif** : la saisie locale (§20.6) — garde maîtresse de `cloturer`, `RATTACHEMENT_SAISIE_LOCALE`, `cloturerSaisieLocale`, `dependancesCloture` en saisie locale, `main()` actuel — reste **identique octet pour octet** jusqu'à P5 (câblage), et même après : la page passe par une **production séparée**. Intérim (r9) : **saisie locale seule** ; en page, seule `decision-fonda/v1` est admissible (inchangé). **Aucune réutilisation de `BOX - Selection Prof`** ni d'aucune route ou dossier BOX (PRD §2 bis, §8).
+
+### 21.0 Workflows du parcours page (tous INACTIFS, construits depuis le dépôt, harnais d'octet-identité comme la génération)
+
+| Workflow | Déclencheur | Écrit | Observé par le signataire |
+|---|---|---|---|
+| `FONDA - Emettre relecture` | webhook à authentification d'en-tête, appelé par un CLI local d'Éric | `relecture/<set_id>.candidat.json` (création, réémission) ; mail | non (le candidat fait foi, §21.4) |
+| `FONDA - Page relecture` | webhook **GET** `/fonda-select` | **rien** | non (aucune écriture, §7) |
+| `FONDA - Confirmer relecture` | webhook **POST** `/fonda-select-confirm` | `decisions/<set_id>-<nonce>.json` | **oui** (`config.workflowConfirmation`) |
+| `FONDA - Cloturer relecture` | webhook à authentification d'en-tête, appelé par un CLI local d'Éric | `relecture/<set_id>.candidat.json` (`statut: clos`, premier `clos_le`) | **oui** (`config.workflowCloture`) |
+
+GET et POST sont **deux workflows distincts** : le workflow observé ne contient que des POST, et un GET (même abusif) ne peut produire ni exécution à rattacher ni incident. Mode attendu de toute exécution observée : **`webhook`** (jamais `manual`, jamais de « Execute »/« Retry », §7).
+
+### 21.1 Sorties métier stables
+
+Nœuds **nommés exactement** (le nom fait partie du contrat, comme §20.3) :
+
+| Workflow | Nœud d'entrée | Nœud de sortie |
+|---|---|---|
+| Confirmer relecture | `FONDA Entree confirmation` (item = corps POST **analysé**, voir ci-dessous) | `FONDA Sortie confirmation` |
+| Cloturer relecture | `FONDA Entree cloture` (item = `{ set_id }`) | `FONDA Sortie cloture` |
+
+Le nœud d'entrée émet **un seul item** : `{ lot: chaîne | null, nonce: chaîne | null }` — **seulement** ces deux champs du formulaire, copiés tels que reçus s'ils sont des chaînes de longueur ≤ 128, sinon `null`. **Jamais** `k`, `jeton` ni les choix (ni dans l'entrée, ni dans la sortie : la clé n'est jamais une donnée de rattachement).
+
+**`confirmation-fonda/v1`** (sortie, un item) — `type` ∈ {`decision`, `conflit`, `rejet`} :
+```
+{ schema: "confirmation-fonda/v1", type: chaîne, set_id: chaîne | null, nonce: chaîne | null,
+  generation: nombre | null, decision_fichier_id: chaîne | null, decision_sha256: chaîne | null,
+  ecriture: chaîne | null, motif: chaîne | null }
+```
+- `decision` : C1–C6 passés ; `set_id`, `nonce`, `generation` (= `generation_cle` du candidat) non nuls ; `decision_fichier_id` = identifiant Drive du fichier `decisions/<set_id>-<nonce>.json` **écrit ou trouvé** ; `decision_sha256` = `"sha256:" + SHA-256(octets canoniques de la décision)` ; `ecriture` ∈ {`creee`, `existante`} (`existante` = même nom, **même cœur**, C6 : pas de second fichier) ; `motif = null`.
+- `conflit` : même nom, **cœur différent** (C6) ; `set_id`, `nonce` non nuls ; aucun fichier écrit (`decision_fichier_id = null`, `decision_sha256` = celui de la décision **refusée**, `ecriture = null`) ; réponse HTTP 409.
+- `rejet` : refus **avant** toute écriture (C1 syntaxe, C2 jeton, C3 candidat/clé/expiration/moteur, C4 empreinte, C5 sélection, C5bis) ; `set_id` = `lot` **seulement s'il passe** `SET_ID_PATTERN` **et** C2, sinon `null` ; `motif` ∈ {`C1`,`C2`,`C3`,`C4`,`C5`,`C5bis`} ; tous les autres champs `null` ; réponse HTTP 400/403/410 selon le motif. **Exécution terminée en `success`** : une requête invalide ne doit **jamais** produire une exécution `error` (sinon déni de service global, cf. §21.2).
+
+> **Ajout r10 au vocabulaire de §11 bis** : le type `rejet` n'existait pas (`decision|conflit|cloture`). Il est **indispensable** : sans lui, toute requête invalide (sans lot lisible) serait « sans données exploitables » → **incident de chaîne** suspendant toutes les clôtures (§10 B) — un simple POST forgé bloquerait la chaîne. Un `rejet` est **inoffensif par construction** (aucune écriture), ce que l'extraction **vérifie** (§21.2, ligne « écriture »).
+
+**`cloture-fonda/v1`** (sortie, un item) :
+```
+{ schema: "cloture-fonda/v1", set_id: chaîne, clos_le: chaîne, deja_clos: booléen,
+  candidat_fichier_id: chaîne, nb_decisions_listees: nombre, incomplete_search: booléen }
+```
+`clos_le` = **premier** passage à `clos` (lu dans le candidat après écriture ; `deja_clos = true` si la clôture ne l'a pas réécrit, §11 bis `revoque_le`) ; `nb_decisions_listees` = fichiers de `decisions/` du lot listés (corbeille comprise, pagination complète) ; manifeste = cette sortie (« aucun fichier de clôture ne fait foi », §9).
+
+### 21.2 Table d'extraction et d'égalités (rattachement)
+
+**Fonction pure** `rattacherPage(brute, { workflowId, role })` → `{ set_id, type, nonce, generation, decision_fichier_id, decision_sha256 } | null`, avec `role` ∈ {`confirmation`, `cloture`}. `brute` = exécution **avec données** (§21.3). `null` = **non rattachable** ; **aucune** valeur par défaut, **aucune** attribution déduite d'un champ seul.
+
+Extraction (identique à §20.3) : métadonnées API ; `workflowData.pinData` absent, `null` ou `{}` ; nœud d'entrée **et** nœud de sortie : **exactement un run, `main[0]`, exactement un item, `json` objet** (`itemUnique`).
+
+| # | Contrôle | Égalité exigée | Si violé |
+|---|---|---|---|
+| E1 | Détail de l'exécution | lu pendant le listing (§21.3), non `INDISPONIBLE` | lecture en échec → **refus temporaire** (constat existant) ; détail `null` (introuvable, purgé) → **incident** (lot indéterminable) |
+| E2 | `workflowId` / mode | = workflow épinglé du `role` ; `mode = "webhook"` | **incident** |
+| E3 | `pinData` | absent, `null` ou `{}` | **incident** (données épinglées : sortie non probante, lot indéterminable) |
+| E4 | Statut terminal **≠ `success`** (`error`, `crashed`, `canceled`) | entrée lisible (un item) **et** `lot` ∈ `SET_ID_PATTERN` → rattachée à ce `lot` avec `type = "erreur"` | entrée illisible ou `lot` invalide → **incident** ; rattachée au lot demandé → **abandon** (§10 A : exécution du lot en erreur). Le nœud d'entrée ne fait que **copier** deux chaînes bornées : il ne doit **jamais** échouer (testé), sinon un POST forgé produirait un incident de chaîne |
+| E5 | Sortie (statut `success`) | un item, `schema` = `confirmation-fonda/v1` / `cloture-fonda/v1` selon `role`, forme exacte (canonique) | **incident** |
+| E6 | Cohérence entrée ↔ sortie | `sortie.set_id` = `entree.lot` (ou `null` si `rejet` sans lot valide) ; `sortie.nonce` = `entree.nonce` (confirmation) | **incident** (lot non prouvé) |
+| E7 | `type` | confirmation : ∈ {`decision`,`conflit`,`rejet`} ; clôture : sortie → `cloture` | **incident** |
+| E8 | `set_id` | `decision`/`conflit`/`cloture` : non nul, `SET_ID_PATTERN` | **incident** |
+| E9 | `nonce` (`decision`, `conflit`) | `^[0-9a-f]{32}$` | **incident** |
+| E10 | `rejet` inoffensif | `runData` **ne contient pas** le nœud d'écriture `FONDA Ecrire decision` | **incident** (une écriture a pu avoir lieu sans lot prouvé) |
+| E11 | `decision` | `decision_fichier_id` non nul ; `decision_sha256` `sha256:<64 hex>` ; `ecriture` ∈ {`creee`,`existante`} ; `generation` entier ≥ 1 | rattachée au lot (E6–E8 passés) → **abandon** ; sinon **incident** |
+| E12 | `cloture` | `clos_le` date §11 bis ; `candidat_fichier_id` non nul ; `incomplete_search = true` → traité comme §10 C (levée `recherche_incomplete` requise) | **abandon** (lot prouvé) |
+
+**Rapprochement exécution ↔ fichier de décision (1-à-1 sur le nonce, lié au contenu)** — `evaluerPage`, par lot :
+- **R1** chaque exécution `decision` du lot a **son** fichier : nom = `<set_id>-<nonce>.json` ; `properties.fonda_set_id` = `set_id` ; `properties.fonda_nonce` = `nonce` ; identifiant Drive = `decision_fichier_id` ; `"sha256:" + SHA-256(octets canoniques du contenu lu)` = `decision_sha256`. Sinon **abandon** (« décision consignée absente de Drive » ou « décision ≠ celle consignée »).
+- **R2** chaque fichier de `decisions/` du lot a **au moins une** exécution `decision` du lot avec ce nonce ; sinon **abandon** (fichier sans exécution, §10 A — inchangé).
+- **R3** plusieurs exécutions `decision` d'un même nonce (resoumission de la **même** page) : admises **seulement** si toutes portent le **même** `decision_sha256` et le **même** `decision_fichier_id` (une seule `creee`, les autres `existante`) ; sinon **abandon**.
+- **R4** `nonce` unique par affichage (§21.5) : deux nonces → deux fichiers → **unicité du cœur** (§10 A, §20.5, inchangé) tranche.
+- **R5** `conflit` du lot (quel que soit son statut) → **abandon** (inchangé). `rejet` : jamais rattaché à une décision ; ignoré **après** E10.
+- **R6** `decision.generation` = `generation_cle` du candidat clos ; sinon **abandon** (décision d'une clé révoquée ou d'une autre émission).
+
+### 21.3 Défaut de forme `rattachement(x.brut)` — tranché : **pré-lecture des détails pendant le listing borné**
+
+`evaluerPage` appelle aujourd'hui `rattachement(x.brut)`, où `brut` est l'élément de **listing** (métadonnées seules) : aucun lot n'y est lisible (§11 bis). Décision : les **détails avec données** (`api.lireExecution(id)`) de **toutes** les exécutions **terminales** observées des workflows de confirmation et de clôture sont lus **dans l'intervalle** `[listing_debut_le, listing_fin_le]`, rangés dans une table `id → brute | INDISPONIBLE | null`, puis passés à `evaluerPage`, qui appelle `rattacherPage(details.get(x.id), …)` de façon **synchrone**. Les exécutions en vol ne sont pas lues (déjà **incident**, inchangé).
+
+Pourquoi (et pas un rattachement asynchrone) :
+1. **Intervalle signé** (§20.7) : `listing_debut_le`/`listing_fin_le` bornent **toutes** les lectures. Un rattachement asynchrone lirait pendant l'évaluation, **hors** de l'intervalle signé.
+2. **Même mécanisme que la génération** (table `details`, sentinelle `INDISPONIBLE`, panne → refus temporaire), déjà testé ; la panne reste un **constat de lecture**, jamais mêlée à l'évaluation.
+3. **`evaluerPage` reste pure** (aucun réseau, déterministe, testable par fixtures).
+4. Coût : une lecture par exécution terminale observée (tous lots) — inévitable : sans détail, on ne sait pas à quel lot elle appartient.
+
+Conséquence de signature : `rattachement` devient `rattachement(brute)` (exécution **avec** données) ; la **garde maîtresse** (`typeof deps.rattachement === 'function'`) et le poison de saisie locale sont **inchangés**.
+
+### 21.4 Cycle du candidat (`candidat-fonda/v1`)
+
+- **Fichiers** (`FONDA-Lots`) : lot source **immuable** `candidats/<set_id>.lot.json` (génération, §20.4) **distinct** de l'enveloppe **mutable** `relecture/<set_id>.candidat.json` = `candidat-fonda/v1` = `{ schema, lot, relecture }` (§1), `lot` = **copie** du lot source (`empreinte_complete` égale, vérifiée à l'émission et à la clôture).
+- **`relecture`** = `{ statut, generation_cle, cle_sha256, cree_le, expire_le, clos_le, relecteur_attribue, referentiel_version, moteur: { version, sha256 }, envois }` ; `envois = [{ generation_cle: nombre, envoye_a: chaîne (identifiant relecteur), le: chaîne }]`.
+- **Émission** (`FONDA - Emettre relecture`, appelée par le CLI local d'Éric après diagnostic « généré ») : pré-conditions = réservation au journal, exécution de génération retenue (§20.2), lot source lu, **aucune** enveloppe existante ; clé `k` = 32 octets aléatoires (Crypto **v1** « Generate », hex 64) ; **seul `cle_sha256` est stocké** ; `generation_cle = 1` ; `cree_le` = maintenant ; `expire_le = cree_le + 14 j` ; `clos_le = null` ; `relecteur_attribue`, `referentiel_version`, `moteur` = ceux de la **sortie de génération** ; mail au relecteur (adresse **dans n8n**, jamais dans le dépôt) avec le lien `…/fonda-select?lot=<set_id>&k=<k>` ; `envois += { generation_cle: 1, envoye_a, le }`.
+- **Réémission** (clé perdue/expirée, `statut = en_attente`) : nouvelle `k`, `generation_cle += 1`, nouveau `cle_sha256`, `expire_le` repoussé ; l'ancienne clé est **morte** (C3 compare `sha256(k)` au seul `cle_sha256` courant) ; une décision d'une génération antérieure est refusée à la clôture (R6).
+- **Clôture technique** : `statut → clos`, `clos_le` écrit **une fois** ; ensuite toute page et tout POST → C3 refuse (`410`).
+- **Abandon** : `statut → abandonne` (§6) ; nouveau `set_id` pour toute reprise.
+- **Exposition de `k`** (assumée, §0 « non couvert ») : `k` transite dans le mail, l'URL et les **données d'exécution** n8n (GET, POST). Le signataire lit ces données (§21.3) **après** clôture (clé morte) ; `rattacherPage` n'en extrait **que** les champs du §21.1 ; `k` n'est jamais écrit, journalisé ni affiché.
+- **Intérim** : non applicable au parcours page (r9 = saisie locale seule) ; un relecteur indisponible ⇒ saisie locale sous intérim, pas d'émission page.
+
+### 21.5 Page carte par carte (§7 précisé)
+
+- **GET** `/fonda-select?lot&k` : C3 (candidat `en_attente`, `sha256(k)`, non expiré, moteur = registre) ; sinon page d'erreur sans aucune donnée du lot. **Aucune écriture.**
+- **Données** : un `<script type="application/json">` échappé ; aucun gestionnaire inline ; **CSP en `<meta>`** : `default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-<csp_nonce>' <URL exacte du moteur>; form-action <URL exacte de /fonda-select-confirm>; base-uri 'none'` (C8). **Deux aléas distincts** : `csp_nonce` (CSP, jamais posté) et `nonce` (formulaire, 128 bits hex, **un par affichage**, lié au jeton et au nom du fichier de décision).
+- **Jeton** : `HMAC-SHA256(secret, canonique(["fonda-select/v7", set_id, generation_cle, cle_sha256, empreinte_affichee, moteur.version, moteur.sha256, expire_page, nonce]))` ; `expire_page` = affichage + 60 min (borné par `expire_le`) ; secret = credential n8n.
+- **Contenu par carte** : question, réponse attendue, profil de correction avec explication et exemple, **toutes** les réponses acceptées, `unite`, `arrondi`, `seconde_chance` (valeur ou « par défaut »), et « **Essayer une réponse** » exécuté par le **moteur du candidat** chargé par version + SRI (§4.1).
+- **UX qui rend la relecture réelle la voie naturelle** :
+  1. **Une carte à la fois** (« Carte i / n »), dans l'ordre du candidat ; **aucune vue « liste à cocher »**.
+  2. Les boutons **Garder / Écarter** de la carte i sont **désactivés** tant que la carte i n'est pas **rendue en entier** (contenu inséré et visible) ; **aucun choix par défaut** ; « Carte suivante » n'apparaît qu'après un choix.
+  3. **Aucun « tout garder »** ni raccourci clavier global. Retour en arrière possible ; changer un choix réaffiche la carte.
+  4. **Récapitulatif final** (cartes gardées / écartées) avant l'envoi ; le bouton d'envoi n'existe que sur ce récapitulatif, quand **chaque** carte a un choix.
+  5. **« Tout rejeter »** : section séparée, case `confirmer_rejet=oui` explicite, accessible à tout moment (aucune carte à cocher).
+  6. Sans JavaScript : message « page de relecture indisponible sans JavaScript » (le moteur l'exige de toute façon) — jamais un formulaire dégradé tout-en-un.
+- **Serveur (C1, C5)** : champs **exactement** `lot, k, generation, empreinte, moteur_version, moteur_sha256, expire_page, nonce, jeton, action` + **un** `choix_<item_id>` ∈ {`garder`,`ecarter`} **pour chaque carte** du candidat (ni manquant, ni inconnu, ni doublon), **ou** `confirmer_rejet=oui` sans aucun `choix_` ; `selection`/`ecartees` construits côté serveur dans l'ordre du candidat (§1).
+- **Limite honnête (§0, inchangée)** : l'interface rend l'examen carte par carte **naturel**, elle ne le **prouve** pas (un script tiers peut cocher sans lire). La signature atteste la **déclaration** d'Éric, après confirmation **hors bande** de l'instantané (§3) ; aucun champ « temps passé » ni « carte vue » n'est collecté ni présenté comme une preuve.
+
+### 21.6 Où vit le CDC
+
+**Proposition** : ramener le CDC sur **`design`** (`docs/CDC-fonda-relecture.md`), source autoritative à côté du code, dans une **PR documentaire séparée, avant P1** :
+- **r8** tel quel (base de ce fichier) ;
+- **r9 (intérim)** : **consigné a posteriori** en §20.16 — il n'a **jamais** été écrit dans ce document (il vit dans le plan r6 approuvé, le commit `a250863` et `fonda/scripts/interim.js`) ; texte reconstitué depuis le code et marqué « consignation a posteriori, à relire » (aucune règle nouvelle) ;
+- **r10** : ce §21.
+Raisons : le code cite des § (« §20.6 », « §20.9 v3 », « §11 bis ») introuvables sur `design` ; les branches `docs/cdc-*` et `feat/box-fonda-relecture` sont figées et divergentes ; un seul fichier évite qu'un agent implémente contre une version périmée. Contre : aucun (fichier Markdown, aucun effet sur le code ni la CI).
+
+### 21.7 Fixtures synthétiques prévues pour P1
+
+`fonda/scripts/fixtures/execution-confirmation.json` et `execution-cloture.json`, **gabarits instanciés** comme `execution-generation.json` (`{{SET_ID}}`, `{{NONCE}}`, `{{DECISION_SHA256}}`…), anonymes, sans secret ni `k` réelle :
+- Confirmation : `decision` `creee` ; `decision` `existante` (même nonce, même cœur) ; `conflit` (409) ; `rejet` C1 (lot illisible → `set_id null`) ; `rejet` C2 (lot valide, jeton faux → `set_id null`) ; `rejet` C3 (clé révoquée) ; **`rejet` ayant exécuté le nœud d'écriture** (E10) ; `error` avant écriture (entrée lisible) ; `error` entrée illisible ; `crashed` ; `pinData` non vide ; entrée ≠ sortie (`set_id`, `nonce`) ; deux items en sortie ; `schema` inconnu ; mode `manual` ; autre `workflowId` ; exécution purgée (`null`) ; `decision_sha256` ≠ fichier ; `generation` ≠ `generation_cle`.
+- Clôture : première clôture ; clôture répétée (`deja_clos`, `clos_le` inchangé) ; autre lot ; `error` ; `incomplete_search = true` ; deux clôtures à la même date (inchangé).
+- Drive `decisions/` : fichier conforme avec `properties` (`fonda_set_id`, `fonda_nonce`) ; propriété absente ; nom ≠ `<set_id>-<nonce>.json` ; fichier en corbeille ; `incompleteSearch`.
+- Candidat `relecture/<set_id>.candidat.json` : `en_attente`, `clos`, réémis (`generation_cle = 2`), `abandonne`, `lot` ≠ lot source.
+
+### 21.8 Garde-fous (rappel, non négociables)
+
+- **Additif octet pour octet** sur la saisie locale : garde maîtresse, `RATTACHEMENT_SAISIE_LOCALE`, `cloturerSaisieLocale`, `dependancesCloture` (saisie locale) et `main()` actuel **inchangés** ; un **témoin d'octets** (comparaison au commit de référence de `design`) l'impose dès P1. La page aura **sa** fonction de production et **son** rattachement.
+- **Aucune réutilisation de `BOX - Selection Prof`** (ni `/box-select`, `/box-select-confirm`, `catalogue.json`, `BOX-Flashcards`).
+- **Intérim** : saisie locale seule ; en page, `decision-fonda/v1` seule admissible (déjà testé).
+- **Passphrase** et clé privée : inchangées, jamais hors du Mac d'Éric.
+- **Fail-closed** : tout rattachement non prouvé → `null` (incident) ou refus ; jamais d'attribution par défaut ; aucune signature page avant P1–P4, relecture Codex et go d'Éric (P5).
+- **Workflows** : construits depuis le dépôt, **inactifs**, harnais d'octet-identité, jamais édités dans l'interface, jamais « Execute »/« Retry ».
