@@ -59,6 +59,29 @@ function evaluer(valeur, ctx) {
 }
 const json = (v) => JSON.parse(JSON.stringify(v));
 
+// Exclusion « documents composites » (décision Éric 2026-11-02) : le SEUL delta admis entre un
+// export antérieur et l'export courant est la ligne littérale du Set des notions exclues, dans le
+// SEUL nœud « Preparer generation ». Remplacement exact (1 occurrence avant, 0 après), sans regex.
+const IDS_EXCLUES_AVANT = ['maths.geometrie'];
+const IDS_EXCLUES = ['maths.geometrie', 'fr.changer-representation', 'maths.comprendre-document'];
+const ligneExclues = (ids) => `const NOTIONS_EXCLUES_FIGURES = new Set(${JSON.stringify(ids)});`;
+function avecExclusionsCourantes(export_) {
+  const attendu = structuredClone(export_);
+  const cibles = attendu.nodes.filter((n) => n.name === N.preparer);
+  assert.equal(cibles.length, 1, 'un seul nœud « Preparer generation »');
+  const avant = ligneExclues(IDS_EXCLUES_AVANT);
+  const apres = ligneExclues(IDS_EXCLUES);
+  for (const n of attendu.nodes) {
+    const lignes = (n.parameters.jsCode || '').split('\n');
+    assert.equal(lignes.filter((l) => l === avant).length, n === cibles[0] ? 1 : 0, `${n.name} : ancienne ligne du Set`);
+    assert.equal(lignes.filter((l) => l === apres).length, 0, `${n.name} : nouvelle ligne déjà présente`);
+  }
+  const lignes = cibles[0].parameters.jsCode.split('\n');
+  lignes[lignes.indexOf(avant)] = apres;
+  cibles[0].parameters.jsCode = lignes.join('\n');
+  return attendu;
+}
+
 // reponses : { [nom de nœud HTTP]: (requête évaluée) -> json de réponse }.
 // Chaque nœud Code s'exécute SOUS LE PRÉAMBULE du moteur de code n8n (lot 8, 279807), sauf
 // preambule: false (preuve que c'est lui qui attrape les blocages de l'ancien code).
@@ -346,11 +369,14 @@ describe('préambule n8n : les deux blocages de l\'ancien code (exécution réel
 // d'avant l'intérim (design c215dd0) — mêmes octets déposés, même sortie, mêmes empreintes.
 describe('export régénéré (intérim, CDC r9) : génération identique à l\'export précédent', async () => {
   const AVANT = 'c215dd035ed865e7c66ff8e139ac42419d201b19';
-  const precedent = JSON.parse(require('child_process').execFileSync('git', ['show', `${AVANT}:n8n/fonda-generation-ia/box-fonda-generation-ia.json`], { cwd: path.join(__dirname, '..', '..'), maxBuffer: 64 * 1024 * 1024 }).toString('utf8'));
-  const ra = await executer(precedent, { corps: CORPS, reponses: reponsesNominales() });
+  const precedentBrut = JSON.parse(require('child_process').execFileSync('git', ['show', `${AVANT}:n8n/fonda-generation-ia/box-fonda-generation-ia.json`], { cwd: path.join(__dirname, '..', '..'), maxBuffer: 64 * 1024 * 1024 }).toString('utf8'));
+  const ra = await executer(precedentBrut, { corps: CORPS, reponses: reponsesNominales() });
   const rb = await executer(WF, { corps: CORPS, reponses: reponsesNominales() });
   const sortieDe = (r) => r.runData[N.sortie][0].data.main[0][0].json;
   test('seuls les modules catalogue et canonique diffèrent (nœuds, connexions et réglages inchangés)', () => {
+    // Puis exclusion « documents composites » : la ligne du Set est remplacée littéralement dans
+    // l'attendu (aucune regex élargie) ; tout autre octet reste comparé comme avant.
+    const precedent = avecExclusionsCourantes(precedentBrut);
     assert.deepEqual(WF.nodes.map((n) => n.name), precedent.nodes.map((n) => n.name));
     assert.deepEqual(WF.connections, precedent.connections);
     assert.deepEqual(WF.settings, precedent.settings);
@@ -368,6 +394,45 @@ describe('export régénéré (intérim, CDC r9) : génération identique à l\'
     assert.deepEqual(sortieDe(rb), sortieDe(ra));
     assert.equal(sortieDe(rb).empreinte_pedagogique, sortieDe(ra).empreinte_pedagogique);
     assert.equal(sortieDe(rb).empreinte_complete, sortieDe(ra).empreinte_complete);
+  });
+});
+
+// --- 2 quater. Exclusion « documents composites » : octet-identité STRICTE contre l'export d'avant ---
+// Référence FIGÉE (design 28b7dea, avant ce chantier) : l'export courant doit être EXACTEMENT cet
+// export, objet complet (identité, nœuds, ids, positions, credentials, connexions, réglages,
+// métadonnées), au seul remplacement littéral près de la ligne du Set. Aucune regex, aucun masquage :
+// un commentaire ajouté, une seconde déclaration, un autre nœud ou un module modifié reste visible.
+describe('exclusion documents composites : export = export d\'avant le chantier, à une ligne littérale près', () => {
+  const AVANT_EXCLUSION = '28b7deae2788a1ebc64e5fdb718d806604414c72';
+  const exportAvant = JSON.parse(require('child_process').execFileSync('git', ['show', `${AVANT_EXCLUSION}:n8n/fonda-generation-ia/box-fonda-generation-ia.json`], { cwd: RACINE, maxBuffer: 64 * 1024 * 1024 }).toString('utf8'));
+  test('le Set du dépôt est exactement celui attendu (ordre compris)', () => {
+    assert.deepEqual([...G.NOTIONS_EXCLUES_FIGURES], IDS_EXCLUES);
+  });
+  test('objet complet identique après le seul remplacement littéral', () => {
+    assert.deepEqual(WF, avecExclusionsCourantes(exportAvant));
+  });
+  test('la ligne embarquée est celle du Set du dépôt, une seule fois, dans « Preparer generation » seulement', () => {
+    const ligne = ligneExclues([...G.NOTIONS_EXCLUES_FIGURES]);
+    for (const n of WF.nodes) {
+      const nb = (n.parameters.jsCode || '').split('\n').filter((l) => l === ligne).length;
+      assert.equal(nb, n.name === N.preparer ? 1 : 0, n.name);
+    }
+  });
+  test('le garde-fou rejette toute autre mutation (témoins)', () => {
+    const attendu = avecExclusionsCourantes(exportAvant);
+    const muter = (f) => { const x = structuredClone(WF); f(x); return x; };
+    const prep = (x) => x.nodes.find((n) => n.name === N.preparer);
+    const autre = (x) => x.nodes.find((n) => n.name !== N.preparer && n.parameters.jsCode);
+    const mutations = [
+      ['commentaire ajouté', (x) => { prep(x).parameters.jsCode += '\n// x'; }],
+      ['seconde déclaration', (x) => { prep(x).parameters.jsCode += '\n' + ligneExclues(['maths.geometrie']); }],
+      ['autre nœud modifié', (x) => { autre(x).parameters.jsCode += ' '; }],
+      ['id de nœud', (x) => { x.nodes[0].id = 'autre'; }],
+      ['position de nœud', (x) => { x.nodes[0].position = [x.nodes[0].position[0] + 1, x.nodes[0].position[1]]; }],
+      ['connexion', (x) => { x.connections = {}; }],
+      ['identité du workflow', (x) => { x.id = 'autre'; }],
+    ];
+    for (const [nom, f] of mutations) assert.throws(() => assert.deepEqual(muter(f), attendu), assert.AssertionError, nom);
   });
 });
 
@@ -527,13 +592,19 @@ describe('refus avant dépôt (aucun fichier candidat)', () => {
     ['modèle absent de la réponse', { reponses: { [N.ia]: () => { const x = { ...FX.reponse_ia }; delete x.model; return x; } } }, N.construire],
     ['max_tokens sans texte', { reponses: { [N.ia]: () => ({ ...FX.reponse_ia, content: [{ type: 'thinking', thinking: '…' }], stop_reason: 'max_tokens' }) } }, N.construire],
     ['aucune carte valide', { reponses: { [N.ia]: () => ({ ...FX.reponse_ia, content: [{ type: 'text', text: '{"cartes":[]}' }] }) } }, N.construire],
-    ['notion exclue (géométrie)', { corps: { set_id: 'set_fonda_geometrie_nI_50', ref: FX.ref }, reponses: { [N.journal]: () => contenuGithub(J, JSON.stringify({ schema: 'set-ids-journal/v1', lignes: [{ set_id: 'set_fonda_geometrie_nI_50', transition: 'reserve', le: '2026-10-20', ref: FX.ref }] })) } }, N.preparer],
+    // Notions exclues × paliers : réservation VALIDE (même ref), arrêt dans « Preparer generation ».
+    ...IDS_EXCLUES.flatMap((id) => ['nI', 'nF'].map((palier) => {
+      const setId = `set_fonda_${C.slugDeNotion(id)}_${palier}_50`;
+      const journal = { schema: 'set-ids-journal/v1', lignes: [{ set_id: setId, transition: 'reserve', le: '2026-10-20', ref: FX.ref }] };
+      return [`notion exclue (${id}, ${palier})`, { corps: { set_id: setId, ref: FX.ref }, reponses: { [N.journal]: () => contenuGithub(J, JSON.stringify(journal)) } }, N.preparer, /exclue de la génération automatique/];
+    })),
   ];
-  for (const [nom, { corps = CORPS, reponses = {} }, attendu] of cas) {
+  for (const [nom, { corps = CORPS, reponses = {} }, attendu, motif] of cas) {
     test(nom, async () => {
       const r = await executer(WF, { corps, reponses: reponsesNominales(reponses) });
       assert.equal(r.status, 'error');
       assert.equal(r.noeudErreur, attendu, r.erreur);
+      if (motif) assert.match(String(r.erreur), motif);
       assert.ok(!r.requetes[N.deposer], 'aucun dépôt');
       if (attendu !== N.construire) assert.ok(!r.requetes[N.ia], 'aucun appel au modèle');
     });

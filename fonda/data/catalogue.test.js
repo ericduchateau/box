@@ -66,6 +66,19 @@ describe('chaîne publiée FONDA — cohérence complète', () => {
     assert.deepEqual(J.coherenceAvecDepot(journal, { catalogueIds: CATALOGUE.lots.map((e) => e.set_id), calibrationIds }), []);
   });
 
+  // Exclusion (géométrie ; documents composites, décision Éric 2026-11-02) : une réservation pour une
+  // notion exclue ne peut entrer au journal par aucun chemin (ni --reserver, ni écriture à la main),
+  // sinon un workflow n8n encore non redéployé pourrait la générer. Contrôlé ici, en CI.
+  test('journal : aucune ligne « reserve » pour une notion exclue de la génération', () => {
+    const J = require('../engine/journal-set-ids.js');
+    const { NOTIONS_EXCLUES_FIGURES } = require('../scripts/generer-lot-fonda.js');
+    const journal = J.lireJournalTexte(fs.readFileSync(path.join(DATA, 'set_ids-journal.json'), 'utf8'));
+    const slugsExclus = new Set([...NOTIONS_EXCLUES_FIGURES].map((id) => C.slugDeNotion(id)));
+    assert.equal(slugsExclus.size, NOTIONS_EXCLUES_FIGURES.size);
+    const fautives = journal.lignes.filter((l) => l.transition === 'reserve' && slugsExclus.has((C.decomposerSetId(l.set_id) || {}).slug));
+    assert.deepEqual(fautives, []);
+  });
+
   test('M2 : amorçage figé — 8 publiés (reserve+publie), 8 de calibration (reserve), rien d\'autre', () => {
     const J = require('../engine/journal-set-ids.js');
     const journal = J.lireJournalTexte(fs.readFileSync(path.join(DATA, 'set_ids-journal.json'), 'utf8'));
