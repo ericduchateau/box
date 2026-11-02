@@ -216,6 +216,18 @@
       "transition": "publie",
       "le": "2026-11-02T07:37:18.413Z",
       "ref": "2026-11-02-38adceb1fc73:publie"
+    },
+    {
+      "set_id": "set_fonda_phrase-orthographe_nI_01",
+      "transition": "reserve",
+      "le": "2026-11-02",
+      "ref": "2026-11-02-862136d4d88c"
+    },
+    {
+      "set_id": "set_fonda_lexique_nI_02",
+      "transition": "reserve",
+      "le": "2026-11-02",
+      "ref": "2026-11-02-25297c045adf"
     }
   ]
 }
