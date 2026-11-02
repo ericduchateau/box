@@ -1,6 +1,6 @@
 # Cahier des charges — Relecture FONDA `/fonda-select` (Bloc 2, étape 7) — **v8.3**
 
-> Statut : **r10.3 (2026-11-02, proposition corrigée après trois relectures Codex) : parcours page — rattachement exécution n8n ↔ lot, candidat, page carte par carte (§21)** ; **r9 consigné a posteriori (§20.16, à relire)** ; **v8.3 (2026-10-16) : amendement ADDITIF brique 1 — génération n8n et liaison de génération (§20)** ; v8.2 (2026-10-15) : formes exactes des sous-objets de la charge et du récapitulatif (§11 bis) ; v8 rédigée le 2026-10-13 (correctifs bornés de la relecture v7 : B1–B4 et points listés ; preuve C8 faite), modèle **« l'humain garantit, la technique est un filet »** (option B). À valider par Éric, puis relecture Codex ciblée. **Aucun workflow** avant validation ; workflows en JSON **inactifs**, activation sur feu vert explicite. **Annexe A : rien n'est appliqué sur GitHub sans relecture d'Éric.** **Séquencement du build : §18.** Décisions d'Éric : §19.
+> Statut : **r10.4 (2026-11-02, proposition corrigée après quatre relectures Codex) : parcours page — rattachement exécution n8n ↔ lot, candidat, page carte par carte (§21)** ; **r9 consigné a posteriori (§20.16, à relire)** ; **v8.3 (2026-10-16) : amendement ADDITIF brique 1 — génération n8n et liaison de génération (§20)** ; v8.2 (2026-10-15) : formes exactes des sous-objets de la charge et du récapitulatif (§11 bis) ; v8 rédigée le 2026-10-13 (correctifs bornés de la relecture v7 : B1–B4 et points listés ; preuve C8 faite), modèle **« l'humain garantit, la technique est un filet »** (option B). À valider par Éric, puis relecture Codex ciblée. **Aucun workflow** avant validation ; workflows en JSON **inactifs**, activation sur feu vert explicite. **Annexe A : rien n'est appliqué sur GitHub sans relecture d'Éric.** **Séquencement du build : §18.** Décisions d'Éric : §19.
 
 ## 0. Garantie, filet, limites
 
@@ -313,7 +313,7 @@ Une **fixture synthétique** d'exécution complète (réussie, erreur sans dép�
 
 ### 20.5 `lot_relu`, décision et réconciliation
 - **`lot_relu-fonda/v1`** = `{ set_id: chaîne, empreinte_complete: chaîne, cartes: [{ item_id: chaîne, choix: chaîne }] }`, `choix ∈ {"garder","ecarter"}` ; `decision-fonda/v1` (§1) devient définie avec ce `lot_relu`.
-- **Réconciliation de CHAQUE décision** contre le lot source : `lot_relu.set_id` = `set_id` ; `lot_relu.empreinte_complete` = empreinte complète recalculée ; `item_id` de `lot_relu.cartes` = ceux du lot source, **même ordre**, aucun manquant, doublon ni inconnu ; `coeur.selection` = les `garder`, `coeur.ecartees` = les `ecarter` (ordre du lot source) ; `coeur.empreinte_relue` = empreinte **pédagogique** du lot source (sens v8.2) ; `coeur.empreinte_publiee` = empreinte du lot filtré ; `action = "accepter"` ⇒ ≥ 1 carte gardée.
+- **Réconciliation de CHAQUE décision** contre le lot source : `lot_relu.set_id` = `set_id` ; `lot_relu.empreinte_complete` = empreinte complète recalculée ; `item_id` de `lot_relu.cartes` = ceux du lot source, **même ordre**, aucun manquant, doublon ni inconnu ; `coeur.selection` = les `garder`, `coeur.ecartees` = les `ecarter` (ordre du lot source) ; `coeur.empreinte_relue` = empreinte **pédagogique** du lot source (sens v8.2) ; `coeur.empreinte_publiee` = **selon l'action** : empreinte du lot filtré si `action = "accepter"` (vérifiée par la réconciliation) ; empreinte pédagogique du lot **source** si `action = "rejeter"` (convention produite par la saisie locale ; non vérifiée par la réconciliation, exigée en page par `rattachement-page.js`, §21.1) ; `action = "accepter"` ⇒ ≥ 1 carte gardée.
 - **Puis unicité** (§10 A, inchangé) : toutes les décisions réconciliées ont le même cœur **et** le même `lot_relu` ; sinon conflit → abandon. La réconciliation **complète** la comparaison entre décisions, elle ne la remplace pas.
 - L'**instantané** (§3) contient le **lot source** (sous la clé `candidat_lot`), le cœur, le `lot_relu`, le moteur et le récapitulatif ; il reste écrit **une fois** et vérifié en **octets bruts** (§3.2) — `instantane-fonda/v1` n'a pas de forme canonique (inutile : il n'est jamais reconstruit).
 - La **garde maîtresse** de `signer-cloture.js` n'est levée qu'après implémentation et tests de cette réconciliation.
@@ -379,6 +379,7 @@ Une **fixture synthétique** d'exécution complète (réussie, erreur sans dép�
 5. Levée de la garde maîtresse **après** 1 à 4, revue Codex et lecture d'Éric ; première génération et signature réelles sur le lot du §20.1.
 
 ### 20.15 Correspondance avec les 10 blocages de la critique Codex (2026-10-16)
+r10.4 (2026-11-02) : relecture Codex de r10.3 (ROUGE sur le témoin, arbitré) — abandon du masquage textuel : **patch figé** au texte exact (P1 pré-lecture, P2/P3 `.txt`, P4 `evaluerPage` délégué) ; plein fichier identique étendu (`moteurs.js`, `publier-lot.js`, `moteurs.json`…) ; périmètre de code fermé ; `lireCandidat` = enveloppe + identité Drive non énumérable ; garantie de processus (`require.cache`, une clôture par processus) ; différentiel : substitution après premier instantané refusée, avant = observée (§0) ; §20.5 conditionnel corrigé à la source.
 r10.3 (2026-11-02) : relecture Codex de r10.2 (ORANGE, arbitrée) — témoin d'octets **plein fichier** (`signer-cloture.js`, `adaptateurs-production.js` + 9 fichiers) ; code page nouveau dans `rattachement-page.js` et `adaptateurs-page.js` ; exceptions fermées de `signer-cloture.js` : (a) `evaluerPage`, (b) corps ZP1/ZP2, (c) zones `ZONE PAGE` ; corps vérifiés par `new AsyncFunction(corps)` (compilation seule) et sans `var` ; tests négatifs du témoin ; différentiel succès/refus distingués, moments précisés ; §20.5 : convention de rejet produite localement, vérifiée en page seulement.
 r10.2 (2026-11-02) : relecture Codex de r10.1 (ORANGE, arbitrée) — `nb_decisions_listees` diagnostic seulement (instabilité → nouvelle clôture technique, disparition/substitution établie → abandon, `incomplete_search` → §10 C) ; témoin d'octets étendu à tout `cloturer` hors zones page bornées (ZP1, ZP2, ZP-n marquées), bornes exactes et unicité ; différentiel sur succès ET refus ; « Tout rejeter » : `empreinte_publiee` = lot source, §20.5 conditionnel ; §20.16 : trois issues C3, `source_commit` dans la décision seule.
 r10.1 (2026-11-02) : relecture Codex (ROUGE, arbitrée) — E6 par type, deux contrats d'entrée, rapprochement symétrique (lot, nonce, id Drive, empreinte), fusion avant extraction, résultat discriminé, clôture liée au candidat lu, generation et « existante » précisées, relecteur depuis le référentiel archivé, réémission sans décision seulement, DoS global assumé (§21.4), témoin d'octets et test différentiel (§21.8), « Tout rejeter » et `hash_formulaire` définis, découpage (§21.9) ; observation des exécutions en vol corrigée à part ; r9 consigné (§20.16).
@@ -406,9 +407,9 @@ r3 (2026-10-16) corrige la seconde relecture Codex : lien fichier ↔ exécution
 - **Réversibilité** : retirer l'entrée sur `design` interdit toute nouvelle saisie ou clôture, sans toucher les attestations existantes.
 - **Limites assumées** : un fetch **observe** sans verrouiller `design` (fenêtre résiduelle entre C3 et la signature) ; on ne prouve pas cryptographiquement que S2 a été exécuté.
 
-## 21. Amendement r10.3 — Parcours page : rattachement exécution n8n ↔ lot, candidat, page carte par carte (ADDITIF, 2026-11-02, P0 — aucun code)
+## 21. Amendement r10.4 — Parcours page : rattachement exécution n8n ↔ lot, candidat, page carte par carte (ADDITIF, 2026-11-02, P0 — aucun code)
 
-> **Statut** : r10.3 = r10 corrigée après trois relectures Codex du 2026-11-02 (r10 : ROUGE ; r10.1 : ORANGE ; r10.2 : ORANGE, témoin refondu ; verdict ROUGE initial arbitré par l'architecte : cœur « l'humain garantit » confirmé sain ; findings 1, 2, 4–14 appliqués ; finding 3 traité **à part**, correctif d'observation, voir 21.3). À relire par Éric puis par Codex (effort high) **avant tout code** (P1). Comble ce que §11 bis renvoyait « au chantier des workflows » : la **sortie métier stable** de chaque workflow de relecture et la **règle d'extraction** du rattachement. **Strictement additif** : la saisie locale (§20.6, §20.16) reste **identique** (21.8). **Aucune réutilisation de `BOX - Selection Prof`** ni d'aucune route ou dossier BOX (PRD §2 bis, §8).
+> **Statut** : r10.4 = r10 corrigée après quatre relectures Codex du 2026-11-02 (r10 : ROUGE ; r10.1 : ORANGE ; r10.2 : ORANGE ; r10.3 : ROUGE sur le témoin → patch figé ; verdict ROUGE initial arbitré par l'architecte : cœur « l'humain garantit » confirmé sain ; findings 1, 2, 4–14 appliqués ; finding 3 traité **à part**, correctif d'observation, voir 21.3). À relire par Éric puis par Codex (effort high) **avant tout code** (P1). Comble ce que §11 bis renvoyait « au chantier des workflows » : la **sortie métier stable** de chaque workflow de relecture et la **règle d'extraction** du rattachement. **Strictement additif** : la saisie locale (§20.6, §20.16) reste **identique** (21.8). **Aucune réutilisation de `BOX - Selection Prof`** ni d'aucune route ou dossier BOX (PRD §2 bis, §8).
 
 **Garantie (inchangée, §0).** Ce qui est signé est la **sélection** (cœur + `lot_relu`) que la relectrice confirme **hors bande** à Éric via l'instantané et son récapitulatif (§3) : chaque décision est réconciliée avec le lot source (§20.5), l'unicité du cœur **et** du `lot_relu` est exigée (§10 A), le récapitulatif est la projection de cette sélection, et le code de confirmation dérive du SHA-256 de l'instantané. Toute décision injectée (par exemple par un tiers détenant `k`) **apparaît au récapitulatif** ou entre en **conflit** (abandon) ; elle ne peut pas être signée sans y figurer. Une relectrice confirmant un code sans lire le récapitulatif reste **la limite §0 assumée** — rien de plus.
 
@@ -504,7 +505,7 @@ Le nœud d'entrée **ne fait que copier** les champs nommés, s'ils sont des cha
 
 ### 21.3 Lecture des détails : pré-lecture pendant le listing borné ; observation des exécutions en vol
 
-**Tranché** : les détails avec données (`api.lireExecution(id)`) de **toutes** les exécutions **terminales** observées des workflows de confirmation et de clôture sont lus **dans** `[listing_debut_le, listing_fin_le]`, rangés dans `id → brute | INDISPONIBLE | null`, puis passés à `evaluerPage`, qui reste **pure et synchrone**. Raisons : (1) toutes les lectures dans l'intervalle signé (§20.7) ; (2) même mécanisme que la génération, déjà testé ; (3) aucune panne réseau mêlée à l'évaluation ; (4) coût inévitable (sans détail, le lot d'une exécution est inconnu). Conséquence : `rattachement(brute)` reçoit l'exécution **avec** données ; la **garde maîtresse** et le poison de saisie locale sont **inchangés**.
+**Tranché** : les détails avec données (`api.lireExecution(id)`) de **toutes** les exécutions **terminales** observées des workflows de confirmation et de clôture sont lus **dans** `[listing_debut_le, listing_fin_le]`, rangés dans des tables `id → brute | INDISPONIBLE | null` attachées aux observations (`clotures.details`, `confirmations.details`) par `adaptateurs-page.js` (`preLireDetails`), puis lues par `evaluerPage`, qui reste **pure et synchrone** (corps délégué à `rattachement-page.js`, patch figé 21.8). Raisons : (1) toutes les lectures dans l'intervalle signé (§20.7) ; (2) même mécanisme que la génération, déjà testé ; (3) aucune panne réseau mêlée à l'évaluation ; (4) coût inévitable (sans détail, le lot d'une exécution est inconnu). Conséquence : `rattachement(brute)` reçoit l'exécution **avec** données ; la **garde maîtresse** et le poison de saisie locale sont **inchangés**.
 
 **Exécutions en vol (correctif préalable, finding 3, hors r10)** : l'API publique de n8n 2.6.3 **exclut** les exécutions actives de la liste sans filtre, sauf demande explicite `status=running`. `observer()` interroge bien `running`, `waiting` puis la liste complète, mais l'adaptateur de production ne transmettait pas `status` au serveur. **Correctif séparé, fusionné avant P1** : `status` passé au serveur, résultat non refiltré, fusion des trois listes par `observer()` ; test fidèle à la sémantique n8n.
 
@@ -538,39 +539,63 @@ Le nœud d'entrée **ne fait que copier** les champs nommés, s'ils sont des cha
 
 ### 21.7 Fichier transmis (finding 13)
 
-En parcours page, les octets du fichier `recapitulatif-<set_id>-<code>.txt` (§3.3) sont **vérifiés avant ET après** la confirmation (comme l'instantané et l'export), pas seulement lors d'une reprise ; tout écart → arrêt `local` (relancer, nouvelle confirmation). La vérification est une fonction de `rattachement-page.js`, appelée depuis `cloturer` **uniquement** dans des zones page de type (c) (21.8).
+En parcours page, les octets du fichier `recapitulatif-<set_id>-<code>.txt` (§3.3) sont **vérifiés avant ET après** la confirmation (comme l'instantané et l'export), pas seulement lors d'une reprise ; tout écart → arrêt `local` (relancer, nouvelle confirmation). La vérification est la fonction `verifierTxt` de `rattachement-page.js`, appelée depuis `cloturer` par deux lignes **fixées par le patch figé** (21.8, P2 et P3), sous `if (page)`.
 
-### 21.8 Additif : saisie locale intacte (findings 11, r10.1 n° 2–3, r10.2 n° 1–3, 5)
+### 21.8 Additif : saisie locale intacte — PATCH FIGÉ (r10.4)
 
-- **Principe** : le code page **nouveau** vit dans de **nouveaux fichiers** — `fonda/scripts/rattachement-page.js` (`rattacherPage`, vérification du `.txt` 21.7, contrôle d'empreinte du rejet en page 21.1) et `fonda/scripts/adaptateurs-page.js` (`lireCandidat` avec identité Drive, `listerDecisions`, pré-lecture des détails 21.3). `adaptateurs-production.js` reste **identique à l'octet** ; les `module.exports` de `signer-cloture.js` sont **inchangés**. Inchangés également, jusqu'à P5 (puis production page **séparée**) : garde maîtresse, `RATTACHEMENT_SAISIE_LOCALE`, `cloturerSaisieLocale`, `dependancesCloture`, `dependancesSaisie`, `saisirDecisionLocale`, `main()`, `analyserArgumentsCloture`.
-- **Témoin d'octets (P1)** — référence = **SHA complet de `design` sur lequel P1 est branchée** (au plus tôt `9b75507`, qui contient le correctif 21.3), écrit en dur dans le test ; extraction par `git show <SHA>:<chemin>` ; comparaison **octet pour octet, fichiers ENTIERS**, sans normalisation (fins de ligne, BOM, espaces compris) :
-  - **à l'identique** : `fonda/scripts/adaptateurs-production.js`, `fonda/engine/canonique.js`, `fonda/engine/catalogue.js`, `fonda/engine/journal-set-ids.js`, `fonda/engine/moteur-correction-v1.js`, `fonda/scripts/attestation-signee.js`, `fonda/scripts/interim.js`, `fonda/scripts/referentiel-archive.js`, `fonda/scripts/champs-canonique.js`, `fonda/scripts/liaison-generation.js` ;
-  - **`fonda/scripts/signer-cloture.js`** : identique **après retrait des seules exceptions ci-dessous**, liste **FERMÉE** ; tout autre octet (fonctions auxiliaires, imports, constantes, exports, commentaires) est comparé.
-- **Exceptions de `signer-cloture.js`** (repérées par lignes **entières**, comparées sans tolérance d'indentation) :
-  - **(a) `evaluerPage` entière** : début = l'**unique** ligne commençant par `function evaluerPage(` (dans la référence comme dans le courant) ; fin = la **première** ligne suivante égale à `}` (colonne 0). Remplacée par `<EVALUER_PAGE>` des deux côtés.
-  - **(b) corps de ZP1 et ZP2** — ancres de la référence (lignes entières, chacune présente **exactement une fois** des deux côtés) :
-    - ZP1 : ligne d'ancre `  let candidatEnv = { ok: false }; let clotures = { ok: false }; let confirmations = { ok: false }; let listeDecisions = { ok: false }; let locales = { ok: false };`, suivie **immédiatement** de la ligne `  if (page) {` ;
-    - ZP2 : ligne d'ancre `  let derniere = null; let duLot = []; let revoqueLe = null; let finSaisie = null;`, suivie **immédiatement** de la ligne `  if (page) {`.
-    Le **corps** = lignes **strictement entre** cette ligne `  if (page) {` et la **première** ligne suivante égale à `  } else {` ; il est remplacé par `<ZP1>`/`<ZP2>` des deux côtés. L'ancre, `  if (page) {`, `  } else {` et toute la branche locale **restent comparées**.
-  - **(c) nouvelles zones page** : uniquement dans le courant, de la forme exacte (indentation libre mais **identique** sur les quatre lignes de cadre) :
-    ```
-    <i>// >>> ZONE PAGE <nom>
-    <i>if (page) {
-    <corps>
-    <i>}
-    <i>// <<< ZONE PAGE <nom>
-    ```
-    `<nom>` ∈ `[a-z0-9-]+`, **unique** ; les deux marqueurs **appariés** (même nom, ouverture avant fermeture, aucune imbrication) ; la ligne qui suit la fermeture n'est **pas** `else` (aucun `else` rattaché). La zone entière (cadre compris) est **supprimée** avant comparaison.
-- **Vérification structurelle** (pour chaque corps masqué en (b) et (c)) :
-  1. `new AsyncFunction(corps)` (`AsyncFunction = Object.getPrototypeOf(async function () {}).constructor`) **compile** — compilation seule, la fonction n'est **jamais appelée**. Le constructeur analyse le corps **isolément** : un corps qui refermerait le bloc avant sa fin (ex. `} if (!page) …; {`) est une **erreur de syntaxe** ⇒ échec du témoin.
-  2. Aucune occurrence du mot `var` (`/\bvar\b/`) dans le corps ; le fichier étant en mode strict, `let`, `const` et les déclarations de fonction restent **locaux au bloc**.
-  3. Conséquence : tout code d'un corps conforme ne s'exécute **que si `page` est vrai** ; il ne peut ni modifier la branche locale ni être hissé hors du bloc.
-  4. Toute anomalie de repérage (ancre absente ou dupliquée, `if (page) {` non immédiat, `} else {` introuvable, marqueur manquant, dupliqué ou non apparié, cadre d'indentation incohérente, `else` après une zone (c)) ⇒ **échec** du témoin.
-- **Tests négatifs du témoin lui-même** (le témoin est exécuté sur des copies **mutées** du fichier courant, en mémoire ; chacune doit le faire **échouer**) : zone (c) contenant du code **hors** de `if (page)` (ex. `if (!page && …) throw …` après l'accolade) ; modification de `normaliserDate` ; accolade fermée **trop tôt** dans le corps de ZP1 ; un `var` dans un corps ; marqueur non apparié ; `else` rattaché à une zone (c). Témoin positif : le fichier courant conforme passe.
-- **Test de comportement différentiel** : référence extraite par `git show` dans un dossier temporaire ; chaque scénario de saisie locale est exécuté avec **entrées, aléas et horloge identiques** contre la référence et contre le courant :
-  - **scénarios de succès** (lot `eric` ; lot **sous intérim**) : instantané, export, récapitulatif, `.txt`, charge et enveloppe **identiques octet pour octet** ; **seuls** les appels attendus (même suite d'appels aux dépendances, signataire appelé une fois) ;
-  - **scénarios de refus** : **décision substituée** (fichier local réécrit **après le figement et avant la clôture**) ; **conflit** (deux décisions figées) ; **intérim retiré entre C2 et C3** ; **code de confirmation faux** ; **lecture indisponible** (Drive ou API en panne) — **issue et message identiques**, et **zéro** signature, marqueur ou attestation écrits ;
-  - dans **tous** les scénarios : aucun appel aux dépendances page (`lireCandidat`, `listerDecisions`, workflows de confirmation et de clôture) ; poison **jamais** invoqué.
+- **Principe** : plus aucun masquage ni analyse de zones. Le code page **nouveau** vit dans de **nouveaux fichiers** — `fonda/scripts/rattachement-page.js` (`evaluerPage` complète : résultat discriminé, E1–E12, R1–R6, fusion, E12 ↔ candidat lu ; `verifierTxt` 21.7 ; contrôle d'empreinte du rejet 21.1) et `fonda/scripts/adaptateurs-page.js` (`preLireDetails` 21.3 ; `lireCandidat`, `listerDecisions`). `signer-cloture.js` ne reçoit **que** le **patch figé** ci-dessous, au texte exact ; `adaptateurs-production.js` reste **identique à l'octet** ; les `module.exports` de `signer-cloture.js` sont **inchangés** (`evaluerPage` reste exportée, son corps délègue).
+- **`lireCandidat`** (`adaptateurs-page.js`) renvoie l'**enveloppe** `candidat-fonda/v1` elle-même (vue `candidatEnv.v.relecture` / `.lot` lue par le code commun, `signer-cloture.js` l. 602–608 et 682–684 à `9b75507`), avec l'identité Drive `{ id, nom, modifie_le }` posée en propriété **non énumérable** `drive` (`Object.defineProperty`, invisible de `JSON.stringify` et de toute forme canonique).
+- **Référence** : SHA complet de `design` sur lequel P1 est branchée, **au plus tôt `9b7550721e03d3ea7b018dce43faa79059558939`** (contient le correctif 21.3), écrit en dur dans le témoin ; extraction par `git show <SHA>:<chemin>`.
+
+**Patch figé de `fonda/scripts/signer-cloture.js`** (opérations sur des **lignes entières** de la référence ; chaque ligne d'ancre est présente **exactement une fois** dans la référence ; les lignes insérées sont reproduites **au caractère près**, indentation et fin de ligne `\n` comprises) :
+
+- **P1 — pré-lecture des détails (ZP1)** : insérer **après** l'ancre
+  ```
+      listeDecisions = await lire('Drive (decisions/)', () => drive.listerDecisions(setId));
+  ```
+  la ligne
+  ```
+      await require('./adaptateurs-page.js').preLireDetails({ api, lire, clotures, confirmations }); // CDC §21.8 P1
+  ```
+- **P2 — `.txt` avant la confirmation** : insérer **après** l'ancre
+  ```
+    verifier34();
+  ```
+  la ligne
+  ```
+    if (page) require('./rattachement-page.js').verifierTxt(deps.fs, cheminRecap, `${rendu}\n\n${shaInstantane}\n`); // CDC §21.7 P2
+  ```
+- **P3 — `.txt` après la confirmation** : insérer **après** l'ancre
+  ```
+    const inst = verifier34();
+  ```
+  la ligne
+  ```
+    if (page) require('./rattachement-page.js').verifierTxt(deps.fs, cheminRecap, `${rendu}\n\n${shaInstantane}\n`); // CDC §21.7 P3
+  ```
+- **P4 — `evaluerPage` délégué** : remplacer le bloc qui va de l'ancre
+  ```
+  function evaluerPage({ setId, candidatEnv, clotures, confirmations, listeDecisions, rattachement, levees, constats, sortie, relecteur, empreintes, listingDebut, registre }) {
+  ```
+  jusqu'à la **première** ligne suivante égale à `}` (colonne 0), **incluse**, par exactement ces trois lignes :
+  ```
+  function evaluerPage({ setId, candidatEnv, clotures, confirmations, listeDecisions, rattachement, levees, constats, sortie, relecteur, empreintes, listingDebut, registre }) {
+    return require('./rattachement-page.js').evaluerPage({ setId, candidatEnv, clotures, confirmations, listeDecisions, rattachement, levees, constats, sortie, relecteur, empreintes, listingDebut, registre }); // CDC §21.8 P4
+  }
+  ```
+- **Rien d'autre.** ZP2 (appel d'`evaluerPage` dans `cloturer`) est **inchangée** : les détails voyagent dans `clotures` / `confirmations`. Le contrat de retour d'`evaluerPage` est **inchangé** (`{ decisions, derniere, duLot, revoqueLe, fenetre }`, `duLot = [{ x, nonce }]` où `x` est l'observation **fusionnée**, utilisée telle quelle pour `provenances`).
+- Les lignes du patch sont **dans des branches page** : P1 dans `if (page) { … }` de la lecture ; P2/P3 sous `if (page)` ; P4 n'est appelée que depuis la branche page de `cloturer` (l. 616 à `9b75507`, seul appel du dépôt).
+
+**Témoin (P1)** — `fonda/scripts/temoin-saisie-locale.test.js` :
+1. **Patch** : `appliquer(référence, patch figé)` (le patch est écrit **en dur** dans le test, au texte exact ci-dessus) ; ancre absente ou dupliquée, ou fin de P4 introuvable → **échec** ; puis `Buffer.equals(résultat, octets du fichier courant)` → sinon **échec**. Tout octet hors patch (fonctions auxiliaires, imports, constantes, exports, commentaires) fait échouer.
+2. **Plein fichier identique** (octet pour octet, sans normalisation) : `fonda/scripts/adaptateurs-production.js`, `fonda/scripts/moteurs.js`, `fonda/scripts/publier-lot.js`, `fonda/scripts/liaison-generation.js`, `fonda/scripts/attestation-signee.js`, `fonda/scripts/interim.js`, `fonda/scripts/referentiel-archive.js`, `fonda/scripts/champs-canonique.js`, `fonda/engine/canonique.js`, `fonda/engine/catalogue.js`, `fonda/engine/journal-set-ids.js`, `fonda/engine/moteur-correction-v1.js`, `fonda/engine/moteurs.json`.
+3. **Périmètre fermé** : la liste des fichiers **de code** suivis (`fonda/**/*.js`, `n8n/**/*.js`, `fonda/engine/moteurs.json`) modifiés, ajoutés ou supprimés entre la référence et l'arbre courant (`git diff --name-status <SHA>`) doit être **incluse** dans la liste fermée : `fonda/scripts/signer-cloture.js` (patch figé seul), `fonda/scripts/rattachement-page.js`, `fonda/scripts/adaptateurs-page.js`, `fonda/scripts/rattachement-page.test.js`, `fonda/scripts/adaptateurs-page.test.js`, `fonda/scripts/temoin-saisie-locale.test.js`, `fonda/scripts/signer-cloture.test.js` (cas **page** adaptés au nouveau contrat ; la saisie locale est protégée par le différentiel 4) ; sinon **échec**. Fixtures (`fonda/scripts/fixtures/execution-confirmation.json`, `execution-cloture.json`), documentation et données publiées (`fonda/data/**`, lots, catalogue, journal, calendrier) sont **hors** de ce contrôle (elles ont leurs propres tests). **La liste et la référence ne changent, de P1 à P5, que par décision explicite d'Éric** (PR relue) ; tout autre chantier de code pendant cette période passe par cette décision.
+4. **Différentiel de comportement** : référence extraite dans un dossier temporaire ; chaque scénario de **saisie locale** est exécuté avec **entrées, aléas et horloge identiques** contre la référence et contre le courant :
+   - **succès** (lot `eric` ; lot **sous intérim**) : instantané, export, récapitulatif, `.txt`, charge et enveloppe **identiques octet pour octet** ; **seuls** les appels attendus (même suite d'appels aux dépendances ; signataire appelé une fois) ;
+   - **refus** — **issue et message identiques**, **zéro** signature, marqueur ou attestation : substitution du fichier de décision **après la création d'un premier instantané** (reprise après code faux), refusée (`signer-cloture.test.js`, l. 358 à `9b75507`) ; **conflit** (deux décisions figées) ; **intérim retiré entre C2 et C3** ; **code de confirmation faux** ; **lecture indisponible** (Drive ou API en panne) ;
+   - **comportement observé, non un refus** : substitution cohérente **avant** le premier instantané → signée **après confirmation du nouveau récapitulatif** (conforme §0 : la sélection signée est celle confirmée) ; identique sur la référence et le courant ;
+   - dans **tous** les scénarios : aucun appel aux dépendances page (`lireCandidat`, `listerDecisions`, workflows de confirmation et de clôture) ; poison **jamais** invoqué ; et, **après chaque scénario**, `require.cache` ne contient **ni** `rattachement-page.js` **ni** `adaptateurs-page.js` (chargés à neuf par scénario : cache vidé avant).
+5. **Garantie de processus, bornée explicitement** : en saisie locale, **aucun code page n'est chargé** (point 4). La production lance **une clôture par processus** (CLI `signer-cloture.js <set_id>`) ; la garantie « saisie locale intacte » est **bornée à ce cadre**. Elle ne couvre pas un processus qui enchaînerait une clôture page puis une clôture locale (le code page, une fois chargé, pourrait modifier un état partagé du module) : ce mode d'appel est **hors contrat**.
 
 ### 21.9 Découpage
 
@@ -578,7 +603,7 @@ En parcours page, les octets du fichier `recapitulatif-<set_id>-<code>.txt` (§3
 |---|---|---|
 | **Correctif** (avant P1) | observation des exécutions en vol (21.3) | — |
 | **Doc** | CDC sur `design` : r8 + r9 consigné (§20.16, à relire) + r10.1 | r10.1 au vert |
-| **P1** | nouveaux fichiers `rattachement-page.js` (`rattacherPage` : résultat discriminé, E1–E12, R1–R6, fusion ; `.txt` ; empreinte du rejet) et `adaptateurs-page.js` (pré-lecture des détails, `lireCandidat` avec identité Drive, `listerDecisions`) ; `evaluerPage` et zones page de `signer-cloture.js` (21.8) ; fixtures 21.10 ; témoin d'octets plein fichier + tests négatifs + différentiel (21.8) ; **aucun câblage** dans `main` | Correctif (fusionné : `9b75507`), Doc |
+| **P1** | nouveaux fichiers `rattachement-page.js` (`evaluerPage`, `rattacherPage` : résultat discriminé, E1–E12, R1–R6, fusion ; `verifierTxt` ; empreinte du rejet) et `adaptateurs-page.js` (`preLireDetails`, `lireCandidat` avec identité Drive non énumérable, `listerDecisions`) ; **patch figé** P1–P4 de `signer-cloture.js` (21.8) ; fixtures 21.10 ; témoin (patch, plein fichier, périmètre fermé, différentiel, `require.cache`) ; **aucun câblage** dans `main` | Correctif (fusionné : `9b75507`), Doc |
 | **P2** | workflows `Page` et `Confirmer` (inactifs, construits depuis le dépôt, harnais d'octet-identité, simulateur), page carte par carte, C1–C7, nonce, 409, `hash_formulaire` | P1 |
 | **P3** | workflows `Emettre` et `Cloturer` (inactifs) | P1 (en parallèle de P2) |
 | **P4** | recette §13 sur copie, dont les cas 21.4 | P2, P3 |
@@ -595,7 +620,7 @@ En parcours page, les octets du fichier `recapitulatif-<set_id>-<code>.txt` (§3
 
 ### 21.11 Garde-fous (rappel, non négociables)
 
-- **Additif** sur la saisie locale (21.8) : témoin d'octets **plein fichier**, exceptions page fermées et vérifiées structurellement, tests négatifs du témoin **et** test différentiel dès P1.
+- **Additif** sur la saisie locale (21.8) : `signer-cloture.js` = référence + **patch figé** au texte exact ; plein fichier identique pour `adaptateurs-production.js` et les dépendances communes ; périmètre de code fermé ; différentiel succès/refus ; aucun code page chargé en saisie locale (une clôture par processus).
 - **Aucune réutilisation de `BOX - Selection Prof`** (ni `/box-select`, `/box-select-confirm`, `catalogue.json`, `BOX-Flashcards`).
 - **Intérim** : saisie locale seule ; en page, `decision-fonda/v1` seule admissible.
 - **Passphrase** et clé privée inchangées, jamais hors du Mac d'Éric.
