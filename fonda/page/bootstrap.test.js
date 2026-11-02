@@ -490,7 +490,7 @@ describe('G4 — seuls les lots du catalogue publié, intacts et attestés, sont
     test(`${libelle} : refusé, AUCUN fetch de lot, message visible`, async () => {
       const journal = [];
       const root = await demarrerBootstrap({ search, catalogue: CATALOGUE_SANS_NOTION, journalFetch: journal });
-      assert.deepEqual(journal.filter((c) => c !== 'fonda/data/catalogue-fonda.json'), []);
+      assert.deepEqual(journal, ['fonda/data/catalogue-fonda.json']);
       assert.match(texteDe(root), /pas disponible/);
       assert.doesNotMatch(texteDe(root), /Carte 1/);
     });
