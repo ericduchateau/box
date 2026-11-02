@@ -5,22 +5,22 @@
 ## Objectif
 Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correction par profil, mesure par groupe, fiches générées puis relues par un humain), sans casser BOX. Dépôt AAP CARDIE-SEPIA, échéance **21/10/2026**. Source de vérité : `docs/PRD-Box-FONDA.md` ; règles : `AGENTS.md`.
 
-## État actuel (2026-10-28, design = `c215dd0`)
+## État actuel (2026-11-02, design = `9b75507`)
 - **BOX prod** : 9 workflows n8n actifs, front `https://ericduchateau.github.io/box/` (`main`).
-- **Brique 1, étape 5 : lots 1–8 faits.** Génération `vrqgtS5kQMvP9Ok5` et portier `MkYrdhgTo52nA3av` INACTIFS hors fenêtre ; modèle épinglé `claude-sonnet-5-5` ; clôture signée en saisie locale (relecteur eric). Correctif runtime n8n (#42) ; plage `_90–_99` réservée aux set_id fictifs (#47).
-- **Publiés par la chaîne signée** : `set_fonda_nombres-fractions-relatifs_nI_03` (#44) et `set_fonda_grandeurs-mesures_nI_02` (pilote maths 5e/4e, exéc. 279890, #49).
-- Calendrier FONDA réel fusionné (#50).
-- Fiche français `comprendre-consigne` (relectrice justine) : débloquée par l'intérim ci-dessous une fois fusionné.
-- Sondes/copies n8n `ZQASW4PKigh1JaHt`, `4pDA91YG9ssSus3X`, `XrSG2nt5q40SNvf4` : à archiver par Éric (jamais supprimer : preuves).
+- **FONDA, chaîne signée opérationnelle** (orchestrateur #59, saisie locale, intérim). Génération `vrqgtS5kQMvP9Ok5` et portier `MkYrdhgTo52nA3av` INACTIFS hors fenêtre.
+- **Publiés c4-milieu P2** (calendrier à jour) : maths `proportionnalite_nI_02`, `resolution-problemes_nI_02` (S46+S50) ; français `phrase-orthographe_nI_01`, `lexique_nI_02`, `inference-implicite_nI_02`, `sens-mot-inconnu_nI_02` (+ historiques).
+- **Exclusions** (#74, n8n redéployé #75) : `fr.changer-representation`, `maths.comprendre-document` (documents composites) + `maths.geometrie` ; retirées du calendrier ; publication non gardée = résidu assumé (SIGNATAIRE.md).
+- **Correctif observation n8n** (#76) : `status` transmis au serveur (n8n 2.6.3 exclut les exécutions actives de la liste sans filtre). Preuve empirique à faire au prochain run : `sonde-executions.js vrqgtS5kQMvP9Ok5` pendant la génération (lecture seule).
 
-## Fait : orchestrateur multi-lots (#59)
-- `orchestrer-lots.js` : enchaîne génération → saisie (humaine, stdin hérité) → signature (humaine, passphrase) → extraction → publication (dry-run puis réel) → un commit par lot sur une branche de batch poussée ; STOP du lot au moindre diagnostic non vert ; plafond = URL compare (PR et fusion manuelles). Aucun fichier probant modifié. **Fusionné (#59)** : 9 passes Codex (verdict final VERT sur 7a9f1fd), 61 tests dont 19 git réels ; fenêtre fetch→push résiduelle assumée (SIGNATAIRE.md). Premier vrai lancement : à faire (n8n actifs, vrai terminal).
-- Fait avant : intérim (#51), 1re fiche sous intérim publiée (`comprendre-consigne_nI_02`, #53), tests dynamiques (#54–#56), calendrier S45 complet (#57).
+## En cours : parcours page (relecture Justine)
+- **CDC r10.4** (§21 : rattachement exécution n8n ↔ lot, candidat, page carte par carte ; §20.16 : r9 intérim consigné a posteriori, à relire) sur la branche `docs/cdc-r10-rattachement` (`bf59b6a`), base `docs/cdc-r8-modele-epingle`. Historique : r10 ROUGE → r10.1 ORANGE → r10.2 ORANGE → r10.3 ROUGE (masquage textuel contournable) → r10.4 = **patch figé** au texte exact (P1 pré-lecture, P2/P3 `.txt`, P4 `evaluerPage` délégué), essai à blanc OK sur `9b75507`.
+- **Relecture Codex de r10.4 : NON FAITE** (quota Codex épuisé jusqu'au 2026-11-03 02:20).
 
 ## Prochaines étapes
-1. Après l'intérim : génération et relecture (secours) des fiches français planifiées de P2 avant leurs semaines ; parcours page de Justine plus tard.
-2. Champ `bande` dans la métadonnée des lots (lot séparé) ; bilans de période à rédiger avant chaque génération (P3 avant le 4 janvier).
-3. Réglages à confirmer (Éric) : « Allow rebase merging » décoché ; « Do not allow bypassing » ; CODEOWNERS sur `main`. Bloc 3 (prod) : orpheline `box_7e7tcooh`, `feat/box-delete-hardening`, Moteur A + dette `defi_id`, collecte `/box-fonda-events`.
+1. Passe Codex (effort high) sur r10.4 ; si vert : PR documentaire « CDC sur design » (r8 + r9 consigné + r10.4), puis P1 (`rattachement-page.js`, `adaptateurs-page.js`, patch figé, témoin, fixtures) ; P2–P5 ensuite (CDC §21.9).
+2. Prochain run FONDA : sonde d'observation pendant la génération ; PR calendrier après chaque publication.
+3. Champ `bande` dans la métadonnée des lots ; bilans de période avant chaque génération (P3 avant le 4 janvier).
+4. Réglages à confirmer (Éric) : « Allow rebase merging » décoché ; « Do not allow bypassing » ; CODEOWNERS sur `main`. Bloc 3 (prod) : orpheline `box_7e7tcooh`, `feat/box-delete-hardening`, Moteur A + dette `defi_id`, collecte `/box-fonda-events`.
 
 ## 🔖 Check-list AVANT PUBLICATION / usage élève réel
 1. **Régénérer la clé API Anthropic** (a circulé en clair) : scripts locaux + nœud `Claude API` (HTTP, header en clair) de `BOX - Generation Flashcards` ; idéalement passer par un credential n8n.
@@ -50,4 +50,4 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - Le classificateur auto-mode bloque les commandes contenant la clé API : Éric lance lui-même les générations.
 - Branches (AGENTS.md) : PR toujours vers `design` (liens `compare/design...<branche>`), fusion en merge commit ; jamais de fast-forward de `design` (casse la chaîne du premier parent).
 
-_Dernière mise à jour : 2026-10-30 — Claude Code (Opus 5.5)._
+_Dernière mise à jour : 2026-11-02 — Claude Code (Opus 5.5)._
