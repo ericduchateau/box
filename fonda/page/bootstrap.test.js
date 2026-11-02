@@ -466,9 +466,37 @@ describe('G4 — seuls les lots du catalogue publié, intacts et attestés, sont
     assert.equal(lotEstPubliable(null), false);
   });
 
+  // Notion réelle du référentiel mais SANS lot publié, garanti par construction :
+  // catalogue contrôlé = catalogue réel privé de tout lot de cette notion. Le test ne
+  // dépend donc plus de l'état réel du catalogue (fr.lexique a fini par être publié).
+  const NOTION_NON_PUBLIEE = 'fr.lexique';
+  const SET_CALIBRATION_NON_PUBLIE = 'set_fonda_lexique_nI_01';
+  const CATALOGUE_SANS_NOTION = { ...CATALOGUE, lots: CATALOGUE.lots.filter((e) => e.notion_id !== NOTION_NON_PUBLIEE) };
+
+  test('fixture : notion réelle, absente du catalogue contrôlé, qui sert encore un lot publié', async () => {
+    assert.ok(REFERENTIEL.notions.some((n) => n.id === NOTION_NON_PUBLIEE));
+    assert.ok(!CATALOGUE_SANS_NOTION.lots.some((e) => e.notion_id === NOTION_NON_PUBLIEE || e.set_id === SET_CALIBRATION_NON_PUBLIE));
+    assert.ok(CATALOGUE_SANS_NOTION.lots.some((e) => e.set_id === SET_CONSIGNE_NI));
+    // Témoin : le catalogue contrôlé reste conforme, un refus ci-dessous vient donc de G4.
+    const root = await demarrerBootstrap({ search: LIEN_CONSIGNE_NI, catalogue: CATALOGUE_SANS_NOTION });
+    assert.match(texteDe(root), /Carte 1/);
+  });
+
+  const refusNonPublie = [
+    ['lot NON publié (notion réelle), ancien lien', `?fonda=1&page=carte&notion=${NOTION_NON_PUBLIEE}&palier=nI`],
+    ['set_id de calibration non publié', `?fonda=1&page=carte&set=${SET_CALIBRATION_NON_PUBLIE}`],
+  ];
+  for (const [libelle, search] of refusNonPublie) {
+    test(`${libelle} : refusé, AUCUN fetch de lot, message visible`, async () => {
+      const journal = [];
+      const root = await demarrerBootstrap({ search, catalogue: CATALOGUE_SANS_NOTION, journalFetch: journal });
+      assert.deepEqual(journal, ['fonda/data/catalogue-fonda.json']);
+      assert.match(texteDe(root), /pas disponible/);
+      assert.doesNotMatch(texteDe(root), /Carte 1/);
+    });
+  }
+
   const refus = [
-    ['lot NON relu (fr.lexique), ancien lien', '?fonda=1&page=carte&notion=fr.lexique&palier=nI'],
-    ['set_id de calibration non publié', '?fonda=1&page=carte&set=set_fonda_lexique_nI_01'],
     ['palier hostile (traversée)', '?fonda=1&page=carte&notion=x&palier=' + encodeURIComponent('nI/../../referentiel.json#')],
     ['set hostile (traversée)', '?fonda=1&page=carte&set=' + encodeURIComponent('../referentiel')],
   ];
