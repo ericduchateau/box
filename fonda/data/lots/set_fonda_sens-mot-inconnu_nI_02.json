@@ -1,0 +1,113 @@
+{
+  "schema": "lot-fonda/v1",
+  "set_id": "set_fonda_sens-mot-inconnu_nI_02",
+  "notion_id": "fr.sens-mot-inconnu",
+  "palier": "nI",
+  "matiere": "Français",
+  "notion": "Construire le sens d'un mot inconnu",
+  "niveau": "Fondamentaux — Initial (accessible)",
+  "revue_carte_par_carte": true,
+  "nb_cartes": 6,
+  "date_creation": "2026-11-02",
+  "cartes": [
+    {
+      "item_id": "it01",
+      "numero": 1,
+      "question": "Le maire a pris une mesure impopulaire. Dans le mot « impopulaire », le préfixe « im- » exprime : A) le contraire  B) l'avant  C) la quantité. Réponds par la lettre.",
+      "reponse": "A",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "A"
+      ],
+      "contexte": "maire-mesure-impopulaire",
+      "set_id": "set_fonda_sens-mot-inconnu_nI_02",
+      "notion_id": "fr.sens-mot-inconnu"
+    },
+    {
+      "item_id": "it02",
+      "numero": 2,
+      "question": "L'horloger affirme : « Cette montre est réparable. » Dans « réparable », le suffixe « -able » signifie : A) qui répare  B) qui peut être réparé  C) qui a déjà été réparé. Réponds par la lettre.",
+      "reponse": "B",
+      "difficulte": "facile",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "B"
+      ],
+      "contexte": "horloger-montre-reparable",
+      "set_id": "set_fonda_sens-mot-inconnu_nI_02",
+      "notion_id": "fr.sens-mot-inconnu"
+    },
+    {
+      "item_id": "it03",
+      "numero": 3,
+      "question": "« Mathis est très frugal : à midi, il ne mange qu'une pomme et un morceau de pain, et jamais de dessert. » Que signifie « frugal » ? A) gourmand  B) pressé  C) qui mange peu et simplement. Réponds par la lettre.",
+      "reponse": "C",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "exact",
+      "reponses_acceptees": [
+        "C"
+      ],
+      "contexte": "cantine-eleve-frugal",
+      "set_id": "set_fonda_sens-mot-inconnu_nI_02",
+      "notion_id": "fr.sens-mot-inconnu"
+    },
+    {
+      "item_id": "it04",
+      "numero": 4,
+      "question": "Le mot « aquaplanage » appartient à la même famille que « aquarium » et « aquatique ». Quel nom courant désigne ce que veut dire la racine « aqua » ?",
+      "reponse": "eau",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "sens",
+      "reponses_acceptees": [
+        "eau",
+        "l'eau",
+        "de l'eau"
+      ],
+      "contexte": "piscine-aquaplanage-racine",
+      "set_id": "set_fonda_sens-mot-inconnu_nI_02",
+      "notion_id": "fr.sens-mot-inconnu"
+    },
+    {
+      "item_id": "it05",
+      "numero": 5,
+      "question": "On dit « prénom » pour le mot qui vient avant le nom de famille, et « préhistoire » pour la période qui vient avant l'histoire écrite. Un « prélavage » a lieu avant ou après le lavage principal ? (réponds par un mot)",
+      "reponse": "avant",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "sens",
+      "reponses_acceptees": [
+        "avant",
+        "Avant"
+      ],
+      "contexte": "lessive-prelavage-prefixe",
+      "set_id": "set_fonda_sens-mot-inconnu_nI_02",
+      "notion_id": "fr.sens-mot-inconnu"
+    },
+    {
+      "item_id": "it06",
+      "numero": 6,
+      "question": "Dans le jardin de mamie, il y a un pommier, un cerisier et un néflier. Par analogie avec les deux premiers mots, quel fruit porte un néflier ?",
+      "reponse": "nèfle",
+      "difficulte": "moyen",
+      "palier": "nI",
+      "profil_correction": "sens",
+      "reponses_acceptees": [
+        "nèfle",
+        "nèfles",
+        "des nèfles",
+        "la nèfle",
+        "une nèfle",
+        "nefle",
+        "nefles"
+      ],
+      "contexte": "jardin-neflier-suffixe-ier",
+      "set_id": "set_fonda_sens-mot-inconnu_nI_02",
+      "notion_id": "fr.sens-mot-inconnu"
+    }
+  ]
+}
