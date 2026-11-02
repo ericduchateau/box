@@ -11,9 +11,11 @@
 //   eric-2026.priv.pem         clé privée CHIFFRÉE : lue par preparerSignataire SEULEMENT, à l'exécution
 //
 // Contrats (relectures Codex v1–v4 du plan) :
-//   api.listerExecutions({ workflowId, status }) : liste n8n NON filtrée en statut (status=
-//     masque new/crashed), filtrée en workflowId, pagination complète (nextCursor), filtre
-//     côté client ; erreurs HTTP avec .statut. api.lireExecution(id) : includeData, null sur 404.
+//   api.listerExecutions({ workflowId, status }) : filtrée en workflowId, pagination complète
+//     (nextCursor) ; `status` (running | waiting) passé AU SERVEUR — la liste sans filtre de
+//     n8n 2.6.3 exclut les exécutions actives — et résultat rendu tel quel ; sans `status`,
+//     liste complète (new, crashed…) ; observer() fusionne les trois ; erreurs HTTP avec
+//     .statut. api.lireExecution(id) : includeData, null sur 404.
 //   drive.listerCandidats() / lireLotGenere(setId) : accès au dossier VÉRIFIÉ d'abord, pagination
 //     complète, incompleteSearch agrégé (OU), même dossier, trashed = false.
 //   journal(commit) -> { surPremierParent, journal } ; referentielArchive(version) -> OCTETS ;
@@ -63,12 +65,18 @@ function apiN8n({ url = URL_N8N, cle, fetch: f = globalThis.fetch }) {
   if (typeof cle !== 'string' || !cle) throw new ErreurAdaptateur('clé d\'API n8n absente');
   const entetes = { 'X-N8N-API-KEY': cle, accept: 'application/json' };
   return {
+    // n8n 2.6.3 (API publique, executions.handler.ts) : la liste SANS `status` EXCLUT les
+    // exécutions actives (« for backward compatibility `running` executions are always
+    // excluded unless the user explicitly filters by `running` status »). `status` est donc
+    // passé AU SERVEUR (jamais filtré ici) : observer() fusionne running, waiting et la liste
+    // complète (new, crashed… n'apparaissent que sans filtre).
     async listerExecutions({ workflowId, status }) {
       const tout = [];
       const vus = new Set();
       let curseur = null;
       for (;;) {
         const q = new URLSearchParams({ workflowId, limit: '250' });
+        if (status) q.set('status', status);
         if (curseur) q.set('cursor', curseur);
         const r = await lireJsonHttp(f, `${url}/api/v1/executions?${q}`, { headers: entetes }, 'API n8n (exécutions)');
         if (!r || !Array.isArray(r.data)) throw new ErreurAdaptateur('API n8n : liste d\'exécutions inexploitable');
@@ -78,7 +86,7 @@ function apiN8n({ url = URL_N8N, cle, fetch: f = globalThis.fetch }) {
         vus.add(r.nextCursor);
         curseur = r.nextCursor;
       }
-      return status ? tout.filter((x) => x.status === status) : tout;
+      return tout;
     },
     async lireExecution(id) {
       const r = await f(`${url}/api/v1/executions/${encodeURIComponent(id)}?includeData=true`, { headers: entetes });
