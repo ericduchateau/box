@@ -109,6 +109,8 @@ const MAX_TOKENS_REPONSE = 8192;
 // demande d'Éric : l'exclusion ne doit pas dépendre du bon comportement du modèle).
 const NOTIONS_EXCLUES_FIGURES = new Set([
   'maths.geometrie', // items intrinsèquement géométriques (aires/périmètres de figures) — nécessitent de voir la figure, pas seulement de lire un énoncé.
+  'fr.changer-representation', // suspendue — domaine documents composites : seule la face texte↔tableau est jouable sans visuel, couverture jugée insuffisante (décision Éric 2026-11-02)
+  'maths.comprendre-document', // injouable sans document composite (règle 7)
 ]);
 
 function estNotionExclue(notionId) {
@@ -551,6 +553,8 @@ function contextesAutrePalier(notion, palier) {
 // 7. Orchestration — appelle le réseau (impure), enchaîne les étapes pures.
 // ---------------------------------------------------------------------------
 async function genererLotPourNotionPalier({ notion, palier, nCartes, contextesAutresPaliers = [], sequence = 1 }) {
+  // Garde interne : l'exclusion ne dépend pas de l'appelant (genererReserve la vérifie déjà).
+  if (estNotionExclue(notion.id)) throw new Error(`${notion.id} exclue de la génération automatique`);
   const contextesDejaUtilises = [];
   const prompt = construirePrompt({ notion, palier, nCartes, contextesDejaUtilises, contextesAutresPaliers });
   const { texte: texteReponse, stopReason } = await appellerModeleClaude(prompt);

@@ -206,7 +206,10 @@ describe('validerCalendrier — calendar.json v2 (bandes, entrées planifiées, 
     refuse((c) => { c.semaines[0].entrees[0].palier = 'n0'; }, /palier "n0" invalide/);
     refuse((c) => { c.semaines[0].entrees[0].niveau_cible = '5e'; }, /champ "niveau_cible" hors schéma/);
     refuse((c) => { c.semaines[0].entrees[1].notion_id = 'fr.inexistante'; }, /absent du référentiel/);
-    refuse((c) => { Object.assign(c.semaines[0].entrees[0], { notion_id: 'maths.geometrie', statut: 'planifie' }); delete c.semaines[0].entrees[0].set_id; }, /exclue \(figures\)/);
+    for (const exclue of ['maths.geometrie', 'fr.changer-representation', 'maths.comprendre-document']) {
+      refuse((c) => { Object.assign(c.semaines[0].entrees[0], { notion_id: exclue, statut: 'planifie' }); delete c.semaines[0].entrees[0].set_id; }, /exclue \(figures\)/);
+      refuse((c) => { Object.assign(c.semaines[0].entrees[0], { notion_id: exclue, statut: 'publie', set_id: 'set_fonda_comprendre-consigne_nI_01' }); }, /exclue \(figures\)/);
+    }
     refuse((c) => { c.semaines[0].entrees[1].matiere = 'maths'; }, /matiere "maths" ≠ référentiel/);
   });
 

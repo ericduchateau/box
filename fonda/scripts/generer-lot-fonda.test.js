@@ -8,7 +8,7 @@
 
 'use strict';
 
-const { test, describe } = require('node:test');
+const { test, describe, after } = require('node:test');
 const assert = require('node:assert/strict');
 const {
   estNotionExclue,
@@ -236,6 +236,11 @@ describe('construireLotFonda — contrat lot-fonda/v1, aucun secret (chaîne FON
 describe('estNotionExclue — périmètre figures géré en amont, pas seulement par le prompt', () => {
   test('maths.geometrie est exclue', () => {
     assert.equal(estNotionExclue('maths.geometrie'), true);
+  });
+
+  test('documents composites (décision Éric 2026-11-02) : changer-representation et comprendre-document exclues', () => {
+    assert.equal(estNotionExclue('fr.changer-representation'), true);
+    assert.equal(estNotionExclue('maths.comprendre-document'), true);
   });
 
   test('une notion ordinaire (texte seul) n\'est pas exclue', () => {
@@ -558,16 +563,34 @@ describe('generer-lot-fonda — séquence réelle genererReserve : zéro appel A
     assert.equal(r.ok, false);
     assert.equal(appels.api, 0);
   });
-  test('notion exclue (figures) : refus avant API', async () => {
-    const exclue = REFJ.notions.find((n) => G.estNotionExclue(n.id));
-    if (!exclue) return; // aucune notion exclue au référentiel
-    const C = require('../engine/catalogue.js');
-    const id = `set_fonda_${C.slugDeNotion(exclue.id)}_${exclue.paliers[0]}_02`;
-    const r0 = { ...res, set_id: id };
-    const { d, appels } = deps({ lireJournalDesign: () => ({ sha: 'd'.repeat(40), journal: J(r0) }), lireJournalLocal: () => J(r0) });
-    const r = await lancer(d, id, REF);
-    assert.equal(r.ok, false);
-    assert.equal(appels.api, 0);
+  // Chaque notion exclue × chaque palier, réservation VALIDE (même ref sur design et en local) :
+  // arrêt motivé, zéro appel au modèle, zéro écriture.
+  const C = require('../engine/catalogue.js');
+  const EXCLUES = [...G.NOTIONS_EXCLUES_FIGURES];
+  test('les notions exclues existent au référentiel (sinon ces tests ne prouvent rien)', () => {
+    assert.equal(EXCLUES.length, 3);
+    for (const id of EXCLUES) assert.ok(REFJ.notions.some((n) => n.id === id), id);
+  });
+  for (const id of EXCLUES) {
+    for (const palier of ['nI', 'nF']) {
+      test(`notion exclue (${id}, ${palier}) : refus avant API, aucune écriture`, async () => {
+        const setId = `set_fonda_${C.slugDeNotion(id)}_${palier}_02`;
+        const r0 = { ...res, set_id: setId };
+        const journaux = [];
+        const { d, appels } = deps({ lireJournalDesign: () => ({ sha: 'd'.repeat(40), journal: J(r0) }), lireJournalLocal: () => J(r0), log: (m) => journaux.push(m) });
+        const r = await lancer(d, setId, REF);
+        assert.equal(r.ok, false);
+        assert.match(JSON.stringify(r) + journaux.join('\n'), /exclue de la génération automatique/);
+        assert.equal(appels.api, 0);
+        assert.equal(appels.ecritures, 0);
+      });
+    }
+  }
+  test('genererLotPourNotionPalier : garde interne, refus sans appel réseau', async () => {
+    for (const id of EXCLUES) {
+      const notion = REFJ.notions.find((n) => n.id === id);
+      await assert.rejects(G.genererLotPourNotionPalier({ notion, palier: 'nI', nCartes: 6 }), /exclue de la génération automatique/);
+    }
   });
 });
 
@@ -611,5 +634,43 @@ describe('lireJournalDesign : actualisation par refspec explicite (vrai dépôt 
     const appels = [];
     try { G2.lireJournalDesign((a) => { appels.push(a.join(' ')); if (a[0] === 'rev-parse') return Buffer.from(`${'a'.repeat(40)}\n`); throw new Error('arrêt'); }); } catch { /* attendu */ }
     assert.equal(appels[0], 'fetch --quiet origin +refs/heads/design:refs/remotes/origin/design');
+  });
+});
+
+// --- --reserver : notions exclues refusées, journal INCHANGÉ (copie isolée de fonda/) ---------------
+describe('--reserver : notions exclues refusées, aucune écriture (copie isolée du dépôt)', () => {
+  const fsx = require('fs'); const px = require('path'); const os = require('os');
+  const { spawnSync } = require('child_process');
+  const tmp = fsx.mkdtempSync(px.join(os.tmpdir(), 'fonda-reserver-exclues-'));
+  fsx.cpSync(px.join(__dirname, '..'), px.join(tmp, 'fonda'), { recursive: true });
+  after(() => fsx.rmSync(tmp, { recursive: true, force: true }));
+  const script = px.join(tmp, 'fonda', 'scripts', 'generer-lot-fonda.js');
+  const journal = px.join(tmp, 'fonda', 'data', 'set_ids-journal.json');
+  const reserver = (...a) => spawnSync(process.execPath, [script, '--reserver', ...a], { encoding: 'utf8', env: { ...process.env, ANTHROPIC_API_KEY: '' } });
+  const G2 = require('./generer-lot-fonda.js');
+  for (const id of G2.NOTIONS_EXCLUES_FIGURES) {
+    for (const palier of ['nI', 'nF']) {
+      test(`${id} --palier ${palier} : refus motivé, code 1, journal inchangé`, () => {
+        const avant = fsx.readFileSync(journal);
+        const r = reserver(id, '--palier', palier);
+        assert.equal(r.status, 1, r.stdout + r.stderr);
+        assert.match(r.stdout, new RegExp(`Réservation refusée : notion\\(s\\) exclue\\(s\\) : ${id.replace('.', '\\.')}`));
+        assert.deepEqual(fsx.readFileSync(journal), avant);
+      });
+    }
+  }
+  test('réservation groupée mixte (autorisée + exclue) : refus total, journal inchangé (aucune écriture partielle)', () => {
+    const avant = fsx.readFileSync(journal);
+    const r = reserver('maths.proportionnalite', 'fr.changer-representation', '--palier', 'nI');
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stdout, /notion\(s\) exclue\(s\) : fr\.changer-representation/);
+    assert.deepEqual(fsx.readFileSync(journal), avant);
+  });
+  test('témoin : une notion autorisée est bien réservée dans la copie (le refus ci-dessus n\'est pas un échec générique)', () => {
+    const avant = fsx.readFileSync(journal, 'utf8');
+    const r = reserver('maths.proportionnalite', '--palier', 'nI');
+    assert.equal(r.status ?? 0, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /✓ réservé set_fonda_proportionnalite_nI_\d{2}/);
+    assert.notEqual(fsx.readFileSync(journal, 'utf8'), avant);
   });
 });
