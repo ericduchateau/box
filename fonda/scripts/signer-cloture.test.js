@@ -822,6 +822,14 @@ describe('bout en bout : vrai rattacherPage, sorties et fichiers indépendants (
     } }));
   });
   test('réémission en génération 2, entièrement cohérente -> signé', async () => { await signe(await scenarioReel({ generation: 2 })); });
+  test('item 2 : deux clôtures du lot aux clos_le et candidat_fichier_id divergents, candidat en PANNE -> abandon, zéro signature', async () => {
+    const sc = await scenarioReel({ modifier: ({ execs, reel, deps }) => {
+      execs.wfClot.push({ id: 25, workflowId: 'wfClot', status: 'success', startedAt: '2026-10-20T08:10:00.000Z', stoppedAt: '2026-10-20T08:11:00.000Z' });
+      reel.specs[25] = ['cloture', { ...reel.specs[20][1], clos_le: '2026-10-20T08:09:00.000Z', candidat_fichier_id: 'drv-autre-candidat' }];
+      deps.drive.lireCandidat = async () => { throw new Error('Drive injoignable'); };
+    } });
+    await sansSignature(sc, /contradictoires entre elles/, 'abandon');
+  });
   test('candidat « abandonne » -> abandon, zéro signature', async () => {
     await sansSignature(await scenarioReel({ modifier: ({ candidat }) => { candidat.relecture.statut = 'abandonne'; } }), /abandonne/, 'abandon');
   });

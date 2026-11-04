@@ -13,6 +13,8 @@
 //      arbre courant), entrées, aléas et horloge identiques, Module._load intercepté AVANT le
 //      chargement de signer-cloture.js : tout chargement de module page fait échouer ;
 //   5. borne : une clôture par processus (chaque scénario tourne dans son propre processus).
+// La trace de chaque scénario est UNE liste ORDONNÉE de tous les appels aux dépendances (API, Drive,
+// git/journal, intérim, disque, horloge, signataire), affichages et questions compris.
 // Le même fichier sert d'exécutant de scénario quand TEMOIN_SCENARIO est défini (processus neuf).
 
 'use strict';
@@ -172,14 +174,14 @@ async function executerScenario() {
       ecrireExclusif(p, t) { etat.appels.push(`ecrire:${p}`); if (etat.ecrits.has(p)) throw new Error('existe déjà'); etat.ecrits.set(p, Buffer.from(t, 'utf8')); },
       lire(p) { etat.appels.push(`lire-fs:${p}`); if (!etat.ecrits.has(p)) throw new Error('absent'); return etat.ecrits.get(p); },
       existe(p) { etat.appels.push(`existe:${p}`); return etat.ecrits.has(p); },
-      lister(d) { const n = new Set(); for (const p of etat.ecrits.keys()) if (p.startsWith(`${d}/`)) n.add(p.slice(d.length + 1).split('/')[0]); return [...n]; },
+      lister(d) { etat.appels.push(`lister-fs:${d}`); const n = new Set(); for (const p of etat.ecrits.keys()) if (p.startsWith(`${d}/`)) n.add(p.slice(d.length + 1).split('/')[0]); return [...n]; },
     },
     signer: (octets) => { etat.signatures += 1; etat.appels.push('signer'); return crypto.sign('sha256', octets, { key: CLE.prive, padding: crypto.constants.RSA_PKCS1_PADDING }); },
     cles: CLES, registre: REGISTRE,
     horloge: () => { etat.heure += 1000; etat.appels.push('horloge'); return new Date(etat.heure); },
-    afficher: (t) => { etat.affiche += t; },
+    afficher: (t) => { etat.appels.push(`afficher:${t}`); etat.affiche += t; },
     saisir: async (q) => {
-      etat.questions.push(q);
+      etat.questions.push(q); etat.appels.push(`saisir:${q}`);
       if (/Mode/.test(q)) return 'reponse_message';
       if (/Code/.test(q)) return code || /CODE DE CONFIRMATION : ([0-9a-f]{16})/.exec(etat.affiche).pop();
       return 'oui';
@@ -194,11 +196,12 @@ async function executerScenario() {
     const etatI = { fichier: copie(FICHIER), n: 0, historique: new Map([[SHA_DESIGN, { octetsInterim: octetsJson(FICHIER), octetsCalendrier: OCT_CAL }]]) };
     deps.interim = {
       observer: async () => {
+        etat.appels.push('interim.observer');
         etatI.n += 1;
         if (NOM === 'interim-retire-c2-c3' && etatI.n === 3) etatI.fichier = { schema: 'relecture-interim/v1', entrees: [] };
         return { sha: SHA_DESIGN, octetsInterim: octetsJson(etatI.fichier), octetsCalendrier: OCT_CAL, octetsDestinataires: octetsJson(DEST) };
       },
-      aCommit: (c) => (etatI.historique.has(c) ? { surPremierParent: true, ...etatI.historique.get(c) } : { surPremierParent: false }),
+      aCommit: (c) => { etat.appels.push(`interim.aCommit:${c}`); return etatI.historique.has(c) ? { surPremierParent: true, ...etatI.historique.get(c) } : { surPremierParent: false }; },
     };
     decision = { ...decision, schema: 'decision-fonda/v2', relecture_interim: I.blocDecision(FICHIER.entrees[0], `sha256:${sha256(octetsJson(FICHIER))}`, SHA_DESIGN) };
   }

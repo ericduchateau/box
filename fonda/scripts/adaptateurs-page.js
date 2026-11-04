@@ -56,13 +56,15 @@ function lecturePage({ jeton, fetch: f = globalThis.fetch, dossierRelecture, dos
     for (;;) {
       const p = new URLSearchParams({ q, fields: champs, pageSize: '1000' });
       if (page) p.set('pageToken', page);
+      // Toute sortie en erreur conserve les pages DÉJÀ lues (e.partiel) : rien de lu n'est perdu.
+      const echec = (e) => { e.partiel = fichiers.slice(); return e; };
       let r;
-      try { r = await (await http(`${API}?${p}`, 'Drive (liste)')).json(); } catch (e) { e.partiel = fichiers; throw e; }
-      if (!r || !Array.isArray(r.files)) throw new Error('Drive : liste inexploitable');
+      try { r = await (await http(`${API}?${p}`, 'Drive (liste)')).json(); } catch (e) { throw echec(e); }
+      if (!r || !Array.isArray(r.files)) throw echec(new Error('Drive : liste inexploitable'));
       if (r.incompleteSearch === true) incomplet = true;
       fichiers.push(...r.files);
       if (!r.nextPageToken) break;
-      if (vus.has(r.nextPageToken)) throw new Error('Drive : pagination en boucle');
+      if (vus.has(r.nextPageToken)) throw echec(new Error('Drive : pagination en boucle'));
       vus.add(r.nextPageToken); page = r.nextPageToken;
     }
     return { incompleteSearch: incomplet, files: fichiers };

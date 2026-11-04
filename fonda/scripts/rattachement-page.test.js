@@ -128,7 +128,7 @@ function cas(mut) {
     confirmations: groupe(t.conf, t.conf.map((e) => e.id)),
     listeDecisions: { ok: true, v: { incompleteSearch: t.incomplete, fichiers: t.fichiers, ...(t.erreurs ? { erreurs: t.erreurs, complet: false } : {}) } },
     rattachement: (detail, { observation }) => (detail === L.INDISPONIBLE ? { nature: 'indisponible' } : t.resultats[observation.id]),
-    levees: t.levees, constats, sortie: null, relecteur: null, empreintes: null, listingDebut: '2026-10-20T09:00:00.000Z', registre: [],
+    levees: t.levees, constats, sortie: null, relecteur: null, empreintes: null, listingDebut: '2026-10-20T09:00:00.000Z', registre: t.registre || [],
   });
   return { r, constats: constats.liste };
 }
@@ -313,6 +313,32 @@ describe('correction P1 — rattacherPage : cas §21.10 manquants', () => {
     assert.equal(r.nature, 'cloture'); assert.equal(r.deja_clos, true);
     const d = copie(FL.cloture); d.status = 'error'; delete d.data.resultData.runData['FONDA Entree cloture'];
     assert.ok(estIncident(P.rattacherPage(d, { role: 'cloture', workflowId: 'wfClot', observation: { ...obsDe(FL.cloture), status: 'error' } })));
+  });
+});
+
+describe('correction P1 (2e passe) — cohérence mutuelle des clôtures, abandon avant clôture', () => {
+  test('item 3 : candidat « abandonne » avec clos_le null -> UN SEUL constat : abandon, zéro incident', () => {
+    const k = cas((t) => {
+      t.env.relecture.statut = 'abandonne'; t.env.relecture.clos_le = null;
+      t.env.relecture.moteur = { version: 'v1', sha256: 'm' }; t.registre = [{ version: 'v1', sha256: 'm' }];
+    });
+    assert.deepEqual(k.constats.map((c) => c.issue), ['abandon'], texteConstats(k));
+  });
+  test('item 2 : deux clôtures du lot aux clos_le différents, candidat indisponible -> abandon (sans le candidat)', () => {
+    const k = cas((t) => {
+      t.candidatKo = true;
+      const x2 = { id: '26', workflowId: 'wfClot', status: 'success', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: '2026-10-20T08:31:00.000Z' };
+      t.clot.push(x2); t.details[26] = {}; t.resultats[26] = { ...t.resultats[20], clos_le: '2026-10-20T08:29:00.000Z', obs: x2 };
+    });
+    aConstat(k, 'abandon', /contradictoires entre elles \(clos_le/);
+  });
+  test('item 2 : candidat_fichier_id différents entre clôtures du lot, listing des clôtures en panne -> abandon', () => {
+    const k = cas((t) => {
+      t.candidatKo = true; t.cloturesKo = true;
+      const x2 = { id: '27', workflowId: 'wfClot', status: 'success', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: '2026-10-20T08:31:00.000Z' };
+      t.clot.push(x2); t.details[27] = {}; t.resultats[27] = { ...t.resultats[20], candidat_fichier_id: 'drv-autre', obs: x2 };
+    });
+    aConstat(k, 'abandon', /contradictoires entre elles \(candidat_fichier_id/);
   });
 });
 

@@ -98,6 +98,20 @@ describe('lecturePage : lireCandidat et listerDecisions (§21.8)', () => {
     assert.deepEqual(r.fichiers.map((x) => x.id), ['f1']);
     assert.deepEqual(r.erreurs.map((e) => [e.quoi, e.statut]), [['liste', 500]]);
   });
+  for (const [nom, page2] of [['liste inexploitable', { json: { pas: 'de files' } }], ['pagination en boucle', { json: { files: [], nextPageToken: 'p2' } }]]) {
+    test(`listerDecisions : ${nom} en page 2 -> pages déjà lues CONSERVÉES et lues, erreur « liste »`, async () => {
+      const f = fauxDrive([
+        DOSSIER('dec'),
+        [/pageToken=p2/, page2],
+        [/files\?q=/, { json: { files: [{ id: 'f1', name: 'a.json', modifiedTime: 'm1' }], nextPageToken: 'p2' } }],
+        [/files\/f1\?alt=media/, { texte: '{"set_id":"x"}' }],
+      ]);
+      const r = await A.lecturePage({ jeton: async () => 't', fetch: f, dossierRelecture: 'rel', dossierDecisions: 'dec' }).listerDecisions(SET);
+      assert.equal(r.complet, false); assert.equal(r.incompleteSearch, true);
+      assert.deepEqual(r.fichiers.map((x) => [x.id, x.contenu]), [['f1', { set_id: 'x' }]]);
+      assert.deepEqual(r.erreurs.map((e) => e.quoi), ['liste']);
+    });
+  }
   test('erreur HTTP : .statut conservé (401/403 -> incident côté signataire)', async () => {
     const d = A.lecturePage({ jeton: async () => 't', fetch: fauxDrive([[/files\/dec\?fields/, { status: 403 }]]), dossierRelecture: 'rel', dossierDecisions: 'dec' });
     await assert.rejects(d.listerDecisions(SET), (e) => e.statut === 403);

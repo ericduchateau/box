@@ -163,7 +163,8 @@ function evaluerPage({ setId, candidatEnv, clotures, confirmations, listeDecisio
       else if (rel.statut !== 'clos') constats.ajouter('incident', `candidat au statut inconnu « ${rel.statut} »`);
       creeLe = normaliserDate(rel.cree_le);
       if (!creeLe) constats.ajouter('incident', 'relecture.cree_le absent ou mal formé');
-      if (rel.clos_le === null && rel.statut === 'en_attente') revoqueLe = null;
+      // clos_le null admis avant toute clôture technique : en_attente, ou abandonne AVANT clôture.
+      if (rel.clos_le === null && (rel.statut === 'en_attente' || rel.statut === 'abandonne')) revoqueLe = null;
       else {
         revoqueLe = normaliserDate(rel.clos_le);
         if (!revoqueLe) constats.ajouter('incident', 'relecture.clos_le absent ou mal formé');
@@ -203,6 +204,10 @@ function evaluerPage({ setId, candidatEnv, clotures, confirmations, listeDecisio
       // E12, sur CHAQUE clôture observée du lot, indépendamment de l'exhaustivité (§21.2).
       if (idCandidat !== null && r.candidat_fichier_id !== idCandidat) constats.ajouter('abandon', `clôture ${x.id} : candidat_fichier_id ≠ identité Drive du candidat lu`);
       if (revoqueLe !== null && r.clos_le !== revoqueLe) constats.ajouter('abandon', `clôture ${x.id} : clos_le ≠ relecture.clos_le du candidat`);
+    }
+    // Cohérence MUTUELLE des clôtures observées du lot, indépendamment du candidat et de l'exhaustivité.
+    for (const [champ, libelle] of [['clos_le', 'clos_le'], ['candidat_fichier_id', 'candidat_fichier_id']]) {
+      if (new Set(duLotClot.map((k) => k[champ])).size > 1) constats.ajouter('abandon', `clôtures du lot contradictoires entre elles (${libelle} différents) : blocage dur`);
     }
     if (indisponibles) constats.ajouter('temporaire', `${indisponibles} détail(s) d'exécution de clôture non lu(s) : relancer`);
     // « La plus récente » n'est retenue que sur une sélection PROUVÉE : listing complet, aucun détail indisponible.
