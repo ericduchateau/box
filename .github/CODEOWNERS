@@ -82,3 +82,8 @@
 # CDC de relecture (§21.8 point 6, r10.7) : fichier de confiance — il porte les ancres du patch
 # figé et l'empreinte du témoin ; les tests témoins (P1) seront ajoutés avec eux.
 /docs/CDC-fonda-relecture.md               @ericduchateau
+# Témoin de la saisie locale, son ancre et les cas locaux figés (CDC §21.8 point 6, P1) : fichiers
+# de confiance, protection procédurale (relecture d'Éric, non délégable).
+/fonda/scripts/temoin-saisie-locale.test.js @ericduchateau
+/fonda/scripts/temoin-ancre.test.js        @ericduchateau
+/fonda/scripts/signer-cloture-local.test.js @ericduchateau

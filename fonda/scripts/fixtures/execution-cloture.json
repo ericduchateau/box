@@ -1,0 +1,72 @@
+{
+  "_commentaire": "FIXTURE SYNTHÉTIQUE (CDC §21.10) — exécutions du workflow FONDA - Cloturer relecture, données anonymes. Variantes dérivées par mutation dans rattachement-page.test.js.",
+  "set_id": "set_fonda_comprendre-consigne_nI_92",
+  "cloture": {
+    "id": "801",
+    "workflowId": "wfClot",
+    "status": "success",
+    "mode": "webhook",
+    "startedAt": "2026-10-20T07:58:00.000Z",
+    "stoppedAt": "2026-10-20T08:00:00.000Z",
+    "workflowData": {
+      "pinData": null
+    },
+    "data": {
+      "resultData": {
+        "runData": {
+          "FONDA Entree cloture": [
+            {
+              "data": {
+                "main": [
+                  [
+                    {
+                      "json": {
+                        "set_id": "set_fonda_comprendre-consigne_nI_92"
+                      }
+                    }
+                  ]
+                ]
+              }
+            }
+          ],
+          "FONDA Ecrire candidat clos": [
+            {
+              "data": {
+                "main": [
+                  [
+                    {
+                      "json": {
+                        "id": "drv-candidat"
+                      }
+                    }
+                  ]
+                ]
+              }
+            }
+          ],
+          "FONDA Sortie cloture": [
+            {
+              "data": {
+                "main": [
+                  [
+                    {
+                      "json": {
+                        "schema": "cloture-fonda/v1",
+                        "set_id": "set_fonda_comprendre-consigne_nI_92",
+                        "clos_le": "2026-10-20T07:59:00.000Z",
+                        "deja_clos": false,
+                        "candidat_fichier_id": "drv-candidat",
+                        "nb_decisions_listees": 1,
+                        "incomplete_search": false
+                      }
+                    }
+                  ]
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
