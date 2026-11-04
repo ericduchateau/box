@@ -12,7 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const EMPREINTE_TEMOIN = 'sha256:67d3f11b824028370befce6bb8f9f241e9e3dfdb89d91c397019b557a88f21b0';
+const EMPREINTE_TEMOIN = 'sha256:e0d74539e27d281b5085343da36ad11af9aadc1f651e0c9fc470f68411762460';
 const RACINE = path.resolve(__dirname, '..', '..');
 
 test('ancre : empreinte du témoin = constante, et consignée au CDC §21.8', () => {

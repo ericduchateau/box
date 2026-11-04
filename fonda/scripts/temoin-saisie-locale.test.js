@@ -148,40 +148,39 @@ async function executerScenario() {
   const candidats = [{ id: 'drv-lot', nom: `${setId}.lot.json`, modifie_le: '2026-10-18T07:00:30.000Z', properties: { fonda_set_id: setId, fonda_execution_id: '501' }, proprietesLisibles: true }];
   const journal = { schema: 'set-ids-journal/v1', lignes: [{ set_id: setId, transition: 'reserve', le: '2026-10-17', ref }] };
   const etat = { signatures: 0, ecrits: new Map(), affiche: '', questions: [], heure: Date.parse(interim ? '2026-11-05T09:00:00.000Z' : '2026-10-20T09:00:00.000Z'), appels: [], poison: 0, accesPage: [] };
-  const trace = (nom, f) => async (...a) => { etat.appels.push(nom); return f(...a); };
   let decision = await decisionDe(ids.slice(0, -1));
   const locales = [];
   let code = null;
   const deps = {
     rattachement: (...a) => { etat.poison += 1; return SC.RATTACHEMENT_SAISIE_LOCALE(...a); },
     api: {
-      async listerExecutions({ workflowId, status }) { etat.appels.push(`lister:${workflowId}:${status || '*'}`); if (workflowId !== 'wfGen') etat.accesPage.push(`workflow ${workflowId}`); return copie(status ? execGen.filter((e) => e.status === status) : execGen); },
-      async lireExecution(id) { etat.appels.push(`lire:${id}`); return gen[id] ? copie(gen[id]) : null; },
+      async listerExecutions({ workflowId, status }) { if (workflowId !== 'wfGen') etat.accesPage.push(`workflow ${workflowId}`); return copie(status ? execGen.filter((e) => e.status === status) : execGen); },
+      async lireExecution(id) { return gen[id] ? copie(gen[id]) : null; },
     },
     config: { source: 'saisie_locale', workflowGeneration: 'wfGen', dossier: '/tmp/fonda-temoin', cleId: 'cle-temoin', modelesAutorises: [FIXTURE.modele] },
     drive: {
-      lireLotGenere: async () => { etat.appels.push('lot'); if (NOM === 'refus-lecture-indisponible') throw new Error('Drive injoignable'); return { ...lotGenere, octets: Buffer.from(lotGenere.octets) }; },
-      listerCandidats: async () => { etat.appels.push('candidats'); return { incompleteSearch: false, fichiers: copie(candidats) }; },
+      lireLotGenere: async () => { if (NOM === 'refus-lecture-indisponible') throw new Error('Drive injoignable'); return { ...lotGenere, octets: Buffer.from(lotGenere.octets) }; },
+      listerCandidats: async () => { return { incompleteSearch: false, fichiers: copie(candidats) }; },
       get lireCandidat() { etat.accesPage.push('lireCandidat'); return undefined; },
       get listerDecisions() { etat.accesPage.push('listerDecisions'); return undefined; },
     },
-    journal: trace('journal', async (c) => (c === COMMIT ? { surPremierParent: true, journal: copie(journal) } : { surPremierParent: false, journal: null })),
-    decisionsLocales: trace('decisionsLocales', async () => locales.map((f) => ({ nom: f.nom, octets: Buffer.from(f.octets) }))),
-    incidents: trace('incidents', async () => []),
-    referentielArchive: trace('referentielArchive', async (v) => { if (v !== REF_VERSION) throw new Error('introuvable'); return OCTETS_REF; }),
+    journal: async (c) => (c === COMMIT ? { surPremierParent: true, journal: copie(journal) } : { surPremierParent: false, journal: null }),
+    decisionsLocales: async () => locales.map((f) => ({ nom: f.nom, octets: Buffer.from(f.octets) })),
+    incidents: async () => [],
+    referentielArchive: async (v) => { if (v !== REF_VERSION) throw new Error('introuvable'); return OCTETS_REF; },
     tableRelecteurs: { justine: 'Relectrice de test' },
     fs: {
-      ecrireExclusif(p, t) { etat.appels.push(`ecrire:${p}`); if (etat.ecrits.has(p)) throw new Error('existe déjà'); etat.ecrits.set(p, Buffer.from(t, 'utf8')); },
-      lire(p) { etat.appels.push(`lire-fs:${p}`); if (!etat.ecrits.has(p)) throw new Error('absent'); return etat.ecrits.get(p); },
-      existe(p) { etat.appels.push(`existe:${p}`); return etat.ecrits.has(p); },
-      lister(d) { etat.appels.push(`lister-fs:${d}`); const n = new Set(); for (const p of etat.ecrits.keys()) if (p.startsWith(`${d}/`)) n.add(p.slice(d.length + 1).split('/')[0]); return [...n]; },
+      ecrireExclusif(p, t) { if (etat.ecrits.has(p)) throw new Error('existe déjà'); etat.ecrits.set(p, Buffer.from(t, 'utf8')); },
+      lire(p) { if (!etat.ecrits.has(p)) throw new Error('absent'); return etat.ecrits.get(p); },
+      existe(p) { return etat.ecrits.has(p); },
+      lister(d) { const n = new Set(); for (const p of etat.ecrits.keys()) if (p.startsWith(`${d}/`)) n.add(p.slice(d.length + 1).split('/')[0]); return [...n]; },
     },
-    signer: (octets) => { etat.signatures += 1; etat.appels.push('signer'); return crypto.sign('sha256', octets, { key: CLE.prive, padding: crypto.constants.RSA_PKCS1_PADDING }); },
+    signer: (octets) => { etat.signatures += 1; return crypto.sign('sha256', octets, { key: CLE.prive, padding: crypto.constants.RSA_PKCS1_PADDING }); },
     cles: CLES, registre: REGISTRE,
-    horloge: () => { etat.heure += 1000; etat.appels.push('horloge'); return new Date(etat.heure); },
-    afficher: (t) => { etat.appels.push(`afficher:${t}`); etat.affiche += t; },
+    horloge: () => { etat.heure += 1000; return new Date(etat.heure); },
+    afficher: (t) => { etat.affiche += t; },
     saisir: async (q) => {
-      etat.questions.push(q); etat.appels.push(`saisir:${q}`);
+      etat.questions.push(q);
       if (/Mode/.test(q)) return 'reponse_message';
       if (/Code/.test(q)) return code || /CODE DE CONFIRMATION : ([0-9a-f]{16})/.exec(etat.affiche).pop();
       return 'oui';
@@ -196,12 +195,11 @@ async function executerScenario() {
     const etatI = { fichier: copie(FICHIER), n: 0, historique: new Map([[SHA_DESIGN, { octetsInterim: octetsJson(FICHIER), octetsCalendrier: OCT_CAL }]]) };
     deps.interim = {
       observer: async () => {
-        etat.appels.push('interim.observer');
         etatI.n += 1;
         if (NOM === 'interim-retire-c2-c3' && etatI.n === 3) etatI.fichier = { schema: 'relecture-interim/v1', entrees: [] };
         return { sha: SHA_DESIGN, octetsInterim: octetsJson(etatI.fichier), octetsCalendrier: OCT_CAL, octetsDestinataires: octetsJson(DEST) };
       },
-      aCommit: (c) => { etat.appels.push(`interim.aCommit:${c}`); return etatI.historique.has(c) ? { surPremierParent: true, ...etatI.historique.get(c) } : { surPremierParent: false }; },
+      aCommit: (c) => (etatI.historique.has(c) ? { surPremierParent: true, ...etatI.historique.get(c) } : { surPremierParent: false }),
     };
     decision = { ...decision, schema: 'decision-fonda/v2', relecture_interim: I.blocDecision(FICHIER.entrees[0], `sha256:${sha256(octetsJson(FICHIER))}`, SHA_DESIGN) };
   }
@@ -210,9 +208,50 @@ async function executerScenario() {
   if (NOM === 'refus-conflit') locales.push({ nom: 'decision-2.json', octets: octetsJson(await decisionDe(ids)) });
   if (NOM === 'refus-code-faux') code = '0'.repeat(16);
 
+  // ── Trace ORDONNÉE UNIQUE par Proxy générique (harnais seulement, identique sur les deux arbres) ──
+  // Paresseux et transparent : piège get via Reflect.get (aucune pré-énumération : les getters-poison
+  // ne se déclenchent qu'à l'accès réel), seules les FONCTIONS sont enveloppées ; apply = observateur
+  // pur (nom + arguments sérialisés, appel avec le this d'origine, résultat et erreurs inchangés,
+  // promesses non attendues). Données (config, registre, Buffers) rendues intactes.
+  const CONTENEURS = new Set(['api', 'drive', 'fs', 'interim', 'cles']);
+  const ser = (v, vus = new WeakSet()) => {
+    if (v === null || v === undefined || typeof v === 'boolean' || typeof v === 'number') return String(v);
+    if (typeof v === 'string') return JSON.stringify(v.length > 160 ? `${v.slice(0, 80)}…[${v.length}:${sha256(v).slice(0, 16)}]` : v);
+    if (typeof v === 'function') return '<fn>';
+    if (Buffer.isBuffer(v) || v instanceof Uint8Array) return `<octets:${v.length}:${sha256(Buffer.from(v)).slice(0, 16)}>`;
+    if (v instanceof Date) return `<date:${Number.isNaN(v.getTime()) ? 'invalide' : v.toISOString()}>`;
+    if (typeof v !== 'object') return `<${typeof v}>`;
+    if (vus.has(v)) return '<cycle>';
+    vus.add(v);
+    if (Array.isArray(v)) return `[${v.map((x) => ser(x, vus)).join(',')}]`;
+    return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${ser(v[k], vus)}`).join(',')}}`;
+  };
+  // `this` d'origine : un appel fait via le Proxy (this = Proxy) est rejoué avec l'objet d'origine.
+  const observer = (fn, chemin, cible, prox) => new Proxy(fn, {
+    apply(t, ceci, args) { etat.appels.push(`${chemin}(${args.map((a) => ser(a)).join(',')})`); return Reflect.apply(t, ceci === prox() ? cible : ceci, args); },
+  });
+  const conteneur = (objet, chemin) => {
+    let prox = null;
+    prox = new Proxy(objet, {
+      get(t, k, r) {
+        const v = Reflect.get(t, k, r);
+        return typeof v === 'function' ? observer(v, `${chemin}.${String(k)}`, t, () => prox) : v;
+      },
+    });
+    return prox;
+  };
+  let depsTracees = null;
+  depsTracees = new Proxy(deps, {
+    get(t, k, r) {
+      const v = Reflect.get(t, k, r);
+      if (typeof v === 'function') return observer(v, `deps.${String(k)}`, t, () => depsTracees);
+      if (CONTENEURS.has(k) && v && typeof v === 'object') return conteneur(v, `deps.${String(k)}`);
+      return v;
+    },
+  });
   const essais = [];
   const essayer = async () => {
-    try { const r = await SC.cloturer(setId, deps); essais.push({ issue: 'succes', dossier: r.dossierLot }); } catch (e) { essais.push({ issue: e.issue || 'exception', message: e.message }); }
+    try { const r = await SC.cloturer(setId, depsTracees); essais.push({ issue: 'succes', dossier: r.dossierLot }); } catch (e) { essais.push({ issue: e.issue || 'exception', message: e.message }); }
   };
   if (NOM === 'refus-substitution-apres-instantane') {
     code = '0'.repeat(16); await essayer(); code = null;
@@ -306,8 +345,26 @@ if (process.env.TEMOIN_SCENARIO) {
       fichierCle = path.join(tmp, 'cle.json');
       fs.writeFileSync(fichierCle, JSON.stringify({ pem: publicKey.export({ type: 'spki', format: 'pem' }), prive: privateKey.export({ type: 'pkcs8', format: 'pem' }) }));
     });
+    test('4. auto-contrôle de la trace : un appel de dépendance AJOUTÉ (cles.obtenir) dans une COPIE JETABLE de signer-cloture.js change la trace', () => {
+      const mutant = path.join(tmp, 'mutant');
+      fs.cpSync(path.join(RACINE, 'fonda'), path.join(mutant, 'fonda'), { recursive: true });
+      const cible = path.join(mutant, 'fonda/scripts/signer-cloture.js');
+      const debut = 'async function cloturer(setId, deps) {';
+      const src = fs.readFileSync(cible, 'utf8');
+      assert.equal(src.split(debut).length, 2, 'ancre de mutation unique');
+      fs.writeFileSync(cible, src.replace(debut, `${debut}\n  deps.cles.obtenir(deps.config.cleId);`));
+      const compter = (r) => r.appels.filter((a) => a.startsWith('deps.cles.obtenir(')).length;
+      const normal = executer(RACINE, 'succes-eric');
+      const mute = executer(mutant, 'succes-eric');
+      assert.equal(compter(mute), compter(normal) + 1, 'l\'appel ajouté apparaît dans la trace');
+      assert.notDeepEqual(mute.appels, normal.appels);
+      assert.ok(!fs.existsSync(path.join(RACINE, 'fonda/scripts/signer-cloture.js.mutant')), 'aucun fichier laissé sous fonda/');
+    });
     test('4. auto-contrôle : l\'interception de Module._load DÉTECTE un chargement de module page', () => {
       assert.deepEqual(executer(RACINE, 'auto-controle-interception').chargesPage, ['rattachement-page.js']);
+    });
+    test('4. trace déterministe : deux exécutions du même scénario sur le même arbre -> rapports identiques', () => {
+      assert.deepEqual(executer(RACINE, 'interim-succes'), executer(RACINE, 'interim-succes'));
     });
     for (const [nom, attendue] of SCENARIOS) {
       test(`4. différentiel « ${nom} » : référence et courant identiques (issue ${attendue}), aucun code page chargé`, () => {
