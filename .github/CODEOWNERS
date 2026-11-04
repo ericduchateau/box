@@ -79,3 +79,6 @@
 /fonda/scripts/orchestrer-lots.js          @ericduchateau
 /fonda/scripts/orchestrer-lots.test.js     @ericduchateau
 /fonda/scripts/orchestrer-lots-git.test.js @ericduchateau
+# CDC de relecture (§21.8 point 6, r10.7) : fichier de confiance — il porte les ancres du patch
+# figé et l'empreinte du témoin ; les tests témoins (P1) seront ajoutés avec eux.
+/docs/CDC-fonda-relecture.md               @ericduchateau
