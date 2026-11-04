@@ -13,8 +13,9 @@
 //      arbre courant), entrées, aléas et horloge identiques, Module._load intercepté AVANT le
 //      chargement de signer-cloture.js : tout chargement de module page fait échouer ;
 //   5. borne : une clôture par processus (chaque scénario tourne dans son propre processus).
-// La trace de chaque scénario est UNE liste ORDONNÉE de tous les appels aux dépendances (API, Drive,
-// git/journal, intérim, disque, horloge, signataire), affichages et questions compris.
+// La trace de chaque scénario est UNE liste ORDONNÉE des appels aux dépendances ACCÉDÉES PAR PROPRIÉTÉ
+// (API, Drive, git/journal, intérim, disque dont realpath, clés, horloge, signataire), affichages et
+// questions compris ; une extraction délibérée par descripteur est hors périmètre (patch figé, G1).
 // Le même fichier sert d'exécutant de scénario quand TEMOIN_SCENARIO est défini (processus neuf).
 
 'use strict';
@@ -88,6 +89,80 @@ function attenduOrchestrateur(texte) {
 const DANS_PERIMETRE = (p) => /^(fonda|n8n)\/.*\.js$/.test(p) || p === 'fonda/engine/moteurs.json' || p.startsWith('.github/workflows/') || p === 'package.json';
 
 const MODULES_PAGE = /[\\/](rattachement-page|adaptateurs-page)\.js$/;
+
+// ═══ Trace ORDONNÉE UNIQUE par Proxy générique (harnais seulement, identique sur les deux arbres) ═══
+// PÉRIMÈTRE (§21.8) : tous les appels aux dépendances ACCÉDÉES PAR PROPRIÉTÉ sont tracés (deps et ses
+// conteneurs de services api, drive, fs, interim, cles). Une extraction DÉLIBÉRÉE par descripteur
+// (Object.getOwnPropertyDescriptor(...).value) sort du périmètre du différentiel — filet contre les
+// modifications ACCIDENTELLES — et est couverte par le patch figé (G1).
+// Transparence : piège get via Reflect.get, aucune pré-énumération (un accesseur ne se déclenche qu'à
+// l'accès réel), seules les fonctions sont enveloppées, wrappers MÉMORISÉS (identité stable), receveur
+// d'origine restitué (table Proxy -> cible, y compris sur .call), résultats, erreurs et promesses rendus
+// tels quels. Sérialisation déterministe des arguments, SANS appeler aucun accesseur. Types admis :
+// null, undefined, booléen, nombre, chaîne (tronquée + empreinte au-delà de 160), BigInt, fonction (sans
+// identité), Buffer/Uint8Array (taille + empreinte), Date (ISO), tableau, objet simple (propriétés de
+// données ; accesseurs marqués <accesseur>). Map, Set et autres objets spécialisés : marqueur explicite
+// <non supporté:Type> (non utilisés par le parcours local). Préfixes de chemins de l'arbre remplacés.
+function serialiser(v, remplacements = [], vus = new WeakSet()) {
+  if (v === null || v === undefined || typeof v === 'boolean' || typeof v === 'number') return String(v);
+  if (typeof v === 'bigint') return `${v}n`;
+  if (typeof v === 'string') {
+    let t = v;
+    for (const [de, vers] of remplacements) if (de) t = t.split(de).join(vers);
+    return JSON.stringify(t.length > 160 ? `${t.slice(0, 80)}…[${t.length}:${sha256(t).slice(0, 16)}]` : t);
+  }
+  if (typeof v === 'function') return '<fn>';
+  if (typeof v !== 'object') return `<${typeof v}>`;
+  if (Buffer.isBuffer(v) || v instanceof Uint8Array) return `<octets:${v.length}:${sha256(Buffer.from(v)).slice(0, 16)}>`;
+  if (v instanceof Date) return `<date:${Number.isNaN(v.getTime()) ? 'invalide' : v.toISOString()}>`;
+  if (v instanceof Map || v instanceof Set || v instanceof WeakMap || v instanceof WeakSet || v instanceof Promise) return `<non supporté:${v.constructor.name}>`;
+  if (vus.has(v)) return '<cycle>';
+  vus.add(v);
+  const valeur = (o, k) => { const d = Object.getOwnPropertyDescriptor(o, k); return d && 'value' in d ? serialiser(d.value, remplacements, vus) : '<accesseur>'; };
+  if (Array.isArray(v)) return `[${Array.from({ length: v.length }, (_, i) => valeur(v, String(i))).join(',')}]`;
+  return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${valeur(v, k)}`).join(',')}}`;
+}
+function tracer(deps, journal, remplacements = []) {
+  const CONTENEURS = new Set(['api', 'drive', 'fs', 'interim', 'cles']);
+  const cibles = new WeakMap(); // Proxy -> cible d'origine (receveur restitué)
+  const parCible = new WeakMap(); // cible -> Map(nom -> wrapper) (identité stable)
+  const enveloppeFonction = (fn, chemin) => {
+    const p = new Proxy(fn, {
+      apply(t, ceci, args) {
+        journal.push(`${chemin}(${args.map((a) => serialiser(a, remplacements)).join(',')})`);
+        return Reflect.apply(t, cibles.has(ceci) ? cibles.get(ceci) : ceci, args);
+      },
+    });
+    cibles.set(p, fn);
+    return p;
+  };
+  const memo = (cible, nom, fabriquer) => {
+    if (!parCible.has(cible)) parCible.set(cible, new Map());
+    const m = parCible.get(cible);
+    if (!m.has(nom) || cibles.get(m.get(nom)) !== m.get(`${nom}\0valeur`)) { m.set(nom, fabriquer()); m.set(`${nom}\0valeur`, cibles.get(m.get(nom))); }
+    return m.get(nom);
+  };
+  const conteneur = (objet, chemin) => {
+    const p = new Proxy(objet, {
+      get(t, k, r) {
+        const v = Reflect.get(t, k, r);
+        return typeof v === 'function' ? memo(t, String(k), () => enveloppeFonction(v, `${chemin}.${String(k)}`)) : v;
+      },
+    });
+    cibles.set(p, objet);
+    return p;
+  };
+  const racine = new Proxy(deps, {
+    get(t, k, r) {
+      const v = Reflect.get(t, k, r);
+      if (typeof v === 'function') return memo(t, String(k), () => enveloppeFonction(v, `deps.${String(k)}`));
+      if (CONTENEURS.has(k) && v && typeof v === 'object') return memo(t, String(k), () => conteneur(v, `deps.${String(k)}`));
+      return v;
+    },
+  });
+  cibles.set(racine, deps);
+  return racine;
+}
 
 // ═══════════════════════════════ EXÉCUTANT DE SCÉNARIO ═══════════════════════════════
 async function executerScenario() {
@@ -173,6 +248,7 @@ async function executerScenario() {
       ecrireExclusif(p, t) { if (etat.ecrits.has(p)) throw new Error('existe déjà'); etat.ecrits.set(p, Buffer.from(t, 'utf8')); },
       lire(p) { if (!etat.ecrits.has(p)) throw new Error('absent'); return etat.ecrits.get(p); },
       existe(p) { return etat.ecrits.has(p); },
+      realpath: (chemin) => fs.realpathSync.native(chemin),
       lister(d) { const n = new Set(); for (const p of etat.ecrits.keys()) if (p.startsWith(`${d}/`)) n.add(p.slice(d.length + 1).split('/')[0]); return [...n]; },
     },
     signer: (octets) => { etat.signatures += 1; return crypto.sign('sha256', octets, { key: CLE.prive, padding: crypto.constants.RSA_PKCS1_PADDING }); },
@@ -208,47 +284,8 @@ async function executerScenario() {
   if (NOM === 'refus-conflit') locales.push({ nom: 'decision-2.json', octets: octetsJson(await decisionDe(ids)) });
   if (NOM === 'refus-code-faux') code = '0'.repeat(16);
 
-  // ── Trace ORDONNÉE UNIQUE par Proxy générique (harnais seulement, identique sur les deux arbres) ──
-  // Paresseux et transparent : piège get via Reflect.get (aucune pré-énumération : les getters-poison
-  // ne se déclenchent qu'à l'accès réel), seules les FONCTIONS sont enveloppées ; apply = observateur
-  // pur (nom + arguments sérialisés, appel avec le this d'origine, résultat et erreurs inchangés,
-  // promesses non attendues). Données (config, registre, Buffers) rendues intactes.
-  const CONTENEURS = new Set(['api', 'drive', 'fs', 'interim', 'cles']);
-  const ser = (v, vus = new WeakSet()) => {
-    if (v === null || v === undefined || typeof v === 'boolean' || typeof v === 'number') return String(v);
-    if (typeof v === 'string') return JSON.stringify(v.length > 160 ? `${v.slice(0, 80)}…[${v.length}:${sha256(v).slice(0, 16)}]` : v);
-    if (typeof v === 'function') return '<fn>';
-    if (Buffer.isBuffer(v) || v instanceof Uint8Array) return `<octets:${v.length}:${sha256(Buffer.from(v)).slice(0, 16)}>`;
-    if (v instanceof Date) return `<date:${Number.isNaN(v.getTime()) ? 'invalide' : v.toISOString()}>`;
-    if (typeof v !== 'object') return `<${typeof v}>`;
-    if (vus.has(v)) return '<cycle>';
-    vus.add(v);
-    if (Array.isArray(v)) return `[${v.map((x) => ser(x, vus)).join(',')}]`;
-    return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${ser(v[k], vus)}`).join(',')}}`;
-  };
-  // `this` d'origine : un appel fait via le Proxy (this = Proxy) est rejoué avec l'objet d'origine.
-  const observer = (fn, chemin, cible, prox) => new Proxy(fn, {
-    apply(t, ceci, args) { etat.appels.push(`${chemin}(${args.map((a) => ser(a)).join(',')})`); return Reflect.apply(t, ceci === prox() ? cible : ceci, args); },
-  });
-  const conteneur = (objet, chemin) => {
-    let prox = null;
-    prox = new Proxy(objet, {
-      get(t, k, r) {
-        const v = Reflect.get(t, k, r);
-        return typeof v === 'function' ? observer(v, `${chemin}.${String(k)}`, t, () => prox) : v;
-      },
-    });
-    return prox;
-  };
-  let depsTracees = null;
-  depsTracees = new Proxy(deps, {
-    get(t, k, r) {
-      const v = Reflect.get(t, k, r);
-      if (typeof v === 'function') return observer(v, `deps.${String(k)}`, t, () => depsTracees);
-      if (CONTENEURS.has(k) && v && typeof v === 'object') return conteneur(v, `deps.${String(k)}`);
-      return v;
-    },
-  });
+  // Chemins réels d'abord (Node résout les liens : /var -> /private/var sous macOS), puis tels que fournis.
+  const depsTracees = tracer(deps, etat.appels, [[fs.realpathSync.native(ARBRE), '<ARBRE>'], [ARBRE, '<ARBRE>'], [fs.realpathSync.native(DONNEES), '<DONNEES>'], [DONNEES, '<DONNEES>']]);
   const essais = [];
   const essayer = async () => {
     try { const r = await SC.cloturer(setId, depsTracees); essais.push({ issue: 'succes', dossier: r.dossierLot }); } catch (e) { essais.push({ issue: e.issue || 'exception', message: e.message }); }
@@ -355,6 +392,7 @@ if (process.env.TEMOIN_SCENARIO) {
       fs.writeFileSync(cible, src.replace(debut, `${debut}\n  deps.cles.obtenir(deps.config.cleId);`));
       const compter = (r) => r.appels.filter((a) => a.startsWith('deps.cles.obtenir(')).length;
       const normal = executer(RACINE, 'succes-eric');
+      assert.ok(normal.appels.some((a) => a.startsWith('deps.fs.realpath(')), 'fs.realpath injecté et tracé (1a)');
       const mute = executer(mutant, 'succes-eric');
       assert.equal(compter(mute), compter(normal) + 1, 'l\'appel ajouté apparaît dans la trace');
       assert.notDeepEqual(mute.appels, normal.appels);
@@ -362,6 +400,35 @@ if (process.env.TEMOIN_SCENARIO) {
     });
     test('4. auto-contrôle : l\'interception de Module._load DÉTECTE un chargement de module page', () => {
       assert.deepEqual(executer(RACINE, 'auto-controle-interception').chargesPage, ['rattachement-page.js']);
+    });
+    test('4. traceur transparent : un argument porteur d\'un getter-poison n\'est PAS déclenché par la sérialisation', () => {
+      let declenche = 0;
+      const arg = { a: 1 }; Object.defineProperty(arg, 'poison', { enumerable: true, get() { declenche += 1; throw new Error('poison'); } });
+      const journal = []; let recu = null;
+      const t = tracer({ afficher: (x) => { recu = x; } }, journal);
+      t.afficher(arg);
+      assert.equal(declenche, 0, 'accesseur déclenché par la trace');
+      assert.equal(recu, arg, 'argument transmis tel quel');
+      assert.deepEqual(journal, ['deps.afficher({"a":1,"poison":<accesseur>})']);
+    });
+    test('4. traceur transparent : identité stable des wrappers, receveur d\'origine restitué (.call compris), accesseurs paresseux', () => {
+      let acces = 0; let ceciVu = null;
+      const svc = { m() { ceciVu = this; return 42; } };
+      const deps = { api: svc, signer: () => 1 }; Object.defineProperty(deps, 'drive', { enumerable: true, get() { acces += 1; return {}; } });
+      const journal = [];
+      const t = tracer(deps, journal);
+      assert.equal(acces, 0, 'aucune pré-énumération');
+      assert.equal(t.api, t.api); assert.equal(t.signer, t.signer); assert.equal(t.api.m, t.api.m);
+      const f = t.api.m;
+      assert.equal(f.call(t.api), 42); assert.equal(ceciVu, svc, 'receveur d\'origine restitué sur .call');
+      assert.equal(t.api.m(), 42); assert.equal(ceciVu, svc);
+      assert.deepEqual(journal, ['deps.api.m()', 'deps.api.m()']);
+    });
+    test('4. sérialisation : types admis déterministes, BigInt distingués, Map/Set marqués non supportés, chemins de l\'arbre remplacés', () => {
+      assert.notEqual(serialiser(1n), serialiser(2n));
+      assert.equal(serialiser(new Map([[1, 2]])), '<non supporté:Map>');
+      assert.equal(serialiser('/x/arbre/fonda/a.js', [['/x/arbre', '<ARBRE>']]), '"<ARBRE>/fonda/a.js"');
+      assert.equal(serialiser({ b: 1, a: [Buffer.from('z'), new Date(0)] }), serialiser({ a: [Buffer.from('z'), new Date(0)], b: 1 }));
     });
     test('4. trace déterministe : deux exécutions du même scénario sur le même arbre -> rapports identiques', () => {
       assert.deepEqual(executer(RACINE, 'interim-succes'), executer(RACINE, 'interim-succes'));
