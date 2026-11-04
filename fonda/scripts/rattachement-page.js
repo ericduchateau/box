@@ -157,11 +157,18 @@ function evaluerPage({ setId, candidatEnv, clotures, confirmations, listeDecisio
       // Identité Drive lue AVANT toute copie (une copie la perd).
       if (!c.drive || !texte(c.drive.id)) constats.ajouter('incident', 'candidat : identité Drive (.drive) absente — lecture non conforme à §21.8');
       else idCandidat = c.drive.id;
-      if (rel.statut !== 'clos') constats.ajouter('temporaire', `candidat au statut « ${rel.statut} » (clôture technique requise)`);
-      revoqueLe = normaliserDate(rel.clos_le);
+      // États (§21.5) : en_attente = normal avant clôture (clos_le null admis) ; abandonne = définitif.
+      if (rel.statut === 'en_attente') constats.ajouter('temporaire', 'candidat au statut « en_attente » (clôture technique requise)');
+      else if (rel.statut === 'abandonne') constats.ajouter('abandon', 'candidat au statut « abandonne » : état définitif, nouveau set_id requis');
+      else if (rel.statut !== 'clos') constats.ajouter('incident', `candidat au statut inconnu « ${rel.statut} »`);
       creeLe = normaliserDate(rel.cree_le);
-      if (!revoqueLe || !creeLe) constats.ajouter('incident', 'relecture.clos_le / cree_le absent ou mal formé');
-      else if (creeLe > revoqueLe) constats.ajouter('incident', 'fenêtre de candidature inversée (cree_le > clos_le)');
+      if (!creeLe) constats.ajouter('incident', 'relecture.cree_le absent ou mal formé');
+      if (rel.clos_le === null && rel.statut === 'en_attente') revoqueLe = null;
+      else {
+        revoqueLe = normaliserDate(rel.clos_le);
+        if (!revoqueLe) constats.ajouter('incident', 'relecture.clos_le absent ou mal formé');
+        else if (creeLe && creeLe > revoqueLe) constats.ajouter('incident', 'fenêtre de candidature inversée (cree_le > clos_le)');
+      }
       if (entierPositif(rel.generation_cle)) generationCle = rel.generation_cle;
       else constats.ajouter('incident', 'relecture.generation_cle absent ou invalide');
       if (c.lot.set_id !== setId) constats.ajouter('abandon', 'set_id du candidat ≠ set_id demandé');
@@ -176,6 +183,7 @@ function evaluerPage({ setId, candidatEnv, clotures, confirmations, listeDecisio
     }
   }
   // ── 1. Exécutions de clôture : TOUTES examinées (même partielles) ──
+  let clotureRetenue = null;
   {
     const duLotClot = [];
     let indisponibles = 0;
@@ -190,19 +198,23 @@ function evaluerPage({ setId, candidatEnv, clotures, confirmations, listeDecisio
       }
       if (r.nature === 'erreur') { if (r.set_id === setId) constats.ajouter('abandon', `exécution de clôture ${x.id} du lot au statut ${x.status} : blocage dur`); continue; }
       if (r.nature !== 'cloture') { constats.ajouter('incident', `exécution de clôture ${x.id} non attribuable à un lot`); continue; }
-      if (r.set_id === setId) duLotClot.push(r);
+      if (r.set_id !== setId) continue;
+      duLotClot.push(r);
+      // E12, sur CHAQUE clôture observée du lot, indépendamment de l'exhaustivité (§21.2).
+      if (idCandidat !== null && r.candidat_fichier_id !== idCandidat) constats.ajouter('abandon', `clôture ${x.id} : candidat_fichier_id ≠ identité Drive du candidat lu`);
+      if (revoqueLe !== null && r.clos_le !== revoqueLe) constats.ajouter('abandon', `clôture ${x.id} : clos_le ≠ relecture.clos_le du candidat`);
     }
     if (indisponibles) constats.ajouter('temporaire', `${indisponibles} détail(s) d'exécution de clôture non lu(s) : relancer`);
-    const reussies = !clotures.ok ? null : duLotClot.slice().sort((a, b) => (a.obs.stoppedAt < b.obs.stoppedAt ? -1 : a.obs.stoppedAt > b.obs.stoppedAt ? 1 : 0));
-    if (reussies === null) { /* listing en échec : déjà constaté */ } else if (!reussies.length) constats.ajouter('temporaire', 'aucune clôture technique réussie rattachée à ce lot');
-    else {
-      const r = reussies[reussies.length - 1];
-      derniere = r.obs;
-      if (reussies.length > 1 && reussies[reussies.length - 2].obs.stoppedAt === derniere.stoppedAt) constats.ajouter('abandon', 'deux clôtures techniques à la même date : aucun départage arbitraire');
-      // E12 : clôture <-> candidat LU
-      if (idCandidat !== null && r.candidat_fichier_id !== idCandidat) constats.ajouter('abandon', 'clôture retenue : candidat_fichier_id ≠ identité Drive du candidat lu');
-      if (revoqueLe !== null) for (const k of reussies) if (k.clos_le !== revoqueLe) constats.ajouter('abandon', `clôture ${k.obs.id} : clos_le ≠ relecture.clos_le du candidat`);
-      if (r.incomplete_search && !leve('recherche_incomplete')) constats.ajouter('temporaire', 'clôture technique : recherche Drive incomplète sans levée explicite (§10 C)');
+    // « La plus récente » n'est retenue que sur une sélection PROUVÉE : listing complet, aucun détail indisponible.
+    if (clotures.ok && !indisponibles) {
+      const reussies = duLotClot.slice().sort((a, b) => (a.obs.stoppedAt < b.obs.stoppedAt ? -1 : a.obs.stoppedAt > b.obs.stoppedAt ? 1 : 0));
+      if (!reussies.length) constats.ajouter('temporaire', 'aucune clôture technique réussie rattachée à ce lot');
+      else {
+        clotureRetenue = reussies[reussies.length - 1];
+        derniere = clotureRetenue.obs;
+        if (reussies.length > 1 && reussies[reussies.length - 2].obs.stoppedAt === derniere.stoppedAt) constats.ajouter('abandon', 'deux clôtures techniques à la même date : aucun départage arbitraire');
+        if (clotureRetenue.incomplete_search && !leve('recherche_incomplete')) constats.ajouter('temporaire', 'clôture technique : recherche Drive incomplète sans levée explicite (§10 C)');
+      }
     }
   }
   // ── 2. Filet sur les confirmations ──
@@ -225,33 +237,44 @@ function evaluerPage({ setId, candidatEnv, clotures, confirmations, listeDecisio
       if (r.nature === 'conflit') { constats.ajouter('abandon', `sortie « conflit » (exécution ${x.id}) : blocage dur`); continue; }
       if (r.nature !== 'decision') { constats.ajouter('incident', `exécution ${x.id} : rattachement de décision incomplet`); continue; }
       if (generationCle !== null && r.generation !== generationCle) constats.ajouter('abandon', `exécution ${x.id} : generation ${r.generation} ≠ generation_cle ${generationCle} du candidat (R6)`);
-      duLot.push({ x: r.obs, nonce: r.nonce, fichierId: r.decision_fichier_id, empreinte: r.decision_sha256, ecriture: r.ecriture });
+      duLot.push({ x: r.obs, setId: r.set_id, nonce: r.nonce, fichierId: r.decision_fichier_id, empreinte: r.decision_sha256, generation: r.generation, ecriture: r.ecriture });
     }
     if (confIndisponibles) constats.ajouter('temporaire', `${confIndisponibles} détail(s) d'exécution de confirmation non lu(s) : relancer`);
     // R3 : resoumissions d'un même nonce strictement identiques, au plus une création
     const parNonce = new Map();
     for (const e of duLot) { if (!parNonce.has(e.nonce)) parNonce.set(e.nonce, []); parNonce.get(e.nonce).push(e); }
     for (const [n, es] of parNonce) {
-      if (new Set(es.map((e) => `${e.fichierId}|${e.empreinte}`)).size > 1 || es.filter((e) => e.ecriture === 'creee').length > 1) constats.ajouter('abandon', `nonce ${n} : resoumissions non identiques (R3)`);
+      if (new Set(es.map((e) => `${e.fichierId}|${e.empreinte}|${e.generation}`)).size > 1 || es.filter((e) => e.ecriture === 'creee').length > 1) constats.ajouter('abandon', `nonce ${n} : resoumissions non identiques (R3)`);
     }
   }
   const examenConfirmationsComplet = confirmations.ok && confIndisponibles === 0;
-  // ── 3. Décisions sur Drive : rapprochement SYMÉTRIQUE (R1, R2) ──
+  // ── 3. Décisions sur Drive : rapprochement SYMÉTRIQUE sur le TUPLE (lot, nonce, id Drive, empreinte) ──
   const decisions = [];
+  let diagnostic = null;
   if (listeDecisions.ok) {
     const liste = listeDecisions.v;
     if (!liste || !Array.isArray(liste.fichiers)) constats.ajouter('incident', 'listing de decisions/ illisible');
     else {
-      const listingComplet = liste.incompleteSearch !== true; // une levée ne rend JAMAIS un listing complet
+      // Lectures partielles (§21.8, adaptateurs-page) : erreurs conservées à part, listing jamais déclaré complet.
+      const erreurs = Array.isArray(liste.erreurs) ? liste.erreurs : [];
+      for (const e of erreurs) constats.ajouter(e && (e.statut === 401 || e.statut === 403) ? 'incident' : 'temporaire', `decisions/ : lecture partielle (${e && e.quoi}) — ${e && e.message}`);
+      // Une levée ne rend JAMAIS un listing complet.
+      const listingComplet = liste.incompleteSearch !== true && !erreurs.length && liste.complet !== false;
       if (liste.incompleteSearch === true && !leve('recherche_incomplete')) constats.ajouter('temporaire', 'recherche Drive incomplète (decisions/) sans levée explicite');
+      // Identité physique : TOUS les fichiers lus, AVANT tout filtrage par lot (point 3).
+      const parId = new Map();
       const duLotFichiers = [];
       for (const f of liste.fichiers) {
-        if (!f || f.contenu == null) { constats.ajouter('incident', `fichier de decisions/ illisible (${f && f.nom})`); continue; }
-        const d = f.contenu;
-        if (!decisionConforme(d)) { constats.ajouter('incident', `fichier de decisions/ non conforme (${f.nom})`); continue; }
+        if (!f) continue;
+        const lu = f.contenu == null ? null : f.contenu;
+        const conforme = lu !== null && decisionConforme(lu);
+        if (texte(f.id)) parId.set(f.id, { f, d: conforme ? lu : null, empreinte: conforme ? empreinteDecision(lu) : null });
+        if (f.erreur) continue; // non lu : examiné via les erreurs ci-dessus
+        if (lu === null) { constats.ajouter('incident', `fichier de decisions/ illisible (${f.nom})`); continue; }
+        if (!conforme) { constats.ajouter('incident', `fichier de decisions/ non conforme (${f.nom})`); continue; }
+        const d = lu;
         if (d.set_id !== setId) continue;
-        const empreinte = empreinteDecision(d);
-        duLotFichiers.push({ f, d, empreinte });
+        duLotFichiers.push(parId.get(f.id) || { f, d, empreinte: empreinteDecision(d) });
         if (f.nom !== `${setId}-${d.nonce}.json`) constats.ajouter('abandon', `${f.nom} : nom ≠ <set_id>-<nonce>.json`);
         const p = f.properties || {};
         if (p.fonda_set_id !== d.set_id || p.fonda_nonce !== d.nonce) constats.ajouter('abandon', `${f.nom} : properties fonda_set_id/fonda_nonce absentes ou ≠ contenu`);
@@ -262,24 +285,31 @@ function evaluerPage({ setId, candidatEnv, clotures, confirmations, listeDecisio
         else if ((derniere && modifie > derniere.stoppedAt) || modifie > listingDebut) constats.ajouter('temporaire', `${f.nom} écrit après la clôture technique ou pendant le listing : nouvelle clôture technique requise`);
         decisions.push(d);
       }
-      // R1 : chaque tuple consigné a SON fichier (même id ET même empreinte)
+      const tupleEgal = (e, k) => k.d !== null && k.f.id === e.fichierId && k.empreinte === e.empreinte && k.d.nonce === e.nonce && k.d.set_id === e.setId;
+      // R1 : chaque tuple consigné a SON fichier, tuple COMPLET égal (jamais sur la foi de la seule sortie)
       for (const e of duLot) {
-        const memeId = duLotFichiers.find((k) => k.f.id === e.fichierId);
-        if (memeId && memeId.empreinte === e.empreinte) continue;
-        if (memeId || duLotFichiers.some((k) => k.d.nonce === e.nonce)) constats.ajouter('abandon', `décision de l'exécution ${e.x.id} substituée sur Drive (identifiant ou empreinte ≠ consignés) : blocage dur`);
+        const k = parId.get(e.fichierId);
+        if (k && tupleEgal(e, k)) {
+          if (k.d.generation !== e.generation) constats.ajouter('abandon', `exécution ${e.x.id} : generation ${e.generation} ≠ generation du fichier ${k.d.generation} (R6)`);
+          continue;
+        }
+        if (k && !k.f.erreur) constats.ajouter('abandon', `décision de l'exécution ${e.x.id} substituée sur Drive (lot, nonce ou empreinte ≠ consignés pour l'identifiant ${e.fichierId}) : blocage dur`);
+        else if (duLotFichiers.some((j) => j.d.nonce === e.nonce)) constats.ajouter('abandon', `décision de l'exécution ${e.x.id} substituée sur Drive (identifiant ≠ consigné) : blocage dur`);
         else if (listingComplet) constats.ajouter('abandon', `décision de l'exécution ${e.x.id} absente de Drive : blocage dur`);
         else constats.ajouter('temporaire', `décision de l'exécution ${e.x.id} non trouvée dans un listing incomplet : relancer (absence non établie)`);
       }
-      // R2 : chaque fichier est désigné par une exécution, PAR SON IDENTIFIANT
+      // R2 : chaque fichier du lot est désigné par une exécution, sur le TUPLE COMPLET
       for (const k of duLotFichiers) {
-        if (duLot.some((e) => e.fichierId === k.f.id)) continue;
+        if (duLot.some((e) => tupleEgal(e, k))) continue;
         if (examenConfirmationsComplet) constats.ajouter('abandon', `${k.f.nom} : décision sans exécution correspondante : blocage dur`);
         else constats.ajouter('temporaire', `${k.f.nom} : provenance non établie (examen des confirmations incomplet) : relancer`);
       }
       if (!decisions.length) constats.ajouter('temporaire', 'aucune décision pour ce lot');
+      // Diagnostic seulement (§21.2) : jamais comparé pour décider.
+      if (clotureRetenue) diagnostic = { nb_decisions_listees: clotureRetenue.nb_decisions_listees, decompte_signataire: duLotFichiers.length };
     }
   }
-  return { decisions, derniere, duLot: duLot.map((e) => ({ x: e.x, nonce: e.nonce })), revoqueLe, fenetre: creeLe && revoqueLe && creeLe <= revoqueLe ? { debut: creeLe, fin: revoqueLe } : null };
+  return { decisions, derniere, duLot: duLot.map((e) => ({ x: e.x, nonce: e.nonce })), revoqueLe, fenetre: creeLe && revoqueLe && creeLe <= revoqueLe ? { debut: creeLe, fin: revoqueLe } : null, diagnostic };
 }
 
 // ─── §21.7 verifierTxt ─────────────────────────────────────────────────────────────────────

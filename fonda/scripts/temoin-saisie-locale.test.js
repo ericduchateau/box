@@ -64,6 +64,25 @@ const LISTE_FERMEE = new Set([
   // Décision d'Éric (P1) : SEULE la ligne d'empreinte de signer-cloture.js, forcée par le patch figé.
   'fonda/scripts/orchestrer-lots.test.js',
 ]);
+// orchestrer-lots.test.js (décision d'Éric, P1) : SEULE substitution autorisée = la ligne d'empreinte
+// de signer-cloture.js du tripwire + le commentaire qui l'explique ; comparaison OCTET POUR OCTET.
+const ORCH = {
+  ancre: "// évolution FUTURE de l'un d'eux doit mettre à jour cette liste EXPLICITEMENT (signal de relecture).",
+  commentaire: [
+    '// P1 (parcours page) : signer-cloture.js est épinglé ici à son état POST-P1 (référence 9b75507 + patch',
+    '// figé du CDC §21.8). Le garant autoritaire est le témoin temoin-saisie-locale.test.js (§21.8) ; ce pin',
+    '// reste un signal grossier, redondant (défense en profondeur).',
+  ],
+  avant: "    ['fonda/scripts/signer-cloture.js', '7d12a4d56e4ddb8e8fd21e65b266916cbbff1998d7302975cad9ffedd972956a'],",
+  apres: "    ['fonda/scripts/signer-cloture.js', '33b586d6f0cf7d99b4121a06ff252d0c3a1e8144253eb6c0f0e323e727987482'],",
+};
+function attenduOrchestrateur(texte) {
+  const L = texte.split('\n');
+  const unique = (t) => { const i = L.indexOf(t); if (i < 0 || L.indexOf(t, i + 1) >= 0) throw new Error(`orchestrer-lots.test.js : ligne absente ou dupliquée : ${t}`); return i; };
+  L[unique(ORCH.avant)] = ORCH.apres;
+  L.splice(unique(ORCH.ancre) + 1, 0, ...ORCH.commentaire);
+  return L.join('\n');
+}
 const DANS_PERIMETRE = (p) => /^(fonda|n8n)\/.*\.js$/.test(p) || p === 'fonda/engine/moteurs.json' || p.startsWith('.github/workflows/') || p === 'package.json';
 
 const MODULES_PAGE = /[\\/](rattachement-page|adaptateurs-page)\.js$/;
@@ -126,7 +145,8 @@ async function executerScenario() {
   const lotGenere = { id: 'drv-lot', nom: `${setId}.lot.json`, modifie_le: '2026-10-18T07:00:30.000Z', octets: Buffer.from(`${JSON.stringify(lot, null, 2)}\n`) };
   const candidats = [{ id: 'drv-lot', nom: `${setId}.lot.json`, modifie_le: '2026-10-18T07:00:30.000Z', properties: { fonda_set_id: setId, fonda_execution_id: '501' }, proprietesLisibles: true }];
   const journal = { schema: 'set-ids-journal/v1', lignes: [{ set_id: setId, transition: 'reserve', le: '2026-10-17', ref }] };
-  const etat = { signatures: 0, ecrits: new Map(), affiche: '', heure: Date.parse(interim ? '2026-11-05T09:00:00.000Z' : '2026-10-20T09:00:00.000Z'), appels: [], poison: 0, accesPage: [] };
+  const etat = { signatures: 0, ecrits: new Map(), affiche: '', questions: [], heure: Date.parse(interim ? '2026-11-05T09:00:00.000Z' : '2026-10-20T09:00:00.000Z'), appels: [], poison: 0, accesPage: [] };
+  const trace = (nom, f) => async (...a) => { etat.appels.push(nom); return f(...a); };
   let decision = await decisionDe(ids.slice(0, -1));
   const locales = [];
   let code = null;
@@ -143,22 +163,23 @@ async function executerScenario() {
       get lireCandidat() { etat.accesPage.push('lireCandidat'); return undefined; },
       get listerDecisions() { etat.accesPage.push('listerDecisions'); return undefined; },
     },
-    journal: async (c) => (c === COMMIT ? { surPremierParent: true, journal: copie(journal) } : { surPremierParent: false, journal: null }),
-    decisionsLocales: async () => locales.map((f) => ({ nom: f.nom, octets: Buffer.from(f.octets) })),
-    incidents: async () => [],
-    referentielArchive: async (v) => { if (v !== REF_VERSION) throw new Error('introuvable'); return OCTETS_REF; },
+    journal: trace('journal', async (c) => (c === COMMIT ? { surPremierParent: true, journal: copie(journal) } : { surPremierParent: false, journal: null })),
+    decisionsLocales: trace('decisionsLocales', async () => locales.map((f) => ({ nom: f.nom, octets: Buffer.from(f.octets) }))),
+    incidents: trace('incidents', async () => []),
+    referentielArchive: trace('referentielArchive', async (v) => { if (v !== REF_VERSION) throw new Error('introuvable'); return OCTETS_REF; }),
     tableRelecteurs: { justine: 'Relectrice de test' },
     fs: {
-      ecrireExclusif(p, t) { if (etat.ecrits.has(p)) throw new Error('existe déjà'); etat.ecrits.set(p, Buffer.from(t, 'utf8')); },
-      lire(p) { if (!etat.ecrits.has(p)) throw new Error('absent'); return etat.ecrits.get(p); },
-      existe(p) { return etat.ecrits.has(p); },
+      ecrireExclusif(p, t) { etat.appels.push(`ecrire:${p}`); if (etat.ecrits.has(p)) throw new Error('existe déjà'); etat.ecrits.set(p, Buffer.from(t, 'utf8')); },
+      lire(p) { etat.appels.push(`lire-fs:${p}`); if (!etat.ecrits.has(p)) throw new Error('absent'); return etat.ecrits.get(p); },
+      existe(p) { etat.appels.push(`existe:${p}`); return etat.ecrits.has(p); },
       lister(d) { const n = new Set(); for (const p of etat.ecrits.keys()) if (p.startsWith(`${d}/`)) n.add(p.slice(d.length + 1).split('/')[0]); return [...n]; },
     },
-    signer: (octets) => { etat.signatures += 1; return crypto.sign('sha256', octets, { key: CLE.prive, padding: crypto.constants.RSA_PKCS1_PADDING }); },
+    signer: (octets) => { etat.signatures += 1; etat.appels.push('signer'); return crypto.sign('sha256', octets, { key: CLE.prive, padding: crypto.constants.RSA_PKCS1_PADDING }); },
     cles: CLES, registre: REGISTRE,
-    horloge: () => { etat.heure += 1000; return new Date(etat.heure); },
+    horloge: () => { etat.heure += 1000; etat.appels.push('horloge'); return new Date(etat.heure); },
     afficher: (t) => { etat.affiche += t; },
     saisir: async (q) => {
+      etat.questions.push(q);
       if (/Mode/.test(q)) return 'reponse_message';
       if (/Code/.test(q)) return code || /CODE DE CONFIRMATION : ([0-9a-f]{16})/.exec(etat.affiche).pop();
       return 'oui';
@@ -196,7 +217,7 @@ async function executerScenario() {
   }
   await essayer();
   const rapport = {
-    essais, signatures: etat.signatures, poison: etat.poison, accesPage: etat.accesPage, chargesPage, appels: etat.appels,
+    essais, signatures: etat.signatures, poison: etat.poison, accesPage: etat.accesPage, chargesPage, appels: etat.appels, affiche: etat.affiche, questions: etat.questions,
     ecrits: [...etat.ecrits.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([p, b]) => [p, b.toString('base64')]),
   };
   process.stdout.write(`\n@@RAPPORT@@${JSON.stringify(rapport)}\n`);
@@ -235,6 +256,11 @@ if (process.env.TEMOIN_SCENARIO) {
       assert.equal(`sha256:${sha256(fs.readFileSync(path.join(RACINE, 'fonda/scripts/signer-cloture-local.test.js')))}`, EMPREINTE_LOCAL, 'signer-cloture-local.test.js modifié (figé par empreinte)');
     });
 
+    test('3 bis. orchestrer-lots.test.js = référence + la SEULE substitution d\'empreinte (et son commentaire), octet pour octet', () => {
+      const ref = git(['show', `${REFERENCE}:fonda/scripts/orchestrer-lots.test.js`]).toString('utf8');
+      assert.ok(fs.readFileSync(path.join(RACINE, 'fonda/scripts/orchestrer-lots.test.js')).equals(Buffer.from(attenduOrchestrateur(ref), 'utf8')), 'orchestrer-lots.test.js modifié au-delà de la substitution autorisée');
+    });
+
     test('3. périmètre fermé : chemins de code modifiés ⊆ liste fermée ; aucun changement de type', () => {
       const lignes = git(['diff', '--name-status', '--no-renames', REFERENCE]).toString().split('\n').filter(Boolean);
       const hors = []; const types = [];
@@ -260,6 +286,9 @@ if (process.env.TEMOIN_SCENARIO) {
     let arbreRef = null; let fichierCle = null;
     const executer = (arbre, nom) => {
       const r = spawnSync(process.execPath, [__filename], { env: { PATH: process.env.PATH, HOME: process.env.HOME, TEMOIN_SCENARIO: nom, TEMOIN_ARBRE: arbre, TEMOIN_DONNEES: RACINE, TEMOIN_CLE: fichierCle }, encoding: 'utf8', timeout: 60000 });
+      assert.equal(r.error, undefined, `scénario ${nom} : ${r.error}`);
+      assert.equal(r.signal, null, `scénario ${nom} : tué par ${r.signal}`);
+      assert.equal(r.status, 0, `scénario ${nom} : code de sortie ${r.status} ; ${r.stderr}`);
       const m = /@@RAPPORT@@(.*)\n/.exec(r.stdout || '');
       assert.ok(m, `scénario ${nom} (${arbre === RACINE ? 'courant' : 'référence'}) sans rapport : ${r.stdout}${r.stderr}`);
       return JSON.parse(m[1]);
@@ -289,7 +318,11 @@ if (process.env.TEMOIN_SCENARIO) {
           if (attendue !== 'succes') {
             assert.equal(r.signatures, 0, `${quoi} : signature sur un refus`);
             assert.ok(!r.ecrits.some(([p]) => /attestation\.json$|signature/.test(p)), `${quoi} : marqueur ou attestation écrits sur un refus`);
-          } else assert.equal(r.signatures, 1);
+          } else {
+            assert.equal(r.signatures, 1);
+            assert.match(r.affiche, /CODE DE CONFIRMATION : [0-9a-f]{16}/, `${quoi} : récapitulatif et code affichés avant la confirmation`);
+            assert.ok(r.questions.some((q) => /Code/.test(q)), `${quoi} : code demandé`);
+          }
         }
         assert.deepEqual(b, a, 'comportement courant ≠ référence');
       });

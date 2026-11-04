@@ -74,6 +74,30 @@ describe('lecturePage : lireCandidat et listerDecisions (§21.8)', () => {
     const q = f.appels.find((a) => /files\?q=/.test(a.url)).url;
     assert.ok(!/trashed/.test(q.split('fields=')[0]), 'corbeille comprise (aucun filtre trashed)');
   });
+  test('listerDecisions : une panne n\'efface pas ce qui a été lu (fichier illisible conservé, 503 rendu à part, listing non complet)', async () => {
+    const f = fauxDrive([
+      DOSSIER('dec'),
+      [/files\?q=/, { json: { files: [{ id: 'f1', name: 'a.json', modifiedTime: 'm1' }, { id: 'f2', name: 'b.json', modifiedTime: 'm2' }] } }],
+      [/files\/f1\?alt=media/, { texte: '{ cassé' }],
+      [/files\/f2\?alt=media/, { status: 503 }],
+    ]);
+    const r = await A.lecturePage({ jeton: async () => 't', fetch: f, dossierRelecture: 'rel', dossierDecisions: 'dec' }).listerDecisions(SET);
+    assert.equal(r.complet, false);
+    assert.deepEqual(r.fichiers.map((x) => [x.id, x.contenu, x.erreur && x.erreur.statut]), [['f1', null, undefined], ['f2', null, 503]]);
+    assert.deepEqual(r.erreurs.map((e) => [e.quoi, e.statut]), [['décision b.json', 503]]);
+  });
+  test('listerDecisions : pagination interrompue -> pages déjà lues conservées, erreur « liste », recherche incomplète', async () => {
+    const f = fauxDrive([
+      DOSSIER('dec'),
+      [/pageToken=p2/, { status: 500 }],
+      [/files\?q=/, { json: { files: [{ id: 'f1', name: 'a.json', modifiedTime: 'm1' }], nextPageToken: 'p2' } }],
+      [/files\/f1\?alt=media/, { texte: '{"set_id":"x"}' }],
+    ]);
+    const r = await A.lecturePage({ jeton: async () => 't', fetch: f, dossierRelecture: 'rel', dossierDecisions: 'dec' }).listerDecisions(SET);
+    assert.equal(r.complet, false); assert.equal(r.incompleteSearch, true);
+    assert.deepEqual(r.fichiers.map((x) => x.id), ['f1']);
+    assert.deepEqual(r.erreurs.map((e) => [e.quoi, e.statut]), [['liste', 500]]);
+  });
   test('erreur HTTP : .statut conservé (401/403 -> incident côté signataire)', async () => {
     const d = A.lecturePage({ jeton: async () => 't', fetch: fauxDrive([[/files\/dec\?fields/, { status: 403 }]]), dossierRelecture: 'rel', dossierDecisions: 'dec' });
     await assert.rejects(d.listerDecisions(SET), (e) => e.statut === 403);

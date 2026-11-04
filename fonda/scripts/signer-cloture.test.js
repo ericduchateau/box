@@ -746,3 +746,86 @@ describe('diagnostic : lot signé (eric/v1 ET intérim/v3) — « signe » conse
   const etats = (d) => d.applicables.map((x) => x.etat);
 
 });
+
+// ═══ Bout en bout avec le VRAI rattacherPage (correction P1, cause racine) ═══
+// Détails d'exécution n8n RÉALISTES (nœuds d'entrée, d'écriture et de sortie du §21.1), nonces
+// 32 hex, fichiers et sorties fixés INDÉPENDAMMENT : aucune fabrication de résultat métier.
+const NA = 'a'.repeat(32); const NB = 'b'.repeat(32); const NC = 'c'.repeat(32);
+const runN = (json) => [{ data: { main: [[{ json }]] } }];
+function detailReel(x, role, s, { entree, ecrit = true } = {}) {
+  const runData = role === 'cloture'
+    ? { 'FONDA Entree cloture': runN(entree || { set_id: s.set_id }), ...(ecrit ? { 'FONDA Ecrire candidat clos': runN({}) } : {}), 'FONDA Sortie cloture': runN({ schema: 'cloture-fonda/v1', ...s }) }
+    : { 'FONDA Entree confirmation': runN(entree || { lot: s.set_id, nonce: s.nonce }), ...(ecrit ? { 'FONDA Ecrire decision': runN({}) } : {}), 'FONDA Sortie confirmation': runN({ schema: 'confirmation-fonda/v1', ...s }) };
+  return { ...copie(x), id: String(x.id), mode: 'webhook', workflowData: { pinData: null }, data: { resultData: { runData } } };
+}
+async function scenarioReel(x = {}) {
+  return scenario({ ...x, modifier: async (ctx) => {
+    const { setId } = await (async () => ({ setId: ctx.candidat.lot.set_id }))();
+    const gen = x.generation || 1;
+    ctx.candidat.relecture.generation_cle = gen;
+    const dec = (n) => ({ ...ctx.decision(n), generation: gen });
+    ctx.fichiers.length = 0;
+    for (const n of [NA, NB]) ctx.fichiers.push({ id: `drv-${n.slice(0, 4)}`, nom: `${setId}-${n}.json`, modifie_le: '2026-10-19T17:00:01.500Z', properties: { fonda_set_id: setId, fonda_nonce: n }, contenu: dec(n) });
+    const sortieDecision = (n, o = {}) => ({ type: 'decision', set_id: setId, nonce: n, generation: gen, decision_fichier_id: `drv-${n.slice(0, 4)}`, decision_sha256: P.empreinteDecision(dec(n)), ecriture: 'creee', motif: null, ...o });
+    const specs = {
+      10: ['confirmation', sortieDecision(NA)], 2: ['confirmation', sortieDecision(NB)],
+      30: ['confirmation', { type: 'decision', set_id: 'set_fonda_lexique_nI_92', nonce: NC, generation: 1, decision_fichier_id: 'drv-autre', decision_sha256: `sha256:${'9'.repeat(64)}`, ecriture: 'creee', motif: null }],
+      20: ['cloture', { set_id: setId, clos_le: '2026-10-20T07:59:00.000Z', deja_clos: false, candidat_fichier_id: 'drv-candidat', nb_decisions_listees: 2, incomplete_search: false }],
+    };
+    const options = {};
+    ctx.reel = { specs, options, setId, sortieDecision, dec };
+    if (x.reel) await x.reel(ctx);
+    ctx.deps.rattachement = P.rattacherPage;
+    const base = ctx.deps.api.lireExecution;
+    ctx.deps.api.lireExecution = async (id) => {
+      const sp = specs[id];
+      if (!sp) return base(id);
+      const obs = [...ctx.execs.wfConf, ...ctx.execs.wfClot].find((e) => String(e.id) === String(id));
+      return detailReel(obs, sp[0], sp[1], options[id] || {});
+    };
+    if (x.modifier) await x.modifier(ctx);
+  } });
+}
+const signe = async (sc) => { const r = await cloturer(sc.setId, sc.deps); assert.equal(sc.etat.signatures, 1); return r; };
+
+describe('bout en bout : vrai rattacherPage, sorties et fichiers indépendants (correction P1)', () => {
+  test('nominal (tiers, réponse au message) : signé', async () => { await signe(await scenarioReel()); });
+  test('POINT 0 VERROUILLÉ : sortie nonce B mais decision_sha256 et id du fichier nonce A -> abandon, zéro signature', async () => {
+    // Cas exact de la relecture : UN seul fichier (nonce A), désigné correctement par l'exécution 10 ;
+    // l'exécution 2 rapporte le nonce B (entrée cohérente) avec l'id et l'empreinte du fichier A.
+    // L'ancien rapprochement (id + empreinte) signait ; le tuple complet abandonne.
+    const sc = await scenarioReel({ modifier: ({ fichiers, reel }) => {
+      fichiers.splice(1);
+      reel.specs[2] = ['confirmation', reel.sortieDecision(NB, { decision_fichier_id: `drv-${NA.slice(0, 4)}`, decision_sha256: P.empreinteDecision(reel.dec(NA)) })];
+    } });
+    await sansSignature(sc, /substituée/, 'abandon');
+  });
+  test('rejet C1 supplémentaire (lot illisible) : inoffensif -> signé', async () => {
+    await signe(await scenarioReel({ modifier: ({ execs, reel }) => {
+      execs.wfConf.push({ id: 41, workflowId: 'wfConf', status: 'success', startedAt: '2026-10-19T16:30:00.000Z', stoppedAt: '2026-10-19T16:30:01.000Z' });
+      reel.specs[41] = ['confirmation', { type: 'rejet', set_id: null, nonce: null, generation: null, decision_fichier_id: null, decision_sha256: null, ecriture: null, motif: 'C1' }];
+      reel.options[41] = { entree: { lot: null, nonce: null }, ecrit: false };
+    } }));
+  });
+  test('arrêt au timeout (canceled) d\'une confirmation du lot, entrée lisible -> abandon', async () => {
+    const sc = await scenarioReel({ modifier: ({ execs, reel }) => {
+      execs.wfConf.push({ id: 42, workflowId: 'wfConf', status: 'canceled', startedAt: '2026-10-19T16:40:00.000Z', stoppedAt: '2026-10-19T16:42:00.000Z' });
+      reel.specs[42] = ['confirmation', reel.sortieDecision(NC)];
+    } });
+    await sansSignature(sc, /blocage dur/, 'abandon');
+  });
+  test('clôture répétée (deja_clos, même clos_le) : la plus récente retenue -> signé', async () => {
+    await signe(await scenarioReel({ modifier: ({ execs, reel }) => {
+      execs.wfClot.push({ id: 24, workflowId: 'wfClot', status: 'success', startedAt: '2026-10-20T08:10:00.000Z', stoppedAt: '2026-10-20T08:11:00.000Z' });
+      reel.specs[24] = ['cloture', { ...reel.specs[20][1], deja_clos: true }];
+      reel.options[24] = { ecrit: false };
+    } }));
+  });
+  test('réémission en génération 2, entièrement cohérente -> signé', async () => { await signe(await scenarioReel({ generation: 2 })); });
+  test('candidat « abandonne » -> abandon, zéro signature', async () => {
+    await sansSignature(await scenarioReel({ modifier: ({ candidat }) => { candidat.relecture.statut = 'abandonne'; } }), /abandonne/, 'abandon');
+  });
+  test('candidat « en_attente » (clos_le null) -> refus temporaire, pas d\'incident', async () => {
+    await sansSignature(await scenarioReel({ modifier: ({ candidat }) => { candidat.relecture.statut = 'en_attente'; candidat.relecture.clos_le = null; } }), /en_attente/, 'temporaire');
+  });
+});

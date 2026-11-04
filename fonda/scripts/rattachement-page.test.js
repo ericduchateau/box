@@ -123,8 +123,10 @@ function cas(mut) {
   const constats = new L.Constats();
   const groupe = (v, ids) => ({ ok: true, v, details: new Map(ids.map((i) => [i, t.details[i] === undefined ? L.INDISPONIBLE : t.details[i]])) });
   const r = P.evaluerPage({
-    setId: SET, candidatEnv: { ok: true, v: t.env }, clotures: groupe(t.clot, t.clot.map((e) => e.id)), confirmations: groupe(t.conf, t.conf.map((e) => e.id)),
-    listeDecisions: { ok: true, v: { incompleteSearch: t.incomplete, fichiers: t.fichiers } },
+    setId: SET, candidatEnv: t.candidatKo ? { ok: false } : { ok: true, v: t.env },
+    clotures: t.cloturesKo ? { ok: false, partiel: t.clot, details: new Map(t.clot.map((e) => [e.id, t.details[e.id] === undefined ? L.INDISPONIBLE : t.details[e.id]])) } : groupe(t.clot, t.clot.map((e) => e.id)),
+    confirmations: groupe(t.conf, t.conf.map((e) => e.id)),
+    listeDecisions: { ok: true, v: { incompleteSearch: t.incomplete, fichiers: t.fichiers, ...(t.erreurs ? { erreurs: t.erreurs, complet: false } : {}) } },
     rattachement: (detail, { observation }) => (detail === L.INDISPONIBLE ? { nature: 'indisponible' } : t.resultats[observation.id]),
     levees: t.levees, constats, sortie: null, relecteur: null, empreintes: null, listingDebut: '2026-10-20T09:00:00.000Z', registre: [],
   });
@@ -216,3 +218,101 @@ describe('identité Drive non énumérable et verifierTxt (§21.7, §21.8)', () 
     }
   });
 });
+
+// ═══ Passe de correction P1 (relecture Codex) : chaque correction verrouillée ═══
+const autreLot = 'set_fonda_lexique_nI_92';
+describe('correction P1 — tuple complet, identité physique, R6 direct, clôtures prouvées, états du candidat, lectures partielles', () => {
+  test('point 0 : exécution nonce B, fichier nonce A, même id et même empreinte -> abandon (tuple complet, jamais sur la foi de la sortie)', () => {
+    const k = cas((t) => { t.resultats[10].nonce = 'b'.repeat(32); });
+    aConstat(k, 'abandon', /substituée/);
+    aConstat(k, 'abandon', /sans exécution correspondante/); // R2 : le fichier n'est désigné par aucun tuple complet
+  });
+  test('point 3 : l\'identifiant consigné contient une décision d\'un AUTRE lot, listing incomplet -> abandon (substitution observée), jamais temporaire', () => {
+    const k = cas((t) => { t.incomplete = true; t.levees = [{ type: 'recherche_incomplete', constat: 'x' }]; t.fichiers[0].contenu = { ...decision(N1), set_id: autreLot, lot_relu: { ...decision(N1).lot_relu, set_id: autreLot } }; });
+    aConstat(k, 'abandon', /substituée/);
+    assert.ok(!/absence non établie/.test(texteConstats(k)));
+  });
+  test('point 2 : R6 exécution ↔ fichier comparés DIRECTEMENT, même candidat indisponible', () => {
+    const k = cas((t) => { t.candidatKo = true; const d = decision(N1, { generation: 2 }); t.fichiers[0].contenu = d; t.resultats[10].decision_sha256 = P.empreinteDecision(d); });
+    aConstat(k, 'abandon', /R6/);
+  });
+  test('point 1 : listing des clôtures en panne, clôture observée avec clos_le ≠ candidat -> abandon (pas seulement temporaire)', () => {
+    aConstat(cas((t) => { t.cloturesKo = true; t.resultats[20].clos_le = '2026-10-20T07:59:30.000Z'; }), 'abandon', /clos_le/);
+  });
+  test('point 1 : détail d\'une clôture plus récente indisponible -> aucune « dernière » retenue, aucun abandon déduit d\'une sélection non prouvée', () => {
+    const k = cas((t) => { t.clot.push({ id: '21', workflowId: 'wfClot', status: 'success', startedAt: '2026-10-20T08:10:00.000Z', stoppedAt: '2026-10-20T08:20:00.000Z' }); t.resultats[20].incomplete_search = true; });
+    assert.equal(k.r.derniere, null);
+    aConstat(k, 'temporaire', /clôture non lu/);
+    assert.ok(!/§10 C/.test(texteConstats(k)), 'contrôle propre à la « dernière » non appliqué sur une sélection non prouvée');
+  });
+  test('point 1 : clôture répétée (deja_clos, même clos_le) -> admise ; clôture d\'un autre lot cohérente -> ignorée', () => {
+    const k = cas((t) => {
+      const x2 = { id: '22', workflowId: 'wfClot', status: 'success', startedAt: '2026-10-20T08:30:00.000Z', stoppedAt: '2026-10-20T08:31:00.000Z' };
+      const x3 = { id: '23', workflowId: 'wfClot', status: 'success', startedAt: '2026-10-20T08:40:00.000Z', stoppedAt: '2026-10-20T08:41:00.000Z' };
+      t.clot.push(x2, x3); t.details[22] = {}; t.details[23] = {};
+      t.resultats[22] = { ...t.resultats[20], deja_clos: true, obs: x2 };
+      t.resultats[23] = { ...t.resultats[20], set_id: autreLot, candidat_fichier_id: 'autre', clos_le: '2026-01-01T00:00:00.000Z', obs: x3 };
+    });
+    assert.equal(k.r.derniere.id, '22');
+    sansConstat(k, 'abandon'); sansConstat(k, 'temporaire'); sansConstat(k, 'incident');
+  });
+  test('point 5 : en_attente avec clos_le null -> temporaire seul ; abandonne -> abandon ; statut inconnu -> incident', () => {
+    const k = cas((t) => { t.env.relecture.statut = 'en_attente'; t.env.relecture.clos_le = null; });
+    aConstat(k, 'temporaire', /en_attente/); sansConstat(k, 'incident');
+    aConstat(cas((t) => { t.env.relecture.statut = 'abandonne'; }), 'abandon', /abandonne/);
+    aConstat(cas((t) => { t.env.relecture.statut = 'bizarre'; }), 'incident', /inconnu/);
+  });
+  test('point 4 : lecture partielle de decisions/ (erreur conservée) -> temporaire, listing jamais complet ; 403 -> incident', () => {
+    const k = cas((t) => { t.fichiers = [{ ...t.fichiers[0], contenu: null, erreur: { statut: 503, message: 'x' } }]; t.erreurs = [{ quoi: 'décision a', statut: 503, message: 'x' }]; });
+    aConstat(k, 'temporaire', /lecture partielle/);
+    assert.ok(!/absente de Drive|substituée/.test(texteConstats(k)), 'fichier non lu : ni absence ni substitution établies');
+    aConstat(cas((t) => { t.erreurs = [{ quoi: 'liste', statut: 403, message: 'interdit' }]; }), 'incident', /lecture partielle/);
+  });
+  test('point 9 : nb_decisions_listees en diagnostic seulement (aucun constat, même divergent)', () => {
+    const k = cas((t) => { t.resultats[20].nb_decisions_listees = 7; });
+    assert.deepEqual(k.r.diagnostic, { nb_decisions_listees: 7, decompte_signataire: 1 });
+    sansConstat(k, 'abandon'); sansConstat(k, 'temporaire');
+  });
+  test('§21.10 : réémission en génération 2 entièrement cohérente -> aucun constat', () => {
+    const k = cas((t) => { t.env.relecture.generation_cle = 2; const d = decision(N1, { generation: 2 }); t.fichiers[0].contenu = d; t.resultats[10] = { ...t.resultats[10], generation: 2, decision_sha256: P.empreinteDecision(d) }; });
+    sansConstat(k, 'abandon'); sansConstat(k, 'incident'); sansConstat(k, 'temporaire');
+  });
+  test('§21.10 : anomalies isolées de nom et de properties -> abandon', () => {
+    aConstat(cas((t) => { t.fichiers[0].nom = 'autre.json'; }), 'abandon', /nom ≠/);
+    aConstat(cas((t) => { t.fichiers[0].properties = {}; }), 'abandon', /properties/);
+  });
+  test('§21.10 : modification après la clôture -> nouvelle clôture technique ; + contenu ≠ consigné -> abandon', () => {
+    aConstat(cas((t) => { t.fichiers[0].modifie_le = '2026-10-20T08:00:00.001Z'; }), 'temporaire', /nouvelle clôture technique/);
+    const k = cas((t) => { t.fichiers[0].modifie_le = '2026-10-20T08:00:00.001Z'; t.fichiers[0].contenu = decision(N1, { recu_le: '2026-10-20T08:00:00.000Z' }); });
+    aConstat(k, 'temporaire', /nouvelle clôture technique/); aConstat(k, 'abandon', /substituée/);
+  });
+  test('§21.10 : resoumission identique d\'un rejet total (creee + existante) -> aucun constat R3', () => {
+    const k = cas((t) => {
+      const d = decision(N1, { coeur: { ...decision(N1).coeur, action: 'rejeter', selection: [], ecartees: ['it01'], empreinte_publiee: decision(N1).coeur.empreinte_relue }, lot_relu: { ...decision(N1).lot_relu, cartes: [{ item_id: 'it01', choix: 'ecarter' }] } });
+      t.fichiers[0].contenu = d; t.resultats[10].decision_sha256 = P.empreinteDecision(d);
+      const x2 = { ...t.conf[0], id: '12' }; t.conf.push(x2); t.details[12] = {}; t.resultats[12] = { ...t.resultats[10], ecriture: 'existante', obs: x2 };
+    });
+    assert.ok(!/R3|Tout rejeter/.test(texteConstats(k)));
+  });
+});
+
+describe('correction P1 — rattacherPage : cas §21.10 manquants', () => {
+  test('rejet C1 (lot illisible en entrée, tout nul en sortie) -> rejet', () => {
+    const r = rattacher(FC.rejet_c2, 'confirmation', (d) => { entreeC(d).lot = null; entreeC(d).nonce = null; sortieC(d).motif = 'C1'; });
+    assert.equal(r.nature, 'rejet'); assert.equal(r.set_id, null);
+  });
+  test('arrêt au timeout (canceled), entrée lisible -> erreur attribuée au lot', () => {
+    const d = copie(FC.decision_creee); d.status = 'canceled';
+    assert.equal(P.rattacherPage(d, { role: 'confirmation', workflowId: 'wfConf', observation: { ...obsDe(FC.decision_creee), status: 'canceled' } }).nature, 'erreur');
+  });
+  test('retour terminal -> running dans le détail -> incident (fusion)', () => {
+    assert.ok(estIncident(rattacher(FC.decision_creee, 'confirmation', (d) => { d.status = 'running'; d.stoppedAt = null; })));
+  });
+  test('clôture répétée (deja_clos) -> cloture ; clôture en erreur à entrée illisible -> incident', () => {
+    const r = rattacher(FL.cloture, 'cloture', (d) => { sortieL(d).deja_clos = true; delete d.data.resultData.runData['FONDA Ecrire candidat clos']; });
+    assert.equal(r.nature, 'cloture'); assert.equal(r.deja_clos, true);
+    const d = copie(FL.cloture); d.status = 'error'; delete d.data.resultData.runData['FONDA Entree cloture'];
+    assert.ok(estIncident(P.rattacherPage(d, { role: 'cloture', workflowId: 'wfClot', observation: { ...obsDe(FL.cloture), status: 'error' } })));
+  });
+});
+

@@ -56,7 +56,8 @@ function lecturePage({ jeton, fetch: f = globalThis.fetch, dossierRelecture, dos
     for (;;) {
       const p = new URLSearchParams({ q, fields: champs, pageSize: '1000' });
       if (page) p.set('pageToken', page);
-      const r = await (await http(`${API}?${p}`, 'Drive (liste)')).json();
+      let r;
+      try { r = await (await http(`${API}?${p}`, 'Drive (liste)')).json(); } catch (e) { e.partiel = fichiers; throw e; }
       if (!r || !Array.isArray(r.files)) throw new Error('Drive : liste inexploitable');
       if (r.incompleteSearch === true) incomplet = true;
       fichiers.push(...r.files);
@@ -85,13 +86,27 @@ function lecturePage({ jeton, fetch: f = globalThis.fetch, dossierRelecture, dos
       return avecIdentite(env, { id: x.id, nom: x.name, modifie_le: x.modifiedTime });
     },
     // TOUT decisions/ (corbeille comprise) : un fichier d'un autre lot ou illisible reste examiné (§10 B).
+    // Lectures PARTIELLES conservées : une panne n'efface jamais ce qui a déjà été lu (incident ou
+    // substitution déjà observables) ; les erreurs sont rendues à part et le listing n'est alors
+    // jamais déclaré complet (complet = false).
     async listerDecisions(setId) {
       setIdSur(setId);
       await verifierDossier(dossierDecisions, 'decisions/');
-      const r = await lister(`'${dossierDecisions}' in parents`, 'nextPageToken,incompleteSearch,files(id,name,modifiedTime,properties,trashed)');
+      const erreurs = [];
+      let r;
+      try { r = await lister(`'${dossierDecisions}' in parents`, 'nextPageToken,incompleteSearch,files(id,name,modifiedTime,properties,trashed)'); } catch (e) {
+        erreurs.push({ quoi: 'liste', statut: e.statut, message: e.message });
+        r = { incompleteSearch: true, files: e.partiel || [] };
+      }
       const fichiers = [];
-      for (const x of r.files) fichiers.push({ id: x.id, nom: x.name, modifie_le: x.modifiedTime, properties: x.properties || {}, corbeille: x.trashed === true, contenu: await contenu(x.id, `Drive (décision ${x.name})`) });
-      return { incompleteSearch: r.incompleteSearch, fichiers };
+      for (const x of r.files) {
+        const base = { id: x.id, nom: x.name, modifie_le: x.modifiedTime, properties: x.properties || {}, corbeille: x.trashed === true };
+        try { fichiers.push({ ...base, contenu: await contenu(x.id, `Drive (décision ${x.name})`) }); } catch (e) {
+          erreurs.push({ quoi: `décision ${x.name}`, statut: e.statut, message: e.message });
+          fichiers.push({ ...base, contenu: null, erreur: { statut: e.statut, message: e.message } });
+        }
+      }
+      return { incompleteSearch: r.incompleteSearch, complet: erreurs.length === 0, fichiers, erreurs };
     },
   };
 }
