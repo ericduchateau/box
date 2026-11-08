@@ -1,0 +1,133 @@
+{
+  "_commentaire": "FIXTURE SYNTHÉTIQUE (CDC §21.10) — exécutions du workflow FONDA - Confirmer relecture, données anonymes, aucune clé k réelle. Les variantes (rejets, erreurs, épinglage, incohérences) sont dérivées par mutation dans rattachement-page.test.js.",
+  "set_id": "set_fonda_comprendre-consigne_nI_92",
+  "nonce": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+  "decision_sha256": "sha256:abababababababababababababababababababababababababababababababab",
+  "decision_creee": {
+    "id": "701",
+    "workflowId": "wfConf",
+    "status": "success",
+    "mode": "webhook",
+    "startedAt": "2026-10-19T17:00:00.000Z",
+    "stoppedAt": "2026-10-19T17:00:02.000Z",
+    "workflowData": {
+      "pinData": null
+    },
+    "data": {
+      "resultData": {
+        "runData": {
+          "FONDA Entree confirmation": [
+            {
+              "data": {
+                "main": [
+                  [
+                    {
+                      "json": {
+                        "lot": "set_fonda_comprendre-consigne_nI_92",
+                        "nonce": "a1b2c3d4e5f60718293a4b5c6d7e8f90"
+                      }
+                    }
+                  ]
+                ]
+              }
+            }
+          ],
+          "FONDA Ecrire decision": [
+            {
+              "data": {
+                "main": [
+                  [
+                    {
+                      "json": {
+                        "id": "drv-decision-1"
+                      }
+                    }
+                  ]
+                ]
+              }
+            }
+          ],
+          "FONDA Sortie confirmation": [
+            {
+              "data": {
+                "main": [
+                  [
+                    {
+                      "json": {
+                        "schema": "confirmation-fonda/v1",
+                        "type": "decision",
+                        "set_id": "set_fonda_comprendre-consigne_nI_92",
+                        "nonce": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+                        "generation": 1,
+                        "decision_fichier_id": "drv-decision-1",
+                        "decision_sha256": "sha256:abababababababababababababababababababababababababababababababab",
+                        "ecriture": "creee",
+                        "motif": null
+                      }
+                    }
+                  ]
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "rejet_c2": {
+    "id": "702",
+    "workflowId": "wfConf",
+    "status": "success",
+    "mode": "webhook",
+    "startedAt": "2026-10-19T17:00:00.000Z",
+    "stoppedAt": "2026-10-19T17:00:02.000Z",
+    "workflowData": {
+      "pinData": null
+    },
+    "data": {
+      "resultData": {
+        "runData": {
+          "FONDA Entree confirmation": [
+            {
+              "data": {
+                "main": [
+                  [
+                    {
+                      "json": {
+                        "lot": "set_fonda_comprendre-consigne_nI_92",
+                        "nonce": "a1b2c3d4e5f60718293a4b5c6d7e8f90"
+                      }
+                    }
+                  ]
+                ]
+              }
+            }
+          ],
+          "FONDA Sortie confirmation": [
+            {
+              "data": {
+                "main": [
+                  [
+                    {
+                      "json": {
+                        "schema": "confirmation-fonda/v1",
+                        "type": "rejet",
+                        "set_id": null,
+                        "nonce": null,
+                        "generation": null,
+                        "decision_fichier_id": null,
+                        "decision_sha256": null,
+                        "ecriture": null,
+                        "motif": "C2"
+                      }
+                    }
+                  ]
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
