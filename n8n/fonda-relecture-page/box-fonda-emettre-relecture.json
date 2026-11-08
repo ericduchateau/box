@@ -1,0 +1,524 @@
+{
+  "name": "FONDA - Emettre relecture",
+  "nodes": [
+    {
+      "id": "1989134f-b661-42c9-a4b1-62891a8f4bff",
+      "position": [
+        0,
+        0
+      ],
+      "name": "Webhook emission",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "webhookId": "5b4384e0-6bf0-4f41-ad56-4b5332f91fca",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "A_RENSEIGNER_P4_CREDENTIAL_EMETTRE",
+          "name": "FONDA Emettre Token"
+        }
+      },
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "A_RENSEIGNER_P4_CHEMIN_EMETTRE",
+        "authentication": "headerAuth",
+        "options": {}
+      }
+    },
+    {
+      "id": "2c209183-c564-4c78-ad2d-88ae06aaf5c7",
+      "position": [
+        220,
+        0
+      ],
+      "name": "FONDA Entree emission",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "// FONDA — entrée d'émission : { set_id, journal_commit, referentiel_version, moteur } (CLI d'Éric, après diagnostic « généré »).\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nconst SET_ID_PATTERN = new RegExp(\"^set_fonda_[a-z0-9-]+_n[IF]_\\\\d{2}$\", \"\");\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('FONDA Entree emission : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nconst b = unItem(null).body;\nif (!b || typeof b !== 'object' || Array.isArray(b) || Object.keys(b).sort().join(',') !== 'journal_commit,moteur,referentiel_version,set_id') throw new Error('corps : exactement { set_id, journal_commit, referentiel_version, moteur }');\nif (typeof b.set_id !== 'string' || !SET_ID_PATTERN.test(b.set_id)) throw new Error('set_id invalide');\nif (typeof b.journal_commit !== 'string' || !/^[0-9a-f]{40}$/.test(b.journal_commit)) throw new Error('journal_commit invalide');\nif (typeof b.referentiel_version !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(b.referentiel_version)) throw new Error('referentiel_version invalide');\nconst m = b.moteur;\nif (!m || typeof m !== 'object' || typeof m.version !== 'string' || typeof m.sha256 !== 'string' || Object.keys(m).sort().join(',') !== 'sha256,version') throw new Error('moteur invalide');\nreturn [{ json: { set_id: b.set_id, journal_commit: b.journal_commit, referentiel_version: b.referentiel_version, moteur: { version: m.version, sha256: m.sha256 } } }];"
+      }
+    },
+    {
+      "id": "f6c3db51-161e-4485-a153-a4f68b681f5f",
+      "position": [
+        440,
+        0
+      ],
+      "name": "Lire referentiel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": false,
+      "parameters": {
+        "url": "={{ 'https://api.github.com/repos/ericduchateau/box/contents/fonda/data/referentiel.json?ref=' + $('FONDA Entree emission').first().json.journal_commit }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "User-Agent",
+              "value": "box-fonda-relecture"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "431e4b60-b678-4009-ad0b-8dbe3dac62c8",
+      "position": [
+        660,
+        0
+      ],
+      "name": "Lire moteurs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": false,
+      "parameters": {
+        "url": "={{ 'https://api.github.com/repos/ericduchateau/box/contents/fonda/engine/moteurs.json?ref=' + $('FONDA Entree emission').first().json.journal_commit }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "User-Agent",
+              "value": "box-fonda-relecture"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "c07d4e32-fe54-4c28-a3bb-435756b4ecde",
+      "position": [
+        880,
+        0
+      ],
+      "name": "Chercher lot source",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": false,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "cukxQDNwWIqOAK02",
+          "name": "Google Drive la bonne!"
+        }
+      },
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ \"'1Ir-iJGZoSk5_FmJ9dnf_PM-NEBZWyn8d' in parents and trashed = false and name = '\" + $('FONDA Entree emission').first().json.set_id + \".lot.json'\" }}"
+            },
+            {
+              "name": "fields",
+              "value": "nextPageToken,incompleteSearch,files(id,name)"
+            },
+            {
+              "name": "pageSize",
+              "value": "100"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "b8d3afd2-aa29-4943-a224-c56d7c319d57",
+      "position": [
+        1100,
+        0
+      ],
+      "name": "Lire lot source",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": false,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "cukxQDNwWIqOAK02",
+          "name": "Google Drive la bonne!"
+        }
+      },
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files/' + $('Chercher lot source').first().json.files[0].id }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "alt",
+              "value": "media"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "601e73f9-16df-48fd-a185-6aad1489f6ae",
+      "position": [
+        1320,
+        0
+      ],
+      "name": "Chercher candidat existant",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": false,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "cukxQDNwWIqOAK02",
+          "name": "Google Drive la bonne!"
+        }
+      },
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ \"'A_RENSEIGNER_P4_DOSSIER_RELECTURE' in parents and name = '\" + $('FONDA Entree emission').first().json.set_id + \".candidat.json'\" }}"
+            },
+            {
+              "name": "fields",
+              "value": "nextPageToken,incompleteSearch,files(id,name)"
+            },
+            {
+              "name": "pageSize",
+              "value": "100"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "3f1e45ce-d1a9-4028-ad6e-f53f7704d0e6",
+      "position": [
+        1540,
+        0
+      ],
+      "name": "Generer cle",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "parameters": {
+        "action": "generate",
+        "dataPropertyName": "k",
+        "encodingType": "hex",
+        "stringLength": 64
+      }
+    },
+    {
+      "id": "c1379478-1634-47f9-a537-e2c010db7ae8",
+      "position": [
+        1760,
+        0
+      ],
+      "name": "Preparer candidat",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "// FONDA — candidat-fonda/v1 : relecteur du référentiel ARCHIVÉ, moteur du registre, k -> SEUL cle_sha256 stocké.\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('Preparer candidat : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\n// SHA-256 (FIPS 180-4), UTF-8 et base64 en JavaScript pur.\nfunction octetsUtf8(texte) {\n  const o = [];\n  for (let i = 0; i < texte.length; i += 1) {\n    let c = texte.charCodeAt(i);\n    if (c >= 0xd800 && c <= 0xdbff && i + 1 < texte.length) {\n      const d = texte.charCodeAt(i + 1);\n      if (d >= 0xdc00 && d <= 0xdfff) { c = 0x10000 + ((c - 0xd800) << 10) + (d - 0xdc00); i += 1; }\n    }\n    if (c >= 0xd800 && c <= 0xdfff) throw new Error('UTF-16 : substitut isolé');\n    if (c < 0x80) o.push(c);\n    else if (c < 0x800) o.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) o.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else o.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return o;\n}\nfunction sha256Hex(octets) {\n  const K = [0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,\n    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,\n    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,\n    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,\n    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\n  const H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  const n = octets.length;\n  const total = Math.ceil((n + 9) / 64) * 64;\n  const m = new Array(total).fill(0);\n  for (let i = 0; i < n; i += 1) m[i] = octets[i];\n  m[n] = 0x80;\n  const bits = n * 8;\n  for (let i = 0; i < 8; i += 1) m[total - 1 - i] = Math.floor(bits / Math.pow(2, 8 * i)) & 0xff;\n  const w = new Array(64);\n  const rotr = (x, k) => (x >>> k) | (x << (32 - k));\n  for (let b = 0; b < total; b += 64) {\n    for (let t = 0; t < 16; t += 1) w[t] = ((m[b + 4 * t] << 24) | (m[b + 4 * t + 1] << 16) | (m[b + 4 * t + 2] << 8) | m[b + 4 * t + 3]) | 0;\n    for (let t = 16; t < 64; t += 1) {\n      const s0 = rotr(w[t - 15], 7) ^ rotr(w[t - 15], 18) ^ (w[t - 15] >>> 3);\n      const s1 = rotr(w[t - 2], 17) ^ rotr(w[t - 2], 19) ^ (w[t - 2] >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    let [a, bb, c, d, e, f, g, h] = H;\n    for (let t = 0; t < 64; t += 1) {\n      const t1 = (h + (rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)) + ((e & f) ^ (~e & g)) + K[t] + w[t]) | 0;\n      const t2 = ((rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)) + ((a & bb) ^ (a & c) ^ (bb & c))) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = bb; bb = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + bb) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map((x) => (x >>> 0).toString(16).padStart(8, '0')).join('');\n}\nfunction octetsBase64(b64) {\n  const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';\n  const s = b64.replace(/\\n/g, '');\n  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(s) || s.length % 4 !== 0) throw new Error('base64 invalide');\n  const o = [];\n  for (let i = 0; i < s.length; i += 4) {\n    const v = [0, 1, 2, 3].map((k) => (s[i + k] === '=' ? 0 : A.indexOf(s[i + k])));\n    const n = (v[0] << 18) | (v[1] << 12) | (v[2] << 6) | v[3];\n    // Bits de remplissage nuls exigés (forme canonique) : « YR== » refusé (≠ « YQ== »).\n    if ((s[i + 2] === '=' && (v[1] & 0x0f) !== 0) || (s[i + 3] === '=' && s[i + 2] !== '=' && (v[2] & 0x03) !== 0)) throw new Error('base64 non canonique');\n    o.push((n >> 16) & 255);\n    if (s[i + 2] !== '=') o.push((n >> 8) & 255);\n    if (s[i + 3] !== '=') o.push(n & 255);\n  }\n  return o;\n}\n// Décodage UTF-8 STRICT : toute séquence invalide ou non canonique est refusée\n// (le texte ré-encodé doit redonner exactement les mêmes octets).\nfunction texteUtf8(octets) {\n  let t = '';\n  let i = 0;\n  while (i < octets.length) {\n    const b = octets[i];\n    const n = b < 0x80 ? 0 : b >= 0xf0 ? 3 : b >= 0xe0 ? 2 : b >= 0xc0 ? 1 : -1;\n    if (n < 0 || i + n >= octets.length) throw new Error('UTF-8 invalide');\n    let c = n === 0 ? b : b & (0x3f >> n);\n    for (let k = 1; k <= n; k += 1) {\n      const x = octets[i + k];\n      if ((x & 0xc0) !== 0x80) throw new Error('UTF-8 invalide');\n      c = (c << 6) | (x & 0x3f);\n    }\n    if (c > 0x10ffff) throw new Error('UTF-8 invalide');\n    t += String.fromCodePoint(c);\n    i += n + 1;\n  }\n  const r = octetsUtf8(t);\n  if (r.length !== octets.length || r.some((x, k) => x !== octets[k])) throw new Error('UTF-8 non canonique');\n  return t;\n}\n// Fichier du dépôt lu par l'API GitHub « contents » au commit consigné : octets EXACTS\n// du blob (base64), jamais un texte ré-sérialisé par le nœud HTTP.\nfunction fichierDepot(nomNoeud, chemin) {\n  const f = unItem(nomNoeud);\n  if (f.type !== 'file' || f.encoding !== 'base64' || f.path !== chemin || typeof f.content !== 'string') throw new Error(nomNoeud + ' : fichier ' + chemin + ' attendu (contents, base64)');\n  const octets = octetsBase64(f.content);\n  if (octets.length !== f.size) throw new Error(nomNoeud + ' : taille ≠ ' + f.size + ' octets');\n  return { octets, texte: texteUtf8(octets) };\n}\n\nconst CONFIG = {\"dossierRelecture\":\"A_RENSEIGNER_P4_DOSSIER_RELECTURE\",\"dureeCleJours\":14};\nconst e = unItem(\"FONDA Entree emission\");\n// Référentiel au commit consigné : octets exacts, SHA-256 = referentiel_version annoncée.\nconst ref = fichierDepot(\"Lire referentiel\", 'fonda/data/referentiel.json');\nif ('sha256:' + sha256Hex(ref.octets) !== e.referentiel_version) throw new Error('référentiel au commit ≠ referentiel_version annoncée');\nconst referentiel = JSON.parse(ref.texte);\nconst slug = e.set_id.replace(/^set_fonda_/, '').replace(/_n[IF]_[0-9]{2}$/, '');\nconst notions = (referentiel.notions || []).filter((n) => n && typeof n.id === 'string' && n.id.split('.').slice(1).join('.') === slug);\nif (notions.length !== 1) throw new Error('notion du set_id introuvable ou ambiguë au référentiel archivé');\nconst relecteur = notions[0].relecteur;\nif (typeof relecteur !== 'string' || !relecteur) throw new Error('relecteur attribué absent au référentiel archivé');\nconst reg = JSON.parse(fichierDepot(\"Lire moteurs\", 'fonda/engine/moteurs.json').texte);\nconst ligne = Array.isArray(reg) ? reg.filter((l) => l && l.version === e.moteur.version) : [];\nif (ligne.length !== 1 || ligne[0].sha256 !== e.moteur.sha256) throw new Error('moteur absent du registre au commit consigné');\n// Lot source (immuable) et absence de candidat existant (émission initiale seulement).\nconst lots = unItem(\"Chercher lot source\");\nif (!Array.isArray(lots.files) || lots.files.length !== 1 || lots.nextPageToken || lots.incompleteSearch) throw new Error('lot source introuvable, ambigu ou recherche incomplète');\nconst lot = unItem(\"Lire lot source\");\nif (!lot || lot.schema !== 'lot-fonda/v1' || lot.set_id !== e.set_id) throw new Error('lot source non conforme');\nconst existants = unItem(\"Chercher candidat existant\");\nif (!Array.isArray(existants.files) || existants.nextPageToken || existants.incompleteSearch) throw new Error('recherche du candidat existant inexploitable');\nif (existants.files.length !== 0) throw new Error('candidat déjà émis : la réémission (sans décision) est un autre chemin');\nconst k = unItem(\"Generer cle\").k;\nif (typeof k !== 'string' || !/^[0-9a-f]{64}$/.test(k)) throw new Error('clé k : 64 hex attendus (32 octets)');\nconst maintenant = new Date();\nconst creeLe = maintenant.toISOString();\nconst expireLe = new Date(maintenant.getTime() + CONFIG.dureeCleJours * 86400000).toISOString();\nconst candidat = { schema: 'candidat-fonda/v1', lot, relecture: {\n  statut: 'en_attente', generation_cle: 1, cle_sha256: sha256Hex(octetsUtf8(k)), cree_le: creeLe, expire_le: expireLe, clos_le: null,\n  relecteur_attribue: relecteur, referentiel_version: e.referentiel_version, moteur: e.moteur,\n  envois: [{ generation_cle: 1, envoye_a: relecteur, le: creeLe }] } };\nconst contenu = JSON.stringify(candidat, null, 2) + '\\n';\nconst nom = e.set_id + '.candidat.json';\nconst metadonnees = { name: nom, parents: [CONFIG.dossierRelecture], mimeType: 'application/json', properties: { fonda_set_id: e.set_id } };\nconst frontiere = 'fonda-' + sha256Hex(octetsUtf8(contenu)).slice(0, 32);\nconst corps = '--' + frontiere + '\\r\\nContent-Type: application/json; charset=UTF-8\\r\\n\\r\\n' + JSON.stringify(metadonnees)\n  + '\\r\\n--' + frontiere + '\\r\\nContent-Type: application/json; charset=UTF-8\\r\\n\\r\\n' + contenu + '\\r\\n--' + frontiere + '--\\r\\n';\n// k ne sort de ce nœud QUE vers le courriel (jamais stocké, jamais en sortie du workflow).\nreturn [{ json: { set_id: e.set_id, relecteur, k, depot: { nom, frontiere, corps } } }];"
+      }
+    },
+    {
+      "id": "774742f1-75a0-4fd5-ada3-670c2b11c508",
+      "position": [
+        1980,
+        0
+      ],
+      "name": "FONDA Ecrire candidat",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": false,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "cukxQDNwWIqOAK02",
+          "name": "Google Drive la bonne!"
+        }
+      },
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "method": "POST",
+        "url": "https://www.googleapis.com/upload/drive/v3/files",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "uploadType",
+              "value": "multipart"
+            },
+            {
+              "name": "fields",
+              "value": "id,name,parents,properties"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "={{ 'multipart/related; boundary=' + $json.depot.frontiere }}",
+        "body": "={{ $json.depot.corps }}",
+        "options": {
+          "timeout": 60000
+        }
+      }
+    },
+    {
+      "id": "e2b4c099-85c8-40f8-aa3d-9f3da1575d2e",
+      "position": [
+        2200,
+        0
+      ],
+      "name": "Lire adresse relecteur",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": false,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "A_RENSEIGNER_P4_CREDENTIAL_API_N8N",
+          "name": "FONDA API n8n (lecture Data Table)"
+        }
+      },
+      "parameters": {
+        "url": "https://n8n.srv868991.hstgr.cloud/api/v1/data-tables/A_RENSEIGNER_P4_ID_DATA_TABLE_RELECTEURS/rows",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "ffe6dbae-063f-4746-a792-39a88a08a296",
+      "position": [
+        2420,
+        0
+      ],
+      "name": "Preparer courriel",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "// FONDA — courriel au relecteur : adresse lue dans la Data Table (clé = relecteur_attribue), lien …?lot=&k=.\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('Preparer courriel : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nconst CONFIG = {\"urlPage\":\"A_RENSEIGNER_P4_URL_PAGE_RELECTURE\"};\nconst p = unItem(\"Preparer candidat\");\nconst ecrit = unItem(\"FONDA Ecrire candidat\");\nif (!ecrit || typeof ecrit.id !== 'string' || ecrit.name !== p.depot.nom) throw new Error('candidat non écrit');\nconst t = unItem(\"Lire adresse relecteur\");\nconst lignes = Array.isArray(t.data) ? t.data.filter((l) => l && l.relecteur_attribue === p.relecteur) : [];\nif (lignes.length !== 1 || typeof lignes[0].adresse !== 'string' || !/^[^@\\s]+@[^@\\s]+$/.test(lignes[0].adresse)) throw new Error('adresse du relecteur introuvable ou ambiguë dans la Data Table');\nconst lien = CONFIG.urlPage + '?lot=' + encodeURIComponent(p.set_id) + '&k=' + p.k;\nconst message = ['To: ' + lignes[0].adresse, 'Subject: Relecture FONDA ' + p.set_id, 'Content-Type: text/plain; charset=UTF-8', '',\n  'Bonjour,', '', 'Une fiche FONDA est à relire, carte par carte :', lien, '', 'Le lien expire dans 14 jours.'].join('\\r\\n');\n// base64url d'UTF-8, sans Buffer (nœud Code n8n).\nconst o = []; for (const ch of message) { const c = ch.codePointAt(0); if (c < 0x80) o.push(c); else if (c < 0x800) o.push(0xc0 | (c >> 6), 0x80 | (c & 63)); else if (c < 0x10000) o.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63)); else o.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63)); }\nconst A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';\nlet raw = '';\nfor (let i = 0; i < o.length; i += 3) { const n = (o[i] << 16) | ((o[i + 1] || 0) << 8) | (o[i + 2] || 0); raw += A[(n >> 18) & 63] + A[(n >> 12) & 63] + (i + 1 < o.length ? A[(n >> 6) & 63] : '') + (i + 2 < o.length ? A[n & 63] : ''); }\nreturn [{ json: { raw } }];"
+      }
+    },
+    {
+      "id": "0986ac05-2f09-4ce5-a076-f008f8d713e8",
+      "position": [
+        2640,
+        0
+      ],
+      "name": "Envoyer lien",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": false,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "A_RENSEIGNER_P4_CREDENTIAL_GMAIL",
+          "name": "FONDA Gmail relecture"
+        }
+      },
+      "parameters": {
+        "method": "POST",
+        "url": "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gmailOAuth2",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ raw: $json.raw }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "5c7205d0-9d59-457c-a95c-a7bbc72e2dee",
+      "position": [
+        2860,
+        0
+      ],
+      "name": "FONDA Sortie emission",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "// FONDA — sortie d'émission (non observée) : jamais k, jamais d'adresse.\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('FONDA Sortie emission : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nconst p = unItem(\"Preparer candidat\");\nconst ecrit = unItem(\"FONDA Ecrire candidat\");\nconst envoi = unItem(\"Envoyer lien\");\nif (!envoi || typeof envoi.id !== 'string') throw new Error('courriel non envoyé');\nreturn [{ json: { schema: 'emission-fonda/v1', set_id: p.set_id, candidat_fichier_id: ecrit.id, relecteur_attribue: p.relecteur } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook emission": {
+      "main": [
+        [
+          {
+            "node": "FONDA Entree emission",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FONDA Entree emission": {
+      "main": [
+        [
+          {
+            "node": "Lire referentiel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lire referentiel": {
+      "main": [
+        [
+          {
+            "node": "Lire moteurs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lire moteurs": {
+      "main": [
+        [
+          {
+            "node": "Chercher lot source",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chercher lot source": {
+      "main": [
+        [
+          {
+            "node": "Lire lot source",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lire lot source": {
+      "main": [
+        [
+          {
+            "node": "Chercher candidat existant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chercher candidat existant": {
+      "main": [
+        [
+          {
+            "node": "Generer cle",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generer cle": {
+      "main": [
+        [
+          {
+            "node": "Preparer candidat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparer candidat": {
+      "main": [
+        [
+          {
+            "node": "FONDA Ecrire candidat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FONDA Ecrire candidat": {
+      "main": [
+        [
+          {
+            "node": "Lire adresse relecteur",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lire adresse relecteur": {
+      "main": [
+        [
+          {
+            "node": "Preparer courriel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparer courriel": {
+      "main": [
+        [
+          {
+            "node": "Envoyer lien",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Envoyer lien": {
+      "main": [
+        [
+          {
+            "node": "FONDA Sortie emission",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "timezone": "Europe/Paris"
+  }
+}

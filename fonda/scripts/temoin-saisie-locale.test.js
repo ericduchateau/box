@@ -66,6 +66,8 @@ const LISTE_FERMEE = new Set([
   'fonda/scripts/temoin-ancre.test.js', 'fonda/scripts/signer-cloture-local.test.js', 'fonda/scripts/signer-cloture.test.js',
   // Décision d'Éric (P1) : SEULE la ligne d'empreinte de signer-cloture.js, forcée par le patch figé.
   'fonda/scripts/orchestrer-lots.test.js',
+  // P3 (amendement pré-annoncé §21.9, approuvé par Éric) : workflows Emettre et Cloturer.
+  'n8n/fonda-relecture-page/construire-relecture.js', 'n8n/fonda-relecture-page/relecture.test.js',
 ]);
 // orchestrer-lots.test.js (décision d'Éric, P1) : SEULE substitution autorisée = la ligne d'empreinte
 // de signer-cloture.js du tripwire + le commentaire qui l'explique ; comparaison OCTET POUR OCTET.
