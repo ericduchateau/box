@@ -101,8 +101,9 @@ const MODULES_PAGE = /[\\/](rattachement-page|adaptateurs-page)\.js$/;
 // tels quels. Sérialisation déterministe des arguments, SANS appeler aucun accesseur. Types admis :
 // null, undefined, booléen, nombre, chaîne (tronquée + empreinte au-delà de 160), BigInt, fonction (sans
 // identité), Buffer/Uint8Array (taille + empreinte), Date (ISO), tableau, objet simple (propriétés de
-// données ; accesseurs marqués <accesseur>). Map, Set et autres objets spécialisés : marqueur explicite
-// <non supporté:Type> (non utilisés par le parcours local). Préfixes de chemins de l'arbre remplacés.
+// données ; accesseurs marqués <accesseur>). Map, Set, WeakMap, WeakSet et Promise : marqueur explicite
+// <non supporté:Type>. Les AUTRES objets (ex. RegExp) ne sont pas admis : ils se sérialisent comme un objet
+// simple (souvent {}), sans marqueur. Aucun n'est utilisé par le parcours local. Préfixes de chemins remplacés.
 function serialiser(v, remplacements = [], vus = new WeakSet()) {
   if (v === null || v === undefined || typeof v === 'boolean' || typeof v === 'number') return String(v);
   if (typeof v === 'bigint') return `${v}n`;
@@ -136,17 +137,18 @@ function tracer(deps, journal, remplacements = []) {
     cibles.set(p, fn);
     return p;
   };
-  const memo = (cible, nom, fabriquer) => {
+  const memo = (cible, nom, valeurCourante, fabriquer) => {
     if (!parCible.has(cible)) parCible.set(cible, new Map());
     const m = parCible.get(cible);
-    if (!m.has(nom) || cibles.get(m.get(nom)) !== m.get(`${nom}\0valeur`)) { m.set(nom, fabriquer()); m.set(`${nom}\0valeur`, cibles.get(m.get(nom))); }
+    // Wrapper renouvelé dès que la valeur ACTUELLEMENT lue diffère de celle qu'il enveloppe.
+    if (!m.has(nom) || m.get(`${nom}\0valeur`) !== valeurCourante) { m.set(nom, fabriquer()); m.set(`${nom}\0valeur`, valeurCourante); }
     return m.get(nom);
   };
   const conteneur = (objet, chemin) => {
     const p = new Proxy(objet, {
       get(t, k, r) {
         const v = Reflect.get(t, k, r);
-        return typeof v === 'function' ? memo(t, String(k), () => enveloppeFonction(v, `${chemin}.${String(k)}`)) : v;
+        return typeof v === 'function' ? memo(t, String(k), v, () => enveloppeFonction(v, `${chemin}.${String(k)}`)) : v;
       },
     });
     cibles.set(p, objet);
@@ -155,8 +157,8 @@ function tracer(deps, journal, remplacements = []) {
   const racine = new Proxy(deps, {
     get(t, k, r) {
       const v = Reflect.get(t, k, r);
-      if (typeof v === 'function') return memo(t, String(k), () => enveloppeFonction(v, `deps.${String(k)}`));
-      if (CONTENEURS.has(k) && v && typeof v === 'object') return memo(t, String(k), () => conteneur(v, `deps.${String(k)}`));
+      if (typeof v === 'function') return memo(t, String(k), v, () => enveloppeFonction(v, `deps.${String(k)}`));
+      if (CONTENEURS.has(k) && v && typeof v === 'object') return memo(t, String(k), v, () => conteneur(v, `deps.${String(k)}`));
       return v;
     },
   });
@@ -423,6 +425,18 @@ if (process.env.TEMOIN_SCENARIO) {
       assert.equal(f.call(t.api), 42); assert.equal(ceciVu, svc, 'receveur d\'origine restitué sur .call');
       assert.equal(t.api.m(), 42); assert.equal(ceciVu, svc);
       assert.deepEqual(journal, ['deps.api.m()', 'deps.api.m()']);
+    });
+    test('4. traceur transparent : une dépendance REMPLACÉE (méthode ou conteneur) est appelée et tracée dans sa NOUVELLE version', () => {
+      const journal = [];
+      const deps = { api: { m: () => 1 } };
+      const t = tracer(deps, journal);
+      assert.equal(t.api.m(), 1);
+      deps.api.m = () => 2; // remplacement d'une méthode
+      assert.equal(t.api.m(), 2, 'nouvelle méthode appelée');
+      deps.api = { m: () => 3 }; // remplacement du conteneur
+      assert.equal(t.api.m(), 3, 'nouveau conteneur appelé');
+      assert.deepEqual(journal, ['deps.api.m()', 'deps.api.m()', 'deps.api.m()']);
+      assert.equal(t.api, t.api, 'identité stable tant que la valeur ne change pas');
     });
     test('4. sérialisation : types admis déterministes, BigInt distingués, Map/Set marqués non supportés, chemins de l\'arbre remplacés', () => {
       assert.notEqual(serialiser(1n), serialiser(2n));
