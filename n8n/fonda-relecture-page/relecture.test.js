@@ -1,5 +1,5 @@
-// Harnais P3 (CDC relecture §21.0, §21.1, §21.5, §21.10) — workflows « FONDA - Emettre relecture » et
-// « FONDA - Cloturer relecture ». Aucun réseau : simulateur n8n (fonda-generation-ia/simulateur.js,
+// Harnais P3 + P2 (CDC relecture §21.0, §21.1, §21.5, §21.6, §21.10) — workflows « FONDA - Emettre relecture »,
+// « FONDA - Confirmer relecture » et « FONDA - Cloturer relecture ». Aucun réseau : simulateur n8n (fonda-generation-ia/simulateur.js,
 // réutilisé SANS modification), Drive, GitHub, Data Table et Gmail simulés.
 //   1. octet-identité INTERNE : export commité == construction depuis le dépôt (P2/P3 ; dépôt <-> live à P4) ;
 //   2. contrôles statiques : détection de MOTIFS CONNUS de secret/PII (pas une preuve d'absence),
@@ -8,15 +8,17 @@
 //      properties has, trashed, and/or/parenthèses ; clause inconnue = erreur), champs `fields` projetés,
 //      pagination par jeton ; producteurs (n8n) ET signataire (VRAI adaptateurs-page.lecturePage, par un
 //      fetch simulé) lisent le MÊME Drive ;
-//   4. CHAÎNE RÉELLE : Emettre -> (décision §21.1 + confirmation au contrat, P2 à venir) -> Cloturer ->
+//   4. CHAÎNE RÉELLE : Emettre -> VRAI Confirmer (P2 : C1–C7, decisions/) -> Cloturer ->
 //      VRAI preLireDetails -> VRAI rattacherPage -> VRAI evaluerPage -> VRAIE réconciliation (L.unicite,
 //      L.reconcilier, empreinte publiée par SC.lotPublie), avec les VRAIES preuves de génération ;
 //      transport HTTP de la pagination reconstitué selon la configuration du nœud (jeton en query string) ;
 //   5. cas du §21.10 et réémission (§21.5), toujours par la chaîne réelle.
-// Seul stub hors simulateur : le nœud Crypto (non simulé) est remplacé, DANS LA COPIE de test du
-// workflow, par un nœud Code rendant une clé k fixe. La confirmation (workflow P2) est représentée par
-// son CONTRAT (fichier decision-fonda/v1 + exécution au format du consommateur gelé), à remplacer par
-// le vrai workflow Confirmer en P2.
+// Adaptations au simulateur (NON modifiable), toutes dans la COPIE de test du workflow, chacune vérifiée
+// statiquement sur l'export : (a) nœud Crypto (non simulé) -> nœud Code rendant une clé fixe ; (b) Respond
+// to Webhook en texte (le simulateur analyse le corps comme du JSON) : corps encapsulé par JSON.stringify,
+// code HTTP (expression) évalué par le harnais sur l'item répondu. La confirmation SIMULÉE AU CONTRAT ne
+// subsiste que pour les contre-épreuves de réconciliation (confirmerSimule : décision fausse mais cohérente,
+// qu'un vrai Confirmer ne produit pas) ; partout ailleurs, c'est le VRAI workflow Confirmer.
 // Usage : node --test n8n/fonda-relecture-page/relecture.test.js
 
 'use strict';
@@ -27,7 +29,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const B = require('./construire-relecture.js');
-const { executerGraphe } = require('../fonda-generation-ia/simulateur.js');
+const { executerGraphe, evaluer: evaluerExpression } = require('../fonda-generation-ia/simulateur.js');
 const L = require('../../fonda/scripts/liaison-generation.js');
 const P = require('../../fonda/scripts/rattachement-page.js');
 const A = require('../../fonda/scripts/adaptateurs-page.js');
@@ -37,18 +39,20 @@ const Cat = require('../../fonda/engine/catalogue.js');
 const SHA = Cat.sha256WebCrypto();
 
 const RACINE = path.join(__dirname, '..', '..');
-const EXPORTS = { cloturer: 'box-fonda-cloturer-relecture.json', emettre: 'box-fonda-emettre-relecture.json' };
+const EXPORTS = { cloturer: 'box-fonda-cloturer-relecture.json', emettre: 'box-fonda-emettre-relecture.json', confirmer: 'box-fonda-confirmer-relecture.json' };
 const lireExport = (k) => fs.readFileSync(path.join(__dirname, EXPORTS[k]));
 const copie = (o) => JSON.parse(JSON.stringify(o));
 const sha = (b) => crypto.createHash('sha256').update(b).digest('hex');
 const pause = () => new Promise((r) => { setTimeout(r, 3); });
-const N_C = B.NOEUDS_CLOTURER; const N_E = B.NOEUDS_EMETTRE;
+const N_C = B.NOEUDS_CLOTURER; const N_E = B.NOEUDS_EMETTRE; const N_F = B.NOEUDS_CONFIRMER;
+const COMMUN = B.chargerCommun();
+const CONSTRUCTEURS = { cloturer: B.construireCloturer, emettre: B.construireEmettre, confirmer: B.construireConfirmer };
 const { dossierCandidats: CAND, dossierRelecture: RELEC, dossierDecisions: DEC } = B.CONFIG;
 
 // ── 1. et 2. Contrôles statiques ──
 const SANS_MODULES = (js) => js.replace(/\/\/ >>> MODULE [\s\S]*?\/\/ <<< MODULE [^\n]*/g, '');
 describe('1. octet-identité interne et 2. contrôles statiques', () => {
-  for (const [k, construire] of [['cloturer', B.construireCloturer], ['emettre', B.construireEmettre]]) {
+  for (const [k, construire] of Object.entries(CONSTRUCTEURS)) {
     test(`${EXPORTS[k]} == construction depuis le dépôt, octet pour octet`, () => {
       assert.ok(lireExport(k).equals(Buffer.from(`${JSON.stringify(construire(), null, 2)}\n`, 'utf8')), `${EXPORTS[k]} ≠ construction : regénérer par construire-relecture.js --${k}`);
     });
@@ -66,12 +70,20 @@ describe('1. octet-identité interne et 2. contrôles statiques', () => {
       assert.equal(wf.pinData, undefined, 'aucune donnée épinglée');
       assert.equal(wf.active, undefined, 'export sans état actif (créé INACTIF en P4)');
     });
-    test(`${EXPORTS[k]} : webhook POST à authentification d'en-tête ; IF v2 STRICTS sur un booléen`, () => {
+    test(`${EXPORTS[k]} : webhook POST (CLI : authentification d'en-tête ; relecteur : public, réponse par nœud) ; IF v2 STRICTS sur un booléen`, () => {
       const wf = JSON.parse(lireExport(k));
       const wh = wf.nodes.filter((n) => n.type === 'n8n-nodes-base.webhook');
       assert.equal(wh.length, 1);
-      assert.deepEqual([wh[0].parameters.httpMethod, wh[0].parameters.authentication, Object.keys(wh[0].credentials)], ['POST', 'headerAuth', ['httpHeaderAuth']]);
-      assert.ok(wh[0].credentials.httpHeaderAuth.id && wh[0].credentials.httpHeaderAuth.name);
+      if (k === 'confirmer') {
+        // §21.0 : POST /fonda-select-confirm, déclenché par le navigateur du relecteur (protégé par k + jeton).
+        assert.deepEqual(wh[0].parameters, { httpMethod: 'POST', path: 'fonda-select-confirm', responseMode: 'responseNode', options: {} });
+        assert.equal(wh[0].credentials, undefined);
+        assert.equal(wf.settings.executionTimeout, 120, 'executionTimeout = 120 s (§7)');
+      } else {
+        assert.deepEqual([wh[0].parameters.httpMethod, wh[0].parameters.authentication, Object.keys(wh[0].credentials)], ['POST', 'headerAuth', ['httpHeaderAuth']]);
+        assert.ok(wh[0].credentials.httpHeaderAuth.id && wh[0].credentials.httpHeaderAuth.name);
+      }
+      assert.doesNotMatch(JSON.stringify(wf), /\/box-|BOX-Flashcards|11KWo13pczVB_eOXw-FHUXWuutfSQqbbT/, 'aucune route ni dossier BOX (PRD §2 bis)');
       const ifs = wf.nodes.filter((n) => n.type === 'n8n-nodes-base.if');
       assert.ok(ifs.length >= 1);
       for (const n of ifs) {
@@ -107,9 +119,28 @@ describe('1. octet-identité interne et 2. contrôles statiques', () => {
       }
     }
   });
-  test('noms de nœuds de la clôture = ceux du consommateur gelé (ROLES.cloture)', () => {
-    const noms = JSON.parse(lireExport('cloturer')).nodes.map((n) => n.name);
-    for (const n of [P.ROLES.cloture.entree, P.ROLES.cloture.ecriture, P.ROLES.cloture.sortie]) assert.ok(noms.includes(n), n);
+  test('noms de nœuds = ceux du consommateur gelé (ROLES.cloture, ROLES.confirmation)', () => {
+    for (const [k, role] of [['cloturer', 'cloture'], ['confirmer', 'confirmation']]) {
+      const noms = JSON.parse(lireExport(k)).nodes.map((n) => n.name);
+      for (const n of [P.ROLES[role].entree, P.ROLES[role].ecriture, P.ROLES[role].sortie]) assert.ok(noms.includes(n), `${k} : ${n}`);
+    }
+  });
+  test('Confirmer : modules et fonctions embarqués = copies EXACTES (catalogue, canonique, projectionComplete, lotPublie) ; base commune jeton/hash identique dans chaque nœud', () => {
+    const wf = JSON.parse(lireExport('confirmer'));
+    const js = (nom) => wf.nodes.find((n) => n.name === nom).parameters.jsCode;
+    for (const [nom, rel] of [[N_F.controler, B.MODULES.catalogue], [N_F.controler, B.MODULES.canonique], [N_F.comparer, B.MODULES.canonique]]) {
+      const src = fs.readFileSync(path.join(RACINE, rel), 'utf8');
+      const m = new RegExp(`// >>> MODULE ${rel} \\(copie exacte, sha256=([0-9a-f]{64})\\)\\n[^\\n]*\\n\\(function \\(module, exports, require, self\\) \\{\\n([\\s\\S]*?)\\}\\)\\(M_`).exec(js(nom));
+      assert.ok(m, `${nom} : ${rel}`); assert.equal(m[2], src, rel); assert.equal(m[1], sha(Buffer.from(src)), rel);
+    }
+    assert.ok(js(N_F.controler).includes(`// >>> FONCTION fonda/scripts/liaison-generation.js projectionComplete (copie exacte)\n${L.projectionComplete.toString()}\n// <<< FONCTION projectionComplete`));
+    assert.ok(js(N_F.controler).includes(`// >>> FONCTION fonda/scripts/signer-cloture.js lotPublie (copie exacte)\n${SC.lotPublie.toString()}\n// <<< FONCTION lotPublie`));
+    for (const nom of [N_F.formulaire, N_F.controler]) assert.ok(js(nom).includes(B.COMMUN_PAGE), `${nom} : base commune`);
+  });
+  test('Respond to Webhook : forme vérifiée ICI (le harnais l\'adapte au simulateur dans sa copie : corps texte, code par expression)', () => {
+    const r = JSON.parse(lireExport('confirmer')).nodes.filter((n) => n.type === 'n8n-nodes-base.respondToWebhook');
+    assert.equal(r.length, 1);
+    assert.deepEqual([r[0].parameters.respondWith, r[0].parameters.responseBody, r[0].parameters.options.responseCode], ['text', '={{ $json.html }}', '={{ $json.code }}']);
   });
 });
 
@@ -175,7 +206,7 @@ function projeter(fields) {
 function fauxDrive(o = {}) {
   const fichiers = new Map(); let n = 0; const sequences = new Map(); let nj = 0;
   const d = {
-    fichiers, o, envois: [], appels: [], crochets: {},
+    fichiers, o, envois: [], notifications: [], appels: [], crochets: {},
     ajouter(dossier, nom, contenu, properties = {}, extra = {}) {
       const id = `drv-${++n}`;
       fichiers.set(id, { id, name: nom, parents: [dossier], mimeType: 'application/json', properties, trashed: false, contenu, modifiedTime: new Date().toISOString(), version: '1', ...extra });
@@ -251,6 +282,8 @@ function fauxDrive(o = {}) {
       return { statusCode: 200, body: JSON.parse(f.contenu) };
     },
     n8nCreer: async (r) => {
+      // Crochet AVANT la création (écriture concurrente vraie : une autre exécution s'intercale).
+      if (d.crochets.avantCreer) { const h = d.crochets.avantCreer; d.crochets.avantCreer = null; await h(); }
       const parties = r.body.split('\r\n\r\n'); const meta = JSON.parse(parties[1].split('\r\n')[0]); const contenu = parties[2].slice(0, parties[2].lastIndexOf('\r\n--'));
       const id = d.ajouter(meta.parents[0], meta.name, contenu, meta.properties);
       return { statusCode: 200, body: { id, name: meta.name, parents: meta.parents, properties: meta.properties } };
@@ -355,6 +388,65 @@ const execution = (workflowId, debut, fin, statut, runData) => {
   const obs = { id: String(800 + (++nExec)), workflowId, status: statut, startedAt: debut, stoppedAt: fin };
   return { obs, detail: { ...obs, mode: 'webhook', workflowData: { pinData: null }, data: { resultData: { runData } } } };
 };
+// ── Confirmer (P2) : le VRAI workflow, formulaire POSTÉ construit comme la Page (jeton HMAC de la base commune) ──
+const SECRET = 'secret-de-test-de-la-page-fonda-non-hexadecimal';
+const nonceAleatoire = () => crypto.randomBytes(16).toString('hex');
+const encoder = (o) => new URLSearchParams(Object.entries(o).flatMap(([k, v]) => (Array.isArray(v) ? v.map((x) => [k, x]) : [[k, String(v)]]))).toString();
+// Copie de test : Respond to Webhook adapté au simulateur (corps texte -> JSON.stringify ; forme vérifiée en 2.).
+const simulable = (wf) => { const w = copie(wf); for (const n of w.nodes) if (n.type === 'n8n-nodes-base.respondToWebhook') n.parameters.responseBody = '={{ JSON.stringify($json.html) }}'; return w; };
+async function formulaire(d, setId, { k = K, generation, nonce = nonceAleatoire(), ecarter = [], action = 'accepter', expirePage, empreinte, moteur, secret = SECRET } = {}) {
+  const cand = candidatDe(d, setId); const rel = cand.relecture;
+  const gen = generation === undefined ? rel.generation_cle : generation;
+  const emp = empreinte || await Cat.calculerEmpreinte(cand.lot, SHA);
+  const mot = moteur || rel.moteur;
+  const exp = expirePage || new Date(Math.min(Date.now() + 3600000, Date.parse(rel.expire_le))).toISOString();
+  const f = { lot: setId, k, generation: String(gen), empreinte: emp, moteur_version: mot.version, moteur_sha256: mot.sha256, expire_page: exp, nonce };
+  f.jeton = COMMUN.jetonPage(secret, { set_id: setId, generation_cle: gen, cle_sha256: sha(Buffer.from(k, 'utf8')), empreinte: emp, moteur_version: mot.version, moteur_sha256: mot.sha256, expire_page: exp, nonce });
+  f.action = action;
+  if (action === 'accepter') for (const c of cand.lot.cartes) f[`choix_${c.item_id}`] = ecarter.includes(c.item_id) ? 'ecarter' : 'garder';
+  else f.confirmer_rejet = 'oui';
+  return f;
+}
+async function poster(d, corps, o = {}) {
+  const debut = new Date().toISOString();
+  const entetes = o.entetes || { 'content-length': String(Buffer.byteLength(corps && typeof corps === 'object' && !Array.isArray(corps) ? encoder(corps) : '')) };
+  const r = await executerGraphe(simulable(JSON.parse(lireExport('confirmer'))), {
+    corps, entetes, contexteCode: { $env: { FONDA_PAGE_HMAC: o.secret === undefined ? SECRET : o.secret } },
+    reponses: {
+      [N_F.chercher]: d.n8nListe, [N_F.lire]: d.n8nMedia, [N_F.chercherDecision]: d.n8nListe, [N_F.lireDecision]: d.n8nMedia, [N_F.relire]: d.n8nMedia, [N_F.ecrire]: d.n8nCreer,
+      [N_F.adresse]: async () => ({ statusCode: 200, body: { data: [{ relecteur_attribue: RELECTEUR, adresse: 'relectrice@exemple.invalid' }, { relecteur_attribue: 'eric', adresse: 'relecteur@exemple.invalid' }] } }),
+      [N_F.envoyer]: async (q) => { d.notifications.push(Buffer.from(JSON.parse(q.jsonBody).raw, 'base64url').toString('utf8')); return { statusCode: 200, body: { id: `notif-${d.notifications.length}` } }; },
+      ...(o.reponses || {}),
+    },
+  });
+  await pause();
+  const fin = new Date().toISOString();
+  await pause();
+  const sortie = r.runData[N_F.sortie] ? r.sorties[N_F.sortie][0].json : null;
+  let http = null;
+  if (r.reponseWebhook) {
+    http = r.reponseWebhook.noeud === N_F.repondre
+      ? { code: evaluerExpression(r.reponseWebhook.code, { $: null, $json: r.sorties[N_F.reponse][0].json }), corps: r.reponseWebhook.corps }
+      : { code: r.reponseWebhook.code, corps: r.reponseWebhook.corps };
+  }
+  const id = sortie && sortie.type === 'decision' ? sortie.decision_fichier_id : null;
+  const dec = id && d.fichiers.get(id) ? JSON.parse(d.fichiers.get(id).contenu) : null;
+  return { r, sortie, http, id, dec, ...execution('wfConf', debut, fin, r.status === 'success' ? 'success' : 'error', r.runData) };
+}
+// Confirmation par le VRAI Confirmer (même signature qu'en P3, k de la génération confirmée).
+async function confirmer(d, setId, generation, o = {}) {
+  return poster(d, await formulaire(d, setId, { ...o, generation }), o);
+}
+// Course VRAIE : le Confirmer passe C1–C5bis puis est RETENU juste avant son écriture (crochet avantCreer) ;
+// `atteinte` se résout à ce point, `liberer()` laisse l'écriture se faire, `resultat` = la confirmation.
+async function confirmationRetenue(d, setId, generation, o = {}) {
+  let liberer; const barriere = new Promise((r) => { liberer = r; });
+  let signaler; const atteinte = new Promise((r) => { signaler = r; });
+  d.crochets.avantCreer = async () => { signaler(); await barriere; };
+  const resultat = confirmer(d, setId, generation, o);
+  await atteinte;
+  return { liberer, resultat };
+}
 async function cloturer(d, corps, o = {}) {
   const debut = new Date().toISOString();
   const r = await executerGraphe(JSON.parse(lireExport('cloturer')), {
@@ -366,10 +458,9 @@ async function cloturer(d, corps, o = {}) {
   await pause();
   return { r, ...execution('wfClot', debut, fin, r.status === 'success' ? 'success' : 'error', r.runData) };
 }
-// Confirmation au CONTRAT (P2) : fichier decision-fonda/v1 construit selon §21.1 (empreintes PÉDAGOGIQUES
-// du lot source et du lot filtré, sélection dans l'ordre du candidat, hash_formulaire du §21.1) écrit dans
-// decisions/ + exécution au format du consommateur gelé. hash_formulaire : aucun schéma canonique de
-// tableau hétérogène n'existe encore (P2 le fixera, le harnais suivra) ; JSON.stringify du tableau ici.
+// Confirmation SIMULÉE AU CONTRAT, réservée aux CONTRE-ÉPREUVES de réconciliation (4 bis) : une décision
+// FAUSSE mais cohérente (fichier + exécution), qu'un vrai Confirmer ne produit pas, doit être abandonnée par
+// le signataire (pilier 1). hash_formulaire : MÊME définition que Confirmer (base commune, P2).
 async function decisionPage(setId, generation, nonce, { ecarter = [], candidat }) {
   const lot = lotSource(setId);
   const choix = lot.cartes.map((c) => [c.item_id, ecarter.includes(c.item_id) ? 'ecarter' : 'garder']);
@@ -378,12 +469,12 @@ async function decisionPage(setId, generation, nonce, { ecarter = [], candidat }
   const empreinte = await Cat.calculerEmpreinte(lot, SHA);
   const rel = candidat.relecture;
   const expirePage = new Date(Math.min(Date.now() + 3600000, Date.parse(rel.expire_le))).toISOString();
-  const hash = `sha256:${sha(Buffer.from(JSON.stringify(['fonda-select-form/v1', setId, generation, empreinte, rel.moteur.version, rel.moteur.sha256, expirePage, nonce, 'accepter', choix]), 'utf8'))}`;
+  const hash = COMMUN.hashFormulaire({ lot: setId, generation, empreinte, moteur_version: rel.moteur.version, moteur_sha256: rel.moteur.sha256, expire_page: expirePage, nonce, action: 'accepter', choix });
   return { schema: 'decision-fonda/v1', set_id: setId, generation, nonce, recu_le: new Date().toISOString(),
     coeur: { action: 'accepter', selection, ecartees, empreinte_relue: empreinte, empreinte_publiee: await Cat.calculerEmpreinte(SC.lotPublie(lot, { selection }), SHA), moteur: rel.moteur },
     lot_relu: { set_id: setId, empreinte_complete: L.empreinteComplete(lot), cartes: choix.map(([item_id, c]) => ({ item_id, choix: c })) }, hash_formulaire: hash };
 }
-async function confirmer(d, setId, generation, { nonce = crypto.randomBytes(16).toString('hex'), muter, ecarter } = {}) {
+async function confirmerSimule(d, setId, generation, { nonce = nonceAleatoire(), muter, ecarter } = {}) {
   const dec = await decisionPage(setId, generation, nonce, { ecarter, candidat: candidatDe(d, setId) });
   if (muter) muter(dec);
   const debut = new Date().toISOString();
@@ -527,7 +618,7 @@ describe('4 bis. réconciliation RÉELLE (§20.5) au bout de la chaîne : la dé
   ]) {
     test(`contre-épreuve : ${nom} -> abandon de réconciliation`, async () => {
       const { d } = await lotEmis();
-      const cf = await confirmer(d, SET, 1, { muter }); await pause();
+      const cf = await confirmerSimule(d, SET, 1, { muter }); await pause();
       const c = await cloturer(d, { set_id: SET });
       aIssue(await evaluer(d, SET, [c], [cf]), 'abandon', motif);
     });
@@ -644,8 +735,8 @@ describe('6. cas clôture du §21.10, par la chaîne réelle', () => {
   });
   test('listing INCOMPLET sur le MÊME Drive (producteur ET signataire) : refus temporaires §10 C et decisions/, jamais d\'abandon ; diagnostic égal', async () => {
     const { d } = await lotEmis();
-    d.o.incomplet = (q) => q.includes(`'${DEC}'`); // Drive déclare la recherche incomplète APRÈS l'émission
     const cf = await confirmer(d, SET, 1); await pause();
+    d.o.incomplet = (q) => q.includes(`'${DEC}'`); // Drive déclare la recherche incomplète APRÈS l'émission
     const c = await cloturer(d, { set_id: SET });
     const s = sortieDe(c.r, N_C.sortie);
     assert.deepEqual([s.incomplete_search, s.nb_decisions_listees], [true, 1]);
@@ -655,10 +746,12 @@ describe('6. cas clôture du §21.10, par la chaîne réelle', () => {
     assert.deepEqual(issues(k, 'temporaire').map((x) => x.raison).sort(), ['clôture technique : recherche Drive incomplète sans levée explicite (§10 C)', 'recherche Drive incomplète (decisions/) sans levée explicite'].sort());
     assert.deepEqual(k.r.diagnostic, { nb_decisions_listees: 1, decompte_signataire: 1 });
   });
-  test('décision arrivée APRÈS la clôture : vue par le signataire, non comptée par le producteur -> temporaire (nouvelle clôture), jamais d\'abandon', async () => {
+  test('décision ÉCRITE APRÈS la clôture (Confirmer passé par C5bis AVANT, écriture retenue) : vue par le signataire, non comptée par le producteur -> temporaire (nouvelle clôture), jamais d\'abandon', async () => {
     const { d } = await lotEmis();
+    const enVol = await confirmationRetenue(d, SET, 1);
     const c = await cloturer(d, { set_id: SET }); await pause();
-    const cf = await confirmer(d, SET, 1);
+    enVol.liberer(); const cf = await enVol.resultat;
+    assert.equal(cf.sortie.ecriture, 'creee', 'C5bis passé avant la clôture : l\'écriture a lieu');
     const k = await evaluer(d, SET, [c], [cf]);
     assert.deepEqual(issues(k, 'abandon'), [], texte(k));
     assert.ok(issues(k, 'temporaire').some((x) => /écrit après la clôture technique/.test(x.raison)), texte(k));
@@ -699,8 +792,11 @@ describe('6. cas clôture du §21.10, par la chaîne réelle', () => {
   test('D5 : décision VRAIMENT écrite pendant le listing de Cloturer (après le calcul de la page), absente de ce listing -> aucun constat, décision retenue, compteur divergent en diagnostic', async () => {
     const { d } = await lotEmis();
     let cf;
-    d.crochets.apresListe = { si: (q) => q.includes(`'${DEC}'`), f: async () => { cf = await confirmer(d, SET, 1); } };
+    // Le VRAI Confirmer a passé C1–C5bis avant la clôture ; son écriture est libérée PENDANT le listing de Cloturer.
+    const enVol = await confirmationRetenue(d, SET, 1);
+    d.crochets.apresListe = { si: (q) => q.includes(`'${DEC}'`), f: async () => { enVol.liberer(); cf = await enVol.resultat; } };
     const c = await cloturer(d, { set_id: SET });
+    assert.equal(cf.sortie.ecriture, 'creee', JSON.stringify(cf.sortie));
     assert.equal(c.r.status, 'success', c.r.erreur); assert.ok(cf, 'écriture concurrente effectuée');
     assert.equal(sortieDe(c.r, N_C.sortie).nb_decisions_listees, 0, 'absente du listing de clôture');
     const f = d.fichiers.get(cf.id);
@@ -786,7 +882,8 @@ describe('8. RÉÉMISSION (§21.5, décision point 4) : en_attente ET decisions/
     assert.deepEqual(sortieDe(e2, N_E.sortie), { schema: 'emission-fonda/v1', set_id: SET, candidat_fichier_id: id, relecteur_attribue: RELECTEUR, generation_cle: 2, reemission: true });
     kConfinee(e2, K2);
     assert.equal(d.envois.length, 1); assert.match(d.envois[0], new RegExp(`&k=${K2}\\r\\n`)); assert.match(d.envois[0], /remplace le lien/);
-    const cf = await confirmer(d, SET, 2); await pause();
+    const cf = await confirmer(d, SET, 2, { k: K2 }); await pause();
+    assert.equal(cf.sortie.ecriture, 'creee', JSON.stringify(cf.sortie));
     const cl = await cloturer(d, { set_id: SET });
     assert.deepEqual((await evaluer(d, SET, [cl], [cf])).constats, []);
   });
@@ -903,7 +1000,8 @@ describe('9. courses (D1, D2, E1) : pilier 1 signataire, pilier 2 verrou « un s
     assert.equal(eA.status, 'error'); assert.equal(eA.noeudErreur, N_E.verifierVersion); assert.match(eA.erreur, /course détectée/); assert.equal(eA.runData[N_E.reecrire], undefined);
     assert.deepEqual([candidatDe(d).relecture.generation_cle, candidatDe(d).relecture.cle_sha256], [2, sha(Buffer.from(K3, 'utf8'))]);
     assert.equal(d.envois.length, 2, 'émission initiale + B seulement'); assert.match(d.envois[1], new RegExp(`&k=${K3}\\r\\n`));
-    const cf = await confirmer(d, SET, 2); await pause();
+    const cf = await confirmer(d, SET, 2, { k: K3 }); await pause();
+    assert.equal(cf.sortie.ecriture, 'creee', JSON.stringify(cf.sortie));
     assert.deepEqual((await evaluer(d, SET, [await cloturer(d, { set_id: SET })], [cf])).constats, []);
   });
   test('E1 — ÉCART CONNU, FERMÉ PAR LE VERROU P5 SEULEMENT : réémission B (et sa confirmation) glissées APRÈS le contrôle de version de A -> A écrase la clé de B puis échoue APRÈS écriture ; le signataire ACCEPTE (constats: []) une décision sous une clé qui n\'est plus celle du candidat', async () => {
@@ -913,9 +1011,9 @@ describe('9. courses (D1, D2, E1) : pilier 1 signataire, pilier 2 verrou « un s
     let eB; let cfB;
     // Deux écrivains CLI en parallèle (erreur de l'opérateur) : B réémet et le relecteur confirme sous la clé de B,
     // pendant que A, déjà passé par son contrôle de version, s'apprête à réécrire.
-    d.crochets.avantPatch = async () => { eB = await emettre(d, { k: K3 }); cfB = await confirmer(d, SET, 2); };
+    d.crochets.avantPatch = async () => { eB = await emettre(d, { k: K3 }); cfB = await confirmer(d, SET, 2, { k: K3 }); };
     const eA = await emettre(d, { k: K2 });
-    assert.equal(eB.status, 'success', eB.erreur);
+    assert.equal(eB.status, 'success', eB.erreur); assert.equal(cfB.sortie.ecriture, 'creee', 'le VRAI Confirmer accepte la clé de B');
     assert.equal(eA.status, 'error'); assert.equal(eA.noeudErreur, N_E.verifier); assert.match(eA.erreur, /écriture concurrente détectée/);
     assert.ok(eA.runData[N_E.reecrire], 'l\'erreur d\'Emettre survient APRÈS son écriture et ne l\'annule pas');
     assert.equal(d.envois.length, 2, 'aucun courriel de A'); assert.match(d.envois[1], new RegExp(`&k=${K3}\\r\\n`));
@@ -955,5 +1053,270 @@ describe('9. courses (D1, D2, E1) : pilier 1 signataire, pilier 2 verrou « un s
     await pause();
     const c = await cloturer(d, { set_id: SET });
     aIssue(await evaluer(d, SET, [c], [cf]), 'abandon', /\(R6\)/);
+  });
+});
+
+// ════════════════════════════════════════ P2 ════════════════════════════════════════
+describe('10. base commune Page/Confirmer : jeton (§21.6) et hash_formulaire (§21.1), vecteurs indépendants (crypto Node)', () => {
+  const J = { set_id: SET, generation_cle: 1, cle_sha256: '4'.repeat(64), empreinte: `sha256:${'1'.repeat(64)}`, moteur_version: 'v1', moteur_sha256: '2'.repeat(64), expire_page: '2026-11-09T10:00:00.000Z', nonce: '3'.repeat(32) };
+  const F = { lot: SET, generation: 1, empreinte: J.empreinte, moteur_version: 'v1', moteur_sha256: J.moteur_sha256, expire_page: J.expire_page, nonce: J.nonce, action: 'accepter', choix: [['it01', 'garder'], ['it02', 'ecarter']] };
+  test('jeton = HMAC-SHA256(secret, octets de JSON.stringify(["fonda-select/v7", …])) ; vecteur figé', () => {
+    const msg = JSON.stringify(['fonda-select/v7', J.set_id, 1, J.cle_sha256, J.empreinte, 'v1', J.moteur_sha256, J.expire_page, J.nonce]);
+    assert.equal(COMMUN.jetonPage(SECRET, J), crypto.createHmac('sha256', SECRET).update(msg, 'utf8').digest('hex'));
+    assert.equal(COMMUN.jetonPage(SECRET, J), '72db8206fb5c000031e195dc728b60b98798622aef775f43a884b5e594a375f9');
+    const long = 'é'.repeat(80); // clé > 64 octets : hachée d'abord (RFC 2104)
+    assert.equal(COMMUN.jetonPage(long, J), crypto.createHmac('sha256', long).update(msg, 'utf8').digest('hex'));
+  });
+  test('hash_formulaire = "sha256:" + SHA-256(JSON.stringify(["fonda-select-form/v1", …, choix])) ; vecteur figé ; « tout rejeter » : choix []', () => {
+    const attendu = (f) => `sha256:${sha(Buffer.from(JSON.stringify(['fonda-select-form/v1', f.lot, f.generation, f.empreinte, f.moteur_version, f.moteur_sha256, f.expire_page, f.nonce, f.action, f.choix]), 'utf8'))}`;
+    assert.equal(COMMUN.hashFormulaire(F), attendu(F));
+    assert.equal(COMMUN.hashFormulaire(F), 'sha256:1854e1e7b120e5ee4754a6a913e689d518c085545df3840805e7a268bd9a62d1');
+    const R = { ...F, action: 'rejeter', choix: [] };
+    assert.equal(COMMUN.hashFormulaire(R), attendu(R));
+  });
+  test('schéma VALIDÉ avant calcul : type faux, entier non sûr, choix mal formé, objet, longueur -> refus ; aucune normalisation Unicode', () => {
+    for (const mut of [{ generation: '1' }, { generation: 1.5 }, { generation: -1 }, { generation: 2 ** 53 }, { lot: { set_id: SET } }, { choix: [['it01', 'garde']] }, { choix: [['it01']] },
+      { choix: [['', 'garder']] }, { choix: { it01: 'garder' } }, { nonce: null }]) {
+      assert.throws(() => COMMUN.hashFormulaire({ ...F, ...mut }), /tableau canonique/, JSON.stringify(mut));
+    }
+    assert.throws(() => COMMUN.tableauCanonique(['chaine'], ['a', 'b']), /longueur/);
+    assert.notEqual(COMMUN.hashFormulaire({ ...F, nonce: 'é' }), COMMUN.hashFormulaire({ ...F, nonce: 'é' }));
+  });
+  test('secret absent ou court -> ERREUR (configuration), jamais un jeton faible', () => {
+    for (const s of [undefined, null, '', 'court']) assert.throws(() => COMMUN.jetonPage(s, J), /secret HMAC/);
+  });
+});
+
+describe('11. Confirmer (VRAI workflow) : contrat gelé ROLES.confirmation, C1–C7, nonce, R3, 409, §21.10', () => {
+  const rattacher = (cf) => P.rattacherPage(cf.detail, { role: 'confirmation', workflowId: 'wfConf', observation: cf.obs });
+  const formeExacte = (s) => assert.deepEqual(Object.keys(s).sort(), Object.keys(P.ROLES.confirmation.formeSortie).sort());
+  const rejete = async (d, cf, motif, apresC2) => {
+    assert.equal(cf.r.status, 'success', `${cf.r.noeudErreur} : ${cf.r.erreur}`);
+    formeExacte(cf.sortie);
+    assert.deepEqual(cf.sortie, { schema: 'confirmation-fonda/v1', type: 'rejet', set_id: apresC2 ? SET : null, nonce: apresC2 ? cf.sortie.nonce : null,
+      generation: null, decision_fichier_id: null, decision_sha256: null, ecriture: null, motif });
+    if (apresC2) assert.match(cf.sortie.nonce, /^[0-9a-f]{32}$/);
+    assert.equal(cf.r.runData[N_F.ecrire], undefined, 'rien écrit');
+    assert.equal(cf.http.code, B.CODES_HTTP[motif]);
+    assert.deepEqual(d.dans(DEC), [], 'decisions/ vide');
+    const r = rattacher(cf);
+    assert.deepEqual([r.nature, r.set_id, r.motif], ['rejet', apresC2 ? SET : null, motif]);
+  };
+  const AVEC_K_CONF = new Set([N_F.webhook]);
+
+  test('NOMINAL : decision « creee », forme exacte, fichier <set_id>-<nonce>.json (dossier, propriétés), décision conforme, hash_formulaire EXACT, k confinée, C7 notifié ; chaîne -> aucun constat', async () => {
+    const { d } = await lotEmis();
+    const nonce = nonceAleatoire();
+    const f = await formulaire(d, SET, { generation: 1, nonce, ecarter: ['it02'] });
+    const cf = await poster(d, f);
+    assert.equal(cf.r.status, 'success', cf.r.erreur); formeExacte(cf.sortie);
+    assert.deepEqual({ ...cf.sortie, decision_fichier_id: null }, { schema: 'confirmation-fonda/v1', type: 'decision', set_id: SET, nonce, generation: 1, decision_fichier_id: null, decision_sha256: P.empreinteDecision(cf.dec), ecriture: 'creee', motif: null });
+    assert.equal(cf.http.code, 200); assert.match(cf.http.corps, /enregistrée/);
+    const fich = d.fichiers.get(cf.id);
+    assert.deepEqual([fich.name, fich.parents, fich.properties], [`${SET}-${nonce}.json`, [DEC], { fonda_set_id: SET, fonda_nonce: nonce }]);
+    assert.ok(SC.decisionConforme(cf.dec));
+    const lot = lotSource(SET);
+    const choix = lot.cartes.map((c) => [c.item_id, c.item_id === 'it02' ? 'ecarter' : 'garder']);
+    assert.equal(cf.dec.hash_formulaire, `sha256:${sha(Buffer.from(JSON.stringify(['fonda-select-form/v1', SET, 1, f.empreinte, f.moteur_version, f.moteur_sha256, f.expire_page, nonce, 'accepter', choix]), 'utf8'))}`);
+    assert.deepEqual(cf.dec.coeur.ecartees, ['it02']); assert.deepEqual(cf.dec.lot_relu.cartes.map((c) => [c.item_id, c.choix]), choix);
+    assert.deepEqual(rattacher(cf).nature, 'decision');
+    const porteurs = Object.entries(cf.r.runData).filter(([, v]) => JSON.stringify(v).includes(K) || JSON.stringify(v).includes(f.jeton)).map(([n]) => n);
+    assert.deepEqual(porteurs.filter((n) => !AVEC_K_CONF.has(n)), [], `k ou jeton hors du webhook : ${porteurs}`);
+    assert.equal(d.notifications.length, 1); assert.match(d.notifications[0], new RegExp(`${SET} : décision reçue`)); assert.ok(!d.notifications[0].includes(K));
+    await pause();
+    assert.deepEqual((await evaluer(d, SET, [await cloturer(d, { set_id: SET })], [cf])).constats, []);
+  });
+  test('R3 : resoumission IDENTIQUE (même nonce, même formulaire) -> « existante », même fichier, SHA du fichier RELU, rien réécrit, pas de 2e notification ; signataire : aucun constat', async () => {
+    const { d } = await lotEmis();
+    const f = await formulaire(d, SET, { generation: 1 });
+    const cf1 = await poster(d, f); const cf2 = await poster(d, f);
+    assert.deepEqual([cf1.sortie.ecriture, cf2.sortie.ecriture, cf2.http.code], ['creee', 'existante', 200]);
+    assert.equal(cf2.sortie.decision_fichier_id, cf1.sortie.decision_fichier_id); assert.equal(cf2.sortie.decision_sha256, P.empreinteDecision(JSON.parse(d.fichiers.get(cf1.id).contenu)));
+    assert.equal(cf2.r.runData[N_F.ecrire], undefined); assert.equal(d.dans(DEC).length, 1); assert.equal(d.notifications.length, 1);
+    assert.equal(rattacher(cf2).ecriture, 'existante');
+    await pause();
+    assert.deepEqual((await evaluer(d, SET, [await cloturer(d, { set_id: SET })], [cf1, cf2])).constats, []);
+  });
+  test('C6 : resoumission DIFFÉRENTE (même nonce, autre sélection) -> « conflit » 409, rien écrit, fichier existant intact ; signataire : ABANDON', async () => {
+    const { d } = await lotEmis();
+    const nonce = nonceAleatoire();
+    const cf1 = await confirmer(d, SET, 1, { nonce });
+    const avant = d.fichiers.get(cf1.id).contenu;
+    const cf2 = await confirmer(d, SET, 1, { nonce, ecarter: ['it01'] });
+    assert.equal(cf2.r.status, 'success'); formeExacte(cf2.sortie);
+    assert.deepEqual([cf2.sortie.type, cf2.sortie.decision_fichier_id, cf2.sortie.ecriture, cf2.sortie.motif, cf2.http.code], ['conflit', cf1.id, null, null, 409]);
+    assert.notEqual(cf2.sortie.decision_sha256, cf1.sortie.decision_sha256, 'SHA de la décision REFUSÉE');
+    assert.equal(cf2.r.runData[N_F.ecrire], undefined); assert.equal(d.dans(DEC).length, 1); assert.equal(d.fichiers.get(cf1.id).contenu, avant);
+    assert.equal(rattacher(cf2).nature, 'conflit');
+    await pause();
+    aIssue(await evaluer(d, SET, [await cloturer(d, { set_id: SET })], [cf1, cf2]), 'abandon', /« conflit »/);
+  });
+  test('C6 : fichier de même nom NON CONFORME (déposé par un tiers) -> « conflit », jamais « existante »', async () => {
+    const { d } = await lotEmis();
+    const nonce = nonceAleatoire();
+    d.ajouter(DEC, `${SET}-${nonce}.json`, '{"schema":"autre"}', { fonda_set_id: SET, fonda_nonce: nonce });
+    const cf = await confirmer(d, SET, 1, { nonce });
+    assert.deepEqual([cf.sortie.type, cf.http.code], ['conflit', 409]);
+  });
+  test('multi-nonce : deux affichages, MÊME sélection -> deux décisions créées, un seul cœur -> aucun constat ; sélections DIFFÉRENTES -> abandon (unicité)', async () => {
+    const { d } = await lotEmis();
+    const a = await confirmer(d, SET, 1); const b = await confirmer(d, SET, 1);
+    assert.deepEqual([a.sortie.ecriture, b.sortie.ecriture], ['creee', 'creee']); assert.notEqual(a.id, b.id);
+    await pause();
+    const c = await cloturer(d, { set_id: SET });
+    assert.deepEqual((await evaluer(d, SET, [c], [a, b])).constats, []);
+    const x = await confirmer(d, SET, 1, { k: K, ecarter: ['it03'] });
+    assert.equal(x.sortie.type, 'rejet', 'après clôture : C3'); assert.equal(x.sortie.motif, 'C3');
+    const d2 = (await lotEmis()).d;
+    const p = await confirmer(d2, SET, 1); const q = await confirmer(d2, SET, 1, { ecarter: ['it03'] }); await pause();
+    aIssue(await evaluer(d2, SET, [await cloturer(d2, { set_id: SET })], [p, q]), 'abandon', /unicité \(§10 A\) : 2 cœurs distincts/);
+  });
+  test('« TOUT REJETER » : action rejeter, selection [], ecartees = toutes (ordre du candidat), empreinte_publiee = empreinte du LOT SOURCE ; resoumission identique -> « existante »', async () => {
+    const { d } = await lotEmis();
+    const f = await formulaire(d, SET, { generation: 1, action: 'rejeter' });
+    const cf = await poster(d, f); const cf2 = await poster(d, f);
+    const ids = lotSource(SET).cartes.map((c) => c.item_id);
+    const empreinte = await Cat.calculerEmpreinte(lotSource(SET), SHA);
+    assert.deepEqual([cf.sortie.ecriture, cf2.sortie.ecriture], ['creee', 'existante']);
+    assert.deepEqual(cf.dec.coeur, { action: 'rejeter', selection: [], ecartees: ids, empreinte_relue: empreinte, empreinte_publiee: empreinte, moteur: MOTEUR });
+    assert.deepEqual(cf.dec.lot_relu.cartes, ids.map((item_id) => ({ item_id, choix: 'ecarter' })));
+    assert.equal(cf.dec.hash_formulaire, COMMUN.hashFormulaire({ lot: SET, generation: 1, empreinte, moteur_version: MOTEUR.version, moteur_sha256: MOTEUR.sha256, expire_page: f.expire_page, nonce: f.nonce, action: 'rejeter', choix: [] }));
+    await pause();
+    const k = await evaluer(d, SET, [await cloturer(d, { set_id: SET })], [cf, cf2]);
+    assert.ok(!k.constats.some((c) => /Tout rejeter/.test(c.raison)), texte(k));
+  });
+
+  describe('C1 (syntaxe, AVANT Drive) -> rejet 400, set_id/nonce nuls, aucune lecture Drive', () => {
+    const cas = [
+      ['champ manquant (jeton)', (f) => { delete f.jeton; }],
+      ['champ en trop', (f) => { f.extra = 'x'; }],
+      ['DOUBLON (lot posté deux fois)', (f) => { f.lot = [f.lot, f.lot]; }],
+      ['tableau à UN élément (lot[]=…, se lit comme une chaîne valide)', (f) => { f.lot = [f.lot]; }],
+      ['lot invalide', (f) => { f.lot = '../set_x'; }],
+      ['action inconnue', (f) => { f.action = 'publier'; }],
+      ['accepter SANS aucun choix_', (f) => { for (const c of Object.keys(f)) if (c.startsWith('choix_')) delete f[c]; }],
+      ['rejeter AVEC un choix_', (f) => { f.action = 'rejeter'; f.confirmer_rejet = 'oui'; }],
+      ['valeur de choix inconnue', (f) => { f.choix_it01 = 'peut-etre'; }],
+      ['clé de choix mal formée', (f) => { f.choix___proto__ = 'garder'; }],
+      ['generation non entière', (f) => { f.generation = '1.0'; }],
+      ['expire_page non canonique', (f) => { f.expire_page = '2026-11-09 10:00'; }],
+    ];
+    for (const [nom, muter] of cas) {
+      test(nom, async () => {
+        const { d } = await lotEmis(); const n = d.appels.length;
+        const f = await formulaire(d, SET, { generation: 1 }); muter(f);
+        const cf = await poster(d, f);
+        await rejete(d, cf, 'C1', false); assert.equal(d.appels.length, n, 'aucune requête Drive');
+      });
+    }
+    test('taille : content-length > 64 Ko, absent, ou champs reçus > 64 Ko -> C1', async () => {
+      const { d } = await lotEmis();
+      const f = await formulaire(d, SET, { generation: 1 });
+      await rejete(d, await poster(d, f, { entetes: { 'content-length': '65537' } }), 'C1', false);
+      await rejete(d, await poster(d, f, { entetes: {} }), 'C1', false);
+      await rejete(d, await poster(d, { ...f, moteur_version: 'v'.repeat(70000) }, { entetes: { 'content-length': '100' } }), 'C1', false);
+    });
+    test('entrée NE LÈVE JAMAIS : corps absent, tableau, nombres, chaînes > 128 -> { lot, nonce } nuls ou copiés, rejet C1, exécution « success »', async () => {
+      const { d } = await lotEmis();
+      for (const corps of [null, [], 'texte', { lot: 7, nonce: {} }, { lot: 'x'.repeat(129), nonce: 'a'.repeat(32) }]) {
+        const cf = await poster(d, corps);
+        await rejete(d, cf, 'C1', false);
+        const e = cf.r.sorties[N_F.entree][0].json;
+        assert.deepEqual(e, { lot: null, nonce: corps && corps.nonce === 'a'.repeat(32) ? 'a'.repeat(32) : null });
+      }
+    });
+  });
+
+  test('C2 : jeton faux, autre secret, ou champ modifié après signature -> rejet 403, set_id/nonce NULS (lot et nonce pourtant valides), aucune lecture Drive', async () => {
+    const { d } = await lotEmis(); const n = d.appels.length;
+    const f = await formulaire(d, SET, { generation: 1 });
+    await rejete(d, await poster(d, { ...f, jeton: (f.jeton[0] === 'a' ? 'b' : 'a') + f.jeton.slice(1) }), 'C2', false);
+    await rejete(d, await poster(d, await formulaire(d, SET, { generation: 1, secret: 'un-autre-secret-de-test-assez-long-pour-hmac' })), 'C2', false);
+    await rejete(d, await poster(d, { ...f, empreinte: `sha256:${'0'.repeat(64)}` }), 'C2', false);
+    await rejete(d, await poster(d, { ...f, k: K2 }), 'C2', false);
+    assert.equal(d.appels.length, n);
+  });
+  test('C2 : secret de l\'instance ABSENT -> ERREUR d\'exécution (configuration), rien écrit, 500 ; erreur attribuée au lot', async () => {
+    const { d } = await lotEmis();
+    const cf = await poster(d, await formulaire(d, SET, { generation: 1 }), { secret: null });
+    assert.equal(cf.r.status, 'error'); assert.match(cf.r.erreur, /secret HMAC/); assert.equal(cf.http.code, 500); assert.deepEqual(d.dans(DEC), []);
+    assert.deepEqual([rattacher(cf).nature, rattacher(cf).set_id], ['erreur', SET]);
+  });
+
+  describe('C3 (fraîcheur contre le candidat COURANT, C2 passé : set_id/nonce NON nuls) -> rejet 410', () => {
+    test('§21.10 : clé révoquée par la clôture technique (statut clos)', async () => {
+      const { d } = await lotEmis();
+      await cloturer(d, { set_id: SET });
+      await rejete(d, await confirmer(d, SET, 1), 'C3', true);
+    });
+    test('clé REMPLACÉE à génération ÉGALE (écrasement par un second écrivain, cf. E1) : seul le contrôle de cle_sha256 la refuse', async () => {
+      const { d } = await lotEmis();
+      const f = d.candidat(SET); const c = JSON.parse(f.contenu); c.relecture.cle_sha256 = sha(Buffer.from(K2, 'utf8')); f.contenu = JSON.stringify(c);
+      await rejete(d, await confirmer(d, SET, 1, { k: K }), 'C3', true);
+    });
+    test('ancien lien après réémission (clé et génération remplacées)', async () => {
+      const { d } = await lotEmis();
+      assert.equal((await emettre(d, { k: K2 })).status, 'success');
+      await rejete(d, await confirmer(d, SET, 1, { k: K }), 'C3', true);
+      assert.equal((await confirmer(d, SET, 2, { k: K2 })).sortie.ecriture, 'creee', 'le nouveau lien fonctionne');
+    });
+    for (const [nom, opts] of [
+      ['génération signée ≠ generation_cle', { generation: 2 }],
+      ['expire_page dépassée', { generation: 1, expirePage: new Date(Date.now() - 1000).toISOString() }],
+      ['expire_page au-delà de expire_le', { generation: 1, expirePage: new Date(Date.now() + 30 * 86400000).toISOString() }],
+      ['moteur ≠ moteur du candidat', { generation: 1, moteur: { version: 'v1', sha256: '9'.repeat(64) } }],
+    ]) test(nom, async () => { const { d } = await lotEmis(); await rejete(d, await confirmer(d, SET, opts.generation, opts), 'C3', true); });
+    test('candidat absent (à la corbeille) ou abandonné', async () => {
+      const { d } = await lotEmis();
+      const f = await formulaire(d, SET, { generation: 1 });
+      d.candidat(SET).trashed = true;
+      await rejete(d, await poster(d, f), 'C3', true);
+      const d2 = (await lotEmis()).d; const g = d2.candidat(SET); const c = JSON.parse(g.contenu); c.relecture.statut = 'abandonne'; g.contenu = JSON.stringify(c);
+      await rejete(d2, await confirmer(d2, SET, 1), 'C3', true);
+    });
+  });
+  test('C4 : empreinte affichée (signée) ≠ empreinte actuelle du candidat -> rejet 410', async () => {
+    const { d } = await lotEmis();
+    await rejete(d, await confirmer(d, SET, 1, { empreinte: `sha256:${'5'.repeat(64)}` }), 'C4', true);
+  });
+  test('C5 : carte sans choix, carte inconnue, aucune carte gardée -> rejet 400', async () => {
+    const { d } = await lotEmis();
+    for (const muter of [(f) => { delete f.choix_it03; }, (f) => { f.choix_it99 = 'garder'; }, (f) => { delete f.choix_it03; f.choix_it99 = 'garder'; }, (f) => { for (const c of Object.keys(f)) if (c.startsWith('choix_')) f[c] = 'ecarter'; }]) {
+      const f = await formulaire(d, SET, { generation: 1 }); muter(f);
+      await rejete(d, await poster(d, f), 'C5', true);
+    }
+  });
+  test('C5bis : réémission glissée entre C3 et l\'écriture (pendant la recherche C6) -> candidat RELU non courant -> rejet 410, rien écrit', async () => {
+    const { d } = await lotEmis();
+    const f = await formulaire(d, SET, { generation: 1 });
+    let e2;
+    d.crochets.apresListe = { si: (q) => q.includes(`-${f.nonce}.json`), f: async () => { e2 = await emettre(d, { k: K2 }); } };
+    const cf = await poster(d, f);
+    assert.equal(e2.status, 'success', e2.erreur);
+    await rejete(d, cf, 'C5bis', true);
+    assert.ok(cf.r.runData[N_F.relire], 'candidat relu');
+  });
+  test('panne Drive (lecture du candidat) -> ERREUR d\'exécution, 500, rien écrit ; attribuée au lot -> ABANDON au signataire', async () => {
+    const { d } = await lotEmis();
+    const cf = await poster(d, await formulaire(d, SET, { generation: 1 }), { reponses: { [N_F.lire]: async () => { throw new Error('Drive injoignable'); } } });
+    assert.equal(cf.r.status, 'error'); assert.equal(cf.http.code, 500); assert.deepEqual(d.dans(DEC), []);
+    assert.deepEqual([rattacher(cf).nature, rattacher(cf).set_id], ['erreur', SET]);
+    aIssue(await evaluer(d, SET, [await cloturer(d, { set_id: SET })], [cf]), 'abandon', /blocage dur/);
+  });
+  test('C6 : recherche du nom INCOMPLÈTE -> ERREUR (absence non prouvée, jamais d\'écriture)', async () => {
+    const { d } = await lotEmis();
+    d.o.incomplet = (q) => / name = '.*-[0-9a-f]{32}\.json'/.test(q);
+    const cf = await confirmer(d, SET, 1);
+    assert.equal(cf.r.status, 'error'); assert.match(cf.r.erreur, /absence non prouvée/); assert.deepEqual(d.dans(DEC), []);
+  });
+  test('C7 NON BLOQUANT : courriel en panne ou Data Table en panne -> exécution « success », décision créée ; aucun courriel sur rejet', async () => {
+    const { d } = await lotEmis();
+    const a = await confirmer(d, SET, 1, { reponses: { [N_F.envoyer]: async () => ({ statusCode: 503, body: {} }) } });
+    const b = await confirmer(d, SET, 1, { reponses: { [N_F.adresse]: async () => { throw new Error('Data Table injoignable'); } } });
+    for (const x of [a, b]) { assert.equal(x.r.status, 'success', x.r.erreur); assert.equal(x.sortie.ecriture, 'creee'); assert.equal(rattacher(x).nature, 'decision'); }
+    assert.equal(d.notifications.length, 0);
+    await cloturer(d, { set_id: SET });
+    await confirmer(d, SET, 1);
+    assert.equal(d.notifications.length, 0, 'aucun courriel sur rejet');
   });
 });

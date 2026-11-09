@@ -4,7 +4,9 @@
 //                                    émission initiale OU réémission (statut en_attente ET decisions/
 //                                    du lot PROUVÉ vide), §21.5 ;
 //   « FONDA - Cloturer relecture » : clôture technique (statut clos, PREMIER clos_le), sortie OBSERVÉE
-//                                    cloture-fonda/v1 consommée par rattachement-page.js (GELÉ, P1).
+//                                    cloture-fonda/v1 consommée par rattachement-page.js (GELÉ, P1) ;
+//   « FONDA - Confirmer relecture » (P2) : POST du relecteur, C1–C7, decisions/<set_id>-<nonce>.json,
+//                                    sortie OBSERVÉE confirmation-fonda/v1 (ROLES.confirmation, GELÉ).
 // Le CONSOMMATEUR est gelé : les noms de nœuds et la forme de sortie sont ceux que rattachement-page.js
 // exige (ROLES.cloture) ; ce constructeur s'y CONFORME, il ne redéfinit rien.
 //
@@ -17,7 +19,7 @@
 // (jetons, valeurs de credentials, clé HMAC) et les ADRESSES ne sont jamais dans le dépôt : credentials
 // n8n référencés par id, adresse lue à l'exécution dans une Data Table (clé = relecteur_attribue).
 //
-// Usage : node n8n/fonda-relecture-page/construire-relecture.js --emettre | --cloturer > export.json
+// Usage : node n8n/fonda-relecture-page/construire-relecture.js --emettre | --cloturer | --confirmer > export.json
 
 'use strict';
 
@@ -27,6 +29,7 @@ const path = require('path');
 const C = require('../../fonda/engine/catalogue.js');
 const R = require('../../fonda/scripts/rattachement-page.js');
 const L = require('../../fonda/scripts/liaison-generation.js');
+const SC = require('../../fonda/scripts/signer-cloture.js');
 const { OUTILS } = require('../fonda-generation-ia/construire-workflow.js');
 
 const RACINE = path.join(__dirname, '..', '..');
@@ -36,8 +39,10 @@ const P4 = (nom) => `A_RENSEIGNER_P4_${nom}`;
 const CONFIG = Object.freeze({
   nomEmettre: 'FONDA - Emettre relecture',
   nomCloturer: 'FONDA - Cloturer relecture',
+  nomConfirmer: 'FONDA - Confirmer relecture',
   cheminEmettre: P4('CHEMIN_EMETTRE'),
   cheminCloturer: P4('CHEMIN_CLOTURER'),
+  cheminConfirmer: 'fonda-select-confirm', // §21.0 : POST public (relecteur), protégé par k + jeton, jamais une route BOX
   depot: 'ericduchateau/box',
   dossierCandidats: '1Ir-iJGZoSk5_FmJ9dnf_PM-NEBZWyn8d', // lot source immuable (génération, §20.4)
   dossierRelecture: P4('DOSSIER_RELECTURE'), // relecture/<set_id>.candidat.json (enveloppe mutable)
@@ -578,9 +583,408 @@ function construireEmettre() {
   return { name: CONFIG.nomEmettre, nodes: noeuds, connections, settings: REGLAGES };
 }
 
-module.exports = { CONFIG, MODULES, NOEUDS_CLOTURER, NOEUDS_EMETTRE, construireCloturer, construireEmettre };
+// ═══ COMMUN PAGE / CONFIRMER (P2) : jeton (§21.6) et hash_formulaire (§21.1) ═══
+// SOURCE UNIQUE, embarquée telle quelle dans les nœuds Code de la Page ET de Confirmer (avec OUTILS :
+// octetsUtf8, sha256Hex), et chargée par le harnais (chargerCommun) pour les vecteurs.
+// « Octets canoniques » d'un TABLEAU à schéma FIXE : chaque élément est VALIDÉ (type, entier sûr, paires de
+// choix), puis sérialisé par JSON.stringify (aucun objet : aucun ordre de clés en jeu ; chaînes sans
+// normalisation, comme canonique.js §1), UTF-8. hash_formulaire = empreinte d'AUDIT signée (dans la décision
+// decision-fonda/v1, donc inaltérable une fois signée) : calculée ici, vérifiée par le harnais seul ; aucune
+// re-dérivation aval (expire_page n'est pas dans la décision) — README « Où vit chaque garantie ».
+const COMMUN_PAGE = `function tableauCanonique(schema, valeurs) {
+  if (!Array.isArray(valeurs) || valeurs.length !== schema.length) throw new Error('tableau canonique : longueur ≠ schéma');
+  const conforme = (s, v) => (s === 'chaine' ? typeof v === 'string'
+    : s === 'entier' ? Number.isSafeInteger(v) && v >= 0
+      : s === 'choix' ? Array.isArray(v) && v.every((p) => Array.isArray(p) && p.length === 2 && typeof p[0] === 'string' && p[0] !== '' && (p[1] === 'garder' || p[1] === 'ecarter'))
+        : false);
+  for (let i = 0; i < schema.length; i += 1) if (!conforme(schema[i], valeurs[i])) throw new Error('tableau canonique : élément ' + i + ' ≠ ' + schema[i]);
+  return octetsUtf8(JSON.stringify(valeurs.map((v, i) => (schema[i] === 'choix' ? v.map((p) => [p[0], p[1]]) : v))));
+}
+const SCHEMA_JETON = ['chaine', 'chaine', 'entier', 'chaine', 'chaine', 'chaine', 'chaine', 'chaine', 'chaine'];
+const SCHEMA_FORMULAIRE = ['chaine', 'chaine', 'entier', 'chaine', 'chaine', 'chaine', 'chaine', 'chaine', 'chaine', 'choix'];
+function hexVersOctets(h) {
+  const o = [];
+  for (let i = 0; i < h.length; i += 2) o.push(parseInt(h.slice(i, i + 2), 16));
+  return o;
+}
+// HMAC-SHA256 (RFC 2104), JavaScript pur (aucun module crypto dans un nœud Code n8n).
+function hmacSha256Hex(cle, message) {
+  let k = cle.length > 64 ? hexVersOctets(sha256Hex(cle)) : cle.slice();
+  while (k.length < 64) k.push(0);
+  const interne = sha256Hex(k.map((x) => x ^ 0x36).concat(message));
+  return sha256Hex(k.map((x) => x ^ 0x5c).concat(hexVersOctets(interne)));
+}
+// Jeton §21.6 : HMAC-SHA256(secret, canonique(["fonda-select/v7", set_id, generation_cle, cle_sha256,
+// empreinte_affichee, moteur.version, moteur.sha256, expire_page, nonce])). Secret : variable d'environnement
+// de l'instance (jamais dans l'export) ; absent ou court -> ERREUR (configuration), jamais un jeton faible.
+function jetonPage(secret, j) {
+  if (typeof secret !== 'string' || secret.length < 32) throw new Error('secret HMAC de la page absent ou trop court (configuration de l\\'instance)');
+  return hmacSha256Hex(octetsUtf8(secret), tableauCanonique(SCHEMA_JETON, ['fonda-select/v7', j.set_id, j.generation_cle, j.cle_sha256, j.empreinte, j.moteur_version, j.moteur_sha256, j.expire_page, j.nonce]));
+}
+// hash_formulaire §21.1 : choix = [[item_id, "garder"|"ecarter"], …] dans l'ORDRE DU CANDIDAT ([] pour « tout
+// rejeter ») ; k et jeton EXCLUS (secrets).
+function hashFormulaire(f) {
+  return 'sha256:' + sha256Hex(tableauCanonique(SCHEMA_FORMULAIRE, ['fonda-select-form/v1', f.lot, f.generation, f.empreinte, f.moteur_version, f.moteur_sha256, f.expire_page, f.nonce, f.action, f.choix]));
+}
+function egalConstant(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  let x = 0;
+  for (let i = 0; i < a.length; i += 1) x |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return x === 0;
+}`;
+// Chargement pour le harnais : MÊME texte que les nœuds, évalué avec OUTILS dans un contexte nu.
+function chargerCommun() {
+  // eslint-disable-next-line global-require
+  return require('vm').runInNewContext(`${OUTILS}\n${COMMUN_PAGE}\n({ tableauCanonique, hmacSha256Hex, jetonPage, hashFormulaire, egalConstant, octetsUtf8, sha256Hex })`, {});
+}
+const CODES_HTTP = Object.freeze({ decision: 200, conflit: 409, C1: 400, C2: 403, C3: 410, C4: 410, C5: 400, C5bis: 410 });
+const CHAMPS_FORMULAIRE = Object.freeze(['lot', 'k', 'generation', 'empreinte', 'moteur_version', 'moteur_sha256', 'expire_page', 'nonce', 'jeton', 'action']);
+const TAILLE_MAX_POST = 65536;
 
+// ═══ CONFIRMER (sortie observée confirmation-fonda/v1, consommateur gelé ROLES.confirmation) ═══
+// Déclenché par le RELECTEUR (non fiable, hors verrou P5) : tout ce qu'il provoque seul est fermé par le
+// pilier 1 (signataire). C1 (syntaxe, avant Drive) -> C2 (jeton sur les valeurs POSTÉES : authenticité) ->
+// C3 (candidat COURANT : statut, clé, génération, expirations, moteur : fraîcheur, 410) -> C4 (empreinte
+// affichée = actuelle) -> C5 (sélection) -> C6 (même nom : cœur identique -> « existante » relue ; cœur
+// différent -> « conflit », 409 ; sinon) C5bis (candidat RELU juste avant l'écriture) -> écriture -> C7.
+// Tout REJET est une exécution « success » (sortie rejet, rien écrit) ; une panne (Drive, configuration)
+// est une ERREUR d'exécution (E4 : abandon au signataire si le lot est lisible) — jamais « réussi ».
+const NOEUDS_CONFIRMER = Object.freeze({
+  webhook: 'Webhook confirmation',
+  entree: R.ROLES.confirmation.entree, // FONDA Entree confirmation
+  formulaire: 'Verifier formulaire',
+  siFormulaire: 'Formulaire valide ?',
+  chercher: 'Chercher candidat',
+  verifierListe: 'Verifier recherche candidat',
+  siCandidat: 'Candidat trouve ?',
+  lire: 'Lire candidat',
+  controler: 'Controler candidat',
+  siDecision: 'Decision construite ?',
+  chercherDecision: 'Chercher decision',
+  analyserDecision: 'Analyser decision existante',
+  siExistante: 'Decision existante ?',
+  lireDecision: 'Lire decision existante',
+  comparer: 'Comparer decision',
+  relire: 'Relire candidat',
+  verifierRelecture: 'Verifier relecture candidat',
+  siRelecture: 'Relecture conforme ?',
+  ecrire: R.ROLES.confirmation.ecriture, // FONDA Ecrire decision
+  verifierEcriture: 'Verifier ecriture decision',
+  sortie: R.ROLES.confirmation.sortie, // FONDA Sortie confirmation
+  reponse: 'Preparer reponse',
+  repondre: 'Repondre confirmation',
+  siNotifier: 'Notifier ?',
+  adresse: 'Lire adresse cloturer',
+  courriel: 'Preparer notification',
+  siEnvoyer: 'Adresse trouvee ?',
+  envoyer: 'Envoyer notification',
+});
+const DEJA_REJET = `const rejet = (motif, apresC2) => [{ json: { poursuivre: false, resultat: { type: 'rejet', motif, set_id: apresC2 ? f.lot : null, nonce: apresC2 ? f.nonce : null } } }];`;
+
+function codeEntreeConfirmation() {
+  // Ne fait que COPIER les champs nommés (chaîne ≤ 128, sinon null) : ne lève JAMAIS (§21.1). Jamais k, jeton ni choix.
+  return [
+    ENTETE('entrée de confirmation : { lot, nonce } copiés tels quels (chaîne ≤ 128, sinon null), sans validation.'),
+    `const items = $input.all();
+const corps = items.length === 1 && items[0] && items[0].json ? items[0].json.body : undefined;
+const champ = (n) => { const v = corps && typeof corps === 'object' && !Array.isArray(corps) ? corps[n] : undefined; return typeof v === 'string' && v.length <= 128 ? v : null; };
+return [{ json: { lot: champ('lot'), nonce: champ('nonce') } }];`,
+  ].join('\n\n');
+}
+function codeVerifierFormulaire() {
+  return [ENTETE('C1 (syntaxe, avant Drive : taille, champs EXACTS, doublons) puis C2 (jeton HMAC recalculé sur les valeurs POSTÉES).'),
+    UN_ITEM(NOEUDS_CONFIRMER.formulaire), SET_ID, DATE_ISO, OUTILS, COMMUN_PAGE,
+    `const CHAMPS = ${JSON.stringify(CHAMPS_FORMULAIRE)};
+const w = unItem(${JSON.stringify(NOEUDS_CONFIRMER.webhook)});
+const b = w.body; const h = w.headers && typeof w.headers === 'object' ? w.headers : {};
+const f = { lot: null, nonce: null };
+${DEJA_REJET}
+const a = (o, c) => Object.prototype.hasOwnProperty.call(o, c);
+// C1 — taille : octets annoncés (content-length) ET somme des champs reçus, chacun ≤ ${TAILLE_MAX_POST}.
+const lg = h['content-length'];
+if (typeof lg !== 'string' || !/^[0-9]{1,7}$/.test(lg) || Number(lg) > ${TAILLE_MAX_POST}) return rejet('C1', false);
+if (!b || typeof b !== 'object' || Array.isArray(b)) return rejet('C1', false);
+const cles = Object.keys(b);
+// Doublon (même champ deux fois) : n8n le livre en TABLEAU -> non-chaîne -> refus.
+if (!cles.every((c) => typeof b[c] === 'string')) return rejet('C1', false);
+if (cles.reduce((t, c) => t + c.length + b[c].length, 0) > ${TAILLE_MAX_POST}) return rejet('C1', false);
+if (!CHAMPS.every((c) => a(b, c))) return rejet('C1', false);
+const autres = cles.filter((c) => !CHAMPS.includes(c));
+let choix;
+if (b.action === 'accepter') {
+  if (!autres.length || !autres.every((c) => /^choix_it[0-9]{2}$/.test(c) && (b[c] === 'garder' || b[c] === 'ecarter'))) return rejet('C1', false);
+  choix = autres.map((c) => [c.slice(6), b[c]]);
+} else if (b.action === 'rejeter') {
+  if (autres.length !== 1 || autres[0] !== 'confirmer_rejet' || b.confirmer_rejet !== 'oui') return rejet('C1', false);
+  choix = [];
+} else return rejet('C1', false);
+if (!SET_ID_PATTERN.test(b.lot) || !/^[0-9a-f]{64}$/.test(b.k) || !/^[1-9][0-9]{0,14}$/.test(b.generation) || !/^sha256:[0-9a-f]{64}$/.test(b.empreinte)
+  || !/^[A-Za-z0-9._-]{1,64}$/.test(b.moteur_version) || !/^[0-9a-f]{64}$/.test(b.moteur_sha256) || !dateIso(b.expire_page)
+  || !/^[0-9a-f]{32}$/.test(b.nonce) || !/^[0-9a-f]{64}$/.test(b.jeton)) return rejet('C1', false);
+// C2 — authenticité du formulaire : jeton recalculé sur les valeurs POSTÉES (cle_sha256 = SHA-256 de k reçue).
+// La FRAÎCHEUR (clé révoquée, génération, expiration) est C3, contre le candidat COURANT (§21.10).
+const cleSha = sha256Hex(octetsUtf8(b.k));
+const generation = Number(b.generation);
+const attendu = jetonPage($env.FONDA_PAGE_HMAC, { set_id: b.lot, generation_cle: generation, cle_sha256: cleSha, empreinte: b.empreinte,
+  moteur_version: b.moteur_version, moteur_sha256: b.moteur_sha256, expire_page: b.expire_page, nonce: b.nonce });
+if (!egalConstant(attendu, b.jeton)) return rejet('C2', false);
+return [{ json: { poursuivre: true, resultat: null, lot: b.lot, nonce: b.nonce, generation, empreinte: b.empreinte, moteur_version: b.moteur_version,
+  moteur_sha256: b.moteur_sha256, expire_page: b.expire_page, action: b.action, choix, cle_sha256: cleSha } }];`].join('\n\n');
+}
+function codeVerifierRechercheConfirmation() {
+  return [ENTETE('candidat : recherche COMPLÈTE exigée (sinon erreur) ; 0 ou plusieurs fichiers -> rejet C3 (410).'),
+    UN_ITEM(NOEUDS_CONFIRMER.verifierListe),
+    `const f = unItem(${JSON.stringify(NOEUDS_CONFIRMER.formulaire)});
+${DEJA_REJET}
+const liste = unItem(${JSON.stringify(NOEUDS_CONFIRMER.chercher)});
+if (!Array.isArray(liste.files) || liste.nextPageToken || liste.incompleteSearch) throw new Error('recherche du candidat inexploitable ou incomplète');
+if (liste.files.length !== 1 || typeof liste.files[0].id !== 'string') return rejet('C3', true);
+return [{ json: { poursuivre: true, resultat: null, fichier_id: liste.files[0].id } }];`].join('\n\n');
+}
+// Contrôles de FRAÎCHEUR d'un candidat lu (C3 au premier passage, C5bis à la relecture) : MÊME texte.
+const CANDIDAT_COURANT = `function candidatCourant(c, f, maintenant) {
+  if (!c || typeof c !== 'object' || c.schema !== 'candidat-fonda/v1' || !c.lot || typeof c.lot !== 'object' || c.lot.set_id !== f.lot || !c.relecture || typeof c.relecture !== 'object') return false;
+  const r = c.relecture;
+  if (r.statut !== 'en_attente' || r.clos_le !== null) return false; // clos (clôture technique) ou abandonné : clé révoquée
+  if (r.cle_sha256 !== f.cle_sha256 || r.generation_cle !== f.generation) return false; // clé ou génération ≠ courante
+  if (!dateIso(r.expire_le) || !(maintenant < Date.parse(r.expire_le)) || !(maintenant < Date.parse(f.expire_page)) || Date.parse(f.expire_page) > Date.parse(r.expire_le)) return false;
+  return Boolean(r.moteur) && r.moteur.version === f.moteur_version && r.moteur.sha256 === f.moteur_sha256;
+}`;
+function codeControlerCandidat() {
+  return [ENTETE('C3 (candidat courant), C4 (empreinte affichée = actuelle), C5 (sélection) ; décision decision-fonda/v1 construite (ordre du candidat).'),
+    UN_ITEM(NOEUDS_CONFIRMER.controler), DATE_ISO, OUTILS, COMMUN_PAGE, CANDIDAT_COURANT, REQUIS, blocModule('catalogue'), blocModule('canonique'),
+    blocFonction('fonda/scripts/liaison-generation.js', 'projectionComplete', L.projectionComplete),
+    blocFonction('fonda/scripts/signer-cloture.js', 'lotPublie', SC.lotPublie),
+    `const { validerLot, calculerEmpreinte } = M_catalogue.exports;
+const Canonique = M_canonique.exports;
+const CONFIG = ${JSON.stringify({ dossierDecisions: CONFIG.dossierDecisions })};
+const empreinteComplete = (x) => 'sha256:' + sha256Hex(Canonique.octetsContrat('lot-complet-fonda/v1', projectionComplete(x)));
+const sha = (t) => sha256Hex(octetsUtf8(t));
+const f = unItem(${JSON.stringify(NOEUDS_CONFIRMER.formulaire)});
+const fichier = unItem(${JSON.stringify(NOEUDS_CONFIRMER.verifierListe)});
+const c = unItem(${JSON.stringify(NOEUDS_CONFIRMER.lire)});
+${DEJA_REJET}
+// C3 — fraîcheur contre le candidat COURANT, lot conforme.
+if (!candidatCourant(c, f, Date.now()) || !validerLot(c.lot).valide) return rejet('C3', true);
+// C4 — empreinte pédagogique actuelle = affichée.
+const empreinte = await calculerEmpreinte(c.lot, sha);
+if (empreinte !== f.empreinte) return rejet('C4', true);
+// C5 — un choix par carte, exactement (accepter, au moins une carte gardée) ; « tout rejeter » : toutes écartées.
+const ids = c.lot.cartes.map((x) => x.item_id);
+let choix;
+if (f.action === 'accepter') {
+  const postes = f.choix.map((p) => p[0]);
+  if (postes.length !== ids.length || new Set(postes).size !== postes.length || !ids.every((id) => postes.includes(id))) return rejet('C5', true);
+  choix = ids.map((id) => [id, f.choix.find((p) => p[0] === id)[1]]);
+  if (!choix.some((p) => p[1] === 'garder')) return rejet('C5', true);
+} else choix = ids.map((id) => [id, 'ecarter']);
+const selection = choix.filter((p) => p[1] === 'garder').map((p) => p[0]);
+const ecartees = choix.filter((p) => p[1] === 'ecarter').map((p) => p[0]);
+const rel = c.relecture;
+// §21.1 : empreinte_publiee = lot FILTRÉ (accepter) ; = lot SOURCE (« tout rejeter »).
+const coeur = { action: f.action, selection, ecartees, empreinte_relue: empreinte,
+  empreinte_publiee: f.action === 'accepter' ? await calculerEmpreinte(lotPublie(c.lot, { selection }), sha) : empreinte,
+  moteur: { version: rel.moteur.version, sha256: rel.moteur.sha256 } };
+const hash = hashFormulaire({ lot: f.lot, generation: f.generation, empreinte: f.empreinte, moteur_version: f.moteur_version, moteur_sha256: f.moteur_sha256,
+  expire_page: f.expire_page, nonce: f.nonce, action: f.action, choix: f.action === 'accepter' ? choix : [] }); // §21.1 : [] pour « tout rejeter »
+const decision = { schema: 'decision-fonda/v1', set_id: f.lot, generation: rel.generation_cle, nonce: f.nonce, recu_le: new Date().toISOString(), coeur,
+  lot_relu: { set_id: f.lot, empreinte_complete: empreinteComplete(c.lot), cartes: choix.map((p) => ({ item_id: p[0], choix: p[1] })) }, hash_formulaire: hash };
+const decisionSha = 'sha256:' + sha256Hex(Canonique.octetsContrat('decision-fonda/v1', decision));
+const contenu = JSON.stringify(decision, null, 2) + '\\n';
+const nom = f.lot + '-' + f.nonce + '.json';
+const metadonnees = { name: nom, parents: [CONFIG.dossierDecisions], mimeType: 'application/json', properties: { fonda_set_id: f.lot, fonda_nonce: f.nonce } };
+const frontiere = 'fonda-' + sha256Hex(octetsUtf8(contenu)).slice(0, 32);
+const corps = '--' + frontiere + '\\r\\nContent-Type: application/json; charset=UTF-8\\r\\n\\r\\n' + JSON.stringify(metadonnees)
+  + '\\r\\n--' + frontiere + '\\r\\nContent-Type: application/json; charset=UTF-8\\r\\n\\r\\n' + contenu + '\\r\\n--' + frontiere + '--\\r\\n';
+return [{ json: { poursuivre: true, resultat: null, candidat_fichier_id: fichier.fichier_id, generation: rel.generation_cle, decision, decision_sha256: decisionSha,
+  depot: { nom, frontiere, corps } } }];`].join('\n\n');
+}
+function codeAnalyserDecision() {
+  return [ENTETE('C6 : fichiers de MÊME NOM dans decisions/ (corbeille comprise), recherche complète ; 0 -> écrire, 1 -> relire, plusieurs -> erreur.'),
+    UN_ITEM(NOEUDS_CONFIRMER.analyserDecision),
+    `const liste = unItem(${JSON.stringify(NOEUDS_CONFIRMER.chercherDecision)});
+if (!Array.isArray(liste.files) || liste.nextPageToken || liste.incompleteSearch) throw new Error('decisions/ : recherche du nom inexploitable ou incomplète (absence non prouvée)');
+if (liste.files.length > 1) throw new Error(liste.files.length + ' décisions de même nom : état anormal');
+const existante = liste.files.length === 1;
+if (existante && typeof liste.files[0].id !== 'string') throw new Error('decisions/ : identifiant illisible');
+return [{ json: { existante, fichier_id: existante ? liste.files[0].id : null } }];`].join('\n\n');
+}
+function codeComparerDecision() {
+  return [ENTETE('C6 : même nom ; même lot, nonce, génération et CŒUR (octets canoniques) -> « existante » (décision RELUE, jamais reconstruite) ; sinon « conflit ».'),
+    UN_ITEM(NOEUDS_CONFIRMER.comparer), OUTILS, REQUIS, blocModule('canonique'),
+    `const Canonique = M_canonique.exports;
+const p = unItem(${JSON.stringify(NOEUDS_CONFIRMER.controler)});
+const a = unItem(${JSON.stringify(NOEUDS_CONFIRMER.analyserDecision)});
+const ex = unItem(${JSON.stringify(NOEUDS_CONFIRMER.lireDecision)});
+const memesOctets = (x, y) => x.length === y.length && x.every((o, i) => o === y[i]);
+let shaExistante = null; let identique = false;
+try {
+  shaExistante = 'sha256:' + sha256Hex(Canonique.octetsContrat('decision-fonda/v1', ex));
+  identique = ex.set_id === p.decision.set_id && ex.nonce === p.decision.nonce && ex.generation === p.decision.generation
+    && memesOctets(Canonique.octetsContrat('coeur-decision-fonda/v1', ex.coeur), Canonique.octetsContrat('coeur-decision-fonda/v1', p.decision.coeur));
+} catch (e) { identique = false; } // fichier existant non conforme : jamais « même résultat »
+const base = { set_id: p.decision.set_id, nonce: p.decision.nonce, generation: p.generation, decision_fichier_id: a.fichier_id };
+return [{ json: { resultat: identique ? { type: 'decision', ...base, decision_sha256: shaExistante, ecriture: 'existante' } : { type: 'conflit', ...base, decision_sha256: p.decision_sha256 } } }];`].join('\n\n');
+}
+function codeVerifierRelecture() {
+  return [ENTETE('C5bis : candidat RELU juste avant l\'écriture, toujours courant (même clé, génération, en_attente, non expiré) ; sinon rejet, rien écrit.'),
+    UN_ITEM(NOEUDS_CONFIRMER.verifierRelecture), DATE_ISO, CANDIDAT_COURANT,
+    `const f = unItem(${JSON.stringify(NOEUDS_CONFIRMER.formulaire)});
+${DEJA_REJET}
+if (!candidatCourant(unItem(${JSON.stringify(NOEUDS_CONFIRMER.relire)}), f, Date.now())) return rejet('C5bis', true);
+return [{ json: { poursuivre: true, resultat: null } }];`].join('\n\n');
+}
+function codeVerifierEcritureDecision() {
+  return [ENTETE('écriture constatée : identifiant, nom, dossier et propriétés attendus ; decision_sha256 = décision ÉCRITE.'),
+    UN_ITEM(NOEUDS_CONFIRMER.verifierEcriture),
+    `const CONFIG = ${JSON.stringify({ dossierDecisions: CONFIG.dossierDecisions })};
+const p = unItem(${JSON.stringify(NOEUDS_CONFIRMER.controler)});
+const r = unItem(${JSON.stringify(NOEUDS_CONFIRMER.ecrire)});
+const d = p.decision;
+if (!r || typeof r.id !== 'string' || !r.id || r.name !== p.depot.nom || !Array.isArray(r.parents) || r.parents.length !== 1 || r.parents[0] !== CONFIG.dossierDecisions
+  || !r.properties || r.properties.fonda_set_id !== d.set_id || r.properties.fonda_nonce !== d.nonce) throw new Error('décision non écrite ou écrite ailleurs');
+return [{ json: { resultat: { type: 'decision', set_id: d.set_id, nonce: d.nonce, generation: p.generation, decision_fichier_id: r.id, decision_sha256: p.decision_sha256, ecriture: 'creee' } } }];`].join('\n\n');
+}
+function codeSortieConfirmation() {
+  return [ENTETE('sortie OBSERVÉE confirmation-fonda/v1 (forme exacte du consommateur gelé, §21.1) ; jamais k, jeton ni choix.'),
+    UN_ITEM(NOEUDS_CONFIRMER.sortie),
+    `const MOTIFS = ['C1', 'C2', 'C3', 'C4', 'C5', 'C5bis'];
+const e = unItem(${JSON.stringify(NOEUDS_CONFIRMER.entree)});
+const x = unItem(null).resultat;
+if (!x || typeof x !== 'object') throw new Error('résultat de confirmation absent');
+const s = { schema: 'confirmation-fonda/v1', type: x.type, set_id: null, nonce: null, generation: null, decision_fichier_id: null, decision_sha256: null, ecriture: null, motif: null };
+if (x.type === 'rejet') {
+  if (!MOTIFS.includes(x.motif)) throw new Error('motif de rejet inconnu');
+  if (x.set_id !== null || x.nonce !== null) {
+    if (x.set_id !== e.lot || x.nonce !== e.nonce) throw new Error('rejet : lot ou nonce ≠ entrée');
+    s.set_id = x.set_id; s.nonce = x.nonce;
+  }
+  s.motif = x.motif;
+} else if (x.type === 'decision' || x.type === 'conflit') {
+  if (x.set_id !== e.lot || x.nonce !== e.nonce || !Number.isSafeInteger(x.generation) || x.generation < 1 || typeof x.decision_fichier_id !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(x.decision_sha256)) throw new Error('sortie ' + x.type + ' incohérente');
+  Object.assign(s, { set_id: x.set_id, nonce: x.nonce, generation: x.generation, decision_fichier_id: x.decision_fichier_id, decision_sha256: x.decision_sha256 });
+  if (x.type === 'decision') {
+    if (x.ecriture !== 'creee' && x.ecriture !== 'existante') throw new Error('écriture inconnue');
+    s.ecriture = x.ecriture;
+  }
+} else throw new Error('type de confirmation inconnu');
+return [{ json: s }];`].join('\n\n');
+}
+function codePreparerReponse() {
+  return [ENTETE('réponse HTTP au relecteur : code (§21.1 : 200, 409, 400/403/410) et page sans donnée du lot.'),
+    UN_ITEM(NOEUDS_CONFIRMER.reponse),
+    `const CODES = ${JSON.stringify(CODES_HTTP)};
+const s = unItem(${JSON.stringify(NOEUDS_CONFIRMER.sortie)});
+const code = s.type === 'rejet' ? CODES[s.motif] : CODES[s.type];
+const messages = {
+  decision: 'Votre relecture est enregistrée. Merci ! Vous pouvez fermer cette page.',
+  conflit: 'Une autre réponse a déjà été enregistrée pour ce formulaire : rien n\\'a été modifié. Prévenez Éric Duchateau.',
+  C1: 'Formulaire incomplet ou mal formé : rien n\\'a été enregistré. Rouvrez le lien reçu par courriel.',
+  C2: 'Formulaire non reconnu : rien n\\'a été enregistré. Rouvrez le lien reçu par courriel.',
+  C3: 'Ce lien n\\'est plus valable (relecture close, lien remplacé ou expiré) : rien n\\'a été enregistré.',
+  C4: 'Le lot a changé depuis l\\'affichage : rien n\\'a été enregistré. Rouvrez le lien reçu par courriel.',
+  C5: 'Chaque carte doit avoir un choix (ou utilisez « Tout rejeter ») : rien n\\'a été enregistré.',
+  C5bis: 'Ce lien vient d\\'être remplacé ou clos : rien n\\'a été enregistré.',
+};
+const texte = messages[s.type === 'rejet' ? s.motif : s.type];
+const html = '<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
+  + '<meta http-equiv="Content-Security-Policy" content="default-src \\'none\\'; style-src \\'unsafe-inline\\'; base-uri \\'none\\'; form-action \\'none\\'">'
+  + '<title>Relecture FONDA</title></head><body style="font-family:system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem"><p>' + texte + '</p></body></html>';
+return [{ json: { code, html, notifier: s.type === 'decision' && s.ecriture === 'creee' } }];`].join('\n\n');
+}
+// C7 : notification à Éric (clôtureur) d'une décision CRÉÉE. NON BLOQUANTE : la réponse est déjà envoyée,
+// chaque nœud du courriel est en « continueErrorOutput » et ce code ne lève jamais (une panne de courriel
+// ne doit pas rendre « error » une confirmation écrite : E4 abandonnerait le lot).
+function codePreparerNotification() {
+  return [ENTETE('C7 : courriel de notification à Éric (adresse lue dans la Data Table, clé « eric ») ; ne lève jamais.'),
+    `let sortie = { envoyer: false, raw: null };
+try {
+  const s = $(${JSON.stringify(NOEUDS_CONFIRMER.sortie)}).first().json;
+  const t = $input.first().json;
+  const lignes = Array.isArray(t.data) ? t.data.filter((l) => l && l.relecteur_attribue === 'eric') : [];
+  if (lignes.length === 1 && typeof lignes[0].adresse === 'string' && /^[^@\\s]+@[^@\\s]+$/.test(lignes[0].adresse)) {
+    const message = ['To: ' + lignes[0].adresse, 'Subject: Relecture FONDA ' + s.set_id + ' : décision reçue', 'Content-Type: text/plain; charset=UTF-8', '',
+      'Une décision de relecture a été enregistrée pour ' + s.set_id + ' (génération ' + s.generation + ').', 'Clôture technique et signature : CLI local.'].join('\\r\\n');
+    const o = []; for (const ch of message) { const c = ch.codePointAt(0); if (c < 0x80) o.push(c); else if (c < 0x800) o.push(0xc0 | (c >> 6), 0x80 | (c & 63)); else if (c < 0x10000) o.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63)); else o.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63)); }
+    const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    let raw = '';
+    for (let i = 0; i < o.length; i += 3) { const n = (o[i] << 16) | ((o[i + 1] || 0) << 8) | (o[i + 2] || 0); raw += A[(n >> 18) & 63] + A[(n >> 12) & 63] + (i + 1 < o.length ? A[(n >> 6) & 63] : '') + (i + 2 < o.length ? A[n & 63] : ''); }
+    sortie = { envoyer: true, raw };
+  }
+} catch (e) { sortie = { envoyer: false, raw: null }; }
+return [{ json: sortie }];`].join('\n\n');
+}
+function construireConfirmer() {
+  const N = NOEUDS_CONFIRMER;
+  const lotExpr = `$('${N.formulaire}').first().json.lot`;
+  const nonceExpr = `$('${N.formulaire}').first().json.nonce`;
+  const sansErreur = (n) => ({ ...n, onError: 'continueErrorOutput' });
+  const noeuds = [
+    { name: N.webhook, type: 'n8n-nodes-base.webhook', typeVersion: 2, webhookId: uuid('webhook-confirmer'),
+      parameters: { httpMethod: 'POST', path: CONFIG.cheminConfirmer, responseMode: 'responseNode', options: {} } },
+    code(N.entree, codeEntreeConfirmation()),
+    code(N.formulaire, codeVerifierFormulaire()),
+    siBooleen(N.siFormulaire, 'poursuivre', 'si-formulaire'),
+    listing(N.chercher, `={{ "'${CONFIG.dossierRelecture}' in parents and trashed = false and name = '" + ${lotExpr} + ".candidat.json'" }}`, CHAMPS_LISTE, false),
+    code(N.verifierListe, codeVerifierRechercheConfirmation()),
+    siBooleen(N.siCandidat, 'poursuivre', 'si-candidat'),
+    contenuDrive(N.lire, `$('${N.verifierListe}').first().json.fichier_id`),
+    code(N.controler, codeControlerCandidat()),
+    siBooleen(N.siDecision, 'poursuivre', 'si-decision'),
+    // Corbeille COMPRISE : un fichier de même nom à la corbeille existe toujours (C6).
+    listing(N.chercherDecision, `={{ "'${CONFIG.dossierDecisions}' in parents and name = '" + ${lotExpr} + "-" + ${nonceExpr} + ".json'" }}`, CHAMPS_LISTE, false),
+    code(N.analyserDecision, codeAnalyserDecision()),
+    siBooleen(N.siExistante, 'existante', 'si-existante'),
+    contenuDrive(N.lireDecision, `$('${N.analyserDecision}').first().json.fichier_id`),
+    code(N.comparer, codeComparerDecision()),
+    contenuDrive(N.relire, `$('${N.verifierListe}').first().json.fichier_id`),
+    code(N.verifierRelecture, codeVerifierRelecture()),
+    siBooleen(N.siRelecture, 'poursuivre', 'si-relecture'),
+    drive(N.ecrire, {
+      method: 'POST', url: 'https://www.googleapis.com/upload/drive/v3/files',
+      sendQuery: true, queryParameters: { parameters: [{ name: 'uploadType', value: 'multipart' }, { name: 'fields', value: 'id,name,parents,properties' }] },
+      sendBody: true, contentType: 'raw', rawContentType: `={{ 'multipart/related; boundary=' + $('${N.controler}').first().json.depot.frontiere }}`, body: `={{ $('${N.controler}').first().json.depot.corps }}`,
+      options: { timeout: 60000 },
+    }),
+    code(N.verifierEcriture, codeVerifierEcritureDecision()),
+    code(N.sortie, codeSortieConfirmation()),
+    code(N.reponse, codePreparerReponse()),
+    { name: N.repondre, type: 'n8n-nodes-base.respondToWebhook', typeVersion: 1.1,
+      parameters: { respondWith: 'text', responseBody: '={{ $json.html }}', options: { responseCode: '={{ $json.code }}',
+        responseHeaders: { entries: [{ name: 'Content-Type', value: 'text/html; charset=utf-8' }, { name: 'Cache-Control', value: 'no-store' }, { name: 'Referrer-Policy', value: 'no-referrer' }] } } } },
+    siBooleen(N.siNotifier, 'notifier', 'si-notifier'),
+    sansErreur({ name: N.adresse, type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, retryOnFail: false,
+      credentials: { httpHeaderAuth: CONFIG.credentialApiN8n },
+      parameters: { url: `${CONFIG.urlN8n}/api/v1/data-tables/${CONFIG.tableRelecteurs}/rows`, authentication: 'genericCredentialType', genericAuthType: 'httpHeaderAuth', options: { timeout: 30000 } } }),
+    code(N.courriel, codePreparerNotification()),
+    siBooleen(N.siEnvoyer, 'envoyer', 'si-envoyer'),
+    sansErreur({ name: N.envoyer, type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, retryOnFail: false,
+      credentials: { gmailOAuth2: CONFIG.credentialGmail },
+      parameters: { method: 'POST', url: 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send', authentication: 'predefinedCredentialType', nodeCredentialType: 'gmailOAuth2',
+        sendBody: true, specifyBody: 'json', jsonBody: '={{ JSON.stringify({ raw: $json.raw }) }}', options: { timeout: 30000 } } }),
+  ].map(positionner('confirmer'));
+  const connections = lineaire([N.webhook, N.entree, N.formulaire, N.siFormulaire]);
+  connections[N.siFormulaire] = { main: [lien(N.chercher), lien(N.sortie)] };
+  Object.assign(connections, lineaire([N.chercher, N.verifierListe, N.siCandidat]));
+  connections[N.siCandidat] = { main: [lien(N.lire), lien(N.sortie)] };
+  Object.assign(connections, lineaire([N.lire, N.controler, N.siDecision]));
+  connections[N.siDecision] = { main: [lien(N.chercherDecision), lien(N.sortie)] };
+  Object.assign(connections, lineaire([N.chercherDecision, N.analyserDecision, N.siExistante]));
+  connections[N.siExistante] = { main: [lien(N.lireDecision), lien(N.relire)] };
+  Object.assign(connections, lineaire([N.lireDecision, N.comparer, N.sortie]), lineaire([N.relire, N.verifierRelecture, N.siRelecture]));
+  connections[N.siRelecture] = { main: [lien(N.ecrire), lien(N.sortie)] };
+  Object.assign(connections, lineaire([N.ecrire, N.verifierEcriture, N.sortie]), lineaire([N.sortie, N.reponse, N.repondre, N.siNotifier]));
+  connections[N.siNotifier] = { main: [lien(N.adresse), []] };
+  Object.assign(connections, lineaire([N.adresse, N.courriel, N.siEnvoyer]));
+  connections[N.siEnvoyer] = { main: [lien(N.envoyer), []] };
+  return { name: CONFIG.nomConfirmer, nodes: noeuds, connections, settings: { ...REGLAGES, executionTimeout: 120 } };
+}
+
+module.exports = { CONFIG, MODULES, NOEUDS_CLOTURER, NOEUDS_EMETTRE, NOEUDS_CONFIRMER, CODES_HTTP, CHAMPS_FORMULAIRE, COMMUN_PAGE, chargerCommun,
+  construireCloturer, construireEmettre, construireConfirmer };
+
+const CONSTRUCTEURS = { '--emettre': construireEmettre, '--cloturer': construireCloturer, '--confirmer': construireConfirmer };
 if (require.main === module) {
-  const wf = process.argv.includes('--emettre') ? construireEmettre() : process.argv.includes('--cloturer') ? construireCloturer() : null;
-  if (!wf) { process.stderr.write('usage : construire-relecture.js --emettre | --cloturer\n'); process.exitCode = 1; } else process.stdout.write(`${JSON.stringify(wf, null, 2)}\n`);
+  const option = Object.keys(CONSTRUCTEURS).find((o) => process.argv.includes(o));
+  if (!option) { process.stderr.write(`usage : construire-relecture.js ${Object.keys(CONSTRUCTEURS).join(' | ')}\n`); process.exitCode = 1; } else process.stdout.write(`${JSON.stringify(CONSTRUCTEURS[option](), null, 2)}\n`);
 }
