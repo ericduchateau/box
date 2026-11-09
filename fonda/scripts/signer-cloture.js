@@ -483,6 +483,7 @@ async function cloturer(setId, deps) {
     clotures = cl; // TOUTES les observations : non attribuables et en vol examinées (evaluerPage)
     confirmations = await observerSur('workflow de confirmation', config.workflowConfirmation);
     listeDecisions = await lire('Drive (decisions/)', () => drive.listerDecisions(setId));
+    await require('./adaptateurs-page.js').preLireDetails({ api, lire, clotures, confirmations }); // CDC §21.8 P1
   } else {
     locales = await lire('dossier local (décisions)', () => deps.decisionsLocales(setId));
   }
@@ -829,6 +830,7 @@ async function cloturer(setId, deps) {
     return lu;
   };
   verifier34();
+  if (page) require('./rattachement-page.js').verifierTxt(deps.fs, cheminRecap, `${rendu}\n\n${shaInstantane}\n`); // CDC §21.7 P2
   // C2 (intérim) : AVANT le récapitulatif et le code, nouvelle observation, même règle que
   // C1 ; la présentation (badge exact, motif, fenêtre, version) est affichée puis FIGÉE.
   let presentationC2 = null;
@@ -857,6 +859,7 @@ async function cloturer(setId, deps) {
   // Contrôles §3.4 de nouveau sur les fichiers RELUS après la confirmation (jamais sur
   // les objets en mémoire).
   const inst = verifier34();
+  if (page) require('./rattachement-page.js').verifierTxt(deps.fs, cheminRecap, `${rendu}\n\n${shaInstantane}\n`); // CDC §21.7 P3
   if (L.empreinteComplete(inst.candidat_lot) !== sortie.empreinte_complete) refuser('instantané : empreinte complète du lot source ≠ génération');
 
   // C3 (intérim) : APRÈS les confirmations, AVANT le marqueur : nouvelle observation, même
@@ -948,93 +951,7 @@ async function cloturer(setId, deps) {
 }
 
 function evaluerPage({ setId, candidatEnv, clotures, confirmations, listeDecisions, rattachement, levees, constats, sortie, relecteur, empreintes, listingDebut, registre }) {
-  // Parcours PAGE (v8.2 §7, §9, §10) : chaque partie est évaluée dès que sa donnée est
-  // disponible, sans retour anticipé ; une décision tardive reste réconciliée et
-  // rapprochée (un blocage dur n'est jamais masqué par une date).
-  let revoqueLe = null; let creeLe = null; let derniere = null;
-  if (candidatEnv.ok) {
-    const c = candidatEnv.v;
-    if (!c || c.schema !== 'candidat-fonda/v1' || !c.lot || !c.relecture) constats.ajouter('incident', 'candidat (enveloppe de relecture) illisible ou non conforme');
-    else {
-      const rel = c.relecture;
-      if (rel.statut !== 'clos') constats.ajouter('temporaire', `candidat au statut « ${rel.statut} » (clôture technique requise)`);
-      revoqueLe = normaliserDate(rel.clos_le);
-      creeLe = normaliserDate(rel.cree_le);
-      if (!revoqueLe || !creeLe) constats.ajouter('incident', 'relecture.clos_le / cree_le absent ou mal formé');
-      else if (creeLe > revoqueLe) constats.ajouter('incident', 'fenêtre de candidature inversée (cree_le > clos_le)');
-      if (c.lot.set_id !== setId) constats.ajouter('abandon', 'set_id du candidat ≠ set_id demandé');
-      // Moteur du candidat contre le REGISTRE, directement (garde-fou 1).
-      const regC = rel.moteur ? (registre || []).find((l) => l && l.version === rel.moteur.version) : null;
-      if (!regC || regC.sha256 !== rel.moteur.sha256) constats.ajouter('abandon', 'moteur du candidat absent du registre moteurs.json');
-      const completeRef = empreintes ? empreintes.complete : (sortie ? sortie.empreinte_complete : null);
-      try { if (completeRef && L.empreinteComplete(c.lot) !== completeRef) constats.ajouter('abandon', 'lot de l\'enveloppe de relecture ≠ lot généré'); } catch { constats.ajouter('abandon', 'lot de l\'enveloppe de relecture non projetable'); }
-      if (sortie && rel.referentiel_version !== sortie.referentiel_version) constats.ajouter('abandon', 'referentiel_version du candidat ≠ génération');
-      if (relecteur !== null && rel.relecteur_attribue !== relecteur) constats.ajouter('abandon', 'relecteur attribué du candidat ≠ référentiel archivé');
-      if (sortie && (!rel.moteur || rel.moteur.version !== sortie.moteur.version || rel.moteur.sha256 !== sortie.moteur.sha256)) constats.ajouter('abandon', 'moteur du candidat ≠ moteur de la génération');
-    }
-  }
-  // 1. Exécution de clôture
-  // TOUTES les exécutions du workflow de clôture OBSERVÉES (même partiellement, garde-fou 1) :
-  // en vol ou de statut inconnu (quel que soit le lot), ou non attribuables -> incident ;
-  // les conclusions sur la clôture retenue exigent un listing complet.
-  {
-    const duLotClot = [];
-    for (const x of clotures.ok ? clotures.v : (clotures.partiel || [])) {
-      if (!STATUTS_TERMINAUX.includes(x.status)) { constats.ajouter('incident', `exécution de clôture ${x.id} non terminée ou de statut inconnu (${x.status}) : une clôture technique est encore en cours`); continue; }
-      const r = rattachement(x.brut);
-      if (!r || typeof r.set_id !== 'string' || r.type !== 'cloture') { constats.ajouter('incident', `exécution de clôture ${x.id} non attribuable à un lot`); continue; }
-      if (r.set_id === setId) duLotClot.push(x);
-    }
-    const reussies = !clotures.ok ? null : duLotClot.filter((x) => x.status === 'success' && x.stoppedAt && x.startedAt)
-      .sort((a, b) => (a.stoppedAt < b.stoppedAt ? -1 : a.stoppedAt > b.stoppedAt ? 1 : 0));
-    if (reussies === null) { /* listing en échec : déjà constaté */ } else if (!reussies.length) constats.ajouter('temporaire', 'aucune clôture technique réussie rattachée à ce lot');
-    else {
-      derniere = reussies[reussies.length - 1];
-      if (reussies.length > 1 && reussies[reussies.length - 2].stoppedAt === derniere.stoppedAt) constats.ajouter('abandon', 'deux clôtures techniques à la même date : aucun départage arbitraire');
-    }
-  }
-  // 2. Filet sur les confirmations
-  const duLot = [];
-  {
-    for (const x of confirmations.ok ? confirmations.v : (confirmations.partiel || [])) {
-      if (STATUTS_EN_VOL.includes(x.status)) { constats.ajouter('incident', `exécution de confirmation ${x.id} non terminée (${x.status})`); continue; }
-      if (!STATUTS_TERMINAUX.includes(x.status)) { constats.ajouter('incident', `exécution de confirmation ${x.id} au statut inconnu (${x.status})`); continue; }
-      const r = rattachement(x.brut);
-      if (!r) { constats.ajouter('incident', `exécution de confirmation ${x.id} sans données exploitables`); continue; }
-      if (r.set_id !== setId) continue;
-      if (r.type === 'conflit') { constats.ajouter('abandon', `sortie « conflit » (exécution ${x.id}) : blocage dur`); continue; }
-      if (x.status !== 'success') { constats.ajouter('abandon', `exécution de confirmation ${x.id} du lot au statut ${x.status} : blocage dur`); continue; }
-      if (r.type !== 'decision' || typeof r.nonce !== 'string' || !r.nonce || !x.startedAt || !x.stoppedAt) { constats.ajouter('incident', `exécution ${x.id} : rattachement de décision incomplet`); continue; }
-      duLot.push({ x, nonce: r.nonce });
-    }
-  }
-  // 3. Décisions sur Drive
-  const decisions = [];
-  if (listeDecisions.ok) {
-    const liste = listeDecisions.v;
-    if (!liste || !Array.isArray(liste.fichiers)) constats.ajouter('incident', 'listing de decisions/ illisible');
-    else {
-      if (liste.incompleteSearch === true && !levees.some((l) => l.type === 'recherche_incomplete')) constats.ajouter('temporaire', 'recherche Drive incomplète (decisions/) sans levée explicite');
-      const presentes = new Set();
-      for (const f of liste.fichiers) {
-        if (!f || f.contenu == null) { constats.ajouter('incident', `fichier de decisions/ illisible (${f && f.nom})`); continue; }
-        const d = f.contenu;
-        if (!decisionConforme(d)) { constats.ajouter('incident', `fichier de decisions/ non conforme (${f.nom})`); continue; }
-        if (d.set_id !== setId) continue;
-        presentes.add(d.nonce);
-        const modifie = normaliserDate(f.modifie_le);
-        if (!modifie) constats.ajouter('incident', `${f.nom} : date de modification illisible`);
-        // Écriture postérieure à la clôture technique ou au début du listing (§20.7) :
-        // nouvelle clôture technique requise — la décision reste réconciliée et rapprochée.
-        else if ((derniere && modifie > derniere.stoppedAt) || modifie > listingDebut) constats.ajouter('temporaire', `${f.nom} écrit après la clôture technique ou pendant le listing : nouvelle clôture technique requise`);
-        if (confirmations.ok && !duLot.some((e) => e.nonce === d.nonce)) constats.ajouter('abandon', `${f.nom} : décision sans exécution correspondante : blocage dur`);
-        decisions.push(d);
-      }
-      for (const e of duLot) if (!presentes.has(e.nonce)) constats.ajouter('abandon', `décision de l'exécution ${e.x.id} absente de Drive : blocage dur`);
-      if (!decisions.length) constats.ajouter('temporaire', 'aucune décision pour ce lot');
-    }
-  }
-  return { decisions, derniere, duLot, revoqueLe, fenetre: creeLe && revoqueLe && creeLe <= revoqueLe ? { debut: creeLe, fin: revoqueLe } : null };
+  return require('./rattachement-page.js').evaluerPage({ setId, candidatEnv, clotures, confirmations, listeDecisions, rattachement, levees, constats, sortie, relecteur, empreintes, listingDebut, registre }); // CDC §21.8 P4
 }
 
 // Lot 7 : rattachement de la SAISIE LOCALE. Jamais consommé en saisie locale ; s'il

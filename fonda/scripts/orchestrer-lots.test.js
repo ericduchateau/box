@@ -223,9 +223,12 @@ describe('relance et branche', () => {
 // TRIPWIRE « cœur probant intouché » : empreintes SHA-256 des fichiers probants à l'arrivée de
 // l'orchestrateur (= origin/design c23aaaa). L'orchestrateur n'en modifie AUCUN ; toute
 // évolution FUTURE de l'un d'eux doit mettre à jour cette liste EXPLICITEMENT (signal de relecture).
+// P1 (parcours page) : signer-cloture.js est épinglé ici à son état POST-P1 (référence 9b75507 + patch
+// figé du CDC §21.8). Le garant autoritaire est le témoin temoin-saisie-locale.test.js (§21.8) ; ce pin
+// reste un signal grossier, redondant (défense en profondeur).
 describe('cœur probant intouché par l\'orchestrateur (octet pour octet)', () => {
   const EMPREINTES = [
-    ['fonda/scripts/signer-cloture.js', '7d12a4d56e4ddb8e8fd21e65b266916cbbff1998d7302975cad9ffedd972956a'],
+    ['fonda/scripts/signer-cloture.js', '33b586d6f0cf7d99b4121a06ff252d0c3a1e8144253eb6c0f0e323e727987482'],
     ['fonda/scripts/attestation-signee.js', '7a922e12e1171425b78dcde92dd85132e6586e5238b72fb11d7cd0230a0d0e47'],
     ['fonda/engine/canonique.js', 'e0f3a60c808cfe465ac002e071f57ccd7372bc9e27aad04bce4d23f0534f581f'],
     ['fonda/engine/catalogue.js', '6bae6d615c441421954c31db1608ff437fcfe779f98cdcc7c2319342242b7a95'],
