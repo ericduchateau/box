@@ -5,7 +5,7 @@
 ## Objectif
 Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correction par profil, mesure par groupe, fiches générées puis relues par un humain), sans casser BOX. Dépôt AAP CARDIE-SEPIA, échéance **21/10/2026**. Source de vérité : `docs/PRD-Box-FONDA.md` ; règles : `AGENTS.md`.
 
-## État actuel (2026-11-08, design = `819656e`)
+## État actuel (2026-11-09, design = `0d6934e`)
 - **BOX prod** : 9 workflows n8n actifs, front `https://ericduchateau.github.io/box/` (`main`).
 - **FONDA, chaîne signée en saisie locale** opérationnelle (orchestrateur #59, intérim). Génération `vrqgtS5kQMvP9Ok5` et portier `MkYrdhgTo52nA3av` INACTIFS hors fenêtre.
 - **Publiés c4-milieu P2** (calendrier à jour) : maths `proportionnalite_nI_02`, `resolution-problemes_nI_02` ; français `phrase-orthographe_nI_01`, `lexique_nI_02`, `inference-implicite_nI_02`, `sens-mot-inconnu_nI_02`.
@@ -14,11 +14,15 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - **CDC relecture sur design** (#77) : r8 + r9 consigné (§20.16, à relire par Éric) + r10.9 (§21, parcours page).
 
 ## Fait : P1 du parcours page (#78, Codex VERT après 6 passes)
-- `rattachement-page.js` (rattachement discriminé E1–E12, R1–R6 sur le tuple complet, clôtures prouvées et cohérentes) et `adaptateurs-page.js` ; `signer-cloture.js` = référence `9b75507` + **patch figé** P1–P4 (CDC §21.8) ; aucun câblage dans `main`.
-- Cas locaux figés dans `signer-cloture-local.test.js` ; **témoin** `temoin-saisie-locale.test.js` (patch, plein fichier, périmètre fermé, différentiel en processus neufs, trace par Proxy) + **ancre** ; protection du témoin **procédurale** (fichiers de confiance, relecture d'Éric).
+- `rattachement-page.js` (E1–E12, R1–R6 sur le tuple complet, clôtures prouvées et cohérentes) et `adaptateurs-page.js` ; `signer-cloture.js` = référence `9b75507` + **patch figé** P1–P4 (CDC §21.8) ; aucun câblage dans `main`. Cas locaux figés dans `signer-cloture-local.test.js` ; **témoin** `temoin-saisie-locale.test.js` (patch, plein fichier, périmètre fermé, différentiel en processus neufs, trace par Proxy) + **ancre** ; protection du témoin **procédurale** (fichiers de confiance, relecture d'Éric).
+
+## Fait : P3 du parcours page (Emettre + Cloturer, VERT après 4 passes Codex, `b45d441`)
+- Workflows INACTIFS construits depuis le dépôt (`n8n/fonda-relecture-page/`), harnais 85 tests : faux Drive fidèle, chaîne réelle jusqu'à `L.reconcilier`, réémission fail-closed, contrôles de version Drive (BigInt). Confirmation **simulée au contrat** (remplacée par le vrai Confirmer en P2). Témoin `3253c24d` inchangé.
+- **Doctrine (README « Où vit chaque garantie », §21.5)** : pilier 1 = signataire (tout ce que le relecteur provoque seul) ; pilier 2 = **verrou « un seul écrivain CLI »** (P5), contrôle d'intégrité porteur (D1, D2, E1). Les contrôles de version détectent, n'excluent pas. Seuil : nouvel entrelacement hors piliers = refonte du modèle d'écriture du candidat, pas de rustine.
 
 ## Prochaines étapes
-1. **P2 + P3 en parallèle** (CDC §21.9) : workflows `Page`/`Confirmer` (P2) et `Emettre`/`Cloturer` (P3), INACTIFS, construits depuis le dépôt, harnais d'octet-identité ; cadrage par l'architecte avant le code. Puis P4 (recette sur copie) et P5 (`cloturer-page.js`, levée page seulement).
+1. **P2** (`Page` + `Confirmer`, INACTIFS) : cadrage par l'architecte avant le code. Puis P4 (recette sur copie : sémantique `version` Drive +1, `name contains`, API Data Tables) et P5 (`cloturer-page.js`, levée page seulement).
+   - **Dette portée, critère de livraison P5** : verrou CLI mono-écrivain (verrou local + refus si exécution Emettre/Cloturer en cours) **et** hypothèse « CLI lancé depuis le seul Mac d'Éric » ; c'est un contrôle d'intégrité, P5 non livrable sans lui, relu au niveau du signataire.
 2. PR en attente de fusion : `docs/signataire-c3-issues` (SIGNATAIRE.md, trois issues C3).
 3. Prochain run FONDA : sonde d'observation pendant la génération ; PR calendrier après chaque publication.
 4. Champ `bande` dans la métadonnée des lots ; bilans de période (P3 avant le 4 janvier).
@@ -53,4 +57,4 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - Le classificateur auto-mode bloque les commandes contenant la clé API : Éric lance lui-même les générations.
 - Branches (AGENTS.md) : PR toujours vers `design` (liens `compare/design...<branche>`), fusion en merge commit ; jamais de fast-forward de `design` (casse la chaîne du premier parent).
 
-_Dernière mise à jour : 2026-11-08 — Claude Code (Opus 5.5)._
+_Dernière mise à jour : 2026-11-09 — Claude Code (Opus 5.5)._
