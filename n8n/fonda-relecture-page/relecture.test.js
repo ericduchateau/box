@@ -8,9 +8,10 @@
 //      properties has, trashed, and/or/parenthèses ; clause inconnue = erreur), champs `fields` projetés,
 //      pagination par jeton ; producteurs (n8n) ET signataire (VRAI adaptateurs-page.lecturePage, par un
 //      fetch simulé) lisent le MÊME Drive ;
-//   4. CHAÎNE RÉELLE : Emettre -> (décision + confirmation au contrat, P2 à venir) -> Cloturer -> VRAI
-//      preLireDetails -> VRAI rattacherPage -> VRAI evaluerPage, avec les VRAIES preuves de génération
-//      (empreinte complète du lot, referentiel_version, moteur, relecteur du référentiel) ;
+//   4. CHAÎNE RÉELLE : Emettre -> (décision §21.1 + confirmation au contrat, P2 à venir) -> Cloturer ->
+//      VRAI preLireDetails -> VRAI rattacherPage -> VRAI evaluerPage -> VRAIE réconciliation (L.unicite,
+//      L.reconcilier, empreinte publiée par SC.lotPublie), avec les VRAIES preuves de génération ;
+//      transport HTTP de la pagination reconstitué selon la configuration du nœud (jeton en query string) ;
 //   5. cas du §21.10 et réémission (§21.5), toujours par la chaîne réelle.
 // Seul stub hors simulateur : le nœud Crypto (non simulé) est remplacé, DANS LA COPIE de test du
 // workflow, par un nœud Code rendant une clé k fixe. La confirmation (workflow P2) est représentée par
@@ -31,6 +32,9 @@ const L = require('../../fonda/scripts/liaison-generation.js');
 const P = require('../../fonda/scripts/rattachement-page.js');
 const A = require('../../fonda/scripts/adaptateurs-page.js');
 const FC = require('../../fonda/scripts/fixtures/execution-confirmation.json');
+const SC = require('../../fonda/scripts/signer-cloture.js');
+const Cat = require('../../fonda/engine/catalogue.js');
+const SHA = Cat.sha256WebCrypto();
 
 const RACINE = path.join(__dirname, '..', '..');
 const EXPORTS = { cloturer: 'box-fonda-cloturer-relecture.json', emettre: 'box-fonda-emettre-relecture.json' };
@@ -80,12 +84,27 @@ describe('1. octet-identité interne et 2. contrôles statiques', () => {
       }
     });
   }
-  test('modules embarqués dans « Analyser emission » = copies EXACTES des sources du dépôt', () => {
-    const js = JSON.parse(lireExport('emettre')).nodes.find((n) => n.name === N_E.analyser).parameters.jsCode;
-    for (const rel of Object.values(B.MODULES)) {
+  test('modules et fonctions embarqués = copies EXACTES des sources du dépôt (Analyser : catalogue, journal ; Preparer : canonique, projectionComplete)', () => {
+    const wf = JSON.parse(lireExport('emettre'));
+    const js = (nom) => wf.nodes.find((n) => n.name === nom).parameters.jsCode;
+    for (const [nom, rel] of [[N_E.analyser, B.MODULES.catalogue], [N_E.analyser, B.MODULES.journal], [N_E.preparer, B.MODULES.canonique]]) {
       const src = fs.readFileSync(path.join(RACINE, rel), 'utf8');
-      const m = new RegExp(`// >>> MODULE ${rel} \\(copie exacte, sha256=([0-9a-f]{64})\\)\\n[^\\n]*\\n\\(function \\(module, exports, require, self\\) \\{\\n([\\s\\S]*?)\\}\\)\\(M_`).exec(js);
-      assert.ok(m, rel); assert.equal(m[2], src, rel); assert.equal(m[1], sha(Buffer.from(src)), rel);
+      const m = new RegExp(`// >>> MODULE ${rel} \\(copie exacte, sha256=([0-9a-f]{64})\\)\\n[^\\n]*\\n\\(function \\(module, exports, require, self\\) \\{\\n([\\s\\S]*?)\\}\\)\\(M_`).exec(js(nom));
+      assert.ok(m, `${nom} : ${rel}`); assert.equal(m[2], src, rel); assert.equal(m[1], sha(Buffer.from(src)), rel);
+    }
+    assert.ok(js(N_E.preparer).includes(`// >>> FONCTION fonda/scripts/liaison-generation.js projectionComplete (copie exacte)\n${L.projectionComplete.toString()}\n// <<< FONCTION projectionComplete`));
+  });
+  test('pagination des listings Drive : configuration EXACTE (jeton en query string, fin sur absence de jeton, plafond)', () => {
+    for (const [k, noms] of [['cloturer', [N_C.decisions]], ['emettre', [N_E.decisions, N_E.relister]]]) {
+      for (const nom of noms) {
+        const n = JSON.parse(lireExport(k)).nodes.find((x) => x.name === nom);
+        assert.deepEqual(n.parameters.options.pagination, { pagination: {
+          paginationMode: 'updateAParameterInEachRequest',
+          parameters: { parameters: [{ type: 'qs', name: 'pageToken', value: '={{ $response.body.nextPageToken }}' }] },
+          paginationCompleteWhen: 'other', completeExpression: '={{ !$response.body.nextPageToken }}', limitPagesFetched: true, maxRequests: B.CONFIG.maxPagesDrive,
+        } }, `${k} ${nom}`);
+        assert.equal(n.parameters.queryParameters.parameters.find((x) => x.name === 'pageSize').value, '1000', `${k} ${nom}`);
+      }
     }
   });
   test('noms de nœuds de la clôture = ceux du consommateur gelé (ROLES.cloture)', () => {
@@ -156,10 +175,10 @@ function projeter(fields) {
 function fauxDrive(o = {}) {
   const fichiers = new Map(); let n = 0; const sequences = new Map(); let nj = 0;
   const d = {
-    fichiers, o, envois: [], appels: [],
+    fichiers, o, envois: [], appels: [], crochets: {},
     ajouter(dossier, nom, contenu, properties = {}, extra = {}) {
       const id = `drv-${++n}`;
-      fichiers.set(id, { id, name: nom, parents: [dossier], mimeType: 'application/json', properties, trashed: false, contenu, modifiedTime: new Date().toISOString(), ...extra });
+      fichiers.set(id, { id, name: nom, parents: [dossier], mimeType: 'application/json', properties, trashed: false, contenu, modifiedTime: new Date().toISOString(), version: '1', ...extra });
       return id;
     },
     dans: (dossier) => [...fichiers.values()].filter((f) => f.parents.includes(dossier)),
@@ -181,7 +200,8 @@ function fauxDrive(o = {}) {
         seq = { q, pages }; iPage = 0;
       }
       const champs = projeter(fields);
-      const corps = { files: seq.pages[iPage].map((f) => Object.fromEntries(champs.map((c) => [c, f[c]]))) };
+      const omis = o.omettre ? seq.pages[iPage].filter((f) => o.omettre(seq.q, f)) : [];
+      const corps = { files: seq.pages[iPage].filter((f) => !omis.includes(f)).map((f) => Object.fromEntries(champs.map((c) => [c, f[c]]))) };
       if (o.incomplet && o.incomplet(seq.q, iPage)) corps.incompleteSearch = true; else corps.incompleteSearch = false;
       if (iPage + 1 < seq.pages.length) { const j = `jeton-${++nj}`; sequences.set(j, { seq, iPage: iPage + 1 }); corps.nextPageToken = j; }
       return corps;
@@ -201,9 +221,25 @@ function fauxDrive(o = {}) {
       return rep(200, { id: f.id, mimeType: f.mimeType, trashed: f.trashed });
     },
     // Gestionnaires des nœuds HTTP n8n (requête évaluée par le simulateur).
+    // Query string RECONSTITUÉE comme n8n : paramètres de requête + paramètres de pagination de type
+    // « qs » seulement ; un autre type (body, headers) n'atteint pas la query string d'un GET Drive.
     n8nListe: async (r) => {
-      const prm = Object.fromEntries(r.queryParameters.parameters.map((x) => [x.name, x.value]));
-      return { statusCode: 200, body: d.lister({ ...prm, pageToken: r.pagination && r.pagination.pageToken }) };
+      if ((r.method || 'GET') !== 'GET' || r.url !== 'https://www.googleapis.com/drive/v3/files') return { statusCode: 404, body: {} };
+      const qs = Object.fromEntries(r.queryParameters.parameters.map((x) => [x.name, x.value]));
+      const pg = r.options && r.options.pagination && r.options.pagination.pagination;
+      if (r.pagination && Object.keys(r.pagination).length) {
+        for (const x of pg.parameters.parameters) {
+          if (x.type === 'qs') qs[x.name] = r.pagination[x.name];
+          else if (!['body', 'headers'].includes(x.type)) throw new Error(`type de paramètre de pagination non simulé : ${x.type}`);
+        }
+      }
+      try { return { statusCode: 200, body: d.lister(qs) }; } catch (e) { return { statusCode: e.statut || 500, body: {} }; }
+    },
+    n8nMeta: async (r) => {
+      const f = fichiers.get(r.url.split('/').pop());
+      if (d.crochets.avantMeta) { const h = d.crochets.avantMeta; d.crochets.avantMeta = null; await h(); }
+      const champs = r.queryParameters.parameters.find((x) => x.name === 'fields').value.split(',');
+      return f ? { statusCode: 200, body: Object.fromEntries(champs.map((c) => [c, f[c]])) } : { statusCode: 404, body: {} };
     },
     n8nMedia: async (r) => {
       const f = fichiers.get(r.url.split('/').pop());
@@ -218,7 +254,8 @@ function fauxDrive(o = {}) {
     n8nReecrire: async (r) => {
       const f = fichiers.get(r.url.split('/').pop());
       if (r.method !== 'PATCH' || !f) return { statusCode: 404, body: {} };
-      f.contenu = r.body; f.modifiedTime = new Date().toISOString();
+      if (d.crochets.avantPatch) { const h = d.crochets.avantPatch; d.crochets.avantPatch = null; await h(); }
+      f.contenu = r.body; f.modifiedTime = new Date().toISOString(); f.version = String(Number(f.version) + 1);
       return { statusCode: 200, body: { id: f.id, name: f.name } };
     },
   };
@@ -300,7 +337,7 @@ async function emettre(d, { setId = SET, k = K, reponses = {}, octJournal = OCT_
       [N_E.moteurs]: async () => ({ statusCode: 200, body: contents('fonda/engine/moteurs.json', OCT_MOT) }),
       [N_E.journal]: async (r) => { assert.match(r.url, new RegExp(`set_ids-journal\\.json\\?ref=${COMMIT}$`)); return { statusCode: 200, body: contents('fonda/data/set_ids-journal.json', octJournal) }; },
       [N_E.chercherLot]: d.n8nListe, [N_E.lireLot]: d.n8nMedia, [N_E.existant]: d.n8nListe, [N_E.decisions]: d.n8nListe,
-      [N_E.lireExistant]: d.n8nMedia, [N_E.ecrire]: d.n8nCreer, [N_E.reecrire]: d.n8nReecrire,
+      [N_E.lireExistant]: d.n8nMedia, [N_E.relireVersion]: d.n8nMeta, [N_E.ecrire]: d.n8nCreer, [N_E.reecrire]: d.n8nReecrire, [N_E.relister]: d.n8nListe,
       [N_E.adresse]: async () => ({ statusCode: 200, body: { data: [{ relecteur_attribue: RELECTEUR, adresse: 'relectrice@exemple.invalid' }, { relecteur_attribue: 'eric', adresse: 'relecteur@exemple.invalid' }] } }),
       [N_E.envoyer]: async (r) => { d.envois.push(Buffer.from(JSON.parse(r.jsonBody).raw, 'base64url').toString('utf8')); return { statusCode: 200, body: { id: `msg-${d.envois.length}` } }; },
       ...reponses,
@@ -324,26 +361,41 @@ async function cloturer(d, corps, o = {}) {
   await pause();
   return { r, ...execution('wfClot', debut, fin, r.status === 'success' ? 'success' : 'error', r.runData) };
 }
-// Confirmation au CONTRAT (P2) : fichier decision-fonda/v1 écrit dans decisions/ + exécution conforme.
-function confirmer(d, setId, generation, { nonce = crypto.randomBytes(16).toString('hex') } = {}) {
+// Confirmation au CONTRAT (P2) : fichier decision-fonda/v1 construit selon §21.1 (empreintes PÉDAGOGIQUES
+// du lot source et du lot filtré, sélection dans l'ordre du candidat, hash_formulaire du §21.1) écrit dans
+// decisions/ + exécution au format du consommateur gelé. hash_formulaire : aucun schéma canonique de
+// tableau hétérogène n'existe encore (P2 le fixera, le harnais suivra) ; JSON.stringify du tableau ici.
+async function decisionPage(setId, generation, nonce, { ecarter = [], candidat }) {
   const lot = lotSource(setId);
-  const dec = { schema: 'decision-fonda/v1', set_id: setId, generation, nonce, recu_le: new Date().toISOString(),
-    coeur: { action: 'accepter', selection: lot.cartes.map((c) => c.item_id), ecartees: [], empreinte_relue: L.empreinteComplete(lot), empreinte_publiee: L.empreinteComplete(lot), moteur: MOTEUR },
-    lot_relu: { set_id: setId, empreinte_complete: L.empreinteComplete(lot), cartes: lot.cartes.map((c) => ({ item_id: c.item_id, choix: 'garder' })) }, hash_formulaire: 'h-test' };
+  const choix = lot.cartes.map((c) => [c.item_id, ecarter.includes(c.item_id) ? 'ecarter' : 'garder']);
+  const selection = choix.filter((x) => x[1] === 'garder').map((x) => x[0]);
+  const ecartees = choix.filter((x) => x[1] === 'ecarter').map((x) => x[0]);
+  const empreinte = await Cat.calculerEmpreinte(lot, SHA);
+  const rel = candidat.relecture;
+  const expirePage = new Date(Math.min(Date.now() + 3600000, Date.parse(rel.expire_le))).toISOString();
+  const hash = `sha256:${sha(Buffer.from(JSON.stringify(['fonda-select-form/v1', setId, generation, empreinte, rel.moteur.version, rel.moteur.sha256, expirePage, nonce, 'accepter', choix]), 'utf8'))}`;
+  return { schema: 'decision-fonda/v1', set_id: setId, generation, nonce, recu_le: new Date().toISOString(),
+    coeur: { action: 'accepter', selection, ecartees, empreinte_relue: empreinte, empreinte_publiee: await Cat.calculerEmpreinte(SC.lotPublie(lot, { selection }), SHA), moteur: rel.moteur },
+    lot_relu: { set_id: setId, empreinte_complete: L.empreinteComplete(lot), cartes: choix.map(([item_id, c]) => ({ item_id, choix: c })) }, hash_formulaire: hash };
+}
+async function confirmer(d, setId, generation, { nonce = crypto.randomBytes(16).toString('hex'), muter, ecarter } = {}) {
+  const dec = await decisionPage(setId, generation, nonce, { ecarter, candidat: candidatDe(d, setId) });
+  if (muter) muter(dec);
   const debut = new Date().toISOString();
   const id = d.ajouter(DEC, `${setId}-${nonce}.json`, JSON.stringify(dec), { fonda_set_id: setId, fonda_nonce: nonce });
   const runData = copie(FC.decision_creee.data.resultData.runData);
   runData['FONDA Entree confirmation'][0].data.main[0][0].json = { lot: setId, nonce };
   runData['FONDA Ecrire decision'][0].data.main[0][0].json = { id };
   Object.assign(runData['FONDA Sortie confirmation'][0].data.main[0][0].json, { set_id: setId, nonce, generation, decision_fichier_id: id, decision_sha256: P.empreinteDecision(dec), ecriture: 'creee' });
-  return { id, ...execution('wfConf', debut, new Date().toISOString(), 'success', runData) };
+  return { id, dec, ...execution('wfConf', debut, new Date().toISOString(), 'success', runData) };
 }
-const preuvesDe = (setId) => {
-  const c = L.empreinteComplete(lotSource(setId));
-  return { sortie: { empreinte_complete: c, referentiel_version: REF_VERSION, moteur: MOTEUR }, relecteur: RELECTEUR, empreintes: { complete: c } };
+const preuvesDe = async (setId) => {
+  const lot = lotSource(setId); const c = L.empreinteComplete(lot);
+  return { sortie: { empreinte_complete: c, referentiel_version: REF_VERSION, moteur: MOTEUR }, relecteur: RELECTEUR, empreintes: { complete: c, pedagogique: await Cat.calculerEmpreinte(lot, SHA) } };
 };
 // Le VRAI signataire : lecturePage (même Drive), preLireDetails, rattacherPage, evaluerPage.
-async function evaluer(d, setId, clotures, confirmations = [], { preuves = preuvesDe(setId) } = {}) {
+async function evaluer(d, setId, clotures, confirmations = [], { preuves: pr, levees = [] } = {}) {
+  const preuves = pr || await preuvesDe(setId);
   const lp = A.lecturePage({ jeton: async () => 'jeton-test', fetch: d.fetch, dossierRelecture: RELEC, dossierDecisions: DEC });
   const details = new Map([...clotures, ...confirmations].map((x) => [x.obs.id, x.detail]));
   const groupeC = { ok: true, v: clotures.map((x) => x.obs) }; const groupeF = { ok: true, v: confirmations.map((x) => x.obs) };
@@ -353,11 +405,19 @@ async function evaluer(d, setId, clotures, confirmations = [], { preuves = preuv
   const liste = await lp.listerDecisions(setId);
   const constats = new L.Constats();
   const r = P.evaluerPage({ setId, candidatEnv: { ok: true, v: env }, clotures: groupeC, confirmations: groupeF, listeDecisions: { ok: true, v: liste },
-    rattachement: P.rattacherPage, levees: [], constats, ...preuves, listingDebut, registre: REGISTRE });
+    rattachement: P.rattacherPage, levees, constats, ...preuves, listingDebut, registre: REGISTRE });
+  // §20.5 : réconciliation RÉELLE de chaque décision retenue, puis unicité (comme signer-cloture.js).
+  if (r.decisions.length) {
+    const lotLu = JSON.parse(d.dans(CAND).find((f) => f.name === `${setId}.lot.json`).contenu);
+    for (const e of L.unicite(r.decisions)) constats.ajouter('abandon', `unicité (§10 A) : ${e}`);
+    const empreintePubliee = async (gardees) => Cat.calculerEmpreinte(SC.lotPublie(lotLu, { selection: gardees }), SHA);
+    for (const x of r.decisions) for (const e of await L.reconcilier(x, { setId, lotSource: lotLu, empreintes: preuves.empreintes, empreintePubliee })) constats.ajouter('abandon', `réconciliation : ${e}`);
+  }
   return { r, constats: constats.liste, env, liste };
 }
 const issues = (k, issue) => k.constats.filter((c) => c.issue === issue);
 const texte = (k) => JSON.stringify(k.constats);
+const aIssue = (k, issue, motif) => assert.ok(k.constats.some((c) => c.issue === issue && motif.test(c.raison)), `${issue} ${motif} absent de ${texte(k)}`);
 const sortieDe = (r, nom) => r.sorties[nom][0].json;
 const candidatDe = (d, s = SET) => JSON.parse(d.candidat(s).contenu);
 
@@ -395,7 +455,7 @@ describe('4. chaîne RÉELLE Emettre -> confirmation -> Cloturer -> signataire (
   });
   test('NOMINAL complet : décision + confirmation + clôture -> aucun constat, décision retenue, diagnostic égal', async () => {
     const { d } = await lotEmis();
-    const cf = confirmer(d, SET, 1); await pause();
+    const cf = await confirmer(d, SET, 1); await pause();
     const c1 = await cloturer(d, { set_id: SET });
     assert.equal(c1.r.status, 'success', c1.r.erreur);
     const s = sortieDe(c1.r, N_C.sortie);
@@ -412,13 +472,13 @@ describe('4. chaîne RÉELLE Emettre -> confirmation -> Cloturer -> signataire (
     const c1 = await cloturer(d, { set_id: SET });
     const f = d.candidat(SET); f.trashed = true;
     d.ajouter(RELEC, f.name, f.contenu, f.properties);
-    assert.match(texte(await evaluer(d, SET, [c1])), /candidat_fichier_id ≠ identité Drive/);
+    aIssue(await evaluer(d, SET, [c1]), 'abandon', /candidat_fichier_id ≠ identité Drive/);
   });
   test('VERROU E12 (contre-épreuve) : clos_le du candidat modifié sur Drive après clôture -> abandon', async () => {
     const { d } = await lotEmis();
     const c1 = await cloturer(d, { set_id: SET });
     const f = d.candidat(SET); const c = JSON.parse(f.contenu); c.relecture.clos_le = '2026-01-01T00:00:00.000Z'; f.contenu = JSON.stringify(c);
-    assert.match(texte(await evaluer(d, SET, [c1])), /clos_le ≠ relecture\.clos_le/);
+    aIssue(await evaluer(d, SET, [c1]), 'abandon', /clos_le ≠ relecture\.clos_le/);
   });
   for (const [nom, muter, motif] of [
     ['empreinte complète de la génération ≠ lot du candidat', (p) => { p.empreintes.complete = `sha256:${'0'.repeat(64)}`; }, /lot de l'enveloppe de relecture ≠ lot généré/],
@@ -428,11 +488,35 @@ describe('4. chaîne RÉELLE Emettre -> confirmation -> Cloturer -> signataire (
   ]) {
     test(`vraies preuves (contre-épreuve) : ${nom} -> abandon`, async () => {
       const { d } = await lotEmis();
-      const cf = confirmer(d, SET, 1); await pause();
+      const cf = await confirmer(d, SET, 1); await pause();
       const c1 = await cloturer(d, { set_id: SET });
-      const p = preuvesDe(SET); muter(p);
+      const p = await preuvesDe(SET); muter(p);
       const k = await evaluer(d, SET, [c1], [cf], { preuves: p });
       assert.ok(issues(k, 'abandon').some((c) => motif.test(c.raison)), texte(k));
+    });
+  }
+});
+
+describe('4 bis. réconciliation RÉELLE (§20.5) au bout de la chaîne : la décision §21.1 survit, les fausses non', () => {
+  test('cartes écartées : selection / ecartees dans l\'ordre du candidat, empreinte publiée du lot FILTRÉ -> aucun constat', async () => {
+    const { d } = await lotEmis();
+    const ecarter = [lotSource(SET).cartes[1].item_id];
+    const cf = await confirmer(d, SET, 1, { ecarter }); await pause();
+    const c = await cloturer(d, { set_id: SET });
+    const k = await evaluer(d, SET, [c], [cf]);
+    assert.deepEqual(k.constats, []); assert.deepEqual(cf.dec.coeur.ecartees, ecarter);
+  });
+  for (const [nom, muter, motif] of [
+    ['empreinte_relue = empreinte COMPLÈTE (au lieu de pédagogique)', (x) => { x.coeur.empreinte_relue = x.lot_relu.empreinte_complete; }, /empreinte_relue ≠ empreinte pédagogique/],
+    ['empreinte_publiee ≠ lot filtré', (x) => { x.coeur.empreinte_publiee = x.coeur.empreinte_relue; x.coeur.selection.pop(); x.coeur.ecartees.push(x.lot_relu.cartes[x.lot_relu.cartes.length - 1].item_id); x.lot_relu.cartes[x.lot_relu.cartes.length - 1].choix = 'ecarter'; }, /empreinte_publiee ≠ empreinte du lot filtré/],
+    ['selection dans un AUTRE ordre que le candidat', (x) => { x.coeur.selection.reverse(); }, /selection ≠ cartes « garder »/],
+    ['lot_relu.empreinte_complete ≠ lot source', (x) => { x.lot_relu.empreinte_complete = `sha256:${'4'.repeat(64)}`; }, /lot_relu\.empreinte_complete ≠/],
+  ]) {
+    test(`contre-épreuve : ${nom} -> abandon de réconciliation`, async () => {
+      const { d } = await lotEmis();
+      const cf = await confirmer(d, SET, 1, { muter }); await pause();
+      const c = await cloturer(d, { set_id: SET });
+      aIssue(await evaluer(d, SET, [c], [cf]), 'abandon', motif);
     });
   }
 });
@@ -485,21 +569,23 @@ describe('5. Cloturer sur le faux Drive (finding 1) : chaque clause traversée p
     const s = sortieDe((await cloturer(d, { set_id: SET })).r, N_C.sortie);
     assert.deepEqual([s.nb_decisions_listees, s.incomplete_search], [3, true]);
   });
-  test(`plafond : ${B.CONFIG.maxPagesDrive} pages exactes -> complet ; une de plus -> incomplete_search (jamais « complet »)`, async () => {
+  test(`plafond : ${B.CONFIG.maxPagesDrive} pages exactes -> complet ; une de plus -> ERREUR d'exécution (aucune sortie) -> abandon au signataire ; incomplete_search = OU Drive seul`, async () => {
     const { d } = await lotEmis({ taillePage: 1 });
     for (let i = 0; i < B.CONFIG.maxPagesDrive; i += 1) d.ajouter(DEC, `${SET}-${String(i).padStart(32, '0')}.json`, '{}');
-    let s = sortieDe((await cloturer(d, { set_id: SET })).r, N_C.sortie);
+    const s = sortieDe((await cloturer(d, { set_id: SET })).r, N_C.sortie);
     assert.deepEqual([s.nb_decisions_listees, s.incomplete_search], [B.CONFIG.maxPagesDrive, false]);
     d.ajouter(DEC, `${SET}-${'f'.repeat(32)}.json`, '{}');
-    s = sortieDe((await cloturer(d, { set_id: SET })).r, N_C.sortie);
-    assert.deepEqual([s.nb_decisions_listees, s.incomplete_search], [B.CONFIG.maxPagesDrive, true]);
+    const c = await cloturer(d, { set_id: SET });
+    assert.equal(c.r.status, 'error'); assert.match(c.r.erreur, /plafond/); assert.equal(c.r.runData[N_C.sortie], undefined);
+    assert.equal(P.rattacherPage(c.detail, { role: 'cloture', workflowId: 'wfClot', observation: c.obs }).nature, 'erreur');
+    assert.ok(issues(await evaluer(d, SET, [c]), 'abandon').some((x) => /blocage dur/.test(x.raison)));
   });
 });
 
 describe('6. cas clôture du §21.10, par la chaîne réelle', () => {
   test('clôture répétée : deja_clos, clos_le INCHANGÉ, nœud d\'écriture NON exécuté ; deux clôtures cohérentes acceptées', async () => {
     const { d } = await lotEmis();
-    const cf = confirmer(d, SET, 1); await pause();
+    const cf = await confirmer(d, SET, 1); await pause();
     const c1 = await cloturer(d, { set_id: SET });
     const c2 = await cloturer(d, { set_id: SET });
     assert.equal(sortieDe(c2.r, N_C.sortie).deja_clos, true);
@@ -511,7 +597,7 @@ describe('6. cas clôture du §21.10, par la chaîne réelle', () => {
   test('clôture d\'un AUTRE lot (cohérente) : rattachée à cet autre lot, sans effet sur le lot examiné', async () => {
     const d = mondeAvecLot({}, [SET, AUTRE]);
     assert.equal((await emettre(d)).status, 'success'); assert.equal((await emettre(d, { setId: AUTRE })).status, 'success');
-    const cf = confirmer(d, SET, 1); await pause();
+    const cf = await confirmer(d, SET, 1); await pause();
     const c1 = await cloturer(d, { set_id: SET }); const cA = await cloturer(d, { set_id: AUTRE });
     assert.equal(P.rattacherPage(cA.detail, { role: 'cloture', workflowId: 'wfClot', observation: cA.obs }).set_id, AUTRE);
     const k = await evaluer(d, SET, [c1, cA], [cf]);
@@ -522,7 +608,7 @@ describe('6. cas clôture du §21.10, par la chaîne réelle', () => {
     const c = await cloturer(d, { set_id: SET }, { reponses: { [N_C.chercher]: async () => { throw new Error('Drive injoignable'); } } });
     assert.equal(c.r.status, 'error');
     assert.equal(P.rattacherPage(c.detail, { role: 'cloture', workflowId: 'wfClot', observation: c.obs }).nature, 'erreur');
-    assert.match(texte(await evaluer(d, SET, [c])), /blocage dur/);
+    aIssue(await evaluer(d, SET, [c]), 'abandon', /blocage dur/);
   });
   test('exécution en ERREUR, entrée illisible (set_id absent) -> incident de chaîne', async () => {
     const { d } = await lotEmis();
@@ -534,12 +620,12 @@ describe('6. cas clôture du §21.10, par la chaîne réelle', () => {
     const { d } = await lotEmis();
     const t = new Date(Date.now() + 1000).toISOString();
     const c1 = await cloturer(d, { set_id: SET }, { stoppedAt: t }); const c2 = await cloturer(d, { set_id: SET }, { stoppedAt: t });
-    assert.match(texte(await evaluer(d, SET, [c1, c2])), /même date/);
+    aIssue(await evaluer(d, SET, [c1, c2]), 'abandon', /même date/);
   });
   test('listing INCOMPLET sur le MÊME Drive (producteur ET signataire) : refus temporaires §10 C et decisions/, jamais d\'abandon ; diagnostic égal', async () => {
     const { d } = await lotEmis();
     d.o.incomplet = (q) => q.includes(`'${DEC}'`); // Drive déclare la recherche incomplète APRÈS l'émission
-    const cf = confirmer(d, SET, 1); await pause();
+    const cf = await confirmer(d, SET, 1); await pause();
     const c = await cloturer(d, { set_id: SET });
     const s = sortieDe(c.r, N_C.sortie);
     assert.deepEqual([s.incomplete_search, s.nb_decisions_listees], [true, 1]);
@@ -552,11 +638,62 @@ describe('6. cas clôture du §21.10, par la chaîne réelle', () => {
   test('décision arrivée APRÈS la clôture : vue par le signataire, non comptée par le producteur -> temporaire (nouvelle clôture), jamais d\'abandon', async () => {
     const { d } = await lotEmis();
     const c = await cloturer(d, { set_id: SET }); await pause();
-    const cf = confirmer(d, SET, 1);
+    const cf = await confirmer(d, SET, 1);
     const k = await evaluer(d, SET, [c], [cf]);
     assert.deepEqual(issues(k, 'abandon'), [], texte(k));
     assert.ok(issues(k, 'temporaire').some((x) => /écrit après la clôture technique/.test(x.raison)), texte(k));
     assert.deepEqual(k.r.diagnostic, { nb_decisions_listees: 0, decompte_signataire: 1 });
+  });
+  test('listing de clôture incomplet OMETTANT une décision (compteur inférieur) ; signataire complet -> refus temporaire §10 C seul, diagnostic divergent', async () => {
+    const { d } = await lotEmis();
+    const cf1 = await confirmer(d, SET, 1); const cf2 = await confirmer(d, SET, 1); // resoumission : même cœur, autre nonce
+    // Le Drive omet cf2 de la recherche du PRODUCTEUR (requête par nom/propriété) et la déclare incomplète.
+    d.o.incomplet = (q) => q.includes('fonda_set_id'); d.o.omettre = (q, f) => q.includes('fonda_set_id') && f.id === cf2.id;
+    await pause();
+    const c = await cloturer(d, { set_id: SET });
+    assert.deepEqual([sortieDe(c.r, N_C.sortie).nb_decisions_listees, sortieDe(c.r, N_C.sortie).incomplete_search], [1, true]);
+    const k = await evaluer(d, SET, [c], [cf1, cf2]);
+    assert.deepEqual(k.r.diagnostic, { nb_decisions_listees: 1, decompte_signataire: 2 });
+    assert.deepEqual(k.constats, [{ issue: 'temporaire', raison: 'clôture technique : recherche Drive incomplète sans levée explicite (§10 C)' }]);
+  });
+  test('tuple consigné, fichier ABSENT d\'un listing decisions/ INCOMPLET (signataire) -> refus temporaire, jamais d\'abandon ; MÊME CAS avec levée -> toujours temporaire', async () => {
+    const { d } = await lotEmis();
+    const cf = await confirmer(d, SET, 1); await pause();
+    const c = await cloturer(d, { set_id: SET });
+    d.o.incomplet = (q) => q.includes(`'${DEC}'`); d.o.omettre = (q, f) => f.id === cf.id;
+    for (const levees of [[], [{ type: 'recherche_incomplete' }]]) {
+      const k = await evaluer(d, SET, [c], [cf], { levees });
+      assert.deepEqual(issues(k, 'abandon'), [], texte(k)); assert.deepEqual(issues(k, 'incident'), [], texte(k));
+      aIssue(k, 'temporaire', /non trouvée dans un listing incomplet/);
+    }
+  });
+  test('listing incomplet, levée « recherche_incomplete » présente, TOUS les tuples retrouvés -> poursuite (aucun constat)', async () => {
+    const { d } = await lotEmis();
+    const cf = await confirmer(d, SET, 1); await pause();
+    d.o.incomplet = (q) => q.includes(`'${DEC}'`);
+    const c = await cloturer(d, { set_id: SET });
+    assert.equal(sortieDe(c.r, N_C.sortie).incomplete_search, true);
+    assert.deepEqual((await evaluer(d, SET, [c], [cf], { levees: [{ type: 'recherche_incomplete' }] })).constats, []);
+    assert.ok(issues(await evaluer(d, SET, [c], [cf]), 'temporaire').length === 2, 'sans levée : deux refus temporaires');
+  });
+  test('décision écrite PENDANT la clôture, absente de son listing -> évaluée (aucun abandon), compteur divergent en diagnostic', async () => {
+    const { d } = await lotEmis();
+    const c = await cloturer(d, { set_id: SET });
+    // Écriture glissée entre la réponse du listing de clôture et la fin de l'exécution : datée dans l'intervalle.
+    const cf = await confirmer(d, SET, 1);
+    const f = d.fichiers.get(cf.id); f.modifiedTime = new Date(Date.parse(c.obs.stoppedAt) - 1).toISOString();
+    const k = await evaluer(d, SET, [c], [cf]);
+    assert.deepEqual(k.r.diagnostic, { nb_decisions_listees: 0, decompte_signataire: 1 });
+    assert.deepEqual(issues(k, 'abandon'), [], texte(k)); assert.equal(k.r.decisions.length, 1);
+  });
+  test('fichier compté à la clôture PUIS modifié après : modifie_le > fin -> temporaire ; contenu ≠ tuple consigné -> abandon', async () => {
+    const { d } = await lotEmis();
+    const cf = await confirmer(d, SET, 1); await pause();
+    const c = await cloturer(d, { set_id: SET }); await pause();
+    const f = d.fichiers.get(cf.id); f.modifiedTime = new Date().toISOString();
+    aIssue(await evaluer(d, SET, [c], [cf]), 'temporaire', /écrit après la clôture technique/);
+    const x = JSON.parse(f.contenu); x.recu_le = new Date().toISOString(); f.contenu = JSON.stringify(x);
+    aIssue(await evaluer(d, SET, [c], [cf]), 'abandon', /substituée sur Drive/);
   });
   test('candidat « abandonne » : la clôture technique refuse (exécution en erreur attribuée au lot)', async () => {
     const { d } = await lotEmis();
@@ -626,14 +763,14 @@ describe('8. RÉÉMISSION (§21.5, décision point 4) : en_attente ET decisions/
     assert.deepEqual(sortieDe(e2, N_E.sortie), { schema: 'emission-fonda/v1', set_id: SET, candidat_fichier_id: id, relecteur_attribue: RELECTEUR, generation_cle: 2, reemission: true });
     kConfinee(e2, K2);
     assert.equal(d.envois.length, 1); assert.match(d.envois[0], new RegExp(`&k=${K2}\\r\\n`)); assert.match(d.envois[0], /remplace le lien/);
-    const cf = confirmer(d, SET, 2); await pause();
+    const cf = await confirmer(d, SET, 2); await pause();
     const cl = await cloturer(d, { set_id: SET });
     assert.deepEqual((await evaluer(d, SET, [cl], [cf])).constats, []);
   });
   const refusReemission = async (preparer, motif, o = {}) => {
     const d = mondeAvecLot(o);
     assert.equal((await emettre(d)).status, 'success');
-    preparer(d);
+    await preparer(d);
     const avant = d.candidat(SET) && d.candidat(SET).contenu;
     const e = await emettre(d, { k: K2 });
     assert.equal(e.status, 'error'); assert.match(e.erreur, motif);
@@ -641,7 +778,7 @@ describe('8. RÉÉMISSION (§21.5, décision point 4) : en_attente ET decisions/
     if (avant) assert.equal(d.candidat(SET).contenu, avant, 'candidat inchangé');
     assert.equal(d.envois.length, 1, 'aucun nouveau courriel');
   };
-  test('une décision du lot (nom) -> refus', async () => { await refusReemission((d) => { confirmer(d, SET, 1); }, /décision\(s\) du lot/); });
+  test('une décision du lot (nom) -> refus', async () => { await refusReemission(async (d) => { await confirmer(d, SET, 1); }, /décision\(s\) du lot/); });
   test('une décision du lot (propriété seule, à la corbeille) -> refus', async () => { await refusReemission((d) => { d.ajouter(DEC, 'x.json', '{}', { fonda_set_id: SET }, { trashed: true }); }, /décision\(s\) du lot/); });
   test('recherche decisions/ incomplète (incompleteSearch) -> refus, jamais de nouvelle k', async () => {
     await refusReemission((d) => { d.o.incomplet = (q) => q.includes(`'${DEC}'`); }, /incomplète \(incompleteSearch\)/);
@@ -665,5 +802,62 @@ describe('8. RÉÉMISSION (§21.5, décision point 4) : en_attente ET decisions/
     assert.equal((await emettre(d)).status, 'success');
     const e = await emettre(d, { k: K });
     assert.equal(e.status, 'error'); assert.match(e.erreur, /identique/);
+  });
+  test('C6 : enveloppe existante invalide (cree_le, envois, generation_cle non incrémentable) -> refus AVANT toute modification', async () => {
+    for (const muter of [(r) => { r.cree_le = 'invalide'; }, (r) => { r.envois = [{ foo: 'bar' }]; }, (r) => { r.generation_cle = Number.MAX_SAFE_INTEGER; }, (r) => { r.envois[0].le = '2026-11-08'; }, (r) => { r.cle_sha256 = 'x'; }]) {
+      await refusReemission((d) => { const f = d.candidat(SET); const c = JSON.parse(f.contenu); muter(c.relecture); f.contenu = JSON.stringify(c); }, /cree_le|envois|generation_cle|cle_sha256/);
+    }
+  });
+  test('C7 : lot du candidat aux clés RÉORDONNÉES (même empreinte_complete) -> réémission acceptée', async () => {
+    const d = mondeAvecLot();
+    assert.equal((await emettre(d)).status, 'success');
+    const f = d.candidat(SET); const c = JSON.parse(f.contenu);
+    const inverse = (o) => Object.fromEntries(Object.entries(o).reverse());
+    c.lot = inverse({ ...c.lot, cartes: c.lot.cartes.map(inverse) }); f.contenu = JSON.stringify(c);
+    const e = await emettre(d, { k: K2 });
+    assert.equal(e.status, 'success', e.erreur); assert.equal(candidatDe(d).relecture.generation_cle, 2);
+  });
+});
+
+describe('9. C1 — courses : prévention/détection dans Emettre ; INTÉGRITÉ au signataire (le filet se referme)', () => {
+  test('DÉTECTION : candidat modifié entre l\'analyse et la réécriture (clôture intercalée) -> refus, rien réécrit, candidat clos intact', async () => {
+    const d = mondeAvecLot();
+    assert.equal((await emettre(d)).status, 'success');
+    let c1;
+    d.crochets.avantMeta = async () => { c1 = await cloturer(d, { set_id: SET }); };
+    const e = await emettre(d, { k: K2 });
+    assert.equal(e.status, 'error'); assert.match(e.erreur, /course détectée/); assert.equal(e.runData[N_E.reecrire], undefined);
+    assert.equal(c1.r.status, 'success');
+    assert.equal(candidatDe(d).relecture.statut, 'clos'); assert.equal(candidatDe(d).relecture.clos_le, sortieDe(c1.r, N_C.sortie).clos_le);
+    assert.equal(d.envois.length, 1);
+  });
+  test('BACKSTOP : clôture glissée APRÈS le contrôle de version (fenêtre résiduelle) -> réémission efface clos_le ; le signataire REFUSE, puis ABANDONNE à la re-clôture', async () => {
+    const d = mondeAvecLot();
+    assert.equal((await emettre(d)).status, 'success');
+    let c1;
+    d.crochets.avantPatch = async () => { c1 = await cloturer(d, { set_id: SET }); };
+    const e = await emettre(d, { k: K2 });
+    assert.equal(e.status, 'success', e.erreur); // course NON détectée par Emettre : c'est le cas que le signataire doit fermer
+    assert.equal(c1.r.status, 'success');
+    assert.deepEqual([candidatDe(d).relecture.statut, candidatDe(d).relecture.clos_le, candidatDe(d).relecture.generation_cle], ['en_attente', null, 2]);
+    const k1 = await evaluer(d, SET, [c1]);
+    aIssue(k1, 'temporaire', /« en_attente »/);
+    assert.notDeepEqual(k1.constats, [], 'jamais de signature sur cet état');
+    const c2 = await cloturer(d, { set_id: SET });
+    assert.equal(c2.r.status, 'success');
+    aIssue(await evaluer(d, SET, [c1, c2]), 'abandon', /clôtures du lot contradictoires entre elles \(clos_le différents\)/);
+  });
+  test('BACKSTOP : relecteur confirmant avec l\'ANCIEN lien pendant la réémission -> Emettre détecte après écriture (aucun courriel) ; le signataire ABANDONNE (R6)', async () => {
+    const d = mondeAvecLot();
+    assert.equal((await emettre(d)).status, 'success');
+    let cf;
+    d.crochets.avantPatch = async () => { cf = await confirmer(d, SET, 1); };
+    const e = await emettre(d, { k: K2 });
+    assert.equal(e.status, 'error'); assert.equal(e.noeudErreur, N_E.verifier); assert.match(e.erreur, /décision\(s\) apparue\(s\)/);
+    assert.equal(d.envois.length, 1, 'aucun nouveau courriel');
+    assert.equal(candidatDe(d).relecture.generation_cle, 2);
+    await pause();
+    const c = await cloturer(d, { set_id: SET });
+    aIssue(await evaluer(d, SET, [c], [cf]), 'abandon', /\(R6\)/);
   });
 });
