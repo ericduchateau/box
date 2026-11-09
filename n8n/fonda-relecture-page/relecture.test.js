@@ -1614,7 +1614,8 @@ function navigateur(html, { moteur = true } = {}) {
     set textContent(v) { for (const e of this.enfants) e.parent = null; this.enfants = []; this.texte = String(v); }
     setAttribute(k, v) { this.attrs[k] = String(v); }
     addEventListener(t, f) { (this.ecouteurs[t] = this.ecouteurs[t] || []).push(f); }
-    submit() { soumis.push(this); }
+    // Envoi : le corps est FIGÉ ICI, au moment de submit() (une mutation ultérieure du formulaire est sans effet).
+    submit() { if (nav.avantEnvoi) nav.avantEnvoi(this); soumis.push({ method: this.method, action: this.action, corps: serialiser(this) }); }
     get innerHTML() { return INTERDIT('innerHTML')(); }
     set innerHTML(v) { INTERDIT('innerHTML')(); }
     get outerHTML() { return INTERDIT('outerHTML')(); }
@@ -1636,16 +1637,27 @@ function navigateur(html, { moteur = true } = {}) {
   }
   vm.runInContext(/<script nonce="[0-9a-f]{32}">([\s\S]*?)<\/script>/.exec(html)[1], ctx);
   const tous = (n = body) => [n, ...n.enfants.flatMap((e) => tous(e))];
+  // Structure soumise FIGÉE : uniquement des champs cachés ENFANTS DIRECTS du formulaire, NOMMÉS, ACTIFS, sans
+  // descendant. Un champ désactivé ou sans nom (qu'un navigateur omettrait), ou imbriqué, fait ÉCHOUER le test
+  // au lieu d'être silencieusement sérialisé ou ignoré. Occurrences dans l'ordre du DOM, doublons compris.
+  function serialiser(f) {
+    for (const x of f.enfants) {
+      if (x.tag !== 'input' || x.type !== 'hidden' || typeof x.name !== 'string' || x.name === '' || x.disabled || x.enfants.length) {
+        throw new Error(`structure soumise hors gabarit : <${x.tag} type="${x.type}" name="${x.name}"${x.disabled ? ' disabled' : ''}>${x.enfants.length ? ' avec descendants' : ''}`);
+      }
+    }
+    return new URLSearchParams(f.enfants.map((x) => [x.name, String(x.value)])).toString();
+  }
   const nav = {
+    avantEnvoi: null,
     soumis, body, app: ids.app, rejet: ids.rejet,
     boutons: () => tous().filter((n) => n.tag === 'button').map((b) => b.textContent),
     bouton: (t) => tous().find((n) => n.tag === 'button' && n.textContent === t),
     cliquer(t) { const b = nav.bouton(t); assert.ok(b, `bouton « ${t} » absent (${nav.boutons()})`); assert.equal(b.disabled, false, `bouton « ${t} » désactivé`); for (const f of b.ecouteurs.click || []) f({ target: b }); },
     images() { while (images.length) images.shift()(); },
     texte: () => body.textContent,
-    // Occurrences RÉELLEMENT soumises (ordre du DOM, doublons compris) -> corps URL-encodé -> décodage.
-    corps: (f) => new URLSearchParams(f.enfants.filter((x) => x.tag === 'input').map((x) => [x.name, x.value])).toString(),
-    champs: (f) => decoderFormulaire(nav.corps(f)),
+    // Corps figé à l'envoi -> décodage EN CONSERVANT les doublons.
+    champs: (e) => decoderFormulaire(e.corps),
     Noeud,
     tous,
   };
@@ -1656,7 +1668,7 @@ const vm = require('vm');
 describe('13. script de la page EXÉCUTÉ (DOM minimal) -> soumission SIMULÉE (occurrences réelles) -> VRAI Confirmer', () => {
   const pageDe = async () => { const { d } = await lotEmis(); return { d, html: (await afficher(d, { lot: SET, k: K })).http.html }; };
   // Poste le corps URL-encodé EXACT des occurrences soumises (content-length = ses octets).
-  const posterSoumis = (d, n, f) => { const c = n.corps(f); return poster(d, decoderFormulaire(c), { entetes: { 'content-type': 'application/x-www-form-urlencoded', 'content-length': String(Buffer.byteLength(c)) } }); };
+  const posterSoumis = (d, e) => poster(d, decoderFormulaire(e.corps), { entetes: { 'content-type': 'application/x-www-form-urlencoded', 'content-length': String(Buffer.byteLength(e.corps)) } });
   test('DOM simulé : innerHTML, outerHTML, insertAdjacentHTML, document.write LÈVENT (un script qui les utilise échoue)', async () => {
     const { html } = await pageDe();
     const n = navigateur(html);
@@ -1668,16 +1680,40 @@ describe('13. script de la page EXÉCUTÉ (DOM minimal) -> soumission SIMULÉE (
     assert.throws(() => navigateur(injecter('document.write("x");')), /document\.write interdit/);
     assert.doesNotThrow(() => navigateur(injecter('document.getElementById("app").textContent = "";')), 'contre-épreuve : textContent permis');
   });
-  test('doublon dans les occurrences soumises (champ homonyme ajouté au formulaire) -> conservé au décodage -> C1 (400), rien écrit', async () => {
+  const jusquauRecap = (n) => { for (let i = 0; i < 6; i += 1) { n.images(); n.cliquer('Garder'); n.cliquer(i < 5 ? 'Carte suivante' : 'Récapitulatif'); } };
+  test('doublon PRÉSENT AU MOMENT DE L\'ENVOI (champ homonyme ajouté avant submit) -> capturé dans le corps figé, conservé au décodage -> C1 (400), rien écrit ; une mutation APRÈS l\'envoi est sans effet', async () => {
     const { d, html } = await pageDe();
     const n = navigateur(html);
-    for (let i = 0; i < 6; i += 1) { n.images(); n.cliquer('Garder'); n.cliquer(i < 5 ? 'Carte suivante' : 'Récapitulatif'); }
+    jusquauRecap(n);
+    n.avantEnvoi = (f) => { const dup = new n.Noeud('input'); dup.type = 'hidden'; dup.name = 'choix_it01'; dup.value = 'ecarter'; f.appendChild(dup); };
     n.cliquer('Envoyer ma relecture');
-    const f = n.soumis[0];
-    const dup = new n.Noeud('input'); dup.type = 'hidden'; dup.name = 'choix_it01'; dup.value = 'ecarter'; f.appendChild(dup);
-    assert.deepEqual(n.champs(f).choix_it01, ['garder', 'ecarter']);
-    const cf = await posterSoumis(d, n, f);
+    const e = n.soumis[0];
+    assert.deepEqual(n.champs(e).choix_it01, ['garder', 'ecarter']);
+    const cf = await posterSoumis(d, e);
     assert.deepEqual([cf.sortie.type, cf.sortie.motif, cf.http.code], ['rejet', 'C1', 400]); assert.deepEqual(d.dans(DEC), []);
+    const n2 = navigateur(html);
+    jusquauRecap(n2); let formulaire;
+    n2.avantEnvoi = (f) => { formulaire = f; };
+    n2.cliquer('Envoyer ma relecture');
+    const avant = n2.soumis[0].corps;
+    const tard = new n2.Noeud('input'); tard.type = 'hidden'; tard.name = 'choix_it01'; tard.value = 'ecarter'; formulaire.appendChild(tard);
+    assert.equal(n2.soumis[0].corps, avant, 'corps figé à l\'envoi'); assert.equal(n2.champs(n2.soumis[0]).choix_it01, 'garder');
+  });
+  test('structure soumise FIGÉE : un champ désactivé, sans nom, non caché ou imbriqué fait ÉCHOUER l\'envoi (jamais sérialisé ni ignoré en silence)', async () => {
+    const { html } = await pageDe();
+    for (const [nom, muter] of [
+      ['désactivé', (x) => { x.disabled = true; }], ['sans nom', (x) => { x.name = ''; }], ['non caché', (x) => { x.type = 'text'; }],
+      ['imbriqué', (x, n) => { x.appendChild(new n.Noeud('input')); }],
+    ]) {
+      const n = navigateur(html);
+      jusquauRecap(n);
+      n.avantEnvoi = (f) => muter(f.enfants[0], n);
+      assert.throws(() => n.cliquer('Envoyer ma relecture'), /structure soumise hors gabarit/, nom);
+      assert.equal(n.soumis.length, 0, nom);
+    }
+    const n = navigateur(html); jusquauRecap(n);
+    n.avantEnvoi = (f) => { const div = new n.Noeud('div'); f.appendChild(div); };
+    assert.throws(() => n.cliquer('Envoyer ma relecture'), /structure soumise hors gabarit : <div/);
   });
   test('NOMINAL : une carte à la fois (ordre du candidat), Garder/Écarter DÉSACTIVÉS avant le rendu complet, aucun choix par défaut, « Carte suivante » seulement après un choix ; récapitulatif ; soumission simulée -> Confirmer « creee » -> signataire : aucun constat', async () => {
     const { d, html } = await pageDe();
@@ -1695,12 +1731,12 @@ describe('13. script de la page EXÉCUTÉ (DOM minimal) -> soumission SIMULÉE (
     assert.match(n.texte(), /Récapitulatif/); assert.equal(n.soumis.length, 0, 'rien envoyé avant le récapitulatif');
     n.cliquer('Envoyer ma relecture'); n.bouton('Envoyer ma relecture').disabled = false; n.cliquer('Envoyer ma relecture');
     assert.equal(n.soumis.length, 1, 'un seul envoi (double clic)');
-    const f = n.soumis[0];
-    assert.deepEqual([f.method, f.action], ['post', URL_CONFIRMER]);
-    const champs = n.champs(f);
+    const e = n.soumis[0];
+    assert.deepEqual([e.method, e.action], ['post', URL_CONFIRMER]);
+    const champs = n.champs(e);
     assert.deepEqual(Object.keys(champs).sort(), [...B.CHAMPS_FORMULAIRE, ...ids.map((x) => `choix_${x}`)].sort());
     assert.ok(Object.values(champs).every((v) => typeof v === 'string'), 'aucun doublon soumis');
-    const cf = await posterSoumis(d, n, f);
+    const cf = await posterSoumis(d, e);
     assert.equal(cf.sortie.ecriture, 'creee', JSON.stringify(cf.sortie)); assert.deepEqual(cf.dec.coeur.ecartees, ['it02']);
     await pause();
     assert.deepEqual((await evaluer(d, SET, [await cloturer(d, { set_id: SET })], [cf])).constats, []);
@@ -1714,7 +1750,7 @@ describe('13. script de la page EXÉCUTÉ (DOM minimal) -> soumission SIMULÉE (
     n.images(); n.cliquer('Écarter');
     for (let i = 0; i < 6; i += 1) { if (i) { n.images(); n.cliquer('Garder'); } n.cliquer(i < 5 ? 'Carte suivante' : 'Récapitulatif'); }
     n.cliquer('Envoyer ma relecture');
-    assert.deepEqual((await posterSoumis(d, n, n.soumis[0])).dec.coeur.ecartees, ['it01']);
+    assert.deepEqual((await posterSoumis(d, n.soumis[0])).dec.coeur.ecartees, ['it01']);
   });
   test('toutes les cartes écartées : envoi IMPOSSIBLE depuis le récapitulatif ; « Tout rejeter » exige la case de confirmation -> POST rejeter -> Confirmer « creee » (action rejeter)', async () => {
     const { d, html } = await pageDe();
@@ -1728,7 +1764,7 @@ describe('13. script de la page EXÉCUTÉ (DOM minimal) -> soumission SIMULÉE (
     n.cliquer('Tout rejeter');
     const champs = n.champs(n.soumis[0]);
     assert.deepEqual([champs.action, champs.confirmer_rejet, Object.keys(champs).some((c) => c.startsWith('choix_'))], ['rejeter', 'oui', false]);
-    const cf = await posterSoumis(d, n, n.soumis[0]);
+    const cf = await posterSoumis(d, n.soumis[0]);
     assert.deepEqual([cf.sortie.ecriture, cf.dec.coeur.action], ['creee', 'rejeter']);
   });
   test('« Essayer une réponse » : corrigée par le MOTEUR du candidat (verdict affiché) ; profil et exemples affichés', async () => {
