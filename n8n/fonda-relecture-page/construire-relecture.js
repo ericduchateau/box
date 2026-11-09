@@ -126,8 +126,9 @@ const DATE_ISO = `function dateIso(v) {
   return typeof v === 'string' && /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/.test(v) && !Number.isNaN(Date.parse(v)) && new Date(Date.parse(v)).toISOString() === v;
 }`;
 // Version Drive (chaîne int64 monotone) : comparée en BigInt, jamais en Number. « après == avant + 1 » est
-// une détection AU MIEUX (sémantique d'incrément à vérifier en P4) ; la garantie porte sur le contrôle
-// AVANT écriture et sur le verrou mono-écrivain du CLI (P5).
+// une détection AU MIEUX (sémantique d'incrément à vérifier en P4). Les contrôles de version DÉTECTENT les
+// modifications visibles au moment du contrôle ; ils n'excluent PAS les écritures concurrentes : seul le
+// verrou mono-écrivain du CLI (P5) le fait (README « Où vit chaque garantie », E1).
 const VERSION = `function versionSuivante(v) {
   if (typeof v !== 'string' || !/^[0-9]+$/.test(v)) throw new Error('version Drive illisible');
   return String(BigInt(v) + 1n);
@@ -459,8 +460,8 @@ return [{ json: { set_id: e.set_id, relecteur: a.relecteur, reemission: a.reemis
   depot: { nom, frontiere, corps, contenu } } }];`].join('\n\n');
 }
 // D2 (README « Où vit chaque garantie ») : juste avant la réécriture, la version Drive du candidat doit être
-// celle relevée à l'analyse (avant la lecture du contenu) ; deux réémissions parties du même état ne
-// peuvent donc pas toutes deux écrire la même generation_cle. Porteur avec le verrou CLI (P5).
+// celle relevée à l'analyse (avant la lecture du contenu). Détecte une écriture DÉJÀ visible à ce moment ;
+// une écriture concurrente postérieure au contrôle n'est pas exclue (E1) : seul le verrou CLI (P5) l'exclut.
 function codeVerifierVersion() {
   return [ENTETE('réémission : candidat INCHANGÉ depuis l\'analyse (version Drive identique, hors corbeille) avant réécriture.'),
     UN_ITEM(NOEUDS_EMETTRE.verifierVersion),
