@@ -93,9 +93,22 @@
       }
     },
     {
-      "id": "cf45cb89-24c5-43eb-a77f-653f6075ace7",
+      "id": "454b809c-029b-4563-ad36-b83a3d87d90e",
       "position": [
         880,
+        0
+      ],
+      "name": "Verifier recherche candidat",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "// FONDA — recherche du candidat : exactement un fichier, recherche complète, avant lecture.\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('Verifier recherche candidat : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nconst liste = unItem(\"Chercher candidat\");\nif (!Array.isArray(liste.files) || liste.nextPageToken || liste.incompleteSearch) throw new Error('recherche du candidat inexploitable ou incomplète');\nif (liste.files.length !== 1 || typeof liste.files[0].id !== 'string') throw new Error(liste.files.length + ' fichier(s) pour du candidat : exactement un attendu');\nreturn [{ json: { fichier_id: liste.files[0].id } }];"
+      }
+    },
+    {
+      "id": "cf45cb89-24c5-43eb-a77f-653f6075ace7",
+      "position": [
+        1100,
         0
       ],
       "name": "Lire candidat",
@@ -111,7 +124,7 @@
       "parameters": {
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "googleDriveOAuth2Api",
-        "url": "={{ 'https://www.googleapis.com/drive/v3/files/' + $('Chercher candidat').first().json.files[0].id }}",
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files/' + $('Verifier recherche candidat').first().json.fichier_id }}",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -129,20 +142,20 @@
     {
       "id": "0dec338f-0d94-4816-a967-e174212796e9",
       "position": [
-        1100,
+        1320,
         0
       ],
       "name": "Preparer cloture",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "parameters": {
-        "jsCode": "// FONDA — candidat lu : en_attente -> clos (PREMIER clos_le) ; clos -> déjà clos (rien réécrit) ; sinon refus.\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('Preparer cloture : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nconst setId = unItem(\"Valider cloture\").set_id;\nconst liste = unItem(\"Chercher candidat\");\nif (!Array.isArray(liste.files) || liste.nextPageToken || liste.incompleteSearch) throw new Error('recherche du candidat inexploitable ou incomplète');\nif (liste.files.length !== 1) throw new Error(liste.files.length + ' candidat(s) « ' + setId + '.candidat.json » : exactement un attendu');\nconst fichier = liste.files[0];\nconst c = unItem(\"Lire candidat\");\nif (!c || c.schema !== 'candidat-fonda/v1' || !c.lot || !c.relecture || c.lot.set_id !== setId) throw new Error('candidat non conforme');\nconst rel = c.relecture;\nlet dejaClos;\nif (rel.statut === 'clos') {\n  if (typeof rel.clos_le !== 'string') throw new Error('candidat clos sans clos_le');\n  dejaClos = true;\n} else if (rel.statut === 'en_attente') {\n  if (rel.clos_le !== null) throw new Error('candidat en_attente avec clos_le');\n  dejaClos = false;\n} else throw new Error('statut « ' + rel.statut + ' » : clôture impossible');\nconst nouveau = dejaClos ? null : JSON.stringify({ schema: c.schema, lot: c.lot, relecture: { ...rel, statut: 'clos', clos_le: new Date().toISOString() } }, null, 2) + '\\n';\nreturn [{ json: { set_id: setId, fichier_id: fichier.id, deja_clos: dejaClos, contenu: nouveau } }];"
+        "jsCode": "// FONDA — candidat lu : en_attente -> clos (PREMIER clos_le) ; clos -> déjà clos (rien réécrit) ; sinon refus.\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('Preparer cloture : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nfunction dateIso(v) {\n  return typeof v === 'string' && /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/.test(v) && !Number.isNaN(Date.parse(v)) && new Date(Date.parse(v)).toISOString() === v;\n}\n\nconst setId = unItem(\"Valider cloture\").set_id;\nconst fichier = { id: unItem(\"Verifier recherche candidat\").fichier_id };\nconst c = unItem(\"Lire candidat\");\nif (!c || c.schema !== 'candidat-fonda/v1' || !c.lot || !c.relecture || c.lot.set_id !== setId) throw new Error('candidat non conforme');\nconst rel = c.relecture;\nlet dejaClos; let closLe;\nif (rel.statut === 'clos') {\n  // Format VALIDÉ avant toute sortie réussie, jamais réécrit (premier clos_le).\n  if (!dateIso(rel.clos_le)) throw new Error('candidat clos : clos_le absent ou mal formé (jamais réécrit)');\n  dejaClos = true; closLe = rel.clos_le;\n} else if (rel.statut === 'en_attente') {\n  if (rel.clos_le !== null) throw new Error('candidat en_attente avec clos_le');\n  dejaClos = false; closLe = new Date().toISOString();\n} else throw new Error('statut « ' + rel.statut + ' » : clôture impossible');\nconst nouveau = dejaClos ? null : JSON.stringify({ schema: c.schema, lot: c.lot, relecture: { ...rel, statut: 'clos', clos_le: closLe } }, null, 2) + '\\n';\nreturn [{ json: { set_id: setId, fichier_id: fichier.id, deja_clos: dejaClos, clos_le: closLe, contenu: nouveau } }];"
       }
     },
     {
       "id": "77a37489-e763-4f23-a509-9c9b5e768402",
       "position": [
-        1320,
+        1540,
         0
       ],
       "name": "Deja clos ?",
@@ -175,7 +188,7 @@
     {
       "id": "9977a0c2-111e-4761-a3c8-640e7d027f30",
       "position": [
-        1540,
+        1760,
         0
       ],
       "name": "FONDA Ecrire candidat clos",
@@ -199,6 +212,10 @@
             {
               "name": "uploadType",
               "value": "media"
+            },
+            {
+              "name": "fields",
+              "value": "id,name"
             }
           ]
         },
@@ -214,7 +231,7 @@
     {
       "id": "669c4fc9-df54-4e77-a86e-bd92f6217b32",
       "position": [
-        1760,
+        1980,
         0
       ],
       "name": "Relire candidat",
@@ -248,7 +265,7 @@
     {
       "id": "6f4e7e43-bcbf-4a40-a2c8-342ebac2450d",
       "position": [
-        1980,
+        2200,
         0
       ],
       "name": "Lister decisions",
@@ -308,14 +325,14 @@
     {
       "id": "6302d037-ec64-49e2-a021-53f1453ae18a",
       "position": [
-        2200,
+        2420,
         0
       ],
       "name": "FONDA Sortie cloture",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "parameters": {
-        "jsCode": "// FONDA — sortie OBSERVÉE cloture-fonda/v1 (forme exacte du consommateur gelé, §21.1).\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('FONDA Sortie cloture : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nconst p = unItem(\"Preparer cloture\");\nconst relu = unItem(\"Relire candidat\");\nif (!relu || !relu.relecture || relu.relecture.statut !== 'clos' || typeof relu.relecture.clos_le !== 'string') throw new Error('candidat relu non clos');\nconst pagesDec = $(\"Lister decisions\").all().map((i) => i.json);\nlet n = 0; let incomplet = false;\nfor (const pg of pagesDec) {\n  if (!pg || !Array.isArray(pg.files)) throw new Error('listing de decisions/ inexploitable');\n  if (pg.incompleteSearch === true) incomplet = true;\n  n += pg.files.length;\n}\nif (pagesDec.length && pagesDec[pagesDec.length - 1].nextPageToken) incomplet = true; // pagination non terminée\nreturn [{ json: { schema: 'cloture-fonda/v1', set_id: p.set_id, clos_le: relu.relecture.clos_le, deja_clos: p.deja_clos,\n  candidat_fichier_id: p.fichier_id, nb_decisions_listees: n, incomplete_search: incomplet } }];"
+        "jsCode": "// FONDA — sortie OBSERVÉE cloture-fonda/v1 (forme exacte du consommateur gelé, §21.1).\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('FONDA Sortie cloture : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nfunction dateIso(v) {\n  return typeof v === 'string' && /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/.test(v) && !Number.isNaN(Date.parse(v)) && new Date(Date.parse(v)).toISOString() === v;\n}\n\nfunction agregerPages(nom) {\n  const pages = $(nom).all().map((i) => i.json);\n  if (!pages.length) throw new Error(nom + ' : aucune page');\n  const fichiers = []; let incompleteSearch = false;\n  for (const pg of pages) {\n    if (!pg || !Array.isArray(pg.files)) throw new Error(nom + ' : page de listing inexploitable');\n    if (pg.incompleteSearch === true) incompleteSearch = true;\n    fichiers.push(...pg.files);\n  }\n  const plafond = Boolean(pages[pages.length - 1].nextPageToken);\n  return { fichiers, incompleteSearch, plafond, complet: !incompleteSearch && !plafond };\n}\n\nconst p = unItem(\"Preparer cloture\");\nconst relu = unItem(\"Relire candidat\");\nif (!relu || relu.schema !== 'candidat-fonda/v1' || !relu.lot || relu.lot.set_id !== p.set_id || !relu.relecture || relu.relecture.statut !== 'clos') throw new Error('candidat relu non clos');\nif (!dateIso(relu.relecture.clos_le) || relu.relecture.clos_le !== p.clos_le) throw new Error('candidat relu : clos_le mal formé ou ≠ clos_le préparé');\n// Un seul indicateur au contrat gelé : incompleteSearch Drive OU plafond de pagination -> true (jamais « complet »).\nconst d = agregerPages(\"Lister decisions\");\nreturn [{ json: { schema: 'cloture-fonda/v1', set_id: p.set_id, clos_le: relu.relecture.clos_le, deja_clos: p.deja_clos,\n  candidat_fichier_id: p.fichier_id, nb_decisions_listees: d.fichiers.length, incomplete_search: !d.complet } }];"
       }
     }
   ],
@@ -354,6 +371,17 @@
       ]
     },
     "Chercher candidat": {
+      "main": [
+        [
+          {
+            "node": "Verifier recherche candidat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verifier recherche candidat": {
       "main": [
         [
           {
