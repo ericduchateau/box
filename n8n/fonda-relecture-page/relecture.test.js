@@ -84,10 +84,10 @@ describe('1. octet-identité interne et 2. contrôles statiques', () => {
       }
     });
   }
-  test('modules et fonctions embarqués = copies EXACTES des sources du dépôt (Analyser : catalogue, journal ; Preparer : canonique, projectionComplete)', () => {
+  test('modules et fonctions embarqués = copies EXACTES des sources du dépôt (Analyser : catalogue, journal ; Preparer : catalogue, canonique, projectionComplete)', () => {
     const wf = JSON.parse(lireExport('emettre'));
     const js = (nom) => wf.nodes.find((n) => n.name === nom).parameters.jsCode;
-    for (const [nom, rel] of [[N_E.analyser, B.MODULES.catalogue], [N_E.analyser, B.MODULES.journal], [N_E.preparer, B.MODULES.canonique]]) {
+    for (const [nom, rel] of [[N_E.analyser, B.MODULES.catalogue], [N_E.analyser, B.MODULES.journal], [N_E.preparer, B.MODULES.catalogue], [N_E.preparer, B.MODULES.canonique]]) {
       const src = fs.readFileSync(path.join(RACINE, rel), 'utf8');
       const m = new RegExp(`// >>> MODULE ${rel} \\(copie exacte, sha256=([0-9a-f]{64})\\)\\n[^\\n]*\\n\\(function \\(module, exports, require, self\\) \\{\\n([\\s\\S]*?)\\}\\)\\(M_`).exec(js(nom));
       assert.ok(m, `${nom} : ${rel}`); assert.equal(m[2], src, rel); assert.equal(m[1], sha(Buffer.from(src)), rel);
@@ -233,7 +233,11 @@ function fauxDrive(o = {}) {
           else if (!['body', 'headers'].includes(x.type)) throw new Error(`type de paramètre de pagination non simulé : ${x.type}`);
         }
       }
-      try { return { statusCode: 200, body: d.lister(qs) }; } catch (e) { return { statusCode: e.statut || 500, body: {} }; }
+      let corps;
+      try { corps = d.lister(qs); } catch (e) { return { statusCode: e.statut || 500, body: {} }; }
+      // Crochet APRÈS le calcul de la page, AVANT la réponse : écriture vraiment concurrente du listing.
+      if (d.crochets.apresListe && d.crochets.apresListe.si(qs.q || '')) { const h = d.crochets.apresListe.f; d.crochets.apresListe = null; await h(); }
+      return { statusCode: 200, body: corps };
     },
     n8nMeta: async (r) => {
       const f = fichiers.get(r.url.split('/').pop());
@@ -255,8 +259,9 @@ function fauxDrive(o = {}) {
       const f = fichiers.get(r.url.split('/').pop());
       if (r.method !== 'PATCH' || !f) return { statusCode: 404, body: {} };
       if (d.crochets.avantPatch) { const h = d.crochets.avantPatch; d.crochets.avantPatch = null; await h(); }
-      f.contenu = r.body; f.modifiedTime = new Date().toISOString(); f.version = String(Number(f.version) + 1);
-      return { statusCode: 200, body: { id: f.id, name: f.name } };
+      f.contenu = r.body; f.modifiedTime = new Date().toISOString(); f.version = String(BigInt(f.version) + 1n); // int64 monotone (D6)
+      const champs = r.queryParameters.parameters.find((x) => x.name === 'fields').value.split(',');
+      return { statusCode: 200, body: Object.fromEntries(champs.map((c) => [c, f[c]])) };
     },
   };
   for (const id of [CAND, RELEC, DEC, 'dossier-autre']) fichiers.set(id, { id, name: id, parents: [], mimeType: 'application/vnd.google-apps.folder', properties: {}, trashed: false });
@@ -354,7 +359,7 @@ async function cloturer(d, corps, o = {}) {
   const debut = new Date().toISOString();
   const r = await executerGraphe(JSON.parse(lireExport('cloturer')), {
     corps,
-    reponses: { [N_C.chercher]: d.n8nListe, [N_C.lire]: d.n8nMedia, [N_C.ecrire]: d.n8nReecrire, [N_C.relire]: d.n8nMedia, [N_C.decisions]: d.n8nListe, ...(o.reponses || {}) },
+    reponses: { [N_C.chercher]: d.n8nListe, [N_C.lire]: d.n8nMedia, [N_C.relireVersion]: d.n8nMeta, [N_C.ecrire]: d.n8nReecrire, [N_C.relire]: d.n8nMedia, [N_C.decisions]: d.n8nListe, ...(o.reponses || {}) },
   });
   await pause();
   const fin = o.stoppedAt || new Date().toISOString();
@@ -506,6 +511,14 @@ describe('4 bis. réconciliation RÉELLE (§20.5) au bout de la chaîne : la dé
     const k = await evaluer(d, SET, [c], [cf]);
     assert.deepEqual(k.constats, []); assert.deepEqual(cf.dec.coeur.ecartees, ecarter);
   });
+  test('D4 : deux décisions CONFORMES, sélections différentes, chacune confirmée -> abandon pour UNICITÉ seule (L.unicite)', async () => {
+    const { d } = await lotEmis();
+    const cf1 = await confirmer(d, SET, 1); const cf2 = await confirmer(d, SET, 1, { ecarter: [lotSource(SET).cartes[1].item_id] }); await pause();
+    const c = await cloturer(d, { set_id: SET });
+    const k = await evaluer(d, SET, [c], [cf1, cf2]);
+    assert.equal(k.r.decisions.length, 2);
+    assert.deepEqual(k.constats, [{ issue: 'abandon', raison: 'unicité (§10 A) : 2 cœurs distincts' }, { issue: 'abandon', raison: 'unicité (§10 A) : 2 lot_relu distincts' }]);
+  });
   for (const [nom, muter, motif] of [
     ['empreinte_relue = empreinte COMPLÈTE (au lieu de pédagogique)', (x) => { x.coeur.empreinte_relue = x.lot_relu.empreinte_complete; }, /empreinte_relue ≠ empreinte pédagogique/],
     ['empreinte_publiee ≠ lot filtré', (x) => { x.coeur.empreinte_publiee = x.coeur.empreinte_relue; x.coeur.selection.pop(); x.coeur.ecartees.push(x.lot_relu.cartes[x.lot_relu.cartes.length - 1].item_id); x.lot_relu.cartes[x.lot_relu.cartes.length - 1].choix = 'ecarter'; }, /empreinte_publiee ≠ empreinte du lot filtré/],
@@ -583,6 +596,13 @@ describe('5. Cloturer sur le faux Drive (finding 1) : chaque clause traversée p
 });
 
 describe('6. cas clôture du §21.10, par la chaîne réelle', () => {
+  test('D6 : version Drive au-delà de 2^53 -> incrément EXACT (BigInt) dans le faux Drive ET dans le contrôle après écriture de Cloturer', async () => {
+    const { d } = await lotEmis();
+    d.candidat(SET).version = '9007199254740993';
+    const c = await cloturer(d, { set_id: SET });
+    assert.equal(c.r.status, 'success', c.r.erreur);
+    assert.equal(d.candidat(SET).version, '9007199254740994');
+  });
   test('clôture répétée : deja_clos, clos_le INCHANGÉ, nœud d\'écriture NON exécuté ; deux clôtures cohérentes acceptées', async () => {
     const { d } = await lotEmis();
     const cf = await confirmer(d, SET, 1); await pause();
@@ -676,15 +696,18 @@ describe('6. cas clôture du §21.10, par la chaîne réelle', () => {
     assert.deepEqual((await evaluer(d, SET, [c], [cf], { levees: [{ type: 'recherche_incomplete' }] })).constats, []);
     assert.ok(issues(await evaluer(d, SET, [c], [cf]), 'temporaire').length === 2, 'sans levée : deux refus temporaires');
   });
-  test('décision écrite PENDANT la clôture, absente de son listing -> évaluée (aucun abandon), compteur divergent en diagnostic', async () => {
+  test('D5 : décision VRAIMENT écrite pendant le listing de Cloturer (après le calcul de la page), absente de ce listing -> aucun constat, décision retenue, compteur divergent en diagnostic', async () => {
     const { d } = await lotEmis();
+    let cf;
+    d.crochets.apresListe = { si: (q) => q.includes(`'${DEC}'`), f: async () => { cf = await confirmer(d, SET, 1); } };
     const c = await cloturer(d, { set_id: SET });
-    // Écriture glissée entre la réponse du listing de clôture et la fin de l'exécution : datée dans l'intervalle.
-    const cf = await confirmer(d, SET, 1);
-    const f = d.fichiers.get(cf.id); f.modifiedTime = new Date(Date.parse(c.obs.stoppedAt) - 1).toISOString();
+    assert.equal(c.r.status, 'success', c.r.erreur); assert.ok(cf, 'écriture concurrente effectuée');
+    assert.equal(sortieDe(c.r, N_C.sortie).nb_decisions_listees, 0, 'absente du listing de clôture');
+    const f = d.fichiers.get(cf.id);
+    assert.ok(f.modifiedTime >= c.obs.startedAt && f.modifiedTime <= c.obs.stoppedAt, 'écrite PENDANT l\'exécution de clôture');
     const k = await evaluer(d, SET, [c], [cf]);
-    assert.deepEqual(k.r.diagnostic, { nb_decisions_listees: 0, decompte_signataire: 1 });
-    assert.deepEqual(issues(k, 'abandon'), [], texte(k)); assert.equal(k.r.decisions.length, 1);
+    assert.deepEqual(k.constats, []);
+    assert.deepEqual(k.r.diagnostic, { nb_decisions_listees: 0, decompte_signataire: 1 }); assert.equal(k.r.decisions.length, 1);
   });
   test('fichier compté à la clôture PUIS modifié après : modifie_le > fin -> temporaire ; contenu ≠ tuple consigné -> abandon', async () => {
     const { d } = await lotEmis();
@@ -808,6 +831,18 @@ describe('8. RÉÉMISSION (§21.5, décision point 4) : en_attente ET decisions/
       await refusReemission((d) => { const f = d.candidat(SET); const c = JSON.parse(f.contenu); muter(c.relecture); f.contenu = JSON.stringify(c); }, /cree_le|envois|generation_cle|cle_sha256/);
     }
   });
+  test('D3 : lot du candidat NON CONFORME malgré une empreinte_complete égale (schema faux, champ ajouté) -> refus AVANT toute modification', async () => {
+    for (const muter of [(l) => { l.schema = 'lot-fonda/v0'; }, (l) => { l.code_suppression = '1234'; }]) {
+      await refusReemission((d) => { const f = d.candidat(SET); const c = JSON.parse(f.contenu); muter(c.lot); f.contenu = JSON.stringify(c); }, /lot non conforme/);
+    }
+  });
+  test('D3 : cree_le FUTUR (≤ expire_le lu) -> refus : jamais expire_le ≤ cree_le dans le résultat', async () => {
+    await refusReemission((d) => {
+      const f = d.candidat(SET); const c = JSON.parse(f.contenu);
+      c.relecture.cree_le = new Date(Date.now() + 20 * 86400000).toISOString(); c.relecture.expire_le = new Date(Date.now() + 25 * 86400000).toISOString();
+      f.contenu = JSON.stringify(c);
+    }, /cree_le futur ou expire_le ≤ cree_le/);
+  });
   test('C7 : lot du candidat aux clés RÉORDONNÉES (même empreinte_complete) -> réémission acceptée', async () => {
     const d = mondeAvecLot();
     assert.equal((await emettre(d)).status, 'success');
@@ -819,7 +854,7 @@ describe('8. RÉÉMISSION (§21.5, décision point 4) : en_attente ET decisions/
   });
 });
 
-describe('9. C1 — courses : prévention/détection dans Emettre ; INTÉGRITÉ au signataire (le filet se referme)', () => {
+describe('9. courses (D1, D2) : DEUX piliers — signataire + un seul écrivain CLI ; détection AVANT écriture (porteuse), APRÈS = +1 (au mieux)', () => {
   test('DÉTECTION : candidat modifié entre l\'analyse et la réécriture (clôture intercalée) -> refus, rien réécrit, candidat clos intact', async () => {
     const d = mondeAvecLot();
     assert.equal((await emettre(d)).status, 'success');
@@ -831,13 +866,65 @@ describe('9. C1 — courses : prévention/détection dans Emettre ; INTÉGRITÉ 
     assert.equal(candidatDe(d).relecture.statut, 'clos'); assert.equal(candidatDe(d).relecture.clos_le, sortieDe(c1.r, N_C.sortie).clos_le);
     assert.equal(d.envois.length, 1);
   });
-  test('BACKSTOP : clôture glissée APRÈS le contrôle de version (fenêtre résiduelle) -> réémission efface clos_le ; le signataire REFUSE, puis ABANDONNE à la re-clôture', async () => {
+  test('D1 : clôture lisant la génération 1, réémission en génération 2 intercalée, confirmation de génération 1 en vol -> Cloturer ÉCHOUE au contrôle de version, rien réécrit ; le signataire ABANDONNE', async () => {
+    const d = mondeAvecLot();
+    assert.equal((await emettre(d)).status, 'success');
+    let e2; let cf;
+    // Cloturer a lu la génération 1 ; AVANT son contrôle de version : réémission (gén. 2) puis confirmation par l'ancien lien.
+    d.crochets.avantMeta = async () => { e2 = await emettre(d, { k: K2 }); cf = await confirmer(d, SET, 1); };
+    const c = await cloturer(d, { set_id: SET });
+    assert.equal(e2.status, 'success', e2.erreur);
+    assert.equal(c.r.status, 'error'); assert.equal(c.r.noeudErreur, N_C.verifierVersion); assert.match(c.r.erreur, /course détectée/);
+    assert.equal(c.r.runData[N_C.ecrire], undefined, 'rien réécrit');
+    assert.deepEqual([candidatDe(d).relecture.statut, candidatDe(d).relecture.generation_cle, candidatDe(d).relecture.cle_sha256], ['en_attente', 2, sha(Buffer.from(K2, 'utf8'))], 'génération 2 intacte (clé révoquée NON rétablie)');
+    assert.equal(P.rattacherPage(c.detail, { role: 'cloture', workflowId: 'wfClot', observation: c.obs }).nature, 'erreur');
+    const k = await evaluer(d, SET, [c], [cf]);
+    aIssue(k, 'abandon', /blocage dur/); assert.notDeepEqual(k.constats, []);
+  });
+  test('D1, fenêtre résiduelle (au mieux) : réémission glissée APRÈS le contrôle de version de Cloturer -> version après ≠ avant + 1 -> Cloturer en ERREUR ; le signataire ABANDONNE', async () => {
+    const d = mondeAvecLot();
+    assert.equal((await emettre(d)).status, 'success');
+    let e2; let cf;
+    d.crochets.avantPatch = async () => { e2 = await emettre(d, { k: K2 }); cf = await confirmer(d, SET, 1); };
+    const c = await cloturer(d, { set_id: SET });
+    assert.equal(e2.status, 'success', e2.erreur);
+    assert.equal(c.r.status, 'error'); assert.equal(c.r.noeudErreur, N_C.sortie); assert.match(c.r.erreur, /écriture concurrente détectée/);
+    assert.equal(c.r.runData[N_C.sortie], undefined, 'aucune sortie observée');
+    aIssue(await evaluer(d, SET, [c], [cf]), 'abandon', /blocage dur/);
+  });
+  test('D2 : deux réémissions parties du MÊME état -> la seconde à écrire ÉCHOUE au contrôle de version (aucune génération réutilisée, aucun courriel) ; la chaîne de la première reste nominale', async () => {
+    const d = mondeAvecLot();
+    assert.equal((await emettre(d)).status, 'success');
+    const K3 = 'ef'.repeat(32);
+    let eB;
+    d.crochets.avantMeta = async () => { eB = await emettre(d, { k: K3 }); };
+    const eA = await emettre(d, { k: K2 });
+    assert.equal(eB.status, 'success', eB.erreur);
+    assert.equal(eA.status, 'error'); assert.equal(eA.noeudErreur, N_E.verifierVersion); assert.match(eA.erreur, /course détectée/); assert.equal(eA.runData[N_E.reecrire], undefined);
+    assert.deepEqual([candidatDe(d).relecture.generation_cle, candidatDe(d).relecture.cle_sha256], [2, sha(Buffer.from(K3, 'utf8'))]);
+    assert.equal(d.envois.length, 2, 'émission initiale + B seulement'); assert.match(d.envois[1], new RegExp(`&k=${K3}\\r\\n`));
+    const cf = await confirmer(d, SET, 2); await pause();
+    assert.deepEqual((await evaluer(d, SET, [await cloturer(d, { set_id: SET })], [cf])).constats, []);
+  });
+  test('D2, fenêtre résiduelle (au mieux) : réémission B glissée APRÈS le contrôle de version de A -> A détecte (version après ≠ avant + 1), aucun courriel de A ; seul le lien de B est parti, sous une clé désormais morte : DISPONIBILITÉ, pas intégrité', async () => {
+    const d = mondeAvecLot();
+    assert.equal((await emettre(d)).status, 'success');
+    const K3 = 'ef'.repeat(32);
+    let eB;
+    d.crochets.avantPatch = async () => { eB = await emettre(d, { k: K3 }); };
+    const eA = await emettre(d, { k: K2 });
+    assert.equal(eB.status, 'success', eB.erreur);
+    assert.equal(eA.status, 'error'); assert.equal(eA.noeudErreur, N_E.verifier); assert.match(eA.erreur, /écriture concurrente détectée/);
+    assert.equal(d.envois.length, 2, 'aucun courriel de A'); assert.ok(!d.envois.some((m) => m.includes(K2)), 'la clé stockée (A) n\'a jamais été envoyée');
+    assert.equal(candidatDe(d).relecture.cle_sha256, sha(Buffer.from(K2, 'utf8')), 'le lien de B ne correspond plus à cle_sha256 : lot inconfirmable (refus C3 en P2), nouvelle réémission ou abandon');
+  });
+  test('BACKSTOP signataire : clôture glissée après le contrôle de version d\'Emettre -> Emettre détecte (au mieux) ; même sans cette détection, le signataire REFUSE puis ABANDONNE à la re-clôture', async () => {
     const d = mondeAvecLot();
     assert.equal((await emettre(d)).status, 'success');
     let c1;
     d.crochets.avantPatch = async () => { c1 = await cloturer(d, { set_id: SET }); };
     const e = await emettre(d, { k: K2 });
-    assert.equal(e.status, 'success', e.erreur); // course NON détectée par Emettre : c'est le cas que le signataire doit fermer
+    assert.equal(e.status, 'error'); assert.match(e.erreur, /écriture concurrente détectée/); assert.equal(d.envois.length, 1, 'aucun nouveau courriel');
     assert.equal(c1.r.status, 'success');
     assert.deepEqual([candidatDe(d).relecture.statut, candidatDe(d).relecture.clos_le, candidatDe(d).relecture.generation_cle], ['en_attente', null, 2]);
     const k1 = await evaluer(d, SET, [c1]);

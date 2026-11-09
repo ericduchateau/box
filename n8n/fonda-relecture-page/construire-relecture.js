@@ -46,7 +46,7 @@ const CONFIG = Object.freeze({
   tableRelecteurs: P4('ID_DATA_TABLE_RELECTEURS'), // Data Table : relecteur_attribue -> adresse (jamais dans le dépôt)
   urlPage: P4('URL_PAGE_RELECTURE'), // …/webhook/<chemin> de « FONDA - Page relecture » (P2)
   dureeCleJours: 14,
-  maxPagesDrive: 50, // plafond de pagination (pages de 1000) : inatteignable pour un lot ; atteint = ERREUR (jamais « complet »)
+  maxPagesDrive: 50, // plafond de pagination : atteint = ERREUR d'exécution (jamais « complet ») ; pageSize est un MAXIMUM, Drive peut rendre moins
   // Credentials : RÉFÉRENCES (id, nom) seulement ; aucune valeur dans le dépôt.
   credentialDrive: { id: 'cukxQDNwWIqOAK02', name: 'Google Drive la bonne!' },
   credentialEmettre: { id: P4('CREDENTIAL_EMETTRE'), name: 'FONDA Emettre Token' },
@@ -65,6 +65,8 @@ const NOEUDS_CLOTURER = Object.freeze({
   lire: 'Lire candidat',
   preparer: 'Preparer cloture',
   siDejaClos: 'Deja clos ?',
+  relireVersion: 'Relire version cloture',
+  verifierVersion: 'Verifier version cloture',
   ecrire: R.ROLES.cloture.ecriture, // FONDA Ecrire candidat clos
   relire: 'Relire candidat',
   decisions: 'Lister decisions',
@@ -122,6 +124,13 @@ const SET_ID = `const SET_ID_PATTERN = new RegExp(${JSON.stringify(C.SET_ID_PATT
 // Date ISO CANONIQUE (forme écrite par ce producteur : toISOString), contrôlée avant toute sortie réussie.
 const DATE_ISO = `function dateIso(v) {
   return typeof v === 'string' && /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/.test(v) && !Number.isNaN(Date.parse(v)) && new Date(Date.parse(v)).toISOString() === v;
+}`;
+// Version Drive (chaîne int64 monotone) : comparée en BigInt, jamais en Number. « après == avant + 1 » est
+// une détection AU MIEUX (sémantique d'incrément à vérifier en P4) ; la garantie porte sur le contrôle
+// AVANT écriture et sur le verrou mono-écrivain du CLI (P5).
+const VERSION = `function versionSuivante(v) {
+  if (typeof v !== 'string' || !/^[0-9]+$/.test(v)) throw new Error('version Drive illisible');
+  return String(BigInt(v) + 1n);
 }`;
 // Agrégation d'un listing PAGINÉ (un item par page, n8n) : distingue la recherche déclarée incomplète
 // par Drive (incompleteSearch, sur N'IMPORTE QUELLE page) du PLAFOND de pagination atteint (dernière
@@ -193,9 +202,13 @@ const contenuDrive = (nom, expressionId) => drive(nom, {
 });
 const reecritureDrive = (nom, expressionId, expressionContenu) => drive(nom, {
   method: 'PATCH', url: `={{ 'https://www.googleapis.com/upload/drive/v3/files/' + ${expressionId} }}`,
-  sendQuery: true, queryParameters: { parameters: [{ name: 'uploadType', value: 'media' }, { name: 'fields', value: 'id,name' }] },
+  sendQuery: true, queryParameters: { parameters: [{ name: 'uploadType', value: 'media' }, { name: 'fields', value: 'id,name,version' }] },
   sendBody: true, contentType: 'raw', rawContentType: 'application/json; charset=UTF-8', body: `={{ ${expressionContenu} }}`,
   options: { timeout: 30000 },
+});
+const metaVersion = (nom, expressionId) => drive(nom, {
+  url: `={{ 'https://www.googleapis.com/drive/v3/files/' + ${expressionId} }}`,
+  sendQuery: true, queryParameters: { parameters: [{ name: 'fields', value: 'id,version,trashed' }] }, options: { timeout: 30000 },
 });
 // TOUT le lot dans decisions/ : nom <set_id>-… OU propriété fonda_set_id, corbeille COMPRISE (§9, §21.1).
 const qDecisions = (setIdExpr) => `={{ "'${CONFIG.dossierDecisions}' in parents and (name contains '" + ${setIdExpr} + "-' or properties has { key='fonda_set_id' and value='" + ${setIdExpr} + "' })" }}`;
@@ -222,12 +235,15 @@ const positionner = (prefixe) => (n, i) => ({ id: uuid(`${prefixe}:${n.name}`), 
 const REGLAGES = { executionOrder: 'v1', saveDataSuccessExecution: 'all', saveDataErrorExecution: 'all', saveManualExecutions: true, saveExecutionProgress: true, timezone: 'Europe/Paris' };
 
 // Recherche d'UN fichier par nom exact : vérifiée AVANT toute lecture de contenu (message explicite).
-function codeVerifierRecherche(noeud, recherche, quoi) {
+// avecVersion : la version Drive est relevée ICI, AVANT la lecture du contenu (une écriture intercalée
+// ne peut que la faire paraître périmée : détection prudente).
+function codeVerifierRecherche(noeud, recherche, quoi, avecVersion = false) {
   return [ENTETE(`recherche ${quoi} : exactement un fichier, recherche complète, avant lecture.`), UN_ITEM(noeud),
     `const liste = unItem(${JSON.stringify(recherche)});
 if (!Array.isArray(liste.files) || liste.nextPageToken || liste.incompleteSearch) throw new Error('recherche ${quoi} inexploitable ou incomplète');
 if (liste.files.length !== 1 || typeof liste.files[0].id !== 'string') throw new Error(liste.files.length + ' fichier(s) pour ${quoi} : exactement un attendu');
-return [{ json: { fichier_id: liste.files[0].id } }];`].join('\n\n');
+${avecVersion ? `if (typeof liste.files[0].version !== 'string' || !/^[0-9]+$/.test(liste.files[0].version)) throw new Error('${quoi} : version Drive illisible');
+return [{ json: { fichier_id: liste.files[0].id, version: liste.files[0].version } }];` : 'return [{ json: { fichier_id: liste.files[0].id } }];'}`].join('\n\n');
 }
 
 // ═══ CLÔTURER (sortie observée cloture-fonda/v1) ═══
@@ -252,10 +268,11 @@ function codePreparerCloture() {
   return [ENTETE('candidat lu : en_attente -> clos (PREMIER clos_le) ; clos -> déjà clos (rien réécrit) ; sinon refus.'),
     UN_ITEM(NOEUDS_CLOTURER.preparer), DATE_ISO,
     `const setId = unItem(${JSON.stringify(NOEUDS_CLOTURER.valider)}).set_id;
-const fichier = { id: unItem(${JSON.stringify(NOEUDS_CLOTURER.verifierListe)}).fichier_id };
+const fichier = unItem(${JSON.stringify(NOEUDS_CLOTURER.verifierListe)});
 const c = unItem(${JSON.stringify(NOEUDS_CLOTURER.lire)});
 if (!c || c.schema !== 'candidat-fonda/v1' || !c.lot || !c.relecture || c.lot.set_id !== setId) throw new Error('candidat non conforme');
 const rel = c.relecture;
+if (!Number.isSafeInteger(rel.generation_cle) || rel.generation_cle < 1 || typeof rel.cle_sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(rel.cle_sha256)) throw new Error('candidat : generation_cle ou cle_sha256 invalide');
 let dejaClos; let closLe;
 if (rel.statut === 'clos') {
   // Format VALIDÉ avant toute sortie réussie, jamais réécrit (premier clos_le).
@@ -266,15 +283,33 @@ if (rel.statut === 'clos') {
   dejaClos = false; closLe = new Date().toISOString();
 } else throw new Error('statut « ' + rel.statut + ' » : clôture impossible');
 const nouveau = dejaClos ? null : JSON.stringify({ schema: c.schema, lot: c.lot, relecture: { ...rel, statut: 'clos', clos_le: closLe } }, null, 2) + '\\n';
-return [{ json: { set_id: setId, fichier_id: fichier.id, deja_clos: dejaClos, clos_le: closLe, contenu: nouveau } }];`].join('\n\n');
+// version (relevée AVANT la lecture), generation_cle et cle_sha256 LUS : contrôlés avant et après l'écriture.
+return [{ json: { set_id: setId, fichier_id: fichier.fichier_id, version: fichier.version, generation_cle: rel.generation_cle, cle_sha256: rel.cle_sha256, deja_clos: dejaClos, clos_le: closLe, contenu: nouveau } }];`].join('\n\n');
+}
+// D1 : la clôture ne réécrit QUE l'enveloppe qu'elle a lue. Juste avant l'écriture, la version Drive doit être
+// celle relevée avant la lecture ; sinon (réémission intercalée, etc.) ERREUR d'exécution -> E4 -> abandon au
+// signataire. Une écriture d'un état périmé effacerait une génération plus récente (clé révoquée rétablie).
+function codeVerifierVersionCloture() {
+  return [ENTETE('clôture : candidat INCHANGÉ depuis sa lecture (version Drive identique, hors corbeille) avant réécriture.'),
+    UN_ITEM(NOEUDS_CLOTURER.verifierVersion),
+    `const p = unItem(${JSON.stringify(NOEUDS_CLOTURER.preparer)});
+const m = unItem(${JSON.stringify(NOEUDS_CLOTURER.relireVersion)});
+if (!m || m.id !== p.fichier_id || m.trashed !== false || m.version !== p.version) throw new Error('clôture : candidat modifié depuis sa lecture (course détectée : version ' + (m && m.version) + ' ≠ ' + p.version + ') : rien réécrit');
+return [{ json: { fichier_id: p.fichier_id, contenu: p.contenu } }];`].join('\n\n');
 }
 function codeSortieCloture() {
   return [ENTETE('sortie OBSERVÉE cloture-fonda/v1 (forme exacte du consommateur gelé, §21.1).'),
-    UN_ITEM(NOEUDS_CLOTURER.sortie), DATE_ISO, AGREGER,
+    UN_ITEM(NOEUDS_CLOTURER.sortie), DATE_ISO, AGREGER, VERSION,
     `const p = unItem(${JSON.stringify(NOEUDS_CLOTURER.preparer)});
+if (!p.deja_clos) {
+  // Détection AU MIEUX d'une écriture glissée entre le contrôle de version et la nôtre (version après ≠ avant + 1).
+  const w = unItem(${JSON.stringify(NOEUDS_CLOTURER.ecrire)});
+  if (!w || w.id !== p.fichier_id || w.version !== versionSuivante(p.version)) throw new Error('clôture : écriture concurrente détectée (version ' + (w && w.version) + ' ≠ ' + versionSuivante(p.version) + ')');
+}
 const relu = unItem(${JSON.stringify(NOEUDS_CLOTURER.relire)});
 if (!relu || relu.schema !== 'candidat-fonda/v1' || !relu.lot || relu.lot.set_id !== p.set_id || !relu.relecture || relu.relecture.statut !== 'clos') throw new Error('candidat relu non clos');
 if (!dateIso(relu.relecture.clos_le) || relu.relecture.clos_le !== p.clos_le) throw new Error('candidat relu : clos_le mal formé ou ≠ clos_le préparé');
+if (relu.relecture.generation_cle !== p.generation_cle || relu.relecture.cle_sha256 !== p.cle_sha256) throw new Error('candidat relu : generation_cle ou cle_sha256 ≠ candidat lu (course détectée)');
 const d = agregerPages(${JSON.stringify(NOEUDS_CLOTURER.decisions)});
 // Plafond atteint = pagination NON terminée : aucune sortie (§21.1 exige une pagination complète) -> exécution en erreur.
 if (d.plafond) throw new Error('decisions/ : pagination interrompue au plafond de ${CONFIG.maxPagesDrive} pages : clôture impossible');
@@ -288,19 +323,21 @@ function construireCloturer() {
     webhook(N.webhook, CONFIG.cheminCloturer, CONFIG.credentialCloturer, 'webhook-cloturer'),
     code(N.entree, codeEntreeCloture()),
     code(N.valider, codeValiderCloture()),
-    listing(N.chercher, `={{ "'${CONFIG.dossierRelecture}' in parents and trashed = false and name = '" + ${setIdExpr} + ".candidat.json'" }}`, CHAMPS_LISTE, false),
-    code(N.verifierListe, codeVerifierRecherche(N.verifierListe, N.chercher, 'du candidat')),
+    listing(N.chercher, `={{ "'${CONFIG.dossierRelecture}' in parents and trashed = false and name = '" + ${setIdExpr} + ".candidat.json'" }}`, 'nextPageToken,incompleteSearch,files(id,name,version)', false),
+    code(N.verifierListe, codeVerifierRecherche(N.verifierListe, N.chercher, 'du candidat', true)),
     contenuDrive(N.lire, `$('${N.verifierListe}').first().json.fichier_id`),
     code(N.preparer, codePreparerCloture()),
     siBooleen(N.siDejaClos, 'deja_clos', 'si-deja-clos'),
+    metaVersion(N.relireVersion, `$('${N.preparer}').first().json.fichier_id`),
+    code(N.verifierVersion, codeVerifierVersionCloture()),
     reecritureDrive(N.ecrire, '$json.fichier_id', '$json.contenu'),
     contenuDrive(N.relire, `$('${N.preparer}').first().json.fichier_id`),
     listing(N.decisions, qDecisions(setIdExpr), CHAMPS_LISTE, true),
     code(N.sortie, codeSortieCloture()),
   ].map(positionner('cloturer'));
   const connections = lineaire([N.webhook, N.entree, N.valider, N.chercher, N.verifierListe, N.lire, N.preparer, N.siDejaClos]);
-  connections[N.siDejaClos] = { main: [lien(N.relire), lien(N.ecrire)] };
-  Object.assign(connections, lineaire([N.ecrire, N.relire, N.decisions, N.sortie]));
+  connections[N.siDejaClos] = { main: [lien(N.relire), lien(N.relireVersion)] };
+  Object.assign(connections, lineaire([N.relireVersion, N.verifierVersion, N.ecrire, N.relire, N.decisions, N.sortie]));
   return { name: CONFIG.nomCloturer, nodes: noeuds, connections, settings: REGLAGES };
 }
 
@@ -366,7 +403,7 @@ return [{ json: { set_id: e.set_id, relecteur, reemission, fichier_id: reemissio
 }
 function codePreparerCandidat() {
   return [ENTETE('candidat-fonda/v1 (émission : generation_cle 1 ; réémission : en_attente -> en_attente, generation_cle + 1) ; k -> SEUL cle_sha256 stocké.'),
-    UN_ITEM(NOEUDS_EMETTRE.preparer), OUTILS, DATE_ISO, REQUIS, blocModule('canonique'),
+    UN_ITEM(NOEUDS_EMETTRE.preparer), OUTILS, DATE_ISO, REQUIS, blocModule('catalogue'), blocModule('canonique'),
     blocFonction('fonda/scripts/liaison-generation.js', 'projectionComplete', L.projectionComplete),
     `const Canonique = M_canonique.exports;
 // empreinte_complete (§20.4) : même calcul que liaison-generation.empreinteComplete.
@@ -398,11 +435,16 @@ if (a.reemission !== true) {
   if (!dateIso(r.cree_le) || !dateIso(r.expire_le) || r.cree_le > r.expire_le) throw new Error('candidat existant : cree_le / expire_le invalides');
   if (!Array.isArray(r.envois) || !r.envois.length || !r.envois.every((x) => x && typeof x === 'object' && Object.keys(x).sort().join(',') === 'envoye_a,generation_cle,le'
     && Number.isSafeInteger(x.generation_cle) && x.generation_cle >= 1 && x.generation_cle <= r.generation_cle && typeof x.envoye_a === 'string' && x.envoye_a !== '' && dateIso(x.le))) throw new Error('candidat existant : envois invalides');
+  // D3 : lot du candidat COMPLET et conforme (schema, liste blanche), EN PLUS de l'empreinte (projection).
+  const vlc = M_catalogue.exports.validerLot(c.lot);
+  if (!vlc.valide) throw new Error('candidat existant : lot non conforme : ' + vlc.erreurs.slice(0, 3).join(' ; '));
   if (empreinteComplete(c.lot) !== empreinteComplete(lot)) throw new Error('candidat existant : lot ≠ lot source (empreinte_complete, §21.5)');
   if (r.relecteur_attribue !== a.relecteur || r.referentiel_version !== e.referentiel_version || !r.moteur || typeof r.moteur !== 'object' || Object.keys(r.moteur).sort().join(',') !== 'sha256,version' || r.moteur.version !== e.moteur.version || r.moteur.sha256 !== e.moteur.sha256) throw new Error('réémission refusée : provenance (relecteur, référentiel, moteur) ≠ candidat existant');
   if (r.cle_sha256 === cleSha) throw new Error('réémission : nouvelle clé identique à l\\'ancienne');
   relecture = { ...r, statut: 'en_attente', generation_cle: r.generation_cle + 1, cle_sha256: cleSha, expire_le: expireLe, clos_le: null, envois: r.envois.slice() };
 }
+// D3 : invariants temporels du RÉSULTAT (une date future lue ne produit jamais expire_le ≤ cree_le).
+if (!dateIso(relecture.cree_le) || Date.parse(relecture.cree_le) > maintenant.getTime() || !(Date.parse(relecture.cree_le) < Date.parse(relecture.expire_le))) throw new Error('candidat : cree_le futur ou expire_le ≤ cree_le : refus');
 // envois : CHAQUE tentative est consignée AVANT l'envoi (une panne de courriel laisse la trace).
 relecture.envois.push({ generation_cle: relecture.generation_cle, envoye_a: a.relecteur, le });
 const candidat = { schema: 'candidat-fonda/v1', lot, relecture };
@@ -416,8 +458,9 @@ const corps = '--' + frontiere + '\\r\\nContent-Type: application/json; charset=
 return [{ json: { set_id: e.set_id, relecteur: a.relecteur, reemission: a.reemission === true, fichier_id: a.fichier_id, version: a.version, generation_cle: relecture.generation_cle, k,
   depot: { nom, frontiere, corps, contenu } } }];`].join('\n\n');
 }
-// C1 (prévention/détection ; l'INTÉGRITÉ est au signataire, voir README « Où vit chaque garantie ») :
-// juste avant la réécriture, la version Drive du candidat doit être celle lue à l'analyse.
+// D2 (README « Où vit chaque garantie ») : juste avant la réécriture, la version Drive du candidat doit être
+// celle relevée à l'analyse (avant la lecture du contenu) ; deux réémissions parties du même état ne
+// peuvent donc pas toutes deux écrire la même generation_cle. Porteur avec le verrou CLI (P5).
 function codeVerifierVersion() {
   return [ENTETE('réémission : candidat INCHANGÉ depuis l\'analyse (version Drive identique, hors corbeille) avant réécriture.'),
     UN_ITEM(NOEUDS_EMETTRE.verifierVersion),
@@ -428,11 +471,13 @@ return [{ json: { fichier_id: p.fichier_id } }];`].join('\n\n');
 }
 function codeVerifierEcriture() {
   return [ENTETE('écriture constatée (création : nom attendu ; réémission : même fichier) ; decisions/ RELISTÉ après écriture : toujours prouvé vide.'),
-    UN_ITEM(NOEUDS_EMETTRE.verifier), AGREGER,
+    UN_ITEM(NOEUDS_EMETTRE.verifier), AGREGER, VERSION,
     `const p = unItem(${JSON.stringify(NOEUDS_EMETTRE.preparer)});
 const r = unItem(p.reemission ? ${JSON.stringify(NOEUDS_EMETTRE.reecrire)} : ${JSON.stringify(NOEUDS_EMETTRE.ecrire)});
 if (!r || typeof r.id !== 'string' || !r.id || r.name !== p.depot.nom) throw new Error('candidat non écrit');
 if (p.reemission && r.id !== p.fichier_id) throw new Error('réémission : fichier réécrit ≠ candidat existant');
+// D2 : détection AU MIEUX d'une écriture glissée entre le contrôle de version et la nôtre (version après ≠ avant + 1).
+if (p.reemission && r.version !== versionSuivante(p.version)) throw new Error('réémission : écriture concurrente détectée (version ' + r.version + ' ≠ ' + versionSuivante(p.version) + ') : aucun courriel');
 const d = agregerPages(${JSON.stringify(NOEUDS_EMETTRE.relister)});
 if (!d.complet || d.fichiers.length) throw new Error('decisions/ après écriture : ' + (d.complet ? d.fichiers.length + ' décision(s) apparue(s)' : 'listing non prouvé complet') + ' (course détectée) : aucun courriel ; abandon et nouveau set_id si une décision existe');
 return [{ json: { candidat_fichier_id: r.id } }];`].join('\n\n');
@@ -496,10 +541,7 @@ function construireEmettre() {
     { name: N.cle, type: 'n8n-nodes-base.crypto', typeVersion: 1, parameters: { action: 'generate', dataPropertyName: 'k', encodingType: 'hex', stringLength: 64 } },
     code(N.preparer, codePreparerCandidat()),
     siBooleen(N.siReecrire, 'reemission', 'si-reecrire'),
-    drive(N.relireVersion, {
-      url: `={{ 'https://www.googleapis.com/drive/v3/files/' + $('${N.preparer}').first().json.fichier_id }}`,
-      sendQuery: true, queryParameters: { parameters: [{ name: 'fields', value: 'id,version,trashed' }] }, options: { timeout: 30000 },
-    }),
+    metaVersion(N.relireVersion, `$('${N.preparer}').first().json.fichier_id`),
     code(N.verifierVersion, codeVerifierVersion()),
     drive(N.ecrire, {
       method: 'POST', url: 'https://www.googleapis.com/upload/drive/v3/files',
