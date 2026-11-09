@@ -5,6 +5,7 @@
 //                                    du lot PROUVÉ vide), §21.5 ;
 //   « FONDA - Cloturer relecture » : clôture technique (statut clos, PREMIER clos_le), sortie OBSERVÉE
 //                                    cloture-fonda/v1 consommée par rattachement-page.js (GELÉ, P1) ;
+//   « FONDA - Page relecture » (P2) : GET du relecteur, aucune écriture, page carte par carte (§21.6) ;
 //   « FONDA - Confirmer relecture » (P2) : POST du relecteur, C1–C7, decisions/<set_id>-<nonce>.json,
 //                                    sortie OBSERVÉE confirmation-fonda/v1 (ROLES.confirmation, GELÉ).
 // Le CONSOMMATEUR est gelé : les noms de nœuds et la forme de sortie sont ceux que rattachement-page.js
@@ -19,7 +20,7 @@
 // (jetons, valeurs de credentials, clé HMAC) et les ADRESSES ne sont jamais dans le dépôt : credentials
 // n8n référencés par id, adresse lue à l'exécution dans une Data Table (clé = relecteur_attribue).
 //
-// Usage : node n8n/fonda-relecture-page/construire-relecture.js --emettre | --cloturer | --confirmer > export.json
+// Usage : node n8n/fonda-relecture-page/construire-relecture.js --emettre | --cloturer | --confirmer | --page > export.json
 
 'use strict';
 
@@ -40,8 +41,10 @@ const CONFIG = Object.freeze({
   nomEmettre: 'FONDA - Emettre relecture',
   nomCloturer: 'FONDA - Cloturer relecture',
   nomConfirmer: 'FONDA - Confirmer relecture',
+  nomPage: 'FONDA - Page relecture',
   cheminEmettre: P4('CHEMIN_EMETTRE'),
   cheminCloturer: P4('CHEMIN_CLOTURER'),
+  cheminPage: 'fonda-select', // §21.0 : GET public (lien du courriel), aucune écriture
   cheminConfirmer: 'fonda-select-confirm', // §21.0 : POST public (relecteur), protégé par k + jeton, jamais une route BOX
   depot: 'ericduchateau/box',
   dossierCandidats: '1Ir-iJGZoSk5_FmJ9dnf_PM-NEBZWyn8d', // lot source immuable (génération, §20.4)
@@ -50,6 +53,7 @@ const CONFIG = Object.freeze({
   urlN8n: 'https://n8n.srv868991.hstgr.cloud',
   tableRelecteurs: P4('ID_DATA_TABLE_RELECTEURS'), // Data Table : relecteur_attribue -> adresse (jamais dans le dépôt)
   urlPage: P4('URL_PAGE_RELECTURE'), // …/webhook/<chemin> de « FONDA - Page relecture » (P2)
+  urlMoteurs: P4('URL_BASE_MOTEURS'), // base publique des fichiers moteur (URL EXACTE en CSP, SRI sha384 calculée à la construction)
   dureeCleJours: 14,
   maxPagesDrive: 50, // plafond de pagination : atteint = ERREUR d'exécution (jamais « complet ») ; pageSize est un MAXIMUM, Drive peut rendre moins
   // Credentials : RÉFÉRENCES (id, nom) seulement ; aucune valeur dans le dépôt.
@@ -980,10 +984,268 @@ function construireConfirmer() {
   return { name: CONFIG.nomConfirmer, nodes: noeuds, connections, settings: { ...REGLAGES, executionTimeout: 120 } };
 }
 
-module.exports = { CONFIG, MODULES, NOEUDS_CLOTURER, NOEUDS_EMETTRE, NOEUDS_CONFIRMER, CODES_HTTP, CHAMPS_FORMULAIRE, COMMUN_PAGE, chargerCommun,
-  construireCloturer, construireEmettre, construireConfirmer };
+// ═══ PAGE (GET, aucune écriture, non observée) — §21.6 ═══
+// C3 au GET (candidat courant pour la clé reçue) ; sinon page « indisponible » SANS donnée du lot. Deux aléas
+// distincts par affichage (Crypto v1 « Generate ») : csp_nonce (jamais posté) et nonce (formulaire). Jeton lié
+// à cle_sha256 et à l'empreinte AFFICHÉE. Moteur du candidat chargé depuis son URL exacte, SRI sha384 calculée
+// À LA CONSTRUCTION depuis le fichier du REGISTRE (sha256 du fichier = registre, sinon la construction échoue) ;
+// un moteur absent du registre embarqué -> page indisponible. Données dans <script type="application/json">
+// échappé ; aucun gestionnaire inline ; CSP en <meta> (n8n remplace l'en-tête) ; sans JavaScript : message, et
+// AUCUN formulaire dans le HTML (construit par le script à l'envoi, jamais un formulaire dégradé).
+const NOEUDS_PAGE = Object.freeze({
+  webhook: 'Webhook page',
+  requete: 'Lire requete',
+  siRequete: 'Requete valide ?',
+  chercher: 'Chercher candidat',
+  verifierListe: 'Verifier recherche candidat',
+  siCandidat: 'Candidat trouve ?',
+  lire: 'Lire candidat',
+  nonceCsp: 'Generer nonce CSP',
+  nonce: 'Generer nonce formulaire',
+  construire: 'Construire page',
+  indisponible: 'Page indisponible',
+  repondre: 'Repondre page',
+});
+// Registre des moteurs pour la page : fichiers du dépôt RELUS à la construction, sha256 vérifié, SRI sha384.
+function registrePage() {
+  const reg = JSON.parse(lireSource('fonda/engine/moteurs.json'));
+  return reg.map((l) => {
+    const octets = fs.readFileSync(path.join(RACINE, l.fichier));
+    if (crypto.createHash('sha256').update(octets).digest('hex') !== l.sha256) throw new Error(`${l.fichier} : sha256 ≠ registre`);
+    return { version: l.version, sha256: l.sha256, url: `${CONFIG.urlMoteurs}/${path.basename(l.fichier)}`, integrite: `sha384-${crypto.createHash('sha384').update(octets).digest('base64')}` };
+  });
+}
+// Exemples VÉRIFIÉS par le moteur v1 dans le harnais (reussite attendue).
+const EXEMPLES_PROFIL = Object.freeze({
+  sens: { attendue: 'été', saisie: 'Ete', reussite: true },
+  orthographe: { attendue: 'été', saisie: 'ete', reussite: false },
+  numerique: { attendue: '3/4', saisie: '0,75', reussite: true },
+  exact: { attendue: 'H2O', saisie: 'h2o', reussite: false },
+});
+const EXPLICATIONS_PROFIL = Object.freeze({
+  sens: 'On teste l\'idée : casse, espaces, ponctuation, accents et singulier/pluriel sont pardonnés.',
+  orthographe: 'L\'orthographe est l\'objet : casse, espaces et ponctuation sont pardonnés ; accents, pluriels et accords sont exigés.',
+  numerique: 'La valeur compte : virgule ou point, espaces et zéros inutiles pardonnés ; fraction équivalente acceptée ; unité exigée seulement si la carte l\'indique ; décimaux exacts sauf arrondi indiqué.',
+  exact: 'Seuls les espaces sont pardonnés : tout le reste doit être identique.',
+});
 
-const CONSTRUCTEURS = { '--emettre': construireEmettre, '--cloturer': construireCloturer, '--confirmer': construireConfirmer };
+// Script de la page (navigateur), embarqué par toString() sous le nonce CSP. Aucun innerHTML : textContent
+// seulement. UX §21.6 : une carte à la fois (ordre du candidat), Garder/Écarter DÉSACTIVÉS jusqu'au rendu
+// complet, aucun choix par défaut, « Carte suivante » après un choix, retour possible, récapitulatif final
+// (envoi seulement depuis lui, chaque carte choisie), « Tout rejeter » séparé et confirmé explicitement.
+function appPage() {
+  'use strict';
+  var D = JSON.parse(document.getElementById('donnees').textContent);
+  var app = document.getElementById('app');
+  var cartes = D.cartes; var choix = {}; var envoye = false;
+  var moteur = null;
+  try { var M = self.FondaMoteurs && self.FondaMoteurs[D.moteur.version]; moteur = M && typeof M.creerMoteur === 'function' ? M.creerMoteur() : null; } catch (e) { moteur = null; }
+  function vider(n) { while (n.firstChild) n.removeChild(n.firstChild); }
+  function el(tag, texte, parent) { var e = document.createElement(tag); if (texte !== undefined && texte !== null) e.textContent = String(texte); if (parent) parent.appendChild(e); return e; }
+  function bouton(texte, parent, action) { var b = el('button', texte, parent); b.type = 'button'; b.addEventListener('click', action); return b; }
+  function ligne(dl, terme, valeur) { el('dt', terme, dl); el('dd', valeur, dl); }
+  if (!moteur) { vider(app); el('p', 'Moteur de correction indisponible : relecture impossible pour l\'instant. Prévenez Éric Duchateau.', app); return; }
+  function afficherCarte(i) {
+    vider(app);
+    var c = cartes[i];
+    el('p', 'Carte ' + (i + 1) + ' sur ' + cartes.length, app).className = 'avancement';
+    var art = el('article', null, app);
+    el('h2', c.question, art);
+    var dl = el('dl', null, art);
+    ligne(dl, 'Réponse attendue', c.reponse === null ? '(non renseignée)' : c.reponse);
+    ligne(dl, 'Réponses acceptées', c.reponses_acceptees.map(function (x) { return '« ' + x + ' »'; }).join(' ; '));
+    var p = D.profils[c.profil_correction];
+    ligne(dl, 'Profil de correction', c.profil_correction + (p ? ' — ' + p.explication : ''));
+    if (p) ligne(dl, 'Exemple', p.exemple);
+    ligne(dl, 'Unité', c.unite === null ? 'aucune (par défaut)' : c.unite);
+    ligne(dl, 'Arrondi', c.arrondi === null ? 'aucun (par défaut)' : String(c.arrondi));
+    ligne(dl, 'Seconde chance', c.seconde_chance === null ? 'non (par défaut)' : (c.seconde_chance ? 'oui' : 'non'));
+    if (c.contexte !== null) ligne(dl, 'Contexte', c.contexte);
+    // « Essayer une réponse » : le MOTEUR du candidat corrige, exactement comme pour l'élève.
+    var essai = el('fieldset', null, art); el('legend', 'Essayer une réponse', essai);
+    var saisie = el('input', null, essai); saisie.type = 'text'; saisie.setAttribute('aria-label', 'Réponse à essayer');
+    var verdict = el('p', null, essai); verdict.setAttribute('aria-live', 'polite');
+    bouton('Corriger', essai, function () {
+      try { var r = moteur.soumettre(moteur.demarrer(moteur.preparerCarte(c)), saisie.value).resultat; verdict.textContent = r.verdict.texte + (r.cible_affichee ? ' (attendu : ' + r.cible_affichee + ')' : ''); } catch (e) { verdict.textContent = 'Correction impossible pour cette carte.'; }
+    });
+    var actions = el('div', null, app); actions.className = 'actions';
+    var garder = bouton('Garder', actions, function () { choisir(i, 'garder'); });
+    var ecarter = bouton('Écarter', actions, function () { choisir(i, 'ecarter'); });
+    garder.disabled = true; ecarter.disabled = true;
+    if (choix[c.item_id]) el('p', 'Choix actuel : ' + (choix[c.item_id] === 'garder' ? 'Garder' : 'Écarter') + ' (vous pouvez le changer).', app);
+    var nav = el('div', null, app); nav.className = 'navigation';
+    if (i > 0) bouton('Carte précédente', nav, function () { afficherCarte(i - 1); });
+    if (choix[c.item_id]) bouton(i + 1 < cartes.length ? 'Carte suivante' : 'Récapitulatif', nav, function () { suite(i); });
+    // Garder/Écarter activés seulement APRÈS le rendu complet de la carte (deux images).
+    requestAnimationFrame(function () { requestAnimationFrame(function () { garder.disabled = false; ecarter.disabled = false; }); });
+    window.scrollTo(0, 0);
+  }
+  function choisir(i, v) { choix[cartes[i].item_id] = v; afficherCarte(i); }
+  function suite(i) { if (i + 1 < cartes.length) afficherCarte(i + 1); else afficherRecap(); }
+  function afficherRecap() {
+    vider(app);
+    el('h2', 'Récapitulatif', app);
+    var ol = el('ol', null, app);
+    var complet = true;
+    cartes.forEach(function (c, i) {
+      var li = el('li', null, ol);
+      var v = choix[c.item_id]; if (!v) complet = false;
+      el('span', c.question + ' — ' + (v === 'garder' ? 'GARDÉE' : v === 'ecarter' ? 'ÉCARTÉE' : 'sans choix'), li);
+      bouton('Revoir', li, function () { afficherCarte(i); });
+    });
+    var gardees = cartes.filter(function (c) { return choix[c.item_id] === 'garder'; }).length;
+    if (complet && !gardees) el('p', 'Aucune carte gardée : utilisez « Tout rejeter » ci-dessous.', app);
+    var envoyer = bouton('Envoyer ma relecture', app, function () { soumettre('accepter'); });
+    envoyer.disabled = !complet || !gardees;
+  }
+  function soumettre(action) {
+    if (envoye) return; envoye = true;
+    var f = document.createElement('form'); f.method = 'post'; f.action = D.formulaire.action;
+    function champ(n, v) { var x = document.createElement('input'); x.type = 'hidden'; x.name = n; x.value = v; f.appendChild(x); }
+    Object.keys(D.formulaire.champs).forEach(function (n) { champ(n, D.formulaire.champs[n]); });
+    champ('action', action);
+    if (action === 'accepter') cartes.forEach(function (c) { champ('choix_' + c.item_id, choix[c.item_id]); });
+    else champ('confirmer_rejet', 'oui');
+    document.body.appendChild(f); f.submit();
+  }
+  // « Tout rejeter » : section SÉPARÉE, confirmation explicite.
+  var rej = document.getElementById('rejet');
+  var case_ = el('input', null); case_.type = 'checkbox'; case_.id = 'confirmer-rejet';
+  var lab = el('label', ' Je confirme rejeter TOUT le lot (aucune carte publiée).'); lab.setAttribute('for', 'confirmer-rejet'); lab.insertBefore(case_, lab.firstChild);
+  rej.appendChild(lab);
+  var btRej = bouton('Tout rejeter', rej, function () { if (case_.checked) soumettre('rejeter'); });
+  btRej.disabled = true; case_.addEventListener('change', function () { btRej.disabled = !case_.checked; });
+  rej.hidden = false;
+  afficherCarte(0);
+}
+
+// Gabarit HTML (nœud Code) : CSP EXACTE du §21.6, deux aléas, données échappées, script sous nonce.
+const GABARIT_PAGE = `function echapperJson(v) {
+  return JSON.stringify(v).replace(/</g, '\\\\u003c').replace(/>/g, '\\\\u003e').replace(/&/g, '\\\\u0026').replace(/\\u2028/g, '\\\\u2028').replace(/\\u2029/g, '\\\\u2029');
+}
+function echapperAttribut(s) { return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function csp(nonceCsp, urlMoteur, urlConfirmer) {
+  return "default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-" + nonceCsp + "' " + urlMoteur + '; form-action ' + urlConfirmer + "; base-uri 'none'";
+}
+const STYLE = 'body{font-family:system-ui,sans-serif;max-width:46rem;margin:1.5rem auto;padding:0 1rem;line-height:1.45}dt{font-weight:600;margin-top:.5rem}dd{margin:0 0 0 1rem}'
+  + '.actions button,.navigation button{margin:.75rem .5rem 0 0;padding:.5rem 1rem}#rejet{margin-top:3rem;border-top:1px solid #999;padding-top:1rem}';
+function pageHtml({ titre, nonceCsp, moteur, urlConfirmer, donnees, script }) {
+  return '<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
+    + '<meta http-equiv="Content-Security-Policy" content="' + echapperAttribut(csp(nonceCsp, moteur.url, urlConfirmer)) + '">'
+    + '<meta name="referrer" content="no-referrer"><title>' + echapperAttribut(titre) + '</title><style>' + STYLE + '</style></head><body>'
+    + '<h1>Relecture FONDA, carte par carte</h1>'
+    + '<noscript><p>Page de relecture indisponible sans JavaScript.</p></noscript>'
+    + '<main id="app"></main><section id="rejet" hidden><h2>Tout rejeter</h2></section>'
+    + '<script type="application/json" id="donnees">' + echapperJson(donnees) + '</script>'
+    + '<script src="' + echapperAttribut(moteur.url) + '" integrity="' + echapperAttribut(moteur.integrite) + '" crossorigin="anonymous" referrerpolicy="no-referrer"></script>'
+    + '<script nonce="' + nonceCsp + '">' + script + '</script></body></html>';
+}
+function pageIndisponible(texte) {
+  return '<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
+    + '<meta http-equiv="Content-Security-Policy" content="default-src \\'none\\'; style-src \\'unsafe-inline\\'; base-uri \\'none\\'; form-action \\'none\\'">'
+    + '<meta name="referrer" content="no-referrer"><title>Relecture FONDA</title></head><body style="font-family:system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem"><p>'
+    + texte + '</p></body></html>';
+}`;
+
+const MESSAGE_INDISPONIBLE = 'Ce lien de relecture n’est pas (ou plus) valable. Si vous pensez qu’il s’agit d’une erreur, prévenez Éric Duchateau.';
+function codeLireRequete() {
+  return [ENTETE('requête GET : ?lot=&k= exactement (formats stricts) ; k réduite à cle_sha256 pour la recherche, conservée pour le formulaire.'),
+    UN_ITEM(NOEUDS_PAGE.requete), SET_ID, OUTILS,
+    `const w = unItem(null);
+const q = w && w.query && typeof w.query === 'object' && !Array.isArray(w.query) ? w.query : {};
+const cles = Object.keys(q).sort().join(',');
+const ok = cles === 'k,lot' && typeof q.lot === 'string' && SET_ID_PATTERN.test(q.lot) && typeof q.k === 'string' && /^[0-9a-f]{64}$/.test(q.k);
+return [{ json: ok ? { poursuivre: true, lot: q.lot, k: q.k, cle_sha256: sha256Hex(octetsUtf8(q.k)), code: null } : { poursuivre: false, lot: null, k: null, cle_sha256: null, code: 400 } }];`].join('\n\n');
+}
+function codeVerifierRecherchePage() {
+  return [ENTETE('candidat : recherche COMPLÈTE exigée (sinon erreur) ; 0 ou plusieurs fichiers -> page indisponible (410).'),
+    UN_ITEM(NOEUDS_PAGE.verifierListe),
+    `const liste = unItem(${JSON.stringify(NOEUDS_PAGE.chercher)});
+if (!Array.isArray(liste.files) || liste.nextPageToken || liste.incompleteSearch) throw new Error('recherche du candidat inexploitable ou incomplète');
+const ok = liste.files.length === 1 && typeof liste.files[0].id === 'string';
+return [{ json: { poursuivre: ok, fichier_id: ok ? liste.files[0].id : null, code: ok ? null : 410 } }];`].join('\n\n');
+}
+function codePageIndisponible() {
+  return [ENTETE('page indisponible : aucune donnée du lot.'), GABARIT_PAGE,
+    `const x = $input.first().json;
+return [{ json: { code: x.code === 400 ? 400 : 410, html: pageIndisponible(${JSON.stringify(MESSAGE_INDISPONIBLE)}) } }];`].join('\n\n');
+}
+function codeConstruirePage() {
+  const profils = Object.fromEntries(Object.entries(EXPLICATIONS_PROFIL).map(([p, explication]) => {
+    const e = EXEMPLES_PROFIL[p];
+    return [p, { explication, exemple: `« ${e.saisie} » est ${e.reussite ? 'accepté' : 'refusé'} pour « ${e.attendue} ».` }];
+  }));
+  return [ENTETE('C3 au GET (candidat courant pour k), puis page carte par carte : jeton, deux aléas, CSP, SRI, données échappées.'),
+    UN_ITEM(NOEUDS_PAGE.construire), DATE_ISO, OUTILS, COMMUN_PAGE, GABARIT_PAGE, REQUIS, blocModule('catalogue'),
+    `const { validerLot, calculerEmpreinte } = M_catalogue.exports;
+const REGISTRE = ${JSON.stringify(registrePage())};
+const PROFILS = ${JSON.stringify(profils)};
+const URL_CONFIRMER = ${JSON.stringify(`${CONFIG.urlN8n}/webhook/${CONFIG.cheminConfirmer}`)};
+const SCRIPT = ${JSON.stringify(`(${appPage.toString()})();`)};
+const sha = (t) => sha256Hex(octetsUtf8(t));
+const r = unItem(${JSON.stringify(NOEUDS_PAGE.requete)});
+const c = unItem(${JSON.stringify(NOEUDS_PAGE.lire)});
+const nonceCsp = unItem(${JSON.stringify(NOEUDS_PAGE.nonceCsp)}).nonce_csp;
+const nonce = unItem(${JSON.stringify(NOEUDS_PAGE.nonce)}).nonce;
+// Deux aléas DISTINCTS de 128 bits (hex 32), un par affichage.
+if (!/^[0-9a-f]{32}$/.test(nonceCsp) || !/^[0-9a-f]{32}$/.test(nonce) || nonceCsp === nonce) throw new Error('aléas de la page invalides ou égaux');
+const indisponible = () => [{ json: { code: 410, html: pageIndisponible(${JSON.stringify(MESSAGE_INDISPONIBLE)}) } }];
+// C3 (GET) : candidat courant pour la clé reçue, lot conforme, moteur au registre.
+const maintenant = Date.now();
+if (!c || c.schema !== 'candidat-fonda/v1' || !c.lot || !c.relecture || c.lot.set_id !== r.lot) return indisponible();
+const rel = c.relecture;
+if (rel.statut !== 'en_attente' || rel.clos_le !== null || rel.cle_sha256 !== r.cle_sha256 || !Number.isSafeInteger(rel.generation_cle) || rel.generation_cle < 1
+  || !dateIso(rel.expire_le) || !(maintenant < Date.parse(rel.expire_le)) || !validerLot(c.lot).valide) return indisponible();
+const moteur = rel.moteur ? REGISTRE.find((l) => l.version === rel.moteur.version) : null;
+if (!moteur || moteur.sha256 !== rel.moteur.sha256) return indisponible(); // moteur absent du registre : jamais chargé
+const empreinte = await calculerEmpreinte(c.lot, sha);
+const expirePage = new Date(Math.min(maintenant + 3600000, Date.parse(rel.expire_le))).toISOString(); // affichage + 60 min, borné par expire_le
+const jeton = jetonPage($env.FONDA_PAGE_HMAC, { set_id: r.lot, generation_cle: rel.generation_cle, cle_sha256: r.cle_sha256, empreinte, moteur_version: moteur.version,
+  moteur_sha256: moteur.sha256, expire_page: expirePage, nonce });
+const n = (v) => (v === undefined ? null : v);
+const donnees = {
+  moteur: { version: moteur.version },
+  profils: PROFILS,
+  cartes: c.lot.cartes.map((x) => ({ item_id: x.item_id, question: x.question, reponse: n(x.reponse), profil_correction: x.profil_correction, reponses_acceptees: x.reponses_acceptees,
+    unite: n(x.unite), arrondi: n(x.arrondi), seconde_chance: n(x.seconde_chance), contexte: n(x.contexte) })),
+  // Seul endroit où k figure dans la page : champ du formulaire POSTÉ (C1 l'exige), jamais affichée.
+  formulaire: { action: URL_CONFIRMER, champs: { lot: r.lot, k: r.k, generation: String(rel.generation_cle), empreinte, moteur_version: moteur.version, moteur_sha256: moteur.sha256, expire_page: expirePage, nonce, jeton } },
+};
+return [{ json: { code: 200, html: pageHtml({ titre: 'Relecture FONDA', nonceCsp, moteur, urlConfirmer: URL_CONFIRMER, donnees, script: SCRIPT }) } }];`].join('\n\n');
+}
+function construirePage() {
+  const N = NOEUDS_PAGE;
+  const lotExpr = `$('${N.requete}').first().json.lot`;
+  const alea = (nom, champ) => ({ name: nom, type: 'n8n-nodes-base.crypto', typeVersion: 1, parameters: { action: 'generate', dataPropertyName: champ, encodingType: 'hex', stringLength: 32 } });
+  const noeuds = [
+    { name: N.webhook, type: 'n8n-nodes-base.webhook', typeVersion: 2, webhookId: uuid('webhook-page'),
+      parameters: { httpMethod: 'GET', path: CONFIG.cheminPage, responseMode: 'responseNode', options: {} } },
+    code(N.requete, codeLireRequete()),
+    siBooleen(N.siRequete, 'poursuivre', 'si-requete'),
+    listing(N.chercher, `={{ "'${CONFIG.dossierRelecture}' in parents and trashed = false and name = '" + ${lotExpr} + ".candidat.json'" }}`, CHAMPS_LISTE, false),
+    code(N.verifierListe, codeVerifierRecherchePage()),
+    siBooleen(N.siCandidat, 'poursuivre', 'si-candidat-page'),
+    contenuDrive(N.lire, `$('${N.verifierListe}').first().json.fichier_id`),
+    alea(N.nonceCsp, 'nonce_csp'),
+    alea(N.nonce, 'nonce'),
+    code(N.construire, codeConstruirePage()),
+    code(N.indisponible, codePageIndisponible()),
+    { name: N.repondre, type: 'n8n-nodes-base.respondToWebhook', typeVersion: 1.1,
+      parameters: { respondWith: 'text', responseBody: '={{ $json.html }}', options: { responseCode: '={{ $json.code }}',
+        responseHeaders: { entries: [{ name: 'Content-Type', value: 'text/html; charset=utf-8' }, { name: 'Cache-Control', value: 'no-store' }, { name: 'Referrer-Policy', value: 'no-referrer' }, { name: 'X-Frame-Options', value: 'DENY' }] } } } },
+  ].map(positionner('page'));
+  const connections = lineaire([N.webhook, N.requete, N.siRequete]);
+  connections[N.siRequete] = { main: [lien(N.chercher), lien(N.indisponible)] };
+  Object.assign(connections, lineaire([N.chercher, N.verifierListe, N.siCandidat]));
+  connections[N.siCandidat] = { main: [lien(N.lire), lien(N.indisponible)] };
+  Object.assign(connections, lineaire([N.lire, N.nonceCsp, N.nonce, N.construire, N.repondre]), lineaire([N.indisponible, N.repondre]));
+  return { name: CONFIG.nomPage, nodes: noeuds, connections, settings: REGLAGES };
+}
+
+module.exports = { CONFIG, MODULES, NOEUDS_CLOTURER, NOEUDS_EMETTRE, NOEUDS_CONFIRMER, NOEUDS_PAGE, CODES_HTTP, CHAMPS_FORMULAIRE, COMMUN_PAGE, GABARIT_PAGE,
+  EXEMPLES_PROFIL, chargerCommun, registrePage, appPage, construireCloturer, construireEmettre, construireConfirmer, construirePage };
+
+const CONSTRUCTEURS = { '--emettre': construireEmettre, '--cloturer': construireCloturer, '--confirmer': construireConfirmer, '--page': construirePage };
 if (require.main === module) {
   const option = Object.keys(CONSTRUCTEURS).find((o) => process.argv.includes(o));
   if (!option) { process.stderr.write(`usage : construire-relecture.js ${Object.keys(CONSTRUCTEURS).join(' | ')}\n`); process.exitCode = 1; } else process.stdout.write(`${JSON.stringify(CONSTRUCTEURS[option](), null, 2)}\n`);

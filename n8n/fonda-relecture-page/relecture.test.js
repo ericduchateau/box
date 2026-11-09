@@ -39,14 +39,17 @@ const Cat = require('../../fonda/engine/catalogue.js');
 const SHA = Cat.sha256WebCrypto();
 
 const RACINE = path.join(__dirname, '..', '..');
-const EXPORTS = { cloturer: 'box-fonda-cloturer-relecture.json', emettre: 'box-fonda-emettre-relecture.json', confirmer: 'box-fonda-confirmer-relecture.json' };
+const EXPORTS = { cloturer: 'box-fonda-cloturer-relecture.json', emettre: 'box-fonda-emettre-relecture.json', confirmer: 'box-fonda-confirmer-relecture.json', page: 'box-fonda-page-relecture.json' };
 const lireExport = (k) => fs.readFileSync(path.join(__dirname, EXPORTS[k]));
 const copie = (o) => JSON.parse(JSON.stringify(o));
 const sha = (b) => crypto.createHash('sha256').update(b).digest('hex');
 const pause = () => new Promise((r) => { setTimeout(r, 3); });
 const N_C = B.NOEUDS_CLOTURER; const N_E = B.NOEUDS_EMETTRE; const N_F = B.NOEUDS_CONFIRMER;
 const COMMUN = B.chargerCommun();
-const CONSTRUCTEURS = { cloturer: B.construireCloturer, emettre: B.construireEmettre, confirmer: B.construireConfirmer };
+const CONSTRUCTEURS = { cloturer: B.construireCloturer, emettre: B.construireEmettre, confirmer: B.construireConfirmer, page: B.construirePage };
+// Empreintes PUBLIQUES du registre des moteurs (embarquées par la Page) : seuls littéraux hex 64 admis.
+const HEX_PUBLICS = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'fonda/engine/moteurs.json'), 'utf8')).map((l) => l.sha256);
+const sansHexPublics = (t) => HEX_PUBLICS.reduce((x, h) => x.split(h).join('<sha256-registre>'), t);
 const { dossierCandidats: CAND, dossierRelecture: RELEC, dossierDecisions: DEC } = B.CONFIG;
 
 // ── 1. et 2. Contrôles statiques ──
@@ -59,7 +62,7 @@ describe('1. octet-identité interne et 2. contrôles statiques', () => {
     test(`${EXPORTS[k]} : détection de motifs connus de secret/PII (adresse, clé, jeton, hex 64) hors modules embarqués vérifiés`, () => {
       const wf = JSON.parse(lireExport(k));
       for (const n of wf.nodes) {
-        const t = n.type === 'n8n-nodes-base.code' ? JSON.stringify({ ...n, parameters: { jsCode: SANS_MODULES(n.parameters.jsCode) } }) : JSON.stringify(n);
+        const t = sansHexPublics(n.type === 'n8n-nodes-base.code' ? JSON.stringify({ ...n, parameters: { jsCode: SANS_MODULES(n.parameters.jsCode) } }) : JSON.stringify(n));
         assert.doesNotMatch(t, /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}/, `${n.name} : adresse électronique`);
         assert.doesNotMatch(t, /BEGIN [A-Z ]*PRIVATE KEY|sk-ant-|Bearer [A-Za-z0-9]|ghp_|xox[bp]-/, `${n.name} : clé ou jeton`);
         assert.doesNotMatch(t, /\b[0-9a-f]{64}\b/, `${n.name} : littéral hexadécimal de 64 caractères`);
@@ -74,7 +77,12 @@ describe('1. octet-identité interne et 2. contrôles statiques', () => {
       const wf = JSON.parse(lireExport(k));
       const wh = wf.nodes.filter((n) => n.type === 'n8n-nodes-base.webhook');
       assert.equal(wh.length, 1);
-      if (k === 'confirmer') {
+      if (k === 'page') {
+        // §21.0 : GET /fonda-select, lien du courriel ; AUCUNE écriture (toute requête HTTP est un GET Drive).
+        assert.deepEqual(wh[0].parameters, { httpMethod: 'GET', path: 'fonda-select', responseMode: 'responseNode', options: {} });
+        assert.equal(wh[0].credentials, undefined);
+        for (const n of wf.nodes.filter((x) => x.type === 'n8n-nodes-base.httpRequest')) assert.ok([undefined, 'GET'].includes(n.parameters.method) && n.parameters.url.includes('googleapis.com/drive/v3/files'), `${n.name} : lecture Drive seulement`);
+      } else if (k === 'confirmer') {
         // §21.0 : POST /fonda-select-confirm, déclenché par le navigateur du relecteur (protégé par k + jeton).
         assert.deepEqual(wh[0].parameters, { httpMethod: 'POST', path: 'fonda-select-confirm', responseMode: 'responseNode', options: {} });
         assert.equal(wh[0].credentials, undefined);
@@ -1318,5 +1326,181 @@ describe('11. Confirmer (VRAI workflow) : contrat gelé ROLES.confirmation, C1�
     await cloturer(d, { set_id: SET });
     await confirmer(d, SET, 1);
     assert.equal(d.notifications.length, 0, 'aucun courriel sur rejet');
+  });
+});
+
+// ── Page (P2, §21.6) : VRAI workflow ; copie de test adaptée au simulateur (voir en-tête) ──
+const N_P = B.NOEUDS_PAGE;
+const REG_PAGE = B.registrePage();
+const URL_CONFIRMER = `${B.CONFIG.urlN8n}/webhook/${B.CONFIG.cheminConfirmer}`;
+// Copie de test : (a) Crypto -> aléas fournis ; (c) requête GET injectée (le simulateur ne transmet pas la query
+// string) par un nœud intercalé entre le webhook et « Lire requete », qui lit son ENTRÉE (vérifié en 12.) ; (b) Respond.
+function pageSimulable(query, aleas) {
+  const w = simulable(JSON.parse(lireExport('page')));
+  const i = (nom) => w.nodes.findIndex((x) => x.name === nom);
+  w.nodes[i(N_P.nonceCsp)] = { ...w.nodes[i(N_P.nonceCsp)], type: 'n8n-nodes-base.code', typeVersion: 2, parameters: { jsCode: `return [{ json: { ...$input.first().json, nonce_csp: ${JSON.stringify(aleas.csp)} } }];` } };
+  w.nodes[i(N_P.nonce)] = { ...w.nodes[i(N_P.nonce)], type: 'n8n-nodes-base.code', typeVersion: 2, parameters: { jsCode: `return [{ json: { ...$input.first().json, nonce: ${JSON.stringify(aleas.nonce)} } }];` } };
+  w.nodes.push({ name: '(test) requete GET', type: 'n8n-nodes-base.code', typeVersion: 2, parameters: { jsCode: `return [{ json: { ...$input.first().json, query: ${JSON.stringify(query)} } }];` } });
+  w.connections[N_P.webhook] = { main: [lien('(test) requete GET')] };
+  w.connections['(test) requete GET'] = { main: [lien(N_P.requete)] };
+  return w;
+}
+const lien = (vers) => [{ node: vers, type: 'main', index: 0 }];
+async function afficher(d, query, o = {}) {
+  const aleas = o.aleas || { csp: nonceAleatoire(), nonce: nonceAleatoire() };
+  const r = await executerGraphe(pageSimulable(query, aleas), {
+    corps: {}, contexteCode: { $env: { FONDA_PAGE_HMAC: o.secret === undefined ? SECRET : o.secret } },
+    reponses: { [N_P.chercher]: d.n8nListe, [N_P.lire]: d.n8nMedia, ...(o.reponses || {}) },
+  });
+  const http = r.reponseWebhook && r.reponseWebhook.noeud === N_P.repondre
+    ? { code: evaluerExpression(r.reponseWebhook.code, { $: null, $json: (r.sorties[N_P.construire] || r.sorties[N_P.indisponible])[0].json }), html: r.reponseWebhook.corps }
+    : r.reponseWebhook && { code: r.reponseWebhook.code, html: null };
+  return { r, http, aleas };
+}
+const donneesDe = (html) => JSON.parse(/<script type="application\/json" id="donnees">([\s\S]*?)<\/script>/.exec(html)[1]);
+// Ce que fait le script de la page à l'envoi (soumettre) : champs du formulaire + action + choix.
+const corpsDepuisPage = (D, { ecarter = [], action = 'accepter' } = {}) => {
+  const f = { ...D.formulaire.champs, action };
+  if (action === 'accepter') for (const c of D.cartes) f[`choix_${c.item_id}`] = ecarter.includes(c.item_id) ? 'ecarter' : 'garder';
+  else f.confirmer_rejet = 'oui';
+  return f;
+};
+
+describe('12. Page (VRAI workflow, §21.6) : C3 au GET, jeton, deux aléas, CSP, SRI, données échappées, aucune écriture', () => {
+  test('statique : Crypto v1 « Generate » hex 32 ×2 ; « Lire requete » lit son ENTRÉE (webhook câblé directement) ; catalogue embarqué exact ; base commune et script de page EXACTS', () => {
+    const wf = JSON.parse(lireExport('page'));
+    const n = (nom) => wf.nodes.find((x) => x.name === nom);
+    for (const [nom, champ] of [[N_P.nonceCsp, 'nonce_csp'], [N_P.nonce, 'nonce']]) assert.deepEqual([n(nom).type, n(nom).typeVersion, n(nom).parameters], ['n8n-nodes-base.crypto', 1, { action: 'generate', dataPropertyName: champ, encodingType: 'hex', stringLength: 32 }]);
+    assert.deepEqual(wf.connections[N_P.webhook], { main: [lien(N_P.requete)] });
+    assert.match(n(N_P.requete).parameters.jsCode, /const w = unItem\(null\);/);
+    const js = n(N_P.construire).parameters.jsCode;
+    const src = fs.readFileSync(path.join(RACINE, B.MODULES.catalogue), 'utf8');
+    assert.ok(js.includes(`\n${src}})(M_catalogue`), 'catalogue : copie exacte');
+    assert.ok(js.includes(B.COMMUN_PAGE) && js.includes(B.GABARIT_PAGE));
+    assert.ok(js.includes(`const SCRIPT = ${JSON.stringify(`(${B.appPage.toString()})();`)};`), 'script de page : copie exacte de appPage');
+  });
+  test('registre de la page : sha256 du fichier = registre ; SRI = sha384 du fichier ; URL exacte (base P4 + nom du fichier)', () => {
+    for (const l of REGISTRE) {
+      const o = fs.readFileSync(path.join(RACINE, l.fichier));
+      const p = REG_PAGE.find((x) => x.version === l.version);
+      assert.deepEqual(p, { version: l.version, sha256: sha(o), url: `${B.CONFIG.urlMoteurs}/${path.basename(l.fichier)}`, integrite: `sha384-${crypto.createHash('sha384').update(o).digest('base64')}` });
+      assert.equal(p.sha256, l.sha256);
+    }
+  });
+  test('exemples de profil affichés : VÉRIFIÉS par le moteur v1 (accepté / refusé)', () => {
+    const M = require('../../fonda/engine/moteur-correction-v1.js').creerMoteur();
+    for (const [profil, e] of Object.entries(B.EXEMPLES_PROFIL)) {
+      const r = M.soumettre(M.demarrer(M.preparerCarte({ question: 'q', profil_correction: profil, reponses_acceptees: [e.attendue] })), e.saisie).resultat;
+      assert.equal(r.reussite, e.reussite, profil);
+    }
+  });
+
+  test('CHAÎNE NOMINALE COMPLÈTE : Emettre -> lien du courriel -> VRAIE Page -> formulaire construit depuis la page -> VRAI Confirmer -> Cloturer -> signataire : aucun constat', async () => {
+    const { d } = await lotEmis();
+    const k = new RegExp(`\\?lot=${SET}&k=([0-9a-f]{64})\\r\\n`).exec(d.envois[0])[1];
+    const avant = JSON.stringify([...d.fichiers.values()]);
+    const p = await afficher(d, { lot: SET, k });
+    assert.equal(p.r.status, 'success', p.r.erreur); assert.equal(p.http.code, 200);
+    assert.equal(JSON.stringify([...d.fichiers.values()]), avant, 'la Page n\'écrit RIEN');
+    const D = donneesDe(p.http.html);
+    const cand = candidatDe(d);
+    assert.deepEqual(D.cartes.map((c) => c.item_id), cand.lot.cartes.map((c) => c.item_id), 'ordre du candidat');
+    const ch = D.formulaire.champs;
+    assert.deepEqual(Object.keys(ch).sort(), B.CHAMPS_FORMULAIRE.filter((c) => c !== 'action').sort());
+    assert.deepEqual([ch.lot, ch.k, ch.generation, ch.nonce, ch.moteur_version, ch.moteur_sha256, D.formulaire.action], [SET, k, '1', p.aleas.nonce, MOTEUR.version, MOTEUR.sha256, URL_CONFIRMER]);
+    assert.equal(ch.empreinte, await Cat.calculerEmpreinte(cand.lot, SHA));
+    const dt = Date.parse(ch.expire_page) - Date.now();
+    assert.ok(dt > 3590000 && dt <= 3600000, 'expire_page = affichage + 60 min');
+    assert.equal(ch.jeton, COMMUN.jetonPage(SECRET, { set_id: SET, generation_cle: 1, cle_sha256: cand.relecture.cle_sha256, empreinte: ch.empreinte, moteur_version: ch.moteur_version, moteur_sha256: ch.moteur_sha256, expire_page: ch.expire_page, nonce: ch.nonce }));
+    const cf = await poster(d, corpsDepuisPage(D, { ecarter: ['it04'] }));
+    assert.equal(cf.sortie.ecriture, 'creee', JSON.stringify(cf.sortie));
+    assert.deepEqual(cf.dec.coeur.ecartees, ['it04']);
+    assert.equal(cf.dec.hash_formulaire, COMMUN.hashFormulaire({ lot: SET, generation: 1, empreinte: ch.empreinte, moteur_version: ch.moteur_version, moteur_sha256: ch.moteur_sha256, expire_page: ch.expire_page, nonce: ch.nonce, action: 'accepter', choix: D.cartes.map((c) => [c.item_id, c.item_id === 'it04' ? 'ecarter' : 'garder']) }));
+    await pause();
+    assert.deepEqual((await evaluer(d, SET, [await cloturer(d, { set_id: SET })], [cf])).constats, []);
+  });
+  test('« Tout rejeter » depuis la page -> décision rejeter ; deux affichages -> deux nonces et deux jetons distincts, chacun valable', async () => {
+    const { d } = await lotEmis();
+    const D1 = donneesDe((await afficher(d, { lot: SET, k: K })).http.html);
+    const D2 = donneesDe((await afficher(d, { lot: SET, k: K })).http.html);
+    assert.notEqual(D1.formulaire.champs.nonce, D2.formulaire.champs.nonce); assert.notEqual(D1.formulaire.champs.jeton, D2.formulaire.champs.jeton);
+    const a = await poster(d, corpsDepuisPage(D1, { action: 'rejeter' }));
+    const b = await poster(d, corpsDepuisPage(D2));
+    assert.deepEqual([a.sortie.ecriture, a.dec.coeur.action, b.sortie.ecriture, b.dec.coeur.action], ['creee', 'rejeter', 'creee', 'accepter']);
+  });
+  test('HTML : CSP EXACTE en <meta> (aléa CSP, URL exacte du moteur, URL exacte de confirmation), aléas DISTINCTS, aléa CSP jamais posté ; scripts : données JSON, moteur avec SRI, script sous nonce ; aucun gestionnaire inline, aucun <form>, aucun innerHTML ; noscript', async () => {
+    const { d } = await lotEmis();
+    const { http, aleas } = await afficher(d, { lot: SET, k: K });
+    const h = http.html;
+    const m = REG_PAGE.find((x) => x.version === MOTEUR.version);
+    const csp = `default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${aleas.csp}' ${m.url}; form-action ${URL_CONFIRMER}; base-uri 'none'`;
+    assert.ok(h.includes(`<meta http-equiv="Content-Security-Policy" content="${csp.replace(/'/g, '\'')}">`), 'CSP exacte §21.6');
+    assert.notEqual(aleas.csp, aleas.nonce);
+    const D = donneesDe(h);
+    assert.ok(!JSON.stringify(D).includes(aleas.csp), 'aléa CSP absent des données (jamais posté)');
+    const scripts = [...h.matchAll(/<script([^>]*)>/g)].map((x) => x[1]);
+    assert.deepEqual(scripts, [' type="application/json" id="donnees"', ` src="${m.url}" integrity="${m.integrite}" crossorigin="anonymous" referrerpolicy="no-referrer"`, ` nonce="${aleas.csp}"`]);
+    assert.doesNotMatch(h, /\son[a-z]+\s*=/i, 'aucun gestionnaire inline');
+    assert.doesNotMatch(h, /<form/i, 'aucun formulaire dans le HTML (construit par le script)');
+    assert.doesNotMatch(h, /innerHTML|outerHTML|insertAdjacentHTML|document\.write|eval\(/);
+    assert.match(h, /<noscript><p>Page de relecture indisponible sans JavaScript\.<\/p><\/noscript>/);
+    assert.match(h, /<meta name="referrer" content="no-referrer">/);
+    assert.equal(h.split(K).length - 1, 1, 'k : une seule occurrence (champ k du formulaire, dans les données)');
+    assert.equal(D.formulaire.champs.k, K);
+  });
+  test('données ÉCHAPPÉES : une question contenant </script>, <, >, &, U+2028 reste DANS le bloc JSON et se relit à l\'identique', async () => {
+    const d = fauxDrive();
+    const l = lotSource(SET); l.cartes[0].question = 'a</script><script>alert(1)</script> & <b> \u2028 </script x <!-- fin';
+    d.ajouter(CAND, `${SET}.lot.json`, JSON.stringify(l));
+    assert.equal((await emettre(d)).status, 'success');
+    const h = (await afficher(d, { lot: SET, k: K })).http.html;
+    assert.equal(h.split('</script').length - 1, 3, 'seules les trois balises de fermeture légitimes (« </script » ferme même sans « > »)');
+    assert.ok(!h.includes('<!--'));
+    assert.equal(donneesDe(h).cartes[0].question, l.cartes[0].question);
+  });
+  describe('C3 au GET -> page INDISPONIBLE (410) SANS aucune donnée du lot ; requête mal formée -> 400 sans lecture Drive', () => {
+    const indisponible = (p, code) => {
+      assert.equal(p.r.status, 'success', p.r.erreur); assert.equal(p.http.code, code);
+      assert.match(p.http.html, /n’est pas \(ou plus\) valable/);
+      assert.ok(!p.http.html.includes(SET) && !p.http.html.includes('donnees') && !p.http.html.includes('<script'), 'aucune donnée du lot');
+    };
+    for (const [nom, query] of [['k absente', { lot: SET }], ['paramètre en trop', { lot: SET, k: K, x: '1' }], ['k non hexadécimale', { lot: SET, k: 'Z'.repeat(64) }], ['lot invalide', { lot: '../x', k: K }], ['k en tableau', { lot: SET, k: [K, K] }]]) {
+      test(`requête : ${nom} -> 400`, async () => { const { d } = await lotEmis(); const n = d.appels.length; indisponible(await afficher(d, query), 400); assert.equal(d.appels.length, n); });
+    }
+    test('mauvaise clé, ancienne clé après réémission', async () => {
+      const { d } = await lotEmis();
+      indisponible(await afficher(d, { lot: SET, k: K2 }), 410);
+      assert.equal((await emettre(d, { k: K2 })).status, 'success');
+      indisponible(await afficher(d, { lot: SET, k: K }), 410);
+      assert.equal((await afficher(d, { lot: SET, k: K2 })).http.code, 200);
+    });
+    test('candidat clos (clé révoquée), expiré, abandonné, absent', async () => {
+      const { d } = await lotEmis(); await cloturer(d, { set_id: SET });
+      indisponible(await afficher(d, { lot: SET, k: K }), 410);
+      for (const muter of [(r) => { r.expire_le = new Date(Date.now() - 1000).toISOString(); }, (r) => { r.statut = 'abandonne'; }]) {
+        const d2 = (await lotEmis()).d; const f = d2.candidat(SET); const c = JSON.parse(f.contenu); muter(c.relecture); f.contenu = JSON.stringify(c);
+        indisponible(await afficher(d2, { lot: SET, k: K }), 410);
+      }
+      const d3 = (await lotEmis()).d; d3.candidat(SET).trashed = true;
+      indisponible(await afficher(d3, { lot: SET, k: K }), 410);
+      const d4 = (await lotEmis()).d; d4.ajouter(RELEC, `${SET}.candidat.json`, d4.candidat(SET).contenu);
+      indisponible(await afficher(d4, { lot: SET, k: K }), 410);
+    });
+    test('moteur du candidat ABSENT du registre (sha256 ≠) -> indisponible, moteur jamais chargé', async () => {
+      const { d } = await lotEmis(); const f = d.candidat(SET); const c = JSON.parse(f.contenu); c.relecture.moteur = { version: MOTEUR.version, sha256: '9'.repeat(64) }; f.contenu = JSON.stringify(c);
+      indisponible(await afficher(d, { lot: SET, k: K }), 410);
+    });
+  });
+  test('expire_page BORNÉE par expire_le (moins d\'une heure restante)', async () => {
+    const { d } = await lotEmis();
+    const f = d.candidat(SET); const c = JSON.parse(f.contenu); c.relecture.expire_le = new Date(Date.now() + 600000).toISOString(); f.contenu = JSON.stringify(c);
+    assert.equal(donneesDe((await afficher(d, { lot: SET, k: K })).http.html).formulaire.champs.expire_page, c.relecture.expire_le);
+  });
+  test('secret ABSENT -> erreur (500), jamais une page à jeton faible ; aléas égaux -> erreur', async () => {
+    const { d } = await lotEmis();
+    const p = await afficher(d, { lot: SET, k: K }, { secret: null });
+    assert.equal(p.r.status, 'error'); assert.match(p.r.erreur, /secret HMAC/); assert.equal(p.http.code, 500);
+    const a = nonceAleatoire();
+    assert.match((await afficher(d, { lot: SET, k: K }, { aleas: { csp: a, nonce: a } })).r.erreur, /aléas de la page/);
   });
 });
