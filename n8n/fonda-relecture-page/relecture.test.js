@@ -115,7 +115,8 @@ describe('1. octet-identité interne et 2. contrôles statiques', () => {
     assert.ok(js(N_E.preparer).includes(`// >>> FONCTION fonda/scripts/liaison-generation.js projectionComplete (copie exacte)\n${L.projectionComplete.toString()}\n// <<< FONCTION projectionComplete`));
   });
   test('pagination des listings Drive : configuration EXACTE (jeton en query string, fin sur absence de jeton, plafond)', () => {
-    for (const [k, noms] of [['cloturer', [N_C.decisions]], ['emettre', [N_E.decisions, N_E.relister]]]) {
+    for (const [k, noms] of [['cloturer', [N_C.chercher, N_C.decisions]], ['emettre', [N_E.chercherLot, N_E.existant, N_E.decisions, N_E.relister]],
+      ['confirmer', [N_F.chercher, N_F.chercherDecision]], ['page', [B.NOEUDS_PAGE.chercher]]]) {
       for (const nom of noms) {
         const n = JSON.parse(lireExport(k)).nodes.find((x) => x.name === nom);
         assert.deepEqual(n.parameters.options.pagination, { pagination: {
@@ -833,6 +834,39 @@ describe('6. cas clôture du §21.10, par la chaîne réelle', () => {
     const c = await cloturer(d, { set_id: SET });
     assert.equal(c.r.status, 'error'); assert.match(c.r.erreur, /clos_le absent ou mal formé/);
     assert.ok(!c.r.runData[N_C.sortie] && !c.r.runData[N_C.ecrire]); assert.equal(f.contenu, avant);
+  });
+});
+
+describe('7 bis. recherches par NOM EXACT paginées (défaut P3 corrigé en P2) : page vide portant un jeton -> page suivante lue, jamais une erreur', () => {
+  const pageVideDabord = (d) => { d.o.taillePage = 1; d.o.pagesVides = new Set([0]); };
+  test('Emettre : lot source (émission initiale)', async () => {
+    const d = mondeAvecLot(); pageVideDabord(d);
+    const e = await emettre(d);
+    assert.equal(e.status, 'success', e.erreur); assert.equal(e.sorties[N_E.chercherLot].length, 2, 'page vide + page du lot');
+  });
+  test('Emettre : candidat existant (réémission)', async () => {
+    const d = mondeAvecLot(); assert.equal((await emettre(d)).status, 'success'); pageVideDabord(d);
+    const e = await emettre(d, { k: K2 });
+    assert.equal(e.status, 'success', e.erreur); assert.equal(e.sorties[N_E.existant].length, 2); assert.equal(candidatDe(d).relecture.generation_cle, 2);
+  });
+  test('Cloturer : candidat de clôture', async () => {
+    const { d } = await lotEmis(); pageVideDabord(d);
+    const c = await cloturer(d, { set_id: SET });
+    assert.equal(c.r.status, 'success', c.r.erreur); assert.equal(c.r.sorties[N_C.chercher].length, 2); assert.equal(candidatDe(d).relecture.statut, 'clos');
+  });
+  test('incompleteSearch sur une recherche par nom exact (lot source, candidat existant, candidat de clôture) -> ERREUR, jamais une conclusion', async () => {
+    const d1 = mondeAvecLot(); d1.o.incomplet = (q) => q.includes('.lot.json');
+    const e1 = await emettre(d1); assert.equal(e1.status, 'error'); assert.match(e1.erreur, /recherche du lot source incomplète/);
+    const d2 = mondeAvecLot(); assert.equal((await emettre(d2)).status, 'success'); d2.o.incomplet = (q) => q.includes('.candidat.json') && !q.includes('trashed');
+    const e2 = await emettre(d2, { k: K2 }); assert.equal(e2.status, 'error'); assert.match(e2.erreur, /candidat existant incomplète/); assert.equal(candidatDe(d2).relecture.generation_cle, 1);
+    const { d: d3 } = await lotEmis(); d3.o.incomplet = (q) => q.includes('.candidat.json');
+    const c = await cloturer(d3, { set_id: SET }); assert.equal(c.r.status, 'error'); assert.match(c.r.erreur, /recherche du candidat incomplète/);
+  });
+  test('comptage inchangé : DEUX fichiers de même nom répartis sur deux pages -> refus (exactement un attendu)', async () => {
+    const d = mondeAvecLot(); d.o.taillePage = 1;
+    d.ajouter(CAND, `${SET}.lot.json`, `${JSON.stringify(lotSource(SET), null, 2)}\n`);
+    const e = await emettre(d);
+    assert.equal(e.status, 'error'); assert.match(e.erreur, /2 fichier\(s\) pour du lot source/);
   });
 });
 
@@ -1555,9 +1589,19 @@ describe('12. Page (VRAI workflow, §21.6) : C3 au GET, jeton, deux aléas, CSP,
   });
 });
 
-// ── 13. Script de la page EXÉCUTÉ (DOM minimal en vm, sans dépendance) : le VRAI formulaire soumis par le
-// script est posté au VRAI Confirmer. Le DOM n'implémente QUE ce que le script doit utiliser (textContent,
-// createElement, appendChild…) : innerHTML & co. sont ABSENTS (tout usage fait échouer le test). ──
+// ── 13. Script de la page EXÉCUTÉ (DOM minimal en vm, sans dépendance) : SOUMISSION SIMULÉE — les occurrences
+// réellement soumises par le script sont sérialisées en URL-encodé, décodées EN CONSERVANT les doublons, puis
+// postées au VRAI Confirmer (le transport navigateur -> webhook est une recette P4). Le DOM n'implémente que ce
+// que le script doit utiliser ; innerHTML, outerHTML, insertAdjacentHTML et document.write LÈVENT. ──
+const INTERDIT = (quoi) => () => { throw new Error(`DOM simulé : ${quoi} interdit (textContent seulement)`); };
+// Décodage d'un corps URL-encodé : un nom répété devient un TABLEAU (forme attendue de n8n, point P4).
+function decoderFormulaire(texte) {
+  const o = {};
+  for (const [k, v] of new URLSearchParams(texte)) {
+    if (!Object.prototype.hasOwnProperty.call(o, k)) o[k] = v; else o[k] = [].concat(o[k], v);
+  }
+  return o;
+}
 function navigateur(html, { moteur = true } = {}) {
   const soumis = []; const images = [];
   class Noeud {
@@ -1571,12 +1615,18 @@ function navigateur(html, { moteur = true } = {}) {
     setAttribute(k, v) { this.attrs[k] = String(v); }
     addEventListener(t, f) { (this.ecouteurs[t] = this.ecouteurs[t] || []).push(f); }
     submit() { soumis.push(this); }
+    get innerHTML() { return INTERDIT('innerHTML')(); }
+    set innerHTML(v) { INTERDIT('innerHTML')(); }
+    get outerHTML() { return INTERDIT('outerHTML')(); }
+    set outerHTML(v) { INTERDIT('outerHTML')(); }
+    insertAdjacentHTML() { INTERDIT('insertAdjacentHTML')(); }
   }
   const donnees = new Noeud('script'); donnees.texte = /<script type="application\/json" id="donnees">([\s\S]*?)<\/script>/.exec(html)[1];
   const ids = { donnees, app: new Noeud('main'), rejet: new Noeud('section') };
   ids.rejet.hidden = true;
   const body = new Noeud('body'); for (const e of [ids.app, ids.rejet]) body.appendChild(e);
-  const ctx = vm.createContext({ document: { createElement: (t) => new Noeud(t), getElementById: (i) => ids[i] || null, body }, window: { scrollTo() {} }, requestAnimationFrame: (f) => { images.push(f); } });
+  const ctx = vm.createContext({ document: { createElement: (t) => new Noeud(t), getElementById: (i) => ids[i] || null, body, write: INTERDIT('document.write'), writeln: INTERDIT('document.writeln') },
+    window: { scrollTo() {} }, requestAnimationFrame: (f) => { images.push(f); } });
   vm.runInContext('var self = globalThis;', ctx);
   const m = REG_PAGE.find((x) => html.includes(`src="${x.url}" integrity="${x.integrite}"`));
   if (moteur) {
@@ -1593,16 +1643,43 @@ function navigateur(html, { moteur = true } = {}) {
     cliquer(t) { const b = nav.bouton(t); assert.ok(b, `bouton « ${t} » absent (${nav.boutons()})`); assert.equal(b.disabled, false, `bouton « ${t} » désactivé`); for (const f of b.ecouteurs.click || []) f({ target: b }); },
     images() { while (images.length) images.shift()(); },
     texte: () => body.textContent,
-    champs: (f) => Object.fromEntries(f.enfants.filter((x) => x.tag === 'input').map((x) => [x.name, x.value])),
+    // Occurrences RÉELLEMENT soumises (ordre du DOM, doublons compris) -> corps URL-encodé -> décodage.
+    corps: (f) => new URLSearchParams(f.enfants.filter((x) => x.tag === 'input').map((x) => [x.name, x.value])).toString(),
+    champs: (f) => decoderFormulaire(nav.corps(f)),
+    Noeud,
     tous,
   };
   return nav;
 }
 const vm = require('vm');
 
-describe('13. script de la page EXÉCUTÉ (DOM minimal) -> VRAI formulaire -> VRAI Confirmer', () => {
+describe('13. script de la page EXÉCUTÉ (DOM minimal) -> soumission SIMULÉE (occurrences réelles) -> VRAI Confirmer', () => {
   const pageDe = async () => { const { d } = await lotEmis(); return { d, html: (await afficher(d, { lot: SET, k: K })).http.html }; };
-  test('NOMINAL : une carte à la fois (ordre du candidat), Garder/Écarter DÉSACTIVÉS avant le rendu complet, aucun choix par défaut, « Carte suivante » seulement après un choix ; récapitulatif ; POST réel -> Confirmer « creee » -> signataire : aucun constat', async () => {
+  // Poste le corps URL-encodé EXACT des occurrences soumises (content-length = ses octets).
+  const posterSoumis = (d, n, f) => { const c = n.corps(f); return poster(d, decoderFormulaire(c), { entetes: { 'content-type': 'application/x-www-form-urlencoded', 'content-length': String(Buffer.byteLength(c)) } }); };
+  test('DOM simulé : innerHTML, outerHTML, insertAdjacentHTML, document.write LÈVENT (un script qui les utilise échoue)', async () => {
+    const { html } = await pageDe();
+    const n = navigateur(html);
+    const e = new n.Noeud('div');
+    assert.throws(() => { e.innerHTML = '<b>x</b>'; }, /innerHTML interdit/); assert.throws(() => e.innerHTML, /innerHTML interdit/);
+    assert.throws(() => { e.outerHTML = 'x'; }, /outerHTML interdit/); assert.throws(() => e.insertAdjacentHTML('beforeend', 'x'), /insertAdjacentHTML interdit/);
+    const injecter = (code) => { assert.equal(html.split("'use strict';").length, 2); return html.replace("'use strict';", `'use strict'; ${code}`); };
+    assert.throws(() => navigateur(injecter('document.getElementById("app").innerHTML = "";')), /innerHTML interdit/);
+    assert.throws(() => navigateur(injecter('document.write("x");')), /document\.write interdit/);
+    assert.doesNotThrow(() => navigateur(injecter('document.getElementById("app").textContent = "";')), 'contre-épreuve : textContent permis');
+  });
+  test('doublon dans les occurrences soumises (champ homonyme ajouté au formulaire) -> conservé au décodage -> C1 (400), rien écrit', async () => {
+    const { d, html } = await pageDe();
+    const n = navigateur(html);
+    for (let i = 0; i < 6; i += 1) { n.images(); n.cliquer('Garder'); n.cliquer(i < 5 ? 'Carte suivante' : 'Récapitulatif'); }
+    n.cliquer('Envoyer ma relecture');
+    const f = n.soumis[0];
+    const dup = new n.Noeud('input'); dup.type = 'hidden'; dup.name = 'choix_it01'; dup.value = 'ecarter'; f.appendChild(dup);
+    assert.deepEqual(n.champs(f).choix_it01, ['garder', 'ecarter']);
+    const cf = await posterSoumis(d, n, f);
+    assert.deepEqual([cf.sortie.type, cf.sortie.motif, cf.http.code], ['rejet', 'C1', 400]); assert.deepEqual(d.dans(DEC), []);
+  });
+  test('NOMINAL : une carte à la fois (ordre du candidat), Garder/Écarter DÉSACTIVÉS avant le rendu complet, aucun choix par défaut, « Carte suivante » seulement après un choix ; récapitulatif ; soumission simulée -> Confirmer « creee » -> signataire : aucun constat', async () => {
     const { d, html } = await pageDe();
     const n = navigateur(html);
     const ids = lotSource(SET).cartes.map((c) => c.item_id);
@@ -1622,7 +1699,8 @@ describe('13. script de la page EXÉCUTÉ (DOM minimal) -> VRAI formulaire -> VR
     assert.deepEqual([f.method, f.action], ['post', URL_CONFIRMER]);
     const champs = n.champs(f);
     assert.deepEqual(Object.keys(champs).sort(), [...B.CHAMPS_FORMULAIRE, ...ids.map((x) => `choix_${x}`)].sort());
-    const cf = await poster(d, champs);
+    assert.ok(Object.values(champs).every((v) => typeof v === 'string'), 'aucun doublon soumis');
+    const cf = await posterSoumis(d, n, f);
     assert.equal(cf.sortie.ecriture, 'creee', JSON.stringify(cf.sortie)); assert.deepEqual(cf.dec.coeur.ecartees, ['it02']);
     await pause();
     assert.deepEqual((await evaluer(d, SET, [await cloturer(d, { set_id: SET })], [cf])).constats, []);
@@ -1636,7 +1714,7 @@ describe('13. script de la page EXÉCUTÉ (DOM minimal) -> VRAI formulaire -> VR
     n.images(); n.cliquer('Écarter');
     for (let i = 0; i < 6; i += 1) { if (i) { n.images(); n.cliquer('Garder'); } n.cliquer(i < 5 ? 'Carte suivante' : 'Récapitulatif'); }
     n.cliquer('Envoyer ma relecture');
-    assert.deepEqual((await poster(d, n.champs(n.soumis[0]))).dec.coeur.ecartees, ['it01']);
+    assert.deepEqual((await posterSoumis(d, n, n.soumis[0])).dec.coeur.ecartees, ['it01']);
   });
   test('toutes les cartes écartées : envoi IMPOSSIBLE depuis le récapitulatif ; « Tout rejeter » exige la case de confirmation -> POST rejeter -> Confirmer « creee » (action rejeter)', async () => {
     const { d, html } = await pageDe();
@@ -1650,7 +1728,7 @@ describe('13. script de la page EXÉCUTÉ (DOM minimal) -> VRAI formulaire -> VR
     n.cliquer('Tout rejeter');
     const champs = n.champs(n.soumis[0]);
     assert.deepEqual([champs.action, champs.confirmer_rejet, Object.keys(champs).some((c) => c.startsWith('choix_'))], ['rejeter', 'oui', false]);
-    const cf = await poster(d, champs);
+    const cf = await posterSoumis(d, n, n.soumis[0]);
     assert.deepEqual([cf.sortie.ecriture, cf.dec.coeur.action], ['creee', 'rejeter']);
   });
   test('« Essayer une réponse » : corrigée par le MOTEUR du candidat (verdict affiché) ; profil et exemples affichés', async () => {

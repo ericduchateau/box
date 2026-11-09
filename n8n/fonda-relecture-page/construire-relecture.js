@@ -247,13 +247,16 @@ const REGLAGES = { executionOrder: 'v1', saveDataSuccessExecution: 'all', saveDa
 // Recherche d'UN fichier par nom exact : vérifiée AVANT toute lecture de contenu (message explicite).
 // avecVersion : la version Drive est relevée ICI, AVANT la lecture du contenu (une écriture intercalée
 // ne peut que la faire paraître périmée : détection prudente).
+// Recherche PAGINÉE (P2 : une page vide portant un jeton est normale chez Drive) : toutes les pages suivies,
+// puis comptage inchangé (exactement un fichier).
 function codeVerifierRecherche(noeud, recherche, quoi, avecVersion = false) {
-  return [ENTETE(`recherche ${quoi} : exactement un fichier, recherche complète, avant lecture.`), UN_ITEM(noeud),
-    `const liste = unItem(${JSON.stringify(recherche)});
-if (!Array.isArray(liste.files) || liste.nextPageToken || liste.incompleteSearch) throw new Error('recherche ${quoi} inexploitable ou incomplète');
-if (liste.files.length !== 1 || typeof liste.files[0].id !== 'string') throw new Error(liste.files.length + ' fichier(s) pour ${quoi} : exactement un attendu');
-${avecVersion ? `if (typeof liste.files[0].version !== 'string' || !/^[0-9]+$/.test(liste.files[0].version)) throw new Error('${quoi} : version Drive illisible');
-return [{ json: { fichier_id: liste.files[0].id, version: liste.files[0].version } }];` : 'return [{ json: { fichier_id: liste.files[0].id } }];'}`].join('\n\n');
+  return [ENTETE(`recherche ${quoi} : exactement un fichier, recherche paginée complète, avant lecture.`), UN_ITEM(noeud), AGREGER,
+    `const liste = agregerPages(${JSON.stringify(recherche)});
+if (!liste.complet) throw new Error('recherche ${quoi} incomplète (incompleteSearch ou plafond de pagination)');
+const fichiers = liste.fichiers;
+if (fichiers.length !== 1 || typeof fichiers[0].id !== 'string') throw new Error(fichiers.length + ' fichier(s) pour ${quoi} : exactement un attendu');
+${avecVersion ? `if (typeof fichiers[0].version !== 'string' || !/^[0-9]+$/.test(fichiers[0].version)) throw new Error('${quoi} : version Drive illisible');
+return [{ json: { fichier_id: fichiers[0].id, version: fichiers[0].version } }];` : 'return [{ json: { fichier_id: fichiers[0].id } }];'}`].join('\n\n');
 }
 
 // ═══ CLÔTURER (sortie observée cloture-fonda/v1) ═══
@@ -333,7 +336,7 @@ function construireCloturer() {
     webhook(N.webhook, CONFIG.cheminCloturer, CONFIG.credentialCloturer, 'webhook-cloturer'),
     code(N.entree, codeEntreeCloture()),
     code(N.valider, codeValiderCloture()),
-    listing(N.chercher, `={{ "'${CONFIG.dossierRelecture}' in parents and trashed = false and name = '" + ${setIdExpr} + ".candidat.json'" }}`, 'nextPageToken,incompleteSearch,files(id,name,version)', false),
+    listing(N.chercher, `={{ "'${CONFIG.dossierRelecture}' in parents and trashed = false and name = '" + ${setIdExpr} + ".candidat.json'" }}`, 'nextPageToken,incompleteSearch,files(id,name,version)', true),
     code(N.verifierListe, codeVerifierRecherche(N.verifierListe, N.chercher, 'du candidat', true)),
     contenuDrive(N.lire, `$('${N.verifierListe}').first().json.fichier_id`),
     code(N.preparer, codePreparerCloture()),
@@ -399,8 +402,9 @@ const notions = (referentiel.notions || []).filter((n) => n && n.id === lot.noti
 if (notions.length !== 1 || typeof notions[0].relecteur !== 'string' || !notions[0].relecteur) throw new Error('notion du lot absente, ambiguë ou sans relecteur au référentiel archivé');
 const relecteur = notions[0].relecteur;
 // 6. Candidat existant (corbeille comprise) et decisions/ du lot : PROUVÉ vide, sinon refus (fail-closed).
-const ex = unItem(${JSON.stringify(NOEUDS_EMETTRE.existant)});
-if (!Array.isArray(ex.files) || ex.nextPageToken || ex.incompleteSearch) throw new Error('recherche du candidat existant inexploitable ou incomplète');
+const exPages = agregerPages(${JSON.stringify(NOEUDS_EMETTRE.existant)});
+if (!exPages.complet) throw new Error('recherche du candidat existant incomplète (incompleteSearch ou plafond de pagination)');
+const ex = { files: exPages.fichiers };
 if (ex.files.length > 1) throw new Error(ex.files.length + ' candidats existants : refus');
 if (ex.files.length === 1 && ex.files[0].trashed !== false) throw new Error('candidat existant à la corbeille : refus');
 const d = agregerPages(${JSON.stringify(NOEUDS_EMETTRE.decisions)});
@@ -538,11 +542,11 @@ function construireEmettre() {
     contents(N.referentiel, 'fonda/data/referentiel.json'),
     contents(N.moteurs, 'fonda/engine/moteurs.json'),
     contents(N.journal, 'fonda/data/set_ids-journal.json'),
-    listing(N.chercherLot, `={{ "'${CONFIG.dossierCandidats}' in parents and trashed = false and name = '" + ${setIdExpr} + ".lot.json'" }}`, CHAMPS_LISTE, false),
+    listing(N.chercherLot, `={{ "'${CONFIG.dossierCandidats}' in parents and trashed = false and name = '" + ${setIdExpr} + ".lot.json'" }}`, CHAMPS_LISTE, true),
     code(N.verifierLot, codeVerifierRecherche(N.verifierLot, N.chercherLot, 'du lot source')),
     contenuDrive(N.lireLot, `$('${N.verifierLot}').first().json.fichier_id`),
     // Corbeille COMPRISE : un candidat à la corbeille bloque (refus), jamais ignoré.
-    listing(N.existant, `={{ "'${CONFIG.dossierRelecture}' in parents and name = '" + ${setIdExpr} + ".candidat.json'" }}`, 'nextPageToken,incompleteSearch,files(id,name,trashed,version)', false),
+    listing(N.existant, `={{ "'${CONFIG.dossierRelecture}' in parents and name = '" + ${setIdExpr} + ".candidat.json'" }}`, 'nextPageToken,incompleteSearch,files(id,name,trashed,version)', true),
     listing(N.decisions, qDecisions(setIdExpr), CHAMPS_LISTE, true),
     code(N.analyser, codeAnalyserEmission()),
     siBooleen(N.siReemission, 'reemission', 'si-reemission'),
