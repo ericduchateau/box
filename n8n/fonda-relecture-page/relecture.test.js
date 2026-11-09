@@ -214,7 +214,7 @@ function projeter(fields) {
 function fauxDrive(o = {}) {
   const fichiers = new Map(); let n = 0; const sequences = new Map(); let nj = 0;
   const d = {
-    fichiers, o, envois: [], notifications: [], appels: [], crochets: {},
+    fichiers, o, envois: [], appels: [], crochets: {},
     ajouter(dossier, nom, contenu, properties = {}, extra = {}) {
       const id = `drv-${++n}`;
       fichiers.set(id, { id, name: nom, parents: [dossier], mimeType: 'application/json', properties, trashed: false, contenu, modifiedTime: new Date().toISOString(), version: '1', ...extra });
@@ -417,13 +417,11 @@ async function formulaire(d, setId, { k = K, generation, nonce = nonceAleatoire(
 }
 async function poster(d, corps, o = {}) {
   const debut = new Date().toISOString();
-  const entetes = o.entetes || { 'content-length': String(Buffer.byteLength(corps && typeof corps === 'object' && !Array.isArray(corps) ? encoder(corps) : '')) };
+  const entetes = o.entetes || { 'content-type': 'application/x-www-form-urlencoded', 'content-length': String(Buffer.byteLength(corps && typeof corps === 'object' && !Array.isArray(corps) ? encoder(corps) : '')) };
   const r = await executerGraphe(simulable(JSON.parse(lireExport('confirmer'))), {
     corps, entetes, contexteCode: { $env: { FONDA_PAGE_HMAC: o.secret === undefined ? SECRET : o.secret } },
     reponses: {
       [N_F.chercher]: d.n8nListe, [N_F.lire]: d.n8nMedia, [N_F.chercherDecision]: d.n8nListe, [N_F.lireDecision]: d.n8nMedia, [N_F.relire]: d.n8nMedia, [N_F.ecrire]: d.n8nCreer,
-      [N_F.adresse]: async () => ({ statusCode: 200, body: { data: [{ relecteur_attribue: RELECTEUR, adresse: 'relectrice@exemple.invalid' }, { relecteur_attribue: 'eric', adresse: 'relecteur@exemple.invalid' }] } }),
-      [N_F.envoyer]: async (q) => { d.notifications.push(Buffer.from(JSON.parse(q.jsonBody).raw, 'base64url').toString('utf8')); return { statusCode: 200, body: { id: `notif-${d.notifications.length}` } }; },
       ...(o.reponses || {}),
     },
   });
@@ -1112,7 +1110,7 @@ describe('11. Confirmer (VRAI workflow) : contrat gelé ROLES.confirmation, C1�
   };
   const AVEC_K_CONF = new Set([N_F.webhook]);
 
-  test('NOMINAL : decision « creee », forme exacte, fichier <set_id>-<nonce>.json (dossier, propriétés), décision conforme, hash_formulaire EXACT, k confinée, C7 notifié ; chaîne -> aucun constat', async () => {
+  test('NOMINAL : decision « creee », forme exacte, fichier <set_id>-<nonce>.json (dossier, propriétés), décision conforme, hash_formulaire EXACT, k confinée ; chaîne -> aucun constat', async () => {
     const { d } = await lotEmis();
     const nonce = nonceAleatoire();
     const f = await formulaire(d, SET, { generation: 1, nonce, ecarter: ['it02'] });
@@ -1130,17 +1128,16 @@ describe('11. Confirmer (VRAI workflow) : contrat gelé ROLES.confirmation, C1�
     assert.deepEqual(rattacher(cf).nature, 'decision');
     const porteurs = Object.entries(cf.r.runData).filter(([, v]) => JSON.stringify(v).includes(K) || JSON.stringify(v).includes(f.jeton)).map(([n]) => n);
     assert.deepEqual(porteurs.filter((n) => !AVEC_K_CONF.has(n)), [], `k ou jeton hors du webhook : ${porteurs}`);
-    assert.equal(d.notifications.length, 1); assert.match(d.notifications[0], new RegExp(`${SET} : décision reçue`)); assert.ok(!d.notifications[0].includes(K));
     await pause();
     assert.deepEqual((await evaluer(d, SET, [await cloturer(d, { set_id: SET })], [cf])).constats, []);
   });
-  test('R3 : resoumission IDENTIQUE (même nonce, même formulaire) -> « existante », même fichier, SHA du fichier RELU, rien réécrit, pas de 2e notification ; signataire : aucun constat', async () => {
+  test('R3 : resoumission IDENTIQUE SÉQUENTIELLE (même nonce, même formulaire) -> « existante », même fichier, SHA du fichier RELU, rien réécrit ; signataire : aucun constat', async () => {
     const { d } = await lotEmis();
     const f = await formulaire(d, SET, { generation: 1 });
     const cf1 = await poster(d, f); const cf2 = await poster(d, f);
     assert.deepEqual([cf1.sortie.ecriture, cf2.sortie.ecriture, cf2.http.code], ['creee', 'existante', 200]);
     assert.equal(cf2.sortie.decision_fichier_id, cf1.sortie.decision_fichier_id); assert.equal(cf2.sortie.decision_sha256, P.empreinteDecision(JSON.parse(d.fichiers.get(cf1.id).contenu)));
-    assert.equal(cf2.r.runData[N_F.ecrire], undefined); assert.equal(d.dans(DEC).length, 1); assert.equal(d.notifications.length, 1);
+    assert.equal(cf2.r.runData[N_F.ecrire], undefined); assert.equal(d.dans(DEC).length, 1);
     assert.equal(rattacher(cf2).ecriture, 'existante');
     await pause();
     assert.deepEqual((await evaluer(d, SET, [await cloturer(d, { set_id: SET })], [cf1, cf2])).constats, []);
@@ -1158,6 +1155,13 @@ describe('11. Confirmer (VRAI workflow) : contrat gelé ROLES.confirmation, C1�
     assert.equal(rattacher(cf2).nature, 'conflit');
     await pause();
     aIssue(await evaluer(d, SET, [await cloturer(d, { set_id: SET })], [cf1, cf2]), 'abandon', /« conflit »/);
+  });
+  test('C6 : DEUX fichiers de même nom (état anormal) -> ERREUR, aucune troisième écriture', async () => {
+    const { d } = await lotEmis();
+    const nonce = nonceAleatoire();
+    for (let i = 0; i < 2; i += 1) d.ajouter(DEC, `${SET}-${nonce}.json`, '{}', { fonda_set_id: SET, fonda_nonce: nonce });
+    const cf = await confirmer(d, SET, 1, { nonce });
+    assert.equal(cf.r.status, 'error'); assert.match(cf.r.erreur, /2 décisions de même nom/); assert.equal(d.dans(DEC).length, 2);
   });
   test('C6 : fichier de même nom NON CONFORME (déposé par un tiers) -> « conflit », jamais « existante »', async () => {
     const { d } = await lotEmis();
@@ -1220,9 +1224,11 @@ describe('11. Confirmer (VRAI workflow) : contrat gelé ROLES.confirmation, C1�
     test('taille : content-length > 64 Ko, absent, ou champs reçus > 64 Ko -> C1', async () => {
       const { d } = await lotEmis();
       const f = await formulaire(d, SET, { generation: 1 });
-      await rejete(d, await poster(d, f, { entetes: { 'content-length': '65537' } }), 'C1', false);
-      await rejete(d, await poster(d, f, { entetes: {} }), 'C1', false);
-      await rejete(d, await poster(d, { ...f, moteur_version: 'v'.repeat(70000) }, { entetes: { 'content-length': '100' } }), 'C1', false);
+      const ct = { 'content-type': 'application/x-www-form-urlencoded' };
+      await rejete(d, await poster(d, f, { entetes: { ...ct, 'content-length': '65537' } }), 'C1', false);
+      await rejete(d, await poster(d, f, { entetes: { ...ct } }), 'C1', false);
+      await rejete(d, await poster(d, { ...f, moteur_version: 'v'.repeat(70000) }, { entetes: { ...ct, 'content-length': '100' } }), 'C1', false);
+      assert.equal((await poster(d, f, { entetes: { ...ct, 'content-length': '65536' } })).sortie.ecriture, 'creee', 'borne incluse');
     });
     test('entrée NE LÈVE JAMAIS : corps absent, tableau, nombres, chaînes > 128 -> { lot, nonce } nuls ou copiés, rejet C1, exécution « success »', async () => {
       const { d } = await lotEmis();
@@ -1317,15 +1323,51 @@ describe('11. Confirmer (VRAI workflow) : contrat gelé ROLES.confirmation, C1�
     const cf = await confirmer(d, SET, 1);
     assert.equal(cf.r.status, 'error'); assert.match(cf.r.erreur, /absence non prouvée/); assert.deepEqual(d.dans(DEC), []);
   });
-  test('C7 NON BLOQUANT : courriel en panne ou Data Table en panne -> exécution « success », décision créée ; aucun courriel sur rejet', async () => {
+  test('PRINCIPE (arbitrage P2) : l\'exécution OBSERVÉE ne contient que le travail essentiel — aucun courriel, Data Table ni nœud « au mieux » ; la réponse HTTP est le DERNIER nœud', () => {
+    const wf = JSON.parse(lireExport('confirmer'));
+    const urls = wf.nodes.filter((n) => n.type === 'n8n-nodes-base.httpRequest').map((n) => n.parameters.url);
+    assert.ok(urls.every((u) => /googleapis\.com\/(upload\/)?drive\/v3\/files/.test(u)), `HTTP hors Drive : ${urls}`);
+    assert.ok(wf.nodes.every((n) => n.onError === undefined && !n.continueOnFail), 'aucune erreur absorbée');
+    assert.equal(wf.connections[N_F.repondre], undefined, 'rien après la réponse');
+    for (const k of ['cloturer']) {
+      const w = JSON.parse(lireExport(k));
+      assert.ok(w.nodes.every((n) => n.onError === undefined && !n.continueOnFail && !/gmail|data-tables/.test(JSON.stringify(n.parameters || {}))), `${k} : aucun effet de bord au mieux`);
+    }
+  });
+  test('C1 : encodage ≠ formulaire URL-encodé (JSON, absent) -> rejet 400 : un doublon JSON (dernière valeur gagnante) ne peut pas passer', async () => {
     const { d } = await lotEmis();
-    const a = await confirmer(d, SET, 1, { reponses: { [N_F.envoyer]: async () => ({ statusCode: 503, body: {} }) } });
-    const b = await confirmer(d, SET, 1, { reponses: { [N_F.adresse]: async () => { throw new Error('Data Table injoignable'); } } });
-    for (const x of [a, b]) { assert.equal(x.r.status, 'success', x.r.erreur); assert.equal(x.sortie.ecriture, 'creee'); assert.equal(rattacher(x).nature, 'decision'); }
-    assert.equal(d.notifications.length, 0);
-    await cloturer(d, { set_id: SET });
-    await confirmer(d, SET, 1);
-    assert.equal(d.notifications.length, 0, 'aucun courriel sur rejet');
+    const f = await formulaire(d, SET, { generation: 1 });
+    const lg = String(Buffer.byteLength(encoder(f)));
+    for (const ct of ['application/json', 'text/plain', undefined, 'multipart/form-data; boundary=x']) {
+      await rejete(d, await poster(d, f, { entetes: { ...(ct ? { 'content-type': ct } : {}), 'content-length': lg } }), 'C1', false);
+    }
+    assert.equal((await poster(d, f, { entetes: { 'content-type': 'application/x-www-form-urlencoded; charset=UTF-8', 'content-length': lg } })).sortie.ecriture, 'creee');
+  });
+  test('C6 et C3 PAGINÉS : page vide portant un jeton, résultats sur plusieurs pages -> pages suivantes lues, jamais une erreur', async () => {
+    const { d } = await lotEmis();
+    d.o.taillePage = 1; d.o.pagesVides = new Set([0]); // après l'émission (Emettre/Cloturer, P3 : recherches non paginées, signalé)
+    const nonce = nonceAleatoire();
+    const cf1 = await confirmer(d, SET, 1, { nonce });
+    assert.equal(cf1.sortie.ecriture, 'creee', cf1.r.erreur);
+    assert.equal(cf1.r.sorties[N_F.chercher].length, 2, 'candidat : page vide + page');
+    assert.equal(cf1.r.sorties[N_F.chercherDecision].length, 2, 'absence prouvée sur DEUX pages vides');
+    const cf2 = await confirmer(d, SET, 1, { nonce });
+    assert.deepEqual([cf2.sortie.ecriture, cf2.r.sorties[N_F.chercherDecision].length], ['existante', 2], 'décision existante trouvée en page 2');
+    assert.deepEqual(cf2.r.sorties[N_F.chercherDecision][0].json.files, [], 'page 1 vide');
+    const autre = await confirmer(d, SET, 1, { nonce, ecarter: ['it01'] });
+    assert.equal(autre.sortie.type, 'conflit');
+  });
+  test('LIMITE (disponibilité, pas intégrité) : deux resoumissions IDENTIQUES SIMULTANÉES -> deux créations (Drive sans écriture conditionnelle) ; le signataire ABANDONNE (R3, pilier 1)', async () => {
+    const { d } = await lotEmis();
+    const f = await formulaire(d, SET, { generation: 1 });
+    let liberer; const barriere = new Promise((r) => { liberer = r; });
+    let signaler; const atteinte = new Promise((r) => { signaler = r; });
+    d.crochets.avantCreer = async () => { signaler(); await barriere; };
+    const pA = poster(d, f); await atteinte; // A : C6 a constaté l'absence, écriture retenue
+    const b = await poster(d, f); liberer(); const a = await pA;
+    assert.deepEqual([a.sortie.ecriture, b.sortie.ecriture], ['creee', 'creee']); assert.notEqual(a.id, b.id);
+    await pause();
+    aIssue(await evaluer(d, SET, [await cloturer(d, { set_id: SET })], [a, b]), 'abandon', /resoumissions non identiques \(R3\)/);
   });
 });
 
@@ -1387,12 +1429,20 @@ describe('12. Page (VRAI workflow, §21.6) : C3 au GET, jeton, deux aléas, CSP,
       assert.equal(p.sha256, l.sha256);
     }
   });
-  test('exemples de profil affichés : VÉRIFIÉS par le moteur v1 (accepté / refusé)', () => {
-    const M = require('../../fonda/engine/moteur-correction-v1.js').creerMoteur();
-    for (const [profil, e] of Object.entries(B.EXEMPLES_PROFIL)) {
-      const r = M.soumettre(M.demarrer(M.preparerCarte({ question: 'q', profil_correction: profil, reponses_acceptees: [e.attendue] })), e.saisie).resultat;
-      assert.equal(r.reussite, e.reussite, profil);
+  test('profils : explications par VERSION du moteur ; CHAQUE exemple vérifié par ce moteur (dont « chats » refusé en sens, CDC §4.3) ; tous les profils couverts', () => {
+    for (const l of REGISTRE) {
+      const M = require(path.join(RACINE, l.fichier)).creerMoteur();
+      const p = B.PROFILS_MOTEUR[l.version];
+      assert.ok(p, `explications absentes pour ${l.version}`);
+      assert.deepEqual(Object.keys(p).sort(), ['exact', 'numerique', 'orthographe', 'sens']);
+      for (const [profil, x] of Object.entries(p)) {
+        for (const [attendue, saisie, issue] of x.exemples) {
+          assert.equal(M.soumettre(M.demarrer(M.preparerCarte({ question: 'q', profil_correction: profil, reponses_acceptees: [attendue] })), saisie).resultat.issue, issue, `${l.version} ${profil} « ${saisie} » / « ${attendue} »`);
+        }
+      }
     }
+    assert.ok(B.PROFILS_MOTEUR.v1.sens.exemples.some(([a, s, i]) => a === 'chat' && s === 'chats' && i === 'faux'));
+    assert.match(B.PROFILS_MOTEUR.v1.sens.explication, /singulier\/pluriel n’est PAS pardonné/);
   });
 
   test('CHAÎNE NOMINALE COMPLÈTE : Emettre -> lien du courriel -> VRAIE Page -> formulaire construit depuis la page -> VRAI Confirmer -> Cloturer -> signataire : aucun constat', async () => {
@@ -1502,5 +1552,125 @@ describe('12. Page (VRAI workflow, §21.6) : C3 au GET, jeton, deux aléas, CSP,
     assert.equal(p.r.status, 'error'); assert.match(p.r.erreur, /secret HMAC/); assert.equal(p.http.code, 500);
     const a = nonceAleatoire();
     assert.match((await afficher(d, { lot: SET, k: K }, { aleas: { csp: a, nonce: a } })).r.erreur, /aléas de la page/);
+  });
+});
+
+// ── 13. Script de la page EXÉCUTÉ (DOM minimal en vm, sans dépendance) : le VRAI formulaire soumis par le
+// script est posté au VRAI Confirmer. Le DOM n'implémente QUE ce que le script doit utiliser (textContent,
+// createElement, appendChild…) : innerHTML & co. sont ABSENTS (tout usage fait échouer le test). ──
+function navigateur(html, { moteur = true } = {}) {
+  const soumis = []; const images = [];
+  class Noeud {
+    constructor(tag) { Object.assign(this, { tag, enfants: [], parent: null, texte: '', attrs: {}, ecouteurs: {}, disabled: false, hidden: false, checked: false, className: '', type: '', name: '', value: '', method: '', action: '', id: '' }); }
+    get firstChild() { return this.enfants[0] || null; }
+    appendChild(e) { if (e.parent) e.parent.removeChild(e); e.parent = this; this.enfants.push(e); return e; }
+    removeChild(e) { const i = this.enfants.indexOf(e); if (i < 0) throw new Error('removeChild : pas un enfant'); this.enfants.splice(i, 1); e.parent = null; return e; }
+    insertBefore(e, ref) { if (e.parent) e.parent.removeChild(e); const i = ref ? this.enfants.indexOf(ref) : -1; e.parent = this; this.enfants.splice(i < 0 ? this.enfants.length : i, 0, e); return e; }
+    get textContent() { return this.texte + this.enfants.map((e) => e.textContent).join(''); }
+    set textContent(v) { for (const e of this.enfants) e.parent = null; this.enfants = []; this.texte = String(v); }
+    setAttribute(k, v) { this.attrs[k] = String(v); }
+    addEventListener(t, f) { (this.ecouteurs[t] = this.ecouteurs[t] || []).push(f); }
+    submit() { soumis.push(this); }
+  }
+  const donnees = new Noeud('script'); donnees.texte = /<script type="application\/json" id="donnees">([\s\S]*?)<\/script>/.exec(html)[1];
+  const ids = { donnees, app: new Noeud('main'), rejet: new Noeud('section') };
+  ids.rejet.hidden = true;
+  const body = new Noeud('body'); for (const e of [ids.app, ids.rejet]) body.appendChild(e);
+  const ctx = vm.createContext({ document: { createElement: (t) => new Noeud(t), getElementById: (i) => ids[i] || null, body }, window: { scrollTo() {} }, requestAnimationFrame: (f) => { images.push(f); } });
+  vm.runInContext('var self = globalThis;', ctx);
+  const m = REG_PAGE.find((x) => html.includes(`src="${x.url}" integrity="${x.integrite}"`));
+  if (moteur) {
+    const src = fs.readFileSync(path.join(RACINE, REGISTRE.find((l) => l.version === m.version).fichier));
+    assert.equal(`sha384-${crypto.createHash('sha384').update(src).digest('base64')}`, m.integrite, 'SRI : le fichier chargé correspond à l\'intégrité de la page');
+    vm.runInContext(src.toString('utf8'), ctx); // <script src integrity> accepté
+  }
+  vm.runInContext(/<script nonce="[0-9a-f]{32}">([\s\S]*?)<\/script>/.exec(html)[1], ctx);
+  const tous = (n = body) => [n, ...n.enfants.flatMap((e) => tous(e))];
+  const nav = {
+    soumis, body, app: ids.app, rejet: ids.rejet,
+    boutons: () => tous().filter((n) => n.tag === 'button').map((b) => b.textContent),
+    bouton: (t) => tous().find((n) => n.tag === 'button' && n.textContent === t),
+    cliquer(t) { const b = nav.bouton(t); assert.ok(b, `bouton « ${t} » absent (${nav.boutons()})`); assert.equal(b.disabled, false, `bouton « ${t} » désactivé`); for (const f of b.ecouteurs.click || []) f({ target: b }); },
+    images() { while (images.length) images.shift()(); },
+    texte: () => body.textContent,
+    champs: (f) => Object.fromEntries(f.enfants.filter((x) => x.tag === 'input').map((x) => [x.name, x.value])),
+    tous,
+  };
+  return nav;
+}
+const vm = require('vm');
+
+describe('13. script de la page EXÉCUTÉ (DOM minimal) -> VRAI formulaire -> VRAI Confirmer', () => {
+  const pageDe = async () => { const { d } = await lotEmis(); return { d, html: (await afficher(d, { lot: SET, k: K })).http.html }; };
+  test('NOMINAL : une carte à la fois (ordre du candidat), Garder/Écarter DÉSACTIVÉS avant le rendu complet, aucun choix par défaut, « Carte suivante » seulement après un choix ; récapitulatif ; POST réel -> Confirmer « creee » -> signataire : aucun constat', async () => {
+    const { d, html } = await pageDe();
+    const n = navigateur(html);
+    const ids = lotSource(SET).cartes.map((c) => c.item_id);
+    for (const [i, id] of ids.entries()) {
+      assert.match(n.texte(), new RegExp(`Carte ${i + 1} sur ${ids.length}`));
+      assert.ok(n.texte().includes(lotSource(SET).cartes[i].question));
+      assert.equal(n.bouton('Garder').disabled, true, 'désactivé avant le rendu'); assert.equal(n.bouton('Écarter').disabled, true);
+      assert.ok(!n.bouton('Carte suivante') && !n.bouton('Récapitulatif'), 'aucun choix par défaut, pas de suite');
+      n.images();
+      n.cliquer(id === 'it02' ? 'Écarter' : 'Garder');
+      n.cliquer(i + 1 < ids.length ? 'Carte suivante' : 'Récapitulatif');
+    }
+    assert.match(n.texte(), /Récapitulatif/); assert.equal(n.soumis.length, 0, 'rien envoyé avant le récapitulatif');
+    n.cliquer('Envoyer ma relecture'); n.bouton('Envoyer ma relecture').disabled = false; n.cliquer('Envoyer ma relecture');
+    assert.equal(n.soumis.length, 1, 'un seul envoi (double clic)');
+    const f = n.soumis[0];
+    assert.deepEqual([f.method, f.action], ['post', URL_CONFIRMER]);
+    const champs = n.champs(f);
+    assert.deepEqual(Object.keys(champs).sort(), [...B.CHAMPS_FORMULAIRE, ...ids.map((x) => `choix_${x}`)].sort());
+    const cf = await poster(d, champs);
+    assert.equal(cf.sortie.ecriture, 'creee', JSON.stringify(cf.sortie)); assert.deepEqual(cf.dec.coeur.ecartees, ['it02']);
+    await pause();
+    assert.deepEqual((await evaluer(d, SET, [await cloturer(d, { set_id: SET })], [cf])).constats, []);
+  });
+  test('retour arrière et changement de choix : la carte est réaffichée, le choix courant indiqué, le POST porte le DERNIER choix', async () => {
+    const { d, html } = await pageDe();
+    const n = navigateur(html);
+    n.images(); n.cliquer('Garder'); n.cliquer('Carte suivante');
+    n.images(); n.cliquer('Carte précédente');
+    assert.match(n.texte(), /Carte 1 sur/); assert.match(n.texte(), /Choix actuel : Garder/);
+    n.images(); n.cliquer('Écarter');
+    for (let i = 0; i < 6; i += 1) { if (i) { n.images(); n.cliquer('Garder'); } n.cliquer(i < 5 ? 'Carte suivante' : 'Récapitulatif'); }
+    n.cliquer('Envoyer ma relecture');
+    assert.deepEqual((await poster(d, n.champs(n.soumis[0]))).dec.coeur.ecartees, ['it01']);
+  });
+  test('toutes les cartes écartées : envoi IMPOSSIBLE depuis le récapitulatif ; « Tout rejeter » exige la case de confirmation -> POST rejeter -> Confirmer « creee » (action rejeter)', async () => {
+    const { d, html } = await pageDe();
+    const n = navigateur(html);
+    assert.equal(n.rejet.hidden, false, 'section « Tout rejeter » séparée, visible avec JavaScript');
+    for (let i = 0; i < 6; i += 1) { n.images(); n.cliquer('Écarter'); n.cliquer(i < 5 ? 'Carte suivante' : 'Récapitulatif'); }
+    assert.equal(n.bouton('Envoyer ma relecture').disabled, true); assert.match(n.texte(), /utilisez « Tout rejeter »/);
+    assert.equal(n.bouton('Tout rejeter').disabled, true, 'confirmation explicite requise');
+    const caseRejet = n.tous().find((x) => x.tag === 'input' && x.type === 'checkbox');
+    caseRejet.checked = true; for (const f of caseRejet.ecouteurs.change) f({});
+    n.cliquer('Tout rejeter');
+    const champs = n.champs(n.soumis[0]);
+    assert.deepEqual([champs.action, champs.confirmer_rejet, Object.keys(champs).some((c) => c.startsWith('choix_'))], ['rejeter', 'oui', false]);
+    const cf = await poster(d, champs);
+    assert.deepEqual([cf.sortie.ecriture, cf.dec.coeur.action], ['creee', 'rejeter']);
+  });
+  test('« Essayer une réponse » : corrigée par le MOTEUR du candidat (verdict affiché) ; profil et exemples affichés', async () => {
+    const { html } = await pageDe();
+    const n = navigateur(html);
+    const saisie = n.tous().find((x) => x.tag === 'input' && x.type === 'text');
+    const c0 = lotSource(SET).cartes[0];
+    const M = require('../../fonda/engine/moteur-correction-v1.js').creerMoteur();
+    for (const essai of [String(c0.reponses_acceptees[0]), 'réponse fausse']) {
+      saisie.value = essai; n.cliquer('Corriger');
+      const attendu = M.soumettre(M.demarrer(M.preparerCarte(c0)), essai).resultat.verdict.texte;
+      assert.ok(n.texte().includes(attendu), `verdict du moteur « ${attendu} » affiché pour « ${essai} »`);
+    }
+    const p = B.PROFILS_MOTEUR.v1[c0.profil_correction];
+    assert.ok(n.texte().includes(p.explication)); assert.ok(n.texte().includes(`Exemples« ${p.exemples[0][1]} »`));
+  });
+  test('moteur NON chargé (SRI refusée ou réseau) : relecture impossible, AUCUN bouton de choix ni d\'envoi', async () => {
+    const { html } = await pageDe();
+    const n = navigateur(html, { moteur: false });
+    assert.match(n.texte(), /Moteur de correction indisponible/);
+    assert.deepEqual(n.boutons(), []); assert.equal(n.rejet.hidden, true);
   });
 });

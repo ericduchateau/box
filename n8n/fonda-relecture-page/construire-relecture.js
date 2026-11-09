@@ -592,9 +592,9 @@ function construireEmettre() {
 // octetsUtf8, sha256Hex), et chargée par le harnais (chargerCommun) pour les vecteurs.
 // « Octets canoniques » d'un TABLEAU à schéma FIXE : chaque élément est VALIDÉ (type, entier sûr, paires de
 // choix), puis sérialisé par JSON.stringify (aucun objet : aucun ordre de clés en jeu ; chaînes sans
-// normalisation, comme canonique.js §1), UTF-8. hash_formulaire = empreinte d'AUDIT signée (dans la décision
-// decision-fonda/v1, donc inaltérable une fois signée) : calculée ici, vérifiée par le harnais seul ; aucune
-// re-dérivation aval (expire_page n'est pas dans la décision) — README « Où vit chaque garantie ».
+// normalisation, comme canonique.js §1), UTF-8. hash_formulaire = AUDIT RAPPROCHÉ, NON SIGNÉ : dans la décision
+// decision-fonda/v1, couvert par decision_sha256 (R1) AVANT la signature, absent de l'instantané v1 signé ;
+// calculé ici, vérifié par le harnais seul, sans re-dérivation aval — README « Où vit chaque garantie ».
 const COMMUN_PAGE = `function tableauCanonique(schema, valeurs) {
   if (!Array.isArray(valeurs) || valeurs.length !== schema.length) throw new Error('tableau canonique : longueur ≠ schéma');
   const conforme = (s, v) => (s === 'chaine' ? typeof v === 'string'
@@ -650,7 +650,11 @@ const TAILLE_MAX_POST = 65536;
 // pilier 1 (signataire). C1 (syntaxe, avant Drive) -> C2 (jeton sur les valeurs POSTÉES : authenticité) ->
 // C3 (candidat COURANT : statut, clé, génération, expirations, moteur : fraîcheur, 410) -> C4 (empreinte
 // affichée = actuelle) -> C5 (sélection) -> C6 (même nom : cœur identique -> « existante » relue ; cœur
-// différent -> « conflit », 409 ; sinon) C5bis (candidat RELU juste avant l'écriture) -> écriture -> C7.
+// différent -> « conflit », 409 ; sinon) C5bis (candidat RELU juste avant l'écriture) -> écriture -> réponse.
+// PRINCIPE (arbitrage P2) : le statut d'une exécution OBSERVÉE porte l'intégrité (E4 abandonne tout non-success) ;
+// elle ne contient donc QUE le travail essentiel déterministe, AUCUN effet de bord au mieux (notification, journal
+// externe) qui pourrait échouer ou dépasser le délai et empoisonner son statut. Le courriel C7 n'est PAS ici :
+// notification par le CLI de clôture ou par un workflow séparé non observé (à définir, P5).
 // Tout REJET est une exécution « success » (sortie rejet, rien écrit) ; une panne (Drive, configuration)
 // est une ERREUR d'exécution (E4 : abandon au signataire si le lot est lisible) — jamais « réussi ».
 const NOEUDS_CONFIRMER = Object.freeze({
@@ -677,11 +681,6 @@ const NOEUDS_CONFIRMER = Object.freeze({
   sortie: R.ROLES.confirmation.sortie, // FONDA Sortie confirmation
   reponse: 'Preparer reponse',
   repondre: 'Repondre confirmation',
-  siNotifier: 'Notifier ?',
-  adresse: 'Lire adresse cloturer',
-  courriel: 'Preparer notification',
-  siEnvoyer: 'Adresse trouvee ?',
-  envoyer: 'Envoyer notification',
 });
 const DEJA_REJET = `const rejet = (motif, apresC2) => [{ json: { poursuivre: false, resultat: { type: 'rejet', motif, set_id: apresC2 ? f.lot : null, nonce: apresC2 ? f.nonce : null } } }];`;
 
@@ -705,6 +704,8 @@ const f = { lot: null, nonce: null };
 ${DEJA_REJET}
 const a = (o, c) => Object.prototype.hasOwnProperty.call(o, c);
 // C1 — taille : octets annoncés (content-length) ET somme des champs reçus, chacun ≤ ${TAILLE_MAX_POST}.
+// Encodage IMPOSÉ : formulaire URL-encodé (seul encodage où un doublon reste visible) ; tout autre -> C1.
+if (typeof h['content-type'] !== 'string' || !/^application\\/x-www-form-urlencoded\\s*(;|$)/i.test(h['content-type'])) return rejet('C1', false);
 const lg = h['content-length'];
 if (typeof lg !== 'string' || !/^[0-9]{1,7}$/.test(lg) || Number(lg) > ${TAILLE_MAX_POST}) return rejet('C1', false);
 if (!b || typeof b !== 'object' || Array.isArray(b)) return rejet('C1', false);
@@ -736,14 +737,14 @@ return [{ json: { poursuivre: true, resultat: null, lot: b.lot, nonce: b.nonce, 
   moteur_sha256: b.moteur_sha256, expire_page: b.expire_page, action: b.action, choix, cle_sha256: cleSha } }];`].join('\n\n');
 }
 function codeVerifierRechercheConfirmation() {
-  return [ENTETE('candidat : recherche COMPLÈTE exigée (sinon erreur) ; 0 ou plusieurs fichiers -> rejet C3 (410).'),
-    UN_ITEM(NOEUDS_CONFIRMER.verifierListe),
+  return [ENTETE('candidat : recherche PAGINÉE et COMPLÈTE exigée (sinon erreur) ; 0 ou plusieurs fichiers -> rejet C3 (410).'),
+    UN_ITEM(NOEUDS_CONFIRMER.verifierListe), AGREGER,
     `const f = unItem(${JSON.stringify(NOEUDS_CONFIRMER.formulaire)});
 ${DEJA_REJET}
-const liste = unItem(${JSON.stringify(NOEUDS_CONFIRMER.chercher)});
-if (!Array.isArray(liste.files) || liste.nextPageToken || liste.incompleteSearch) throw new Error('recherche du candidat inexploitable ou incomplète');
-if (liste.files.length !== 1 || typeof liste.files[0].id !== 'string') return rejet('C3', true);
-return [{ json: { poursuivre: true, resultat: null, fichier_id: liste.files[0].id } }];`].join('\n\n');
+const liste = agregerPages(${JSON.stringify(NOEUDS_CONFIRMER.chercher)});
+if (!liste.complet) throw new Error('recherche du candidat incomplète (incompleteSearch ou plafond de pagination)');
+if (liste.fichiers.length !== 1 || typeof liste.fichiers[0].id !== 'string') return rejet('C3', true);
+return [{ json: { poursuivre: true, resultat: null, fichier_id: liste.fichiers[0].id } }];`].join('\n\n');
 }
 // Contrôles de FRAÎCHEUR d'un candidat lu (C3 au premier passage, C5bis à la relecture) : MÊME texte.
 const CANDIDAT_COURANT = `function candidatCourant(c, f, maintenant) {
@@ -804,14 +805,14 @@ return [{ json: { poursuivre: true, resultat: null, candidat_fichier_id: fichier
   depot: { nom, frontiere, corps } } }];`].join('\n\n');
 }
 function codeAnalyserDecision() {
-  return [ENTETE('C6 : fichiers de MÊME NOM dans decisions/ (corbeille comprise), recherche complète ; 0 -> écrire, 1 -> relire, plusieurs -> erreur.'),
-    UN_ITEM(NOEUDS_CONFIRMER.analyserDecision),
-    `const liste = unItem(${JSON.stringify(NOEUDS_CONFIRMER.chercherDecision)});
-if (!Array.isArray(liste.files) || liste.nextPageToken || liste.incompleteSearch) throw new Error('decisions/ : recherche du nom inexploitable ou incomplète (absence non prouvée)');
-if (liste.files.length > 1) throw new Error(liste.files.length + ' décisions de même nom : état anormal');
-const existante = liste.files.length === 1;
-if (existante && typeof liste.files[0].id !== 'string') throw new Error('decisions/ : identifiant illisible');
-return [{ json: { existante, fichier_id: existante ? liste.files[0].id : null } }];`].join('\n\n');
+  return [ENTETE('C6 : fichiers de MÊME NOM dans decisions/ (corbeille comprise), recherche PAGINÉE complète ; 0 -> écrire, 1 -> relire, plusieurs -> erreur.'),
+    UN_ITEM(NOEUDS_CONFIRMER.analyserDecision), AGREGER,
+    `const liste = agregerPages(${JSON.stringify(NOEUDS_CONFIRMER.chercherDecision)});
+if (!liste.complet) throw new Error('decisions/ : recherche du nom incomplète (incompleteSearch ou plafond) : absence non prouvée');
+if (liste.fichiers.length > 1) throw new Error(liste.fichiers.length + ' décisions de même nom : état anormal');
+const existante = liste.fichiers.length === 1;
+if (existante && typeof liste.fichiers[0].id !== 'string') throw new Error('decisions/ : identifiant illisible');
+return [{ json: { existante, fichier_id: existante ? liste.fichiers[0].id : null } }];`].join('\n\n');
 }
 function codeComparerDecision() {
   return [ENTETE('C6 : même nom ; même lot, nonce, génération et CŒUR (octets canoniques) -> « existante » (décision RELUE, jamais reconstruite) ; sinon « conflit ».'),
@@ -894,49 +895,26 @@ const texte = messages[s.type === 'rejet' ? s.motif : s.type];
 const html = '<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
   + '<meta http-equiv="Content-Security-Policy" content="default-src \\'none\\'; style-src \\'unsafe-inline\\'; base-uri \\'none\\'; form-action \\'none\\'">'
   + '<title>Relecture FONDA</title></head><body style="font-family:system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem"><p>' + texte + '</p></body></html>';
-return [{ json: { code, html, notifier: s.type === 'decision' && s.ecriture === 'creee' } }];`].join('\n\n');
-}
-// C7 : notification à Éric (clôtureur) d'une décision CRÉÉE. NON BLOQUANTE : la réponse est déjà envoyée,
-// chaque nœud du courriel est en « continueErrorOutput » et ce code ne lève jamais (une panne de courriel
-// ne doit pas rendre « error » une confirmation écrite : E4 abandonnerait le lot).
-function codePreparerNotification() {
-  return [ENTETE('C7 : courriel de notification à Éric (adresse lue dans la Data Table, clé « eric ») ; ne lève jamais.'),
-    `let sortie = { envoyer: false, raw: null };
-try {
-  const s = $(${JSON.stringify(NOEUDS_CONFIRMER.sortie)}).first().json;
-  const t = $input.first().json;
-  const lignes = Array.isArray(t.data) ? t.data.filter((l) => l && l.relecteur_attribue === 'eric') : [];
-  if (lignes.length === 1 && typeof lignes[0].adresse === 'string' && /^[^@\\s]+@[^@\\s]+$/.test(lignes[0].adresse)) {
-    const message = ['To: ' + lignes[0].adresse, 'Subject: Relecture FONDA ' + s.set_id + ' : décision reçue', 'Content-Type: text/plain; charset=UTF-8', '',
-      'Une décision de relecture a été enregistrée pour ' + s.set_id + ' (génération ' + s.generation + ').', 'Clôture technique et signature : CLI local.'].join('\\r\\n');
-    const o = []; for (const ch of message) { const c = ch.codePointAt(0); if (c < 0x80) o.push(c); else if (c < 0x800) o.push(0xc0 | (c >> 6), 0x80 | (c & 63)); else if (c < 0x10000) o.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63)); else o.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63)); }
-    const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
-    let raw = '';
-    for (let i = 0; i < o.length; i += 3) { const n = (o[i] << 16) | ((o[i + 1] || 0) << 8) | (o[i + 2] || 0); raw += A[(n >> 18) & 63] + A[(n >> 12) & 63] + (i + 1 < o.length ? A[(n >> 6) & 63] : '') + (i + 2 < o.length ? A[n & 63] : ''); }
-    sortie = { envoyer: true, raw };
-  }
-} catch (e) { sortie = { envoyer: false, raw: null }; }
-return [{ json: sortie }];`].join('\n\n');
+return [{ json: { code, html } }];`].join('\n\n');
 }
 function construireConfirmer() {
   const N = NOEUDS_CONFIRMER;
   const lotExpr = `$('${N.formulaire}').first().json.lot`;
   const nonceExpr = `$('${N.formulaire}').first().json.nonce`;
-  const sansErreur = (n) => ({ ...n, onError: 'continueErrorOutput' });
   const noeuds = [
     { name: N.webhook, type: 'n8n-nodes-base.webhook', typeVersion: 2, webhookId: uuid('webhook-confirmer'),
       parameters: { httpMethod: 'POST', path: CONFIG.cheminConfirmer, responseMode: 'responseNode', options: {} } },
     code(N.entree, codeEntreeConfirmation()),
     code(N.formulaire, codeVerifierFormulaire()),
     siBooleen(N.siFormulaire, 'poursuivre', 'si-formulaire'),
-    listing(N.chercher, `={{ "'${CONFIG.dossierRelecture}' in parents and trashed = false and name = '" + ${lotExpr} + ".candidat.json'" }}`, CHAMPS_LISTE, false),
+    listing(N.chercher, `={{ "'${CONFIG.dossierRelecture}' in parents and trashed = false and name = '" + ${lotExpr} + ".candidat.json'" }}`, CHAMPS_LISTE, true),
     code(N.verifierListe, codeVerifierRechercheConfirmation()),
     siBooleen(N.siCandidat, 'poursuivre', 'si-candidat'),
     contenuDrive(N.lire, `$('${N.verifierListe}').first().json.fichier_id`),
     code(N.controler, codeControlerCandidat()),
     siBooleen(N.siDecision, 'poursuivre', 'si-decision'),
     // Corbeille COMPRISE : un fichier de même nom à la corbeille existe toujours (C6).
-    listing(N.chercherDecision, `={{ "'${CONFIG.dossierDecisions}' in parents and name = '" + ${lotExpr} + "-" + ${nonceExpr} + ".json'" }}`, CHAMPS_LISTE, false),
+    listing(N.chercherDecision, `={{ "'${CONFIG.dossierDecisions}' in parents and name = '" + ${lotExpr} + "-" + ${nonceExpr} + ".json'" }}`, CHAMPS_LISTE, true),
     code(N.analyserDecision, codeAnalyserDecision()),
     siBooleen(N.siExistante, 'existante', 'si-existante'),
     contenuDrive(N.lireDecision, `$('${N.analyserDecision}').first().json.fichier_id`),
@@ -956,16 +934,6 @@ function construireConfirmer() {
     { name: N.repondre, type: 'n8n-nodes-base.respondToWebhook', typeVersion: 1.1,
       parameters: { respondWith: 'text', responseBody: '={{ $json.html }}', options: { responseCode: '={{ $json.code }}',
         responseHeaders: { entries: [{ name: 'Content-Type', value: 'text/html; charset=utf-8' }, { name: 'Cache-Control', value: 'no-store' }, { name: 'Referrer-Policy', value: 'no-referrer' }] } } } },
-    siBooleen(N.siNotifier, 'notifier', 'si-notifier'),
-    sansErreur({ name: N.adresse, type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, retryOnFail: false,
-      credentials: { httpHeaderAuth: CONFIG.credentialApiN8n },
-      parameters: { url: `${CONFIG.urlN8n}/api/v1/data-tables/${CONFIG.tableRelecteurs}/rows`, authentication: 'genericCredentialType', genericAuthType: 'httpHeaderAuth', options: { timeout: 30000 } } }),
-    code(N.courriel, codePreparerNotification()),
-    siBooleen(N.siEnvoyer, 'envoyer', 'si-envoyer'),
-    sansErreur({ name: N.envoyer, type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, retryOnFail: false,
-      credentials: { gmailOAuth2: CONFIG.credentialGmail },
-      parameters: { method: 'POST', url: 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send', authentication: 'predefinedCredentialType', nodeCredentialType: 'gmailOAuth2',
-        sendBody: true, specifyBody: 'json', jsonBody: '={{ JSON.stringify({ raw: $json.raw }) }}', options: { timeout: 30000 } } }),
   ].map(positionner('confirmer'));
   const connections = lineaire([N.webhook, N.entree, N.formulaire, N.siFormulaire]);
   connections[N.siFormulaire] = { main: [lien(N.chercher), lien(N.sortie)] };
@@ -977,10 +945,7 @@ function construireConfirmer() {
   connections[N.siExistante] = { main: [lien(N.lireDecision), lien(N.relire)] };
   Object.assign(connections, lineaire([N.lireDecision, N.comparer, N.sortie]), lineaire([N.relire, N.verifierRelecture, N.siRelecture]));
   connections[N.siRelecture] = { main: [lien(N.ecrire), lien(N.sortie)] };
-  Object.assign(connections, lineaire([N.ecrire, N.verifierEcriture, N.sortie]), lineaire([N.sortie, N.reponse, N.repondre, N.siNotifier]));
-  connections[N.siNotifier] = { main: [lien(N.adresse), []] };
-  Object.assign(connections, lineaire([N.adresse, N.courriel, N.siEnvoyer]));
-  connections[N.siEnvoyer] = { main: [lien(N.envoyer), []] };
+  Object.assign(connections, lineaire([N.ecrire, N.verifierEcriture, N.sortie]), lineaire([N.sortie, N.reponse, N.repondre]));
   return { name: CONFIG.nomConfirmer, nodes: noeuds, connections, settings: { ...REGLAGES, executionTimeout: 120 } };
 }
 
@@ -1015,19 +980,27 @@ function registrePage() {
     return { version: l.version, sha256: l.sha256, url: `${CONFIG.urlMoteurs}/${path.basename(l.fichier)}`, integrite: `sha384-${crypto.createHash('sha384').update(octets).digest('base64')}` };
   });
 }
-// Exemples VÉRIFIÉS par le moteur v1 dans le harnais (reussite attendue).
-const EXEMPLES_PROFIL = Object.freeze({
-  sens: { attendue: 'été', saisie: 'Ete', reussite: true },
-  orthographe: { attendue: 'été', saisie: 'ete', reussite: false },
-  numerique: { attendue: '3/4', saisie: '0,75', reussite: true },
-  exact: { attendue: 'H2O', saisie: 'h2o', reussite: false },
+// Profils : comportement du moteur VERSIONNÉ (v1, CDC §4.3 ; écart documenté au PRD §5.1 : le singulier/pluriel
+// n'est PAS pardonné en « sens »). Chaque exemple est VÉRIFIÉ par le moteur dans le harnais (issue attendue).
+const PROFILS_MOTEUR = Object.freeze({
+  v1: {
+    sens: { explication: 'Le sens compte : majuscules, espaces, accents, apostrophes et . ! ? en début ou fin sont pardonnés. Le singulier/pluriel n’est PAS pardonné.',
+      exemples: [['été', 'Ete', 'juste'], ['l’école', 'lecole', 'juste'], ['chat', 'chats', 'faux']] },
+    orthographe: { explication: 'L’orthographe est l’objet : majuscules, espaces et . ! ? en début ou fin sont pardonnés ; accents, apostrophes, pluriels et accords sont exigés (un accent seul manquant donne « presque », compté faux).',
+      exemples: [['été', 'Été', 'juste'], ['été', 'ete', 'presque'], ['les chats', 'les chat', 'faux']] },
+    numerique: { explication: 'La valeur compte : virgule ou point, espaces et zéros inutiles pardonnés ; fraction équivalente acceptée ; unité exigée si la carte l’indique (oubli : « presque », compté juste) ; décimaux exacts sauf arrondi indiqué.',
+      exemples: [['3/4', '0,75', 'juste'], ['3/4', '6/8', 'juste'], ['3/4', '0,7', 'faux']] },
+    exact: { explication: 'Seuls les espaces sont pardonnés : tout le reste (majuscules, symboles, ponctuation) doit être identique.',
+      exemples: [['H2O', ' H2O ', 'juste'], ['H2O', 'h2o', 'faux'], ['H2O', 'H2O.', 'faux']] },
+  },
 });
-const EXPLICATIONS_PROFIL = Object.freeze({
-  sens: 'On teste l\'idée : casse, espaces, ponctuation, accents et singulier/pluriel sont pardonnés.',
-  orthographe: 'L\'orthographe est l\'objet : casse, espaces et ponctuation sont pardonnés ; accents, pluriels et accords sont exigés.',
-  numerique: 'La valeur compte : virgule ou point, espaces et zéros inutiles pardonnés ; fraction équivalente acceptée ; unité exigée seulement si la carte l\'indique ; décimaux exacts sauf arrondi indiqué.',
-  exact: 'Seuls les espaces sont pardonnés : tout le reste doit être identique.',
-});
+const LIBELLE_ISSUE = Object.freeze({ juste: 'accepté', presque: '« presque »', faux: 'refusé' });
+function profilsPage(version) {
+  const p = PROFILS_MOTEUR[version];
+  if (!p) throw new Error(`explications de profil absentes pour le moteur ${version} : à rédiger (et vérifier) avant toute page`);
+  return Object.fromEntries(Object.entries(p).map(([nom, x]) => [nom, { explication: x.explication,
+    exemples: x.exemples.map(([attendue, saisie, issue]) => `« ${saisie} » : ${LIBELLE_ISSUE[issue]} pour « ${attendue} »`) }]));
+}
 
 // Script de la page (navigateur), embarqué par toString() sous le nonce CSP. Aucun innerHTML : textContent
 // seulement. UX §21.6 : une carte à la fois (ordre du candidat), Garder/Écarter DÉSACTIVÉS jusqu'au rendu
@@ -1056,7 +1029,7 @@ function appPage() {
     ligne(dl, 'Réponses acceptées', c.reponses_acceptees.map(function (x) { return '« ' + x + ' »'; }).join(' ; '));
     var p = D.profils[c.profil_correction];
     ligne(dl, 'Profil de correction', c.profil_correction + (p ? ' — ' + p.explication : ''));
-    if (p) ligne(dl, 'Exemple', p.exemple);
+    if (p) ligne(dl, 'Exemples', p.exemples.join(' ; '));
     ligne(dl, 'Unité', c.unite === null ? 'aucune (par défaut)' : c.unite);
     ligne(dl, 'Arrondi', c.arrondi === null ? 'aucun (par défaut)' : String(c.arrondi));
     ligne(dl, 'Seconde chance', c.seconde_chance === null ? 'non (par défaut)' : (c.seconde_chance ? 'oui' : 'non'));
@@ -1158,12 +1131,12 @@ const ok = cles === 'k,lot' && typeof q.lot === 'string' && SET_ID_PATTERN.test(
 return [{ json: ok ? { poursuivre: true, lot: q.lot, k: q.k, cle_sha256: sha256Hex(octetsUtf8(q.k)), code: null } : { poursuivre: false, lot: null, k: null, cle_sha256: null, code: 400 } }];`].join('\n\n');
 }
 function codeVerifierRecherchePage() {
-  return [ENTETE('candidat : recherche COMPLÈTE exigée (sinon erreur) ; 0 ou plusieurs fichiers -> page indisponible (410).'),
-    UN_ITEM(NOEUDS_PAGE.verifierListe),
-    `const liste = unItem(${JSON.stringify(NOEUDS_PAGE.chercher)});
-if (!Array.isArray(liste.files) || liste.nextPageToken || liste.incompleteSearch) throw new Error('recherche du candidat inexploitable ou incomplète');
-const ok = liste.files.length === 1 && typeof liste.files[0].id === 'string';
-return [{ json: { poursuivre: ok, fichier_id: ok ? liste.files[0].id : null, code: ok ? null : 410 } }];`].join('\n\n');
+  return [ENTETE('candidat : recherche PAGINÉE et COMPLÈTE exigée (sinon erreur) ; 0 ou plusieurs fichiers -> page indisponible (410).'),
+    UN_ITEM(NOEUDS_PAGE.verifierListe), AGREGER,
+    `const liste = agregerPages(${JSON.stringify(NOEUDS_PAGE.chercher)});
+if (!liste.complet) throw new Error('recherche du candidat incomplète (incompleteSearch ou plafond de pagination)');
+const ok = liste.fichiers.length === 1 && typeof liste.fichiers[0].id === 'string';
+return [{ json: { poursuivre: ok, fichier_id: ok ? liste.fichiers[0].id : null, code: ok ? null : 410 } }];`].join('\n\n');
 }
 function codePageIndisponible() {
   return [ENTETE('page indisponible : aucune donnée du lot.'), GABARIT_PAGE,
@@ -1171,15 +1144,12 @@ function codePageIndisponible() {
 return [{ json: { code: x.code === 400 ? 400 : 410, html: pageIndisponible(${JSON.stringify(MESSAGE_INDISPONIBLE)}) } }];`].join('\n\n');
 }
 function codeConstruirePage() {
-  const profils = Object.fromEntries(Object.entries(EXPLICATIONS_PROFIL).map(([p, explication]) => {
-    const e = EXEMPLES_PROFIL[p];
-    return [p, { explication, exemple: `« ${e.saisie} » est ${e.reussite ? 'accepté' : 'refusé'} pour « ${e.attendue} ».` }];
-  }));
   return [ENTETE('C3 au GET (candidat courant pour k), puis page carte par carte : jeton, deux aléas, CSP, SRI, données échappées.'),
     UN_ITEM(NOEUDS_PAGE.construire), DATE_ISO, OUTILS, COMMUN_PAGE, GABARIT_PAGE, REQUIS, blocModule('catalogue'),
     `const { validerLot, calculerEmpreinte } = M_catalogue.exports;
 const REGISTRE = ${JSON.stringify(registrePage())};
-const PROFILS = ${JSON.stringify(profils)};
+// Explications par VERSION du moteur (celle du candidat est choisie à l'exécution).
+const PROFILS = ${JSON.stringify(Object.fromEntries(registrePage().map((l) => [l.version, profilsPage(l.version)])))};
 const URL_CONFIRMER = ${JSON.stringify(`${CONFIG.urlN8n}/webhook/${CONFIG.cheminConfirmer}`)};
 const SCRIPT = ${JSON.stringify(`(${appPage.toString()})();`)};
 const sha = (t) => sha256Hex(octetsUtf8(t));
@@ -1205,7 +1175,7 @@ const jeton = jetonPage($env.FONDA_PAGE_HMAC, { set_id: r.lot, generation_cle: r
 const n = (v) => (v === undefined ? null : v);
 const donnees = {
   moteur: { version: moteur.version },
-  profils: PROFILS,
+  profils: PROFILS[moteur.version],
   cartes: c.lot.cartes.map((x) => ({ item_id: x.item_id, question: x.question, reponse: n(x.reponse), profil_correction: x.profil_correction, reponses_acceptees: x.reponses_acceptees,
     unite: n(x.unite), arrondi: n(x.arrondi), seconde_chance: n(x.seconde_chance), contexte: n(x.contexte) })),
   // Seul endroit où k figure dans la page : champ du formulaire POSTÉ (C1 l'exige), jamais affichée.
@@ -1222,7 +1192,7 @@ function construirePage() {
       parameters: { httpMethod: 'GET', path: CONFIG.cheminPage, responseMode: 'responseNode', options: {} } },
     code(N.requete, codeLireRequete()),
     siBooleen(N.siRequete, 'poursuivre', 'si-requete'),
-    listing(N.chercher, `={{ "'${CONFIG.dossierRelecture}' in parents and trashed = false and name = '" + ${lotExpr} + ".candidat.json'" }}`, CHAMPS_LISTE, false),
+    listing(N.chercher, `={{ "'${CONFIG.dossierRelecture}' in parents and trashed = false and name = '" + ${lotExpr} + ".candidat.json'" }}`, CHAMPS_LISTE, true),
     code(N.verifierListe, codeVerifierRecherchePage()),
     siBooleen(N.siCandidat, 'poursuivre', 'si-candidat-page'),
     contenuDrive(N.lire, `$('${N.verifierListe}').first().json.fichier_id`),
@@ -1243,7 +1213,7 @@ function construirePage() {
 }
 
 module.exports = { CONFIG, MODULES, NOEUDS_CLOTURER, NOEUDS_EMETTRE, NOEUDS_CONFIRMER, NOEUDS_PAGE, CODES_HTTP, CHAMPS_FORMULAIRE, COMMUN_PAGE, GABARIT_PAGE,
-  EXEMPLES_PROFIL, chargerCommun, registrePage, appPage, construireCloturer, construireEmettre, construireConfirmer, construirePage };
+  PROFILS_MOTEUR, chargerCommun, registrePage, appPage, construireCloturer, construireEmettre, construireConfirmer, construirePage };
 
 const CONSTRUCTEURS = { '--emettre': construireEmettre, '--cloturer': construireCloturer, '--confirmer': construireConfirmer, '--page': construirePage };
 if (require.main === module) {

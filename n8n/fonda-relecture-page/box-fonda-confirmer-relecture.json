@@ -41,7 +41,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "parameters": {
-        "jsCode": "// FONDA — C1 (syntaxe, avant Drive : taille, champs EXACTS, doublons) puis C2 (jeton HMAC recalculé sur les valeurs POSTÉES).\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('Verifier formulaire : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nconst SET_ID_PATTERN = new RegExp(\"^set_fonda_[a-z0-9-]+_n[IF]_\\\\d{2}$\", \"\");\n\nfunction dateIso(v) {\n  return typeof v === 'string' && /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/.test(v) && !Number.isNaN(Date.parse(v)) && new Date(Date.parse(v)).toISOString() === v;\n}\n\n// SHA-256 (FIPS 180-4), UTF-8 et base64 en JavaScript pur.\nfunction octetsUtf8(texte) {\n  const o = [];\n  for (let i = 0; i < texte.length; i += 1) {\n    let c = texte.charCodeAt(i);\n    if (c >= 0xd800 && c <= 0xdbff && i + 1 < texte.length) {\n      const d = texte.charCodeAt(i + 1);\n      if (d >= 0xdc00 && d <= 0xdfff) { c = 0x10000 + ((c - 0xd800) << 10) + (d - 0xdc00); i += 1; }\n    }\n    if (c >= 0xd800 && c <= 0xdfff) throw new Error('UTF-16 : substitut isolé');\n    if (c < 0x80) o.push(c);\n    else if (c < 0x800) o.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) o.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else o.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return o;\n}\nfunction sha256Hex(octets) {\n  const K = [0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,\n    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,\n    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,\n    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,\n    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\n  const H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  const n = octets.length;\n  const total = Math.ceil((n + 9) / 64) * 64;\n  const m = new Array(total).fill(0);\n  for (let i = 0; i < n; i += 1) m[i] = octets[i];\n  m[n] = 0x80;\n  const bits = n * 8;\n  for (let i = 0; i < 8; i += 1) m[total - 1 - i] = Math.floor(bits / Math.pow(2, 8 * i)) & 0xff;\n  const w = new Array(64);\n  const rotr = (x, k) => (x >>> k) | (x << (32 - k));\n  for (let b = 0; b < total; b += 64) {\n    for (let t = 0; t < 16; t += 1) w[t] = ((m[b + 4 * t] << 24) | (m[b + 4 * t + 1] << 16) | (m[b + 4 * t + 2] << 8) | m[b + 4 * t + 3]) | 0;\n    for (let t = 16; t < 64; t += 1) {\n      const s0 = rotr(w[t - 15], 7) ^ rotr(w[t - 15], 18) ^ (w[t - 15] >>> 3);\n      const s1 = rotr(w[t - 2], 17) ^ rotr(w[t - 2], 19) ^ (w[t - 2] >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    let [a, bb, c, d, e, f, g, h] = H;\n    for (let t = 0; t < 64; t += 1) {\n      const t1 = (h + (rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)) + ((e & f) ^ (~e & g)) + K[t] + w[t]) | 0;\n      const t2 = ((rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)) + ((a & bb) ^ (a & c) ^ (bb & c))) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = bb; bb = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + bb) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map((x) => (x >>> 0).toString(16).padStart(8, '0')).join('');\n}\nfunction octetsBase64(b64) {\n  const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';\n  const s = b64.replace(/\\n/g, '');\n  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(s) || s.length % 4 !== 0) throw new Error('base64 invalide');\n  const o = [];\n  for (let i = 0; i < s.length; i += 4) {\n    const v = [0, 1, 2, 3].map((k) => (s[i + k] === '=' ? 0 : A.indexOf(s[i + k])));\n    const n = (v[0] << 18) | (v[1] << 12) | (v[2] << 6) | v[3];\n    // Bits de remplissage nuls exigés (forme canonique) : « YR== » refusé (≠ « YQ== »).\n    if ((s[i + 2] === '=' && (v[1] & 0x0f) !== 0) || (s[i + 3] === '=' && s[i + 2] !== '=' && (v[2] & 0x03) !== 0)) throw new Error('base64 non canonique');\n    o.push((n >> 16) & 255);\n    if (s[i + 2] !== '=') o.push((n >> 8) & 255);\n    if (s[i + 3] !== '=') o.push(n & 255);\n  }\n  return o;\n}\n// Décodage UTF-8 STRICT : toute séquence invalide ou non canonique est refusée\n// (le texte ré-encodé doit redonner exactement les mêmes octets).\nfunction texteUtf8(octets) {\n  let t = '';\n  let i = 0;\n  while (i < octets.length) {\n    const b = octets[i];\n    const n = b < 0x80 ? 0 : b >= 0xf0 ? 3 : b >= 0xe0 ? 2 : b >= 0xc0 ? 1 : -1;\n    if (n < 0 || i + n >= octets.length) throw new Error('UTF-8 invalide');\n    let c = n === 0 ? b : b & (0x3f >> n);\n    for (let k = 1; k <= n; k += 1) {\n      const x = octets[i + k];\n      if ((x & 0xc0) !== 0x80) throw new Error('UTF-8 invalide');\n      c = (c << 6) | (x & 0x3f);\n    }\n    if (c > 0x10ffff) throw new Error('UTF-8 invalide');\n    t += String.fromCodePoint(c);\n    i += n + 1;\n  }\n  const r = octetsUtf8(t);\n  if (r.length !== octets.length || r.some((x, k) => x !== octets[k])) throw new Error('UTF-8 non canonique');\n  return t;\n}\n// Fichier du dépôt lu par l'API GitHub « contents » au commit consigné : octets EXACTS\n// du blob (base64), jamais un texte ré-sérialisé par le nœud HTTP.\nfunction fichierDepot(nomNoeud, chemin) {\n  const f = unItem(nomNoeud);\n  if (f.type !== 'file' || f.encoding !== 'base64' || f.path !== chemin || typeof f.content !== 'string') throw new Error(nomNoeud + ' : fichier ' + chemin + ' attendu (contents, base64)');\n  const octets = octetsBase64(f.content);\n  if (octets.length !== f.size) throw new Error(nomNoeud + ' : taille ≠ ' + f.size + ' octets');\n  return { octets, texte: texteUtf8(octets) };\n}\n\nfunction tableauCanonique(schema, valeurs) {\n  if (!Array.isArray(valeurs) || valeurs.length !== schema.length) throw new Error('tableau canonique : longueur ≠ schéma');\n  const conforme = (s, v) => (s === 'chaine' ? typeof v === 'string'\n    : s === 'entier' ? Number.isSafeInteger(v) && v >= 0\n      : s === 'choix' ? Array.isArray(v) && v.every((p) => Array.isArray(p) && p.length === 2 && typeof p[0] === 'string' && p[0] !== '' && (p[1] === 'garder' || p[1] === 'ecarter'))\n        : false);\n  for (let i = 0; i < schema.length; i += 1) if (!conforme(schema[i], valeurs[i])) throw new Error('tableau canonique : élément ' + i + ' ≠ ' + schema[i]);\n  return octetsUtf8(JSON.stringify(valeurs.map((v, i) => (schema[i] === 'choix' ? v.map((p) => [p[0], p[1]]) : v))));\n}\nconst SCHEMA_JETON = ['chaine', 'chaine', 'entier', 'chaine', 'chaine', 'chaine', 'chaine', 'chaine', 'chaine'];\nconst SCHEMA_FORMULAIRE = ['chaine', 'chaine', 'entier', 'chaine', 'chaine', 'chaine', 'chaine', 'chaine', 'chaine', 'choix'];\nfunction hexVersOctets(h) {\n  const o = [];\n  for (let i = 0; i < h.length; i += 2) o.push(parseInt(h.slice(i, i + 2), 16));\n  return o;\n}\n// HMAC-SHA256 (RFC 2104), JavaScript pur (aucun module crypto dans un nœud Code n8n).\nfunction hmacSha256Hex(cle, message) {\n  let k = cle.length > 64 ? hexVersOctets(sha256Hex(cle)) : cle.slice();\n  while (k.length < 64) k.push(0);\n  const interne = sha256Hex(k.map((x) => x ^ 0x36).concat(message));\n  return sha256Hex(k.map((x) => x ^ 0x5c).concat(hexVersOctets(interne)));\n}\n// Jeton §21.6 : HMAC-SHA256(secret, canonique([\"fonda-select/v7\", set_id, generation_cle, cle_sha256,\n// empreinte_affichee, moteur.version, moteur.sha256, expire_page, nonce])). Secret : variable d'environnement\n// de l'instance (jamais dans l'export) ; absent ou court -> ERREUR (configuration), jamais un jeton faible.\nfunction jetonPage(secret, j) {\n  if (typeof secret !== 'string' || secret.length < 32) throw new Error('secret HMAC de la page absent ou trop court (configuration de l\\'instance)');\n  return hmacSha256Hex(octetsUtf8(secret), tableauCanonique(SCHEMA_JETON, ['fonda-select/v7', j.set_id, j.generation_cle, j.cle_sha256, j.empreinte, j.moteur_version, j.moteur_sha256, j.expire_page, j.nonce]));\n}\n// hash_formulaire §21.1 : choix = [[item_id, \"garder\"|\"ecarter\"], …] dans l'ORDRE DU CANDIDAT ([] pour « tout\n// rejeter ») ; k et jeton EXCLUS (secrets).\nfunction hashFormulaire(f) {\n  return 'sha256:' + sha256Hex(tableauCanonique(SCHEMA_FORMULAIRE, ['fonda-select-form/v1', f.lot, f.generation, f.empreinte, f.moteur_version, f.moteur_sha256, f.expire_page, f.nonce, f.action, f.choix]));\n}\nfunction egalConstant(a, b) {\n  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;\n  let x = 0;\n  for (let i = 0; i < a.length; i += 1) x |= a.charCodeAt(i) ^ b.charCodeAt(i);\n  return x === 0;\n}\n\nconst CHAMPS = [\"lot\",\"k\",\"generation\",\"empreinte\",\"moteur_version\",\"moteur_sha256\",\"expire_page\",\"nonce\",\"jeton\",\"action\"];\nconst w = unItem(\"Webhook confirmation\");\nconst b = w.body; const h = w.headers && typeof w.headers === 'object' ? w.headers : {};\nconst f = { lot: null, nonce: null };\nconst rejet = (motif, apresC2) => [{ json: { poursuivre: false, resultat: { type: 'rejet', motif, set_id: apresC2 ? f.lot : null, nonce: apresC2 ? f.nonce : null } } }];\nconst a = (o, c) => Object.prototype.hasOwnProperty.call(o, c);\n// C1 — taille : octets annoncés (content-length) ET somme des champs reçus, chacun ≤ 65536.\nconst lg = h['content-length'];\nif (typeof lg !== 'string' || !/^[0-9]{1,7}$/.test(lg) || Number(lg) > 65536) return rejet('C1', false);\nif (!b || typeof b !== 'object' || Array.isArray(b)) return rejet('C1', false);\nconst cles = Object.keys(b);\n// Doublon (même champ deux fois) : n8n le livre en TABLEAU -> non-chaîne -> refus.\nif (!cles.every((c) => typeof b[c] === 'string')) return rejet('C1', false);\nif (cles.reduce((t, c) => t + c.length + b[c].length, 0) > 65536) return rejet('C1', false);\nif (!CHAMPS.every((c) => a(b, c))) return rejet('C1', false);\nconst autres = cles.filter((c) => !CHAMPS.includes(c));\nlet choix;\nif (b.action === 'accepter') {\n  if (!autres.length || !autres.every((c) => /^choix_it[0-9]{2}$/.test(c) && (b[c] === 'garder' || b[c] === 'ecarter'))) return rejet('C1', false);\n  choix = autres.map((c) => [c.slice(6), b[c]]);\n} else if (b.action === 'rejeter') {\n  if (autres.length !== 1 || autres[0] !== 'confirmer_rejet' || b.confirmer_rejet !== 'oui') return rejet('C1', false);\n  choix = [];\n} else return rejet('C1', false);\nif (!SET_ID_PATTERN.test(b.lot) || !/^[0-9a-f]{64}$/.test(b.k) || !/^[1-9][0-9]{0,14}$/.test(b.generation) || !/^sha256:[0-9a-f]{64}$/.test(b.empreinte)\n  || !/^[A-Za-z0-9._-]{1,64}$/.test(b.moteur_version) || !/^[0-9a-f]{64}$/.test(b.moteur_sha256) || !dateIso(b.expire_page)\n  || !/^[0-9a-f]{32}$/.test(b.nonce) || !/^[0-9a-f]{64}$/.test(b.jeton)) return rejet('C1', false);\n// C2 — authenticité du formulaire : jeton recalculé sur les valeurs POSTÉES (cle_sha256 = SHA-256 de k reçue).\n// La FRAÎCHEUR (clé révoquée, génération, expiration) est C3, contre le candidat COURANT (§21.10).\nconst cleSha = sha256Hex(octetsUtf8(b.k));\nconst generation = Number(b.generation);\nconst attendu = jetonPage($env.FONDA_PAGE_HMAC, { set_id: b.lot, generation_cle: generation, cle_sha256: cleSha, empreinte: b.empreinte,\n  moteur_version: b.moteur_version, moteur_sha256: b.moteur_sha256, expire_page: b.expire_page, nonce: b.nonce });\nif (!egalConstant(attendu, b.jeton)) return rejet('C2', false);\nreturn [{ json: { poursuivre: true, resultat: null, lot: b.lot, nonce: b.nonce, generation, empreinte: b.empreinte, moteur_version: b.moteur_version,\n  moteur_sha256: b.moteur_sha256, expire_page: b.expire_page, action: b.action, choix, cle_sha256: cleSha } }];"
+        "jsCode": "// FONDA — C1 (syntaxe, avant Drive : taille, champs EXACTS, doublons) puis C2 (jeton HMAC recalculé sur les valeurs POSTÉES).\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('Verifier formulaire : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nconst SET_ID_PATTERN = new RegExp(\"^set_fonda_[a-z0-9-]+_n[IF]_\\\\d{2}$\", \"\");\n\nfunction dateIso(v) {\n  return typeof v === 'string' && /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/.test(v) && !Number.isNaN(Date.parse(v)) && new Date(Date.parse(v)).toISOString() === v;\n}\n\n// SHA-256 (FIPS 180-4), UTF-8 et base64 en JavaScript pur.\nfunction octetsUtf8(texte) {\n  const o = [];\n  for (let i = 0; i < texte.length; i += 1) {\n    let c = texte.charCodeAt(i);\n    if (c >= 0xd800 && c <= 0xdbff && i + 1 < texte.length) {\n      const d = texte.charCodeAt(i + 1);\n      if (d >= 0xdc00 && d <= 0xdfff) { c = 0x10000 + ((c - 0xd800) << 10) + (d - 0xdc00); i += 1; }\n    }\n    if (c >= 0xd800 && c <= 0xdfff) throw new Error('UTF-16 : substitut isolé');\n    if (c < 0x80) o.push(c);\n    else if (c < 0x800) o.push(0xc0 | (c >> 6), 0x80 | (c & 63));\n    else if (c < 0x10000) o.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n    else o.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));\n  }\n  return o;\n}\nfunction sha256Hex(octets) {\n  const K = [0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,\n    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,\n    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,\n    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,\n    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];\n  const H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  const n = octets.length;\n  const total = Math.ceil((n + 9) / 64) * 64;\n  const m = new Array(total).fill(0);\n  for (let i = 0; i < n; i += 1) m[i] = octets[i];\n  m[n] = 0x80;\n  const bits = n * 8;\n  for (let i = 0; i < 8; i += 1) m[total - 1 - i] = Math.floor(bits / Math.pow(2, 8 * i)) & 0xff;\n  const w = new Array(64);\n  const rotr = (x, k) => (x >>> k) | (x << (32 - k));\n  for (let b = 0; b < total; b += 64) {\n    for (let t = 0; t < 16; t += 1) w[t] = ((m[b + 4 * t] << 24) | (m[b + 4 * t + 1] << 16) | (m[b + 4 * t + 2] << 8) | m[b + 4 * t + 3]) | 0;\n    for (let t = 16; t < 64; t += 1) {\n      const s0 = rotr(w[t - 15], 7) ^ rotr(w[t - 15], 18) ^ (w[t - 15] >>> 3);\n      const s1 = rotr(w[t - 2], 17) ^ rotr(w[t - 2], 19) ^ (w[t - 2] >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    let [a, bb, c, d, e, f, g, h] = H;\n    for (let t = 0; t < 64; t += 1) {\n      const t1 = (h + (rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)) + ((e & f) ^ (~e & g)) + K[t] + w[t]) | 0;\n      const t2 = ((rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)) + ((a & bb) ^ (a & c) ^ (bb & c))) | 0;\n      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = bb; bb = a; a = (t1 + t2) | 0;\n    }\n    H[0] = (H[0] + a) | 0; H[1] = (H[1] + bb) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;\n    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;\n  }\n  return H.map((x) => (x >>> 0).toString(16).padStart(8, '0')).join('');\n}\nfunction octetsBase64(b64) {\n  const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';\n  const s = b64.replace(/\\n/g, '');\n  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(s) || s.length % 4 !== 0) throw new Error('base64 invalide');\n  const o = [];\n  for (let i = 0; i < s.length; i += 4) {\n    const v = [0, 1, 2, 3].map((k) => (s[i + k] === '=' ? 0 : A.indexOf(s[i + k])));\n    const n = (v[0] << 18) | (v[1] << 12) | (v[2] << 6) | v[3];\n    // Bits de remplissage nuls exigés (forme canonique) : « YR== » refusé (≠ « YQ== »).\n    if ((s[i + 2] === '=' && (v[1] & 0x0f) !== 0) || (s[i + 3] === '=' && s[i + 2] !== '=' && (v[2] & 0x03) !== 0)) throw new Error('base64 non canonique');\n    o.push((n >> 16) & 255);\n    if (s[i + 2] !== '=') o.push((n >> 8) & 255);\n    if (s[i + 3] !== '=') o.push(n & 255);\n  }\n  return o;\n}\n// Décodage UTF-8 STRICT : toute séquence invalide ou non canonique est refusée\n// (le texte ré-encodé doit redonner exactement les mêmes octets).\nfunction texteUtf8(octets) {\n  let t = '';\n  let i = 0;\n  while (i < octets.length) {\n    const b = octets[i];\n    const n = b < 0x80 ? 0 : b >= 0xf0 ? 3 : b >= 0xe0 ? 2 : b >= 0xc0 ? 1 : -1;\n    if (n < 0 || i + n >= octets.length) throw new Error('UTF-8 invalide');\n    let c = n === 0 ? b : b & (0x3f >> n);\n    for (let k = 1; k <= n; k += 1) {\n      const x = octets[i + k];\n      if ((x & 0xc0) !== 0x80) throw new Error('UTF-8 invalide');\n      c = (c << 6) | (x & 0x3f);\n    }\n    if (c > 0x10ffff) throw new Error('UTF-8 invalide');\n    t += String.fromCodePoint(c);\n    i += n + 1;\n  }\n  const r = octetsUtf8(t);\n  if (r.length !== octets.length || r.some((x, k) => x !== octets[k])) throw new Error('UTF-8 non canonique');\n  return t;\n}\n// Fichier du dépôt lu par l'API GitHub « contents » au commit consigné : octets EXACTS\n// du blob (base64), jamais un texte ré-sérialisé par le nœud HTTP.\nfunction fichierDepot(nomNoeud, chemin) {\n  const f = unItem(nomNoeud);\n  if (f.type !== 'file' || f.encoding !== 'base64' || f.path !== chemin || typeof f.content !== 'string') throw new Error(nomNoeud + ' : fichier ' + chemin + ' attendu (contents, base64)');\n  const octets = octetsBase64(f.content);\n  if (octets.length !== f.size) throw new Error(nomNoeud + ' : taille ≠ ' + f.size + ' octets');\n  return { octets, texte: texteUtf8(octets) };\n}\n\nfunction tableauCanonique(schema, valeurs) {\n  if (!Array.isArray(valeurs) || valeurs.length !== schema.length) throw new Error('tableau canonique : longueur ≠ schéma');\n  const conforme = (s, v) => (s === 'chaine' ? typeof v === 'string'\n    : s === 'entier' ? Number.isSafeInteger(v) && v >= 0\n      : s === 'choix' ? Array.isArray(v) && v.every((p) => Array.isArray(p) && p.length === 2 && typeof p[0] === 'string' && p[0] !== '' && (p[1] === 'garder' || p[1] === 'ecarter'))\n        : false);\n  for (let i = 0; i < schema.length; i += 1) if (!conforme(schema[i], valeurs[i])) throw new Error('tableau canonique : élément ' + i + ' ≠ ' + schema[i]);\n  return octetsUtf8(JSON.stringify(valeurs.map((v, i) => (schema[i] === 'choix' ? v.map((p) => [p[0], p[1]]) : v))));\n}\nconst SCHEMA_JETON = ['chaine', 'chaine', 'entier', 'chaine', 'chaine', 'chaine', 'chaine', 'chaine', 'chaine'];\nconst SCHEMA_FORMULAIRE = ['chaine', 'chaine', 'entier', 'chaine', 'chaine', 'chaine', 'chaine', 'chaine', 'chaine', 'choix'];\nfunction hexVersOctets(h) {\n  const o = [];\n  for (let i = 0; i < h.length; i += 2) o.push(parseInt(h.slice(i, i + 2), 16));\n  return o;\n}\n// HMAC-SHA256 (RFC 2104), JavaScript pur (aucun module crypto dans un nœud Code n8n).\nfunction hmacSha256Hex(cle, message) {\n  let k = cle.length > 64 ? hexVersOctets(sha256Hex(cle)) : cle.slice();\n  while (k.length < 64) k.push(0);\n  const interne = sha256Hex(k.map((x) => x ^ 0x36).concat(message));\n  return sha256Hex(k.map((x) => x ^ 0x5c).concat(hexVersOctets(interne)));\n}\n// Jeton §21.6 : HMAC-SHA256(secret, canonique([\"fonda-select/v7\", set_id, generation_cle, cle_sha256,\n// empreinte_affichee, moteur.version, moteur.sha256, expire_page, nonce])). Secret : variable d'environnement\n// de l'instance (jamais dans l'export) ; absent ou court -> ERREUR (configuration), jamais un jeton faible.\nfunction jetonPage(secret, j) {\n  if (typeof secret !== 'string' || secret.length < 32) throw new Error('secret HMAC de la page absent ou trop court (configuration de l\\'instance)');\n  return hmacSha256Hex(octetsUtf8(secret), tableauCanonique(SCHEMA_JETON, ['fonda-select/v7', j.set_id, j.generation_cle, j.cle_sha256, j.empreinte, j.moteur_version, j.moteur_sha256, j.expire_page, j.nonce]));\n}\n// hash_formulaire §21.1 : choix = [[item_id, \"garder\"|\"ecarter\"], …] dans l'ORDRE DU CANDIDAT ([] pour « tout\n// rejeter ») ; k et jeton EXCLUS (secrets).\nfunction hashFormulaire(f) {\n  return 'sha256:' + sha256Hex(tableauCanonique(SCHEMA_FORMULAIRE, ['fonda-select-form/v1', f.lot, f.generation, f.empreinte, f.moteur_version, f.moteur_sha256, f.expire_page, f.nonce, f.action, f.choix]));\n}\nfunction egalConstant(a, b) {\n  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;\n  let x = 0;\n  for (let i = 0; i < a.length; i += 1) x |= a.charCodeAt(i) ^ b.charCodeAt(i);\n  return x === 0;\n}\n\nconst CHAMPS = [\"lot\",\"k\",\"generation\",\"empreinte\",\"moteur_version\",\"moteur_sha256\",\"expire_page\",\"nonce\",\"jeton\",\"action\"];\nconst w = unItem(\"Webhook confirmation\");\nconst b = w.body; const h = w.headers && typeof w.headers === 'object' ? w.headers : {};\nconst f = { lot: null, nonce: null };\nconst rejet = (motif, apresC2) => [{ json: { poursuivre: false, resultat: { type: 'rejet', motif, set_id: apresC2 ? f.lot : null, nonce: apresC2 ? f.nonce : null } } }];\nconst a = (o, c) => Object.prototype.hasOwnProperty.call(o, c);\n// C1 — taille : octets annoncés (content-length) ET somme des champs reçus, chacun ≤ 65536.\n// Encodage IMPOSÉ : formulaire URL-encodé (seul encodage où un doublon reste visible) ; tout autre -> C1.\nif (typeof h['content-type'] !== 'string' || !/^application\\/x-www-form-urlencoded\\s*(;|$)/i.test(h['content-type'])) return rejet('C1', false);\nconst lg = h['content-length'];\nif (typeof lg !== 'string' || !/^[0-9]{1,7}$/.test(lg) || Number(lg) > 65536) return rejet('C1', false);\nif (!b || typeof b !== 'object' || Array.isArray(b)) return rejet('C1', false);\nconst cles = Object.keys(b);\n// Doublon (même champ deux fois) : n8n le livre en TABLEAU -> non-chaîne -> refus.\nif (!cles.every((c) => typeof b[c] === 'string')) return rejet('C1', false);\nif (cles.reduce((t, c) => t + c.length + b[c].length, 0) > 65536) return rejet('C1', false);\nif (!CHAMPS.every((c) => a(b, c))) return rejet('C1', false);\nconst autres = cles.filter((c) => !CHAMPS.includes(c));\nlet choix;\nif (b.action === 'accepter') {\n  if (!autres.length || !autres.every((c) => /^choix_it[0-9]{2}$/.test(c) && (b[c] === 'garder' || b[c] === 'ecarter'))) return rejet('C1', false);\n  choix = autres.map((c) => [c.slice(6), b[c]]);\n} else if (b.action === 'rejeter') {\n  if (autres.length !== 1 || autres[0] !== 'confirmer_rejet' || b.confirmer_rejet !== 'oui') return rejet('C1', false);\n  choix = [];\n} else return rejet('C1', false);\nif (!SET_ID_PATTERN.test(b.lot) || !/^[0-9a-f]{64}$/.test(b.k) || !/^[1-9][0-9]{0,14}$/.test(b.generation) || !/^sha256:[0-9a-f]{64}$/.test(b.empreinte)\n  || !/^[A-Za-z0-9._-]{1,64}$/.test(b.moteur_version) || !/^[0-9a-f]{64}$/.test(b.moteur_sha256) || !dateIso(b.expire_page)\n  || !/^[0-9a-f]{32}$/.test(b.nonce) || !/^[0-9a-f]{64}$/.test(b.jeton)) return rejet('C1', false);\n// C2 — authenticité du formulaire : jeton recalculé sur les valeurs POSTÉES (cle_sha256 = SHA-256 de k reçue).\n// La FRAÎCHEUR (clé révoquée, génération, expiration) est C3, contre le candidat COURANT (§21.10).\nconst cleSha = sha256Hex(octetsUtf8(b.k));\nconst generation = Number(b.generation);\nconst attendu = jetonPage($env.FONDA_PAGE_HMAC, { set_id: b.lot, generation_cle: generation, cle_sha256: cleSha, empreinte: b.empreinte,\n  moteur_version: b.moteur_version, moteur_sha256: b.moteur_sha256, expire_page: b.expire_page, nonce: b.nonce });\nif (!egalConstant(attendu, b.jeton)) return rejet('C2', false);\nreturn [{ json: { poursuivre: true, resultat: null, lot: b.lot, nonce: b.nonce, generation, empreinte: b.empreinte, moteur_version: b.moteur_version,\n  moteur_sha256: b.moteur_sha256, expire_page: b.expire_page, action: b.action, choix, cle_sha256: cleSha } }];"
       }
     },
     {
@@ -110,11 +110,29 @@
             },
             {
               "name": "pageSize",
-              "value": "100"
+              "value": "1000"
             }
           ]
         },
         "options": {
+          "pagination": {
+            "pagination": {
+              "paginationMode": "updateAParameterInEachRequest",
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "qs",
+                    "name": "pageToken",
+                    "value": "={{ $response.body.nextPageToken }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.nextPageToken }}",
+              "limitPagesFetched": true,
+              "maxRequests": 50
+            }
+          },
           "timeout": 30000
         }
       }
@@ -129,7 +147,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "parameters": {
-        "jsCode": "// FONDA — candidat : recherche COMPLÈTE exigée (sinon erreur) ; 0 ou plusieurs fichiers -> rejet C3 (410).\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('Verifier recherche candidat : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nconst f = unItem(\"Verifier formulaire\");\nconst rejet = (motif, apresC2) => [{ json: { poursuivre: false, resultat: { type: 'rejet', motif, set_id: apresC2 ? f.lot : null, nonce: apresC2 ? f.nonce : null } } }];\nconst liste = unItem(\"Chercher candidat\");\nif (!Array.isArray(liste.files) || liste.nextPageToken || liste.incompleteSearch) throw new Error('recherche du candidat inexploitable ou incomplète');\nif (liste.files.length !== 1 || typeof liste.files[0].id !== 'string') return rejet('C3', true);\nreturn [{ json: { poursuivre: true, resultat: null, fichier_id: liste.files[0].id } }];"
+        "jsCode": "// FONDA — candidat : recherche PAGINÉE et COMPLÈTE exigée (sinon erreur) ; 0 ou plusieurs fichiers -> rejet C3 (410).\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('Verifier recherche candidat : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nfunction agregerPages(nom) {\n  const pages = $(nom).all().map((i) => i.json);\n  if (!pages.length) throw new Error(nom + ' : aucune page');\n  const fichiers = []; let incompleteSearch = false;\n  for (const pg of pages) {\n    if (!pg || !Array.isArray(pg.files)) throw new Error(nom + ' : page de listing inexploitable');\n    if (pg.incompleteSearch === true) incompleteSearch = true;\n    fichiers.push(...pg.files);\n  }\n  const plafond = Boolean(pages[pages.length - 1].nextPageToken);\n  return { fichiers, incompleteSearch, plafond, complet: !incompleteSearch && !plafond };\n}\n\nconst f = unItem(\"Verifier formulaire\");\nconst rejet = (motif, apresC2) => [{ json: { poursuivre: false, resultat: { type: 'rejet', motif, set_id: apresC2 ? f.lot : null, nonce: apresC2 ? f.nonce : null } } }];\nconst liste = agregerPages(\"Chercher candidat\");\nif (!liste.complet) throw new Error('recherche du candidat incomplète (incompleteSearch ou plafond de pagination)');\nif (liste.fichiers.length !== 1 || typeof liste.fichiers[0].id !== 'string') return rejet('C3', true);\nreturn [{ json: { poursuivre: true, resultat: null, fichier_id: liste.fichiers[0].id } }];"
       }
     },
     {
@@ -278,11 +296,29 @@
             },
             {
               "name": "pageSize",
-              "value": "100"
+              "value": "1000"
             }
           ]
         },
         "options": {
+          "pagination": {
+            "pagination": {
+              "paginationMode": "updateAParameterInEachRequest",
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "qs",
+                    "name": "pageToken",
+                    "value": "={{ $response.body.nextPageToken }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.nextPageToken }}",
+              "limitPagesFetched": true,
+              "maxRequests": 50
+            }
+          },
           "timeout": 30000
         }
       }
@@ -297,7 +333,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "parameters": {
-        "jsCode": "// FONDA — C6 : fichiers de MÊME NOM dans decisions/ (corbeille comprise), recherche complète ; 0 -> écrire, 1 -> relire, plusieurs -> erreur.\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('Analyser decision existante : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nconst liste = unItem(\"Chercher decision\");\nif (!Array.isArray(liste.files) || liste.nextPageToken || liste.incompleteSearch) throw new Error('decisions/ : recherche du nom inexploitable ou incomplète (absence non prouvée)');\nif (liste.files.length > 1) throw new Error(liste.files.length + ' décisions de même nom : état anormal');\nconst existante = liste.files.length === 1;\nif (existante && typeof liste.files[0].id !== 'string') throw new Error('decisions/ : identifiant illisible');\nreturn [{ json: { existante, fichier_id: existante ? liste.files[0].id : null } }];"
+        "jsCode": "// FONDA — C6 : fichiers de MÊME NOM dans decisions/ (corbeille comprise), recherche PAGINÉE complète ; 0 -> écrire, 1 -> relire, plusieurs -> erreur.\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('Analyser decision existante : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nfunction agregerPages(nom) {\n  const pages = $(nom).all().map((i) => i.json);\n  if (!pages.length) throw new Error(nom + ' : aucune page');\n  const fichiers = []; let incompleteSearch = false;\n  for (const pg of pages) {\n    if (!pg || !Array.isArray(pg.files)) throw new Error(nom + ' : page de listing inexploitable');\n    if (pg.incompleteSearch === true) incompleteSearch = true;\n    fichiers.push(...pg.files);\n  }\n  const plafond = Boolean(pages[pages.length - 1].nextPageToken);\n  return { fichiers, incompleteSearch, plafond, complet: !incompleteSearch && !plafond };\n}\n\nconst liste = agregerPages(\"Chercher decision\");\nif (!liste.complet) throw new Error('decisions/ : recherche du nom incomplète (incompleteSearch ou plafond) : absence non prouvée');\nif (liste.fichiers.length > 1) throw new Error(liste.fichiers.length + ' décisions de même nom : état anormal');\nconst existante = liste.fichiers.length === 1;\nif (existante && typeof liste.fichiers[0].id !== 'string') throw new Error('decisions/ : identifiant illisible');\nreturn [{ json: { existante, fichier_id: existante ? liste.fichiers[0].id : null } }];"
       }
     },
     {
@@ -539,7 +575,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "parameters": {
-        "jsCode": "// FONDA — réponse HTTP au relecteur : code (§21.1 : 200, 409, 400/403/410) et page sans donnée du lot.\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('Preparer reponse : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nconst CODES = {\"decision\":200,\"conflit\":409,\"C1\":400,\"C2\":403,\"C3\":410,\"C4\":410,\"C5\":400,\"C5bis\":410};\nconst s = unItem(\"FONDA Sortie confirmation\");\nconst code = s.type === 'rejet' ? CODES[s.motif] : CODES[s.type];\nconst messages = {\n  decision: 'Votre relecture est enregistrée. Merci ! Vous pouvez fermer cette page.',\n  conflit: 'Une autre réponse a déjà été enregistrée pour ce formulaire : rien n\\'a été modifié. Prévenez Éric Duchateau.',\n  C1: 'Formulaire incomplet ou mal formé : rien n\\'a été enregistré. Rouvrez le lien reçu par courriel.',\n  C2: 'Formulaire non reconnu : rien n\\'a été enregistré. Rouvrez le lien reçu par courriel.',\n  C3: 'Ce lien n\\'est plus valable (relecture close, lien remplacé ou expiré) : rien n\\'a été enregistré.',\n  C4: 'Le lot a changé depuis l\\'affichage : rien n\\'a été enregistré. Rouvrez le lien reçu par courriel.',\n  C5: 'Chaque carte doit avoir un choix (ou utilisez « Tout rejeter ») : rien n\\'a été enregistré.',\n  C5bis: 'Ce lien vient d\\'être remplacé ou clos : rien n\\'a été enregistré.',\n};\nconst texte = messages[s.type === 'rejet' ? s.motif : s.type];\nconst html = '<!doctype html><html lang=\"fr\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">'\n  + '<meta http-equiv=\"Content-Security-Policy\" content=\"default-src \\'none\\'; style-src \\'unsafe-inline\\'; base-uri \\'none\\'; form-action \\'none\\'\">'\n  + '<title>Relecture FONDA</title></head><body style=\"font-family:system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem\"><p>' + texte + '</p></body></html>';\nreturn [{ json: { code, html, notifier: s.type === 'decision' && s.ecriture === 'creee' } }];"
+        "jsCode": "// FONDA — réponse HTTP au relecteur : code (§21.1 : 200, 409, 400/403/410) et page sans donnée du lot.\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('Preparer reponse : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nconst CODES = {\"decision\":200,\"conflit\":409,\"C1\":400,\"C2\":403,\"C3\":410,\"C4\":410,\"C5\":400,\"C5bis\":410};\nconst s = unItem(\"FONDA Sortie confirmation\");\nconst code = s.type === 'rejet' ? CODES[s.motif] : CODES[s.type];\nconst messages = {\n  decision: 'Votre relecture est enregistrée. Merci ! Vous pouvez fermer cette page.',\n  conflit: 'Une autre réponse a déjà été enregistrée pour ce formulaire : rien n\\'a été modifié. Prévenez Éric Duchateau.',\n  C1: 'Formulaire incomplet ou mal formé : rien n\\'a été enregistré. Rouvrez le lien reçu par courriel.',\n  C2: 'Formulaire non reconnu : rien n\\'a été enregistré. Rouvrez le lien reçu par courriel.',\n  C3: 'Ce lien n\\'est plus valable (relecture close, lien remplacé ou expiré) : rien n\\'a été enregistré.',\n  C4: 'Le lot a changé depuis l\\'affichage : rien n\\'a été enregistré. Rouvrez le lien reçu par courriel.',\n  C5: 'Chaque carte doit avoir un choix (ou utilisez « Tout rejeter ») : rien n\\'a été enregistré.',\n  C5bis: 'Ce lien vient d\\'être remplacé ou clos : rien n\\'a été enregistré.',\n};\nconst texte = messages[s.type === 'rejet' ? s.motif : s.type];\nconst html = '<!doctype html><html lang=\"fr\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">'\n  + '<meta http-equiv=\"Content-Security-Policy\" content=\"default-src \\'none\\'; style-src \\'unsafe-inline\\'; base-uri \\'none\\'; form-action \\'none\\'\">'\n  + '<title>Relecture FONDA</title></head><body style=\"font-family:system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem\"><p>' + texte + '</p></body></html>';\nreturn [{ json: { code, html } }];"
       }
     },
     {
@@ -574,141 +610,6 @@
           }
         }
       }
-    },
-    {
-      "id": "e90d3794-b815-4b3e-a11e-149b30005797",
-      "position": [
-        5060,
-        0
-      ],
-      "name": "Notifier ?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "typeValidation": "strict",
-            "version": 2
-          },
-          "combinator": "and",
-          "conditions": [
-            {
-              "id": "8fcd089a-434d-4e8a-acb6-277dcd302ae8",
-              "leftValue": "={{ $json.notifier }}",
-              "rightValue": "",
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ]
-        },
-        "options": {}
-      }
-    },
-    {
-      "id": "20211018-d86a-4b39-acaf-f4e4996b6368",
-      "position": [
-        5280,
-        0
-      ],
-      "name": "Lire adresse cloturer",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "retryOnFail": false,
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "A_RENSEIGNER_P4_CREDENTIAL_API_N8N",
-          "name": "FONDA API n8n (lecture Data Table)"
-        }
-      },
-      "parameters": {
-        "url": "https://n8n.srv868991.hstgr.cloud/api/v1/data-tables/A_RENSEIGNER_P4_ID_DATA_TABLE_RELECTEURS/rows",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "options": {
-          "timeout": 30000
-        }
-      },
-      "onError": "continueErrorOutput"
-    },
-    {
-      "id": "fe427fcd-65c1-4987-aa28-a669feaaaf0c",
-      "position": [
-        5500,
-        0
-      ],
-      "name": "Preparer notification",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "parameters": {
-        "jsCode": "// FONDA — C7 : courriel de notification à Éric (adresse lue dans la Data Table, clé « eric ») ; ne lève jamais.\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nlet sortie = { envoyer: false, raw: null };\ntry {\n  const s = $(\"FONDA Sortie confirmation\").first().json;\n  const t = $input.first().json;\n  const lignes = Array.isArray(t.data) ? t.data.filter((l) => l && l.relecteur_attribue === 'eric') : [];\n  if (lignes.length === 1 && typeof lignes[0].adresse === 'string' && /^[^@\\s]+@[^@\\s]+$/.test(lignes[0].adresse)) {\n    const message = ['To: ' + lignes[0].adresse, 'Subject: Relecture FONDA ' + s.set_id + ' : décision reçue', 'Content-Type: text/plain; charset=UTF-8', '',\n      'Une décision de relecture a été enregistrée pour ' + s.set_id + ' (génération ' + s.generation + ').', 'Clôture technique et signature : CLI local.'].join('\\r\\n');\n    const o = []; for (const ch of message) { const c = ch.codePointAt(0); if (c < 0x80) o.push(c); else if (c < 0x800) o.push(0xc0 | (c >> 6), 0x80 | (c & 63)); else if (c < 0x10000) o.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63)); else o.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63)); }\n    const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';\n    let raw = '';\n    for (let i = 0; i < o.length; i += 3) { const n = (o[i] << 16) | ((o[i + 1] || 0) << 8) | (o[i + 2] || 0); raw += A[(n >> 18) & 63] + A[(n >> 12) & 63] + (i + 1 < o.length ? A[(n >> 6) & 63] : '') + (i + 2 < o.length ? A[n & 63] : ''); }\n    sortie = { envoyer: true, raw };\n  }\n} catch (e) { sortie = { envoyer: false, raw: null }; }\nreturn [{ json: sortie }];"
-      }
-    },
-    {
-      "id": "ddbcc175-7f66-4077-aaa6-78d6b2c0bd03",
-      "position": [
-        5720,
-        0
-      ],
-      "name": "Adresse trouvee ?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "typeValidation": "strict",
-            "version": 2
-          },
-          "combinator": "and",
-          "conditions": [
-            {
-              "id": "f11505ec-c486-4f31-a245-4397054d808b",
-              "leftValue": "={{ $json.envoyer }}",
-              "rightValue": "",
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ]
-        },
-        "options": {}
-      }
-    },
-    {
-      "id": "680d8801-fa3e-4443-a5d6-acd9a7a4acb4",
-      "position": [
-        5940,
-        0
-      ],
-      "name": "Envoyer notification",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "retryOnFail": false,
-      "credentials": {
-        "gmailOAuth2": {
-          "id": "A_RENSEIGNER_P4_CREDENTIAL_GMAIL",
-          "name": "FONDA Gmail relecture"
-        }
-      },
-      "parameters": {
-        "method": "POST",
-        "url": "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "gmailOAuth2",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ raw: $json.raw }) }}",
-        "options": {
-          "timeout": 30000
-        }
-      },
-      "onError": "continueErrorOutput"
     }
   ],
   "connections": {
@@ -987,63 +888,6 @@
             "index": 0
           }
         ]
-      ]
-    },
-    "Repondre confirmation": {
-      "main": [
-        [
-          {
-            "node": "Notifier ?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Notifier ?": {
-      "main": [
-        [
-          {
-            "node": "Lire adresse cloturer",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        []
-      ]
-    },
-    "Lire adresse cloturer": {
-      "main": [
-        [
-          {
-            "node": "Preparer notification",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Preparer notification": {
-      "main": [
-        [
-          {
-            "node": "Adresse trouvee ?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Adresse trouvee ?": {
-      "main": [
-        [
-          {
-            "node": "Envoyer notification",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        []
       ]
     }
   },
