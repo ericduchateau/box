@@ -854,7 +854,7 @@ describe('8. RÉÉMISSION (§21.5, décision point 4) : en_attente ET decisions/
   });
 });
 
-describe('9. courses (D1, D2) : DEUX piliers — signataire + un seul écrivain CLI ; détection AVANT écriture (porteuse), APRÈS = +1 (au mieux)', () => {
+describe('9. courses (D1, D2, E1) : pilier 1 signataire, pilier 2 verrou « un seul écrivain CLI » (P5) ; contrôles de version = signal précoce, pas intégrité', () => {
   test('DÉTECTION : candidat modifié entre l\'analyse et la réécriture (clôture intercalée) -> refus, rien réécrit, candidat clos intact', async () => {
     const d = mondeAvecLot();
     assert.equal((await emettre(d)).status, 'success');
@@ -906,17 +906,26 @@ describe('9. courses (D1, D2) : DEUX piliers — signataire + un seul écrivain 
     const cf = await confirmer(d, SET, 2); await pause();
     assert.deepEqual((await evaluer(d, SET, [await cloturer(d, { set_id: SET })], [cf])).constats, []);
   });
-  test('D2, fenêtre résiduelle (au mieux) : réémission B glissée APRÈS le contrôle de version de A -> A détecte (version après ≠ avant + 1), aucun courriel de A ; seul le lien de B est parti, sous une clé désormais morte : DISPONIBILITÉ, pas intégrité', async () => {
+  test('E1 — ÉCART CONNU, FERMÉ PAR LE VERROU P5 SEULEMENT : réémission B (et sa confirmation) glissées APRÈS le contrôle de version de A -> A écrase la clé de B puis échoue APRÈS écriture ; le signataire ACCEPTE (constats: []) une décision sous une clé qui n\'est plus celle du candidat', async () => {
     const d = mondeAvecLot();
     assert.equal((await emettre(d)).status, 'success');
     const K3 = 'ef'.repeat(32);
-    let eB;
-    d.crochets.avantPatch = async () => { eB = await emettre(d, { k: K3 }); };
+    let eB; let cfB;
+    // Deux écrivains CLI en parallèle (erreur de l'opérateur) : B réémet et le relecteur confirme sous la clé de B,
+    // pendant que A, déjà passé par son contrôle de version, s'apprête à réécrire.
+    d.crochets.avantPatch = async () => { eB = await emettre(d, { k: K3 }); cfB = await confirmer(d, SET, 2); };
     const eA = await emettre(d, { k: K2 });
     assert.equal(eB.status, 'success', eB.erreur);
     assert.equal(eA.status, 'error'); assert.equal(eA.noeudErreur, N_E.verifier); assert.match(eA.erreur, /écriture concurrente détectée/);
-    assert.equal(d.envois.length, 2, 'aucun courriel de A'); assert.ok(!d.envois.some((m) => m.includes(K2)), 'la clé stockée (A) n\'a jamais été envoyée');
-    assert.equal(candidatDe(d).relecture.cle_sha256, sha(Buffer.from(K2, 'utf8')), 'le lien de B ne correspond plus à cle_sha256 : lot inconfirmable (refus C3 en P2), nouvelle réémission ou abandon');
+    assert.ok(eA.runData[N_E.reecrire], 'l\'erreur d\'Emettre survient APRÈS son écriture et ne l\'annule pas');
+    assert.equal(d.envois.length, 2, 'aucun courriel de A'); assert.match(d.envois[1], new RegExp(`&k=${K3}\\r\\n`));
+    assert.deepEqual([candidatDe(d).relecture.generation_cle, candidatDe(d).relecture.cle_sha256], [2, sha(Buffer.from(K2, 'utf8'))], 'la clé utilisée (B) n\'est plus celle du candidat (A)');
+    await pause();
+    const c = await cloturer(d, { set_id: SET });
+    assert.equal(c.r.status, 'success', c.r.erreur);
+    // ÉPINGLÉ : le signataire (P1 gelé) ne peut pas distinguer les deux émissions de génération 2. Ce test
+    // DOCUMENTE l'écart ; s'il change, la doctrine (README « Où vit chaque garantie ») doit être relue.
+    assert.deepEqual((await evaluer(d, SET, [c], [cfB])).constats, []);
   });
   test('BACKSTOP signataire : clôture glissée après le contrôle de version d\'Emettre -> Emettre détecte (au mieux) ; même sans cette détection, le signataire REFUSE puis ABANDONNE à la re-clôture', async () => {
     const d = mondeAvecLot();
