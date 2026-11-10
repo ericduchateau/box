@@ -16,6 +16,5 @@
   "credentialDrive": { "id": "A_RENSEIGNER_RECETTE_CREDENTIAL_DRIVE", "name": "FONDA RECETTE Drive" },
   "credentialEmettre": { "id": "A_RENSEIGNER_RECETTE_CREDENTIAL_EMETTRE", "name": "FONDA RECETTE Emettre Token" },
   "credentialCloturer": { "id": "A_RENSEIGNER_RECETTE_CREDENTIAL_CLOTURER", "name": "FONDA RECETTE Cloturer Token" },
-  "credentialApiN8n": { "id": "A_RENSEIGNER_RECETTE_CREDENTIAL_API_N8N", "name": "FONDA RECETTE API n8n (lecture Data Table)" },
   "credentialGmail": { "id": "A_RENSEIGNER_RECETTE_CREDENTIAL_GMAIL", "name": "FONDA RECETTE Gmail relecture" }
 }
