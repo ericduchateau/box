@@ -14,7 +14,9 @@
 //      transport HTTP de la pagination reconstitué selon la configuration du nœud (jeton en query string) ;
 //   5. cas du §21.10 et réémission (§21.5), toujours par la chaîne réelle.
 // Adaptations au simulateur (NON modifiable), toutes dans la COPIE de test du workflow, chacune vérifiée
-// statiquement sur l'export : (a) nœud Crypto (non simulé) -> nœud Code rendant une clé fixe ; (b) Respond
+// statiquement sur l'export : (a) nœud Crypto (non simulé) -> nœud Code rendant une clé fixe ; (a bis) nœud Data Table
+// natif (non simulé) -> nœud Code rendant les lignes, APRÈS vérification de sa forme (avecLignes ; seule la recette G3
+// prouve le vrai nœud) ; (b) Respond
 // to Webhook en texte (le simulateur analyse le corps comme du JSON) : corps encapsulé par JSON.stringify,
 // code HTTP (expression) évalué par le harnais sur l'item répondu. La confirmation SIMULÉE AU CONTRAT ne
 // subsiste que pour les contre-épreuves de réconciliation (confirmerSimule : décision fausse mais cohérente,
@@ -1174,15 +1176,44 @@ describe('7 ter. Emettre : adresse lue par le nœud Data Table NATIF (aucune cl�
     assert.equal('credentialApiN8n' in B.CONFIG, false);
   });
   const lignes = (l) => ({ lignes: l });
-  test('adresse : EXACTEMENT une ligne pour le relecteur ; table vide, ligne absente, doublon, adresse invalide -> ERREUR, aucun courriel', async () => {
-    for (const [cas, l] of [['table vide', []], ['relecteur absent', [{ id: 1, relecteur_attribue: 'autre', adresse: 'a@exemple.invalid' }]],
-      ['doublon', [{ id: 1, relecteur_attribue: RELECTEUR, adresse: 'a@exemple.invalid' }, { id: 2, relecteur_attribue: RELECTEUR, adresse: 'b@exemple.invalid' }]],
-      ['adresse invalide', [{ id: 1, relecteur_attribue: RELECTEUR, adresse: 'pas une adresse' }]], ['adresse absente', [{ id: 1, relecteur_attribue: RELECTEUR }]]]) {
-      const d = mondeAvecLot();
+  const ligne = (adresse, relecteur = RELECTEUR) => [{ id: 1, relecteur_attribue: relecteur, adresse }];
+  const MAUVAISES = [['table vide', []], ['relecteur absent', ligne('a@exemple.invalid', 'autre')],
+    ['doublon', [...ligne('a@exemple.invalid'), { id: 2, relecteur_attribue: RELECTEUR, adresse: 'b@exemple.invalid' }]], ['adresse absente', [{ id: 1, relecteur_attribue: RELECTEUR }]],
+    ...['pas une adresse', 'a,b@exemple.invalid', 'a@exemple.invalid,local', 'a@exemple.invalid\u0000', '<a@exemple.invalid>', 'a@exemple', 'a@-exemple.invalid', 'a@exemple-.invalid',
+      'a b@exemple.invalid', 'a@exemple..invalid', 'a@@exemple.invalid', `${'a'.repeat(65)}@exemple.invalid`, `a@${'b'.repeat(64)}.invalid`, `a@${Array(51).fill('bcde').join('.')}.invalid`,
+      'a@exemple.invalid\r\nBcc: x@exemple.invalid', 'é@exemple.invalid', 12, null].map((x) => [`adresse ${JSON.stringify(x)}`, ligne(x)])];
+  test('destinataire validé AVANT toute écriture : table vide, relecteur absent, doublon, adresse hors grammaire -> ERREUR au nœud de validation, AUCUNE écriture Drive, aucun courriel', async () => {
+    for (const [cas, l] of MAUVAISES) {
+      const d = mondeAvecLot(); const avant = JSON.stringify([...d.fichiers.values()]);
       const e = await emettre(d, lignes(l));
-      assert.equal(e.status, 'error', cas); assert.equal(e.noeudErreur, N_E.courriel, cas); assert.match(e.erreur, /adresse du relecteur introuvable ou ambiguë/, cas);
+      assert.equal(e.status, 'error', cas); assert.equal(e.noeudErreur, N_E.destinataire, cas); assert.match(e.erreur, /adresse du relecteur introuvable ou ambiguë, ou hors grammaire/, cas);
+      assert.equal(JSON.stringify([...d.fichiers.values()]), avant, `${cas} : aucune écriture`); assert.equal(d.candidat(SET), undefined, cas);
       assert.equal(d.envois.length, 0, cas);
+      for (const n of [N_E.cle, N_E.preparer, N_E.ecrire, N_E.reecrire]) assert.equal(e.runData[n], undefined, `${cas} : ${n} jamais exécuté`);
     }
+  });
+  test('RÉÉMISSION avec destinataire invalide : candidat INCHANGÉ (même clé, même generation_cle), l\'ancien lien reste valide — aucune clé fantôme', async () => {
+    const { d } = await lotEmis(); const avant = d.candidat(SET).contenu;
+    for (const [cas, l] of MAUVAISES.slice(0, 6)) {
+      const e = await emettre(d, { k: K2, ...lignes(l) });
+      assert.equal(e.status, 'error', cas); assert.equal(e.noeudErreur, N_E.destinataire, cas); assert.equal(d.candidat(SET).contenu, avant, cas);
+    }
+    assert.equal(d.envois.length, 1);
+  });
+  test('grammaire de la boîte : formes valides acceptées (partie locale 64, labels 63, total ≤ 254)', async () => {
+    const lab = 'c'.repeat(63); assert.equal(`a@${lab}.${lab}.${lab}.${'d'.repeat(60)}`.length, 254);
+    for (const x of ['a@exemple.invalid', 'prenom.nom+fonda@ac-lille.fr', `${'a'.repeat(64)}@exemple.invalid`, `a@${lab}.${lab}.${lab}.${'d'.repeat(60)}`]) {
+      assert.ok(x.length <= 254, x);
+      const d = mondeAvecLot(); const e = await emettre(d, lignes(ligne(x)));
+      assert.equal(e.status, 'success', `${x} : ${e.erreur}`); assert.match(d.envois[0], new RegExp(`^To: ${x.replace(/[.+]/g, '\\$&')}\r\n`));
+    }
+    const trop = `a@${'c'.repeat(63)}.${'c'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(61)}`; assert.equal(trop.length, 255);
+    const d = mondeAvecLot(); assert.equal((await emettre(d, lignes(ligne(trop)))).noeudErreur, N_E.destinataire);
+  });
+  test('Gmail en échec APRÈS écriture : cas DISTINCT documenté (candidat écrit, aucun courriel, erreur à l\'envoi)', async () => {
+    const d = mondeAvecLot();
+    const e = await emettre(d, { reponses: { [N_E.envoyer]: async () => ({ statusCode: 500, body: {} }) } });
+    assert.equal(e.status, 'error'); assert.equal(e.noeudErreur, N_E.envoyer); assert.notEqual(d.candidat(SET), undefined); assert.equal(d.envois.length, 0);
   });
   test('adresse du relecteur : lue à l\'exécution, JAMAIS dans un export', async () => {
     const d = mondeAvecLot();
