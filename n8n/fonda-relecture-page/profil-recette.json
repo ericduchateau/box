@@ -8,13 +8,13 @@
   "cheminCloturer": "fonda-recette-cloturer",
   "cheminPage": "fonda-recette-select",
   "cheminConfirmer": "fonda-recette-select-confirm",
-  "dossierCandidats": "A_RENSEIGNER_RECETTE_DOSSIER_LOTS",
-  "dossierRelecture": "A_RENSEIGNER_RECETTE_DOSSIER_RELECTURE",
-  "dossierDecisions": "A_RENSEIGNER_RECETTE_DOSSIER_DECISIONS",
-  "tableRelecteurs": "A_RENSEIGNER_RECETTE_ID_DATA_TABLE_RELECTEURS",
-  "urlMoteurs": "A_RENSEIGNER_RECETTE_URL_BASE_MOTEURS",
-  "credentialDrive": { "id": "A_RENSEIGNER_RECETTE_CREDENTIAL_DRIVE", "name": "FONDA RECETTE Drive" },
-  "credentialEmettre": { "id": "A_RENSEIGNER_RECETTE_CREDENTIAL_EMETTRE", "name": "FONDA RECETTE Emettre Token" },
-  "credentialCloturer": { "id": "A_RENSEIGNER_RECETTE_CREDENTIAL_CLOTURER", "name": "FONDA RECETTE Cloturer Token" },
-  "credentialGmail": { "id": "A_RENSEIGNER_RECETTE_CREDENTIAL_GMAIL", "name": "FONDA RECETTE Gmail relecture" }
+  "dossierCandidats": "1SfEymNWRwg5tGu_mgRv12jmrEu710dGR",
+  "dossierRelecture": "1aRVD1BdVtkuDqPFabO_fQBdVMb0CSzTG",
+  "dossierDecisions": "1UbGhHAIyxoPLT_F9WrJpA52xORtt9Eaj",
+  "tableRelecteurs": "hh5uTRuoKi5FwEiM",
+  "urlMoteurs": "https://cdn.jsdelivr.net/gh/ericduchateau/box@e66fe79818caec87e47ee964c52a4efef2e386f8/fonda/engine",
+  "credentialDrive": { "id": "rIQA9xF9tYcrhEb1", "name": "FONDA RECETTE Drive" },
+  "credentialEmettre": { "id": "oNP2I7TyfU1uDIyo", "name": "FONDA RECETTE Emettre Token" },
+  "credentialCloturer": { "id": "AzsWdsfTUbhhUENY", "name": "FONDA RECETTE Cloturer Token" },
+  "credentialGmail": { "id": "I8NVi8hVrF6TRNIn", "name": "FONDA RECETTE Gmail relecture" }
 }
