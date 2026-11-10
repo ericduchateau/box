@@ -60,7 +60,7 @@ const CONFIG_PRODUCTION = Object.freeze({
   dossierRelecture: P4('DOSSIER_RELECTURE'), // relecture/<set_id>.candidat.json (enveloppe mutable)
   dossierDecisions: P4('DOSSIER_DECISIONS'), // decisions/ (écrit par Confirmer, P2)
   urlN8n: 'https://n8n.srv868991.hstgr.cloud',
-  tableRelecteurs: P4('ID_DATA_TABLE_RELECTEURS'), // Data Table : relecteur_attribue -> adresse (jamais dans le dépôt)
+  tableRelecteurs: P4('ID_DATA_TABLE_RELECTEURS'), // Data Table : relecteur_attribue -> adresse (jamais dans le dépôt), lue par le NŒUD NATIF (aucune clé d'API)
   urlPage: P4('URL_PAGE_RELECTURE'), // …/webhook/<chemin> de « FONDA - Page relecture » (P2)
   urlMoteurs: P4('URL_BASE_MOTEURS'), // base publique des fichiers moteur (URL EXACTE en CSP, SRI sha384 calculée à la construction)
   dureeCleJours: 14,
@@ -69,7 +69,6 @@ const CONFIG_PRODUCTION = Object.freeze({
   credentialDrive: { id: 'cukxQDNwWIqOAK02', name: 'Google Drive la bonne!' },
   credentialEmettre: { id: P4('CREDENTIAL_EMETTRE'), name: 'FONDA Emettre Token' },
   credentialCloturer: { id: P4('CREDENTIAL_CLOTURER'), name: 'FONDA Cloturer Token' },
-  credentialApiN8n: { id: P4('CREDENTIAL_API_N8N'), name: 'FONDA API n8n (lecture Data Table)' },
   credentialGmail: { id: P4('CREDENTIAL_GMAIL'), name: 'FONDA Gmail relecture' },
 });
 
@@ -79,7 +78,7 @@ const CONFIG_PRODUCTION = Object.freeze({
 // DÉRIVÉE (instance + chemin de la page de recette), jamais saisie.
 const CLES_RECETTE = Object.freeze(['nomEmettre', 'nomCloturer', 'nomConfirmer', 'nomPage', 'cheminEmettre', 'cheminCloturer', 'cheminPage', 'cheminConfirmer',
   'dossierCandidats', 'dossierRelecture', 'dossierDecisions', 'tableRelecteurs', 'urlMoteurs',
-  'credentialDrive', 'credentialEmettre', 'credentialCloturer', 'credentialApiN8n', 'credentialGmail']);
+  'credentialDrive', 'credentialEmettre', 'credentialCloturer', 'credentialGmail']);
 const PROFIL_RECETTE = path.join(__dirname, 'profil-recette.json');
 // Identifiants de production CONNUS DU DÉPÔT : CONFIG_PRODUCTION + inventaire de TOUS les exports n8n
 // du dépôt hors recette (génération, portier, collecte, sauvegardes BOX, copies TEST…) : ids et noms de
@@ -658,8 +657,8 @@ function codeCourriel() {
     `const CONFIG = ${JSON.stringify({ urlPage: CONFIG.urlPage, dureeCleJours: CONFIG.dureeCleJours })};
 const p = unItem(${JSON.stringify(NOEUDS_EMETTRE.preparer)});
 unItem(${JSON.stringify(NOEUDS_EMETTRE.verifier)});
-const t = unItem(${JSON.stringify(NOEUDS_EMETTRE.adresse)});
-const lignes = Array.isArray(t.data) ? t.data.filter((l) => l && l.relecteur_attribue === p.relecteur) : [];
+// Nœud Data Table natif (Get, toutes les lignes, sortie toujours émise) : un item par ligne ; table vide -> un item {}.
+const lignes = $(${JSON.stringify(NOEUDS_EMETTRE.adresse)}).all().map((x) => x.json).filter((l) => l && l.relecteur_attribue === p.relecteur);
 if (lignes.length !== 1 || typeof lignes[0].adresse !== 'string' || !/^[^@\\s]+@[^@\\s]+$/.test(lignes[0].adresse)) throw new Error('adresse du relecteur introuvable ou ambiguë dans la Data Table');
 const lien = CONFIG.urlPage + '?lot=' + encodeURIComponent(p.set_id) + '&k=' + p.k;
 const message = ['To: ' + lignes[0].adresse, 'Subject: Relecture FONDA ' + p.set_id, 'Content-Type: text/plain; charset=UTF-8', '',
@@ -723,9 +722,10 @@ function construireEmettre() {
     listing(N.relister, qDecisions(setIdExpr), CHAMPS_LISTE, true),
     code(N.verifier, codeVerifierEcriture()),
     {
-      name: N.adresse, type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, retryOnFail: false,
-      credentials: { httpHeaderAuth: CONFIG.credentialApiN8n },
-      parameters: { url: `${CONFIG.urlN8n}/api/v1/data-tables/${CONFIG.tableRelecteurs}/rows`, authentication: 'genericCredentialType', genericAuthType: 'httpHeaderAuth', options: { timeout: 30000 } },
+      // Lecture par le NŒUD NATIF (décision de l'architecte, 2026-11-10) : aucune clé d'API n8n, aucun credential,
+      // aucun chemin /api/v1/data-tables. alwaysOutputData : table vide -> le courriel ÉCHOUE (jamais un arrêt silencieux).
+      name: N.adresse, type: 'n8n-nodes-base.dataTable', typeVersion: 1, retryOnFail: false, alwaysOutputData: true,
+      parameters: { resource: 'row', operation: 'get', dataTableId: { __rl: true, mode: 'id', value: CONFIG.tableRelecteurs }, returnAll: true },
     },
     code(N.courriel, codeCourriel()),
     {

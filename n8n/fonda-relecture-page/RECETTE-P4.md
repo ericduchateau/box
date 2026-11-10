@@ -94,7 +94,7 @@ Chaque valeur externe, ou qui atteint l'instance, ou qui est affichée, et son c
 1. **Terminal du VPS, lecture seule** : `docker exec <ID n8n> printenv` filtré sur `N8N_BLOCK_ENV_ACCESS_IN_NODE`, `EXECUTIONS_DATA_PRUNE`, `EXECUTIONS_DATA_MAX_AGE`, `EXECUTIONS_DATA_PRUNE_MAX_COUNT`, `N8N_PAYLOAD_SIZE_MAX` ; version n8n. Consigner (trace §13.5) ; aucune modification.
 2. **Drive** : dossier `FONDA-RECETTE` avec `lots/`, `relecture/`, `decisions/`.
 3. **Data Table** `fonda_recette_relecteurs` : une ligne par relecteur du lot de recette, **adresse de test d'Éric** uniquement.
-4. **Credentials** (noms imposés par `profil-recette.json`) : `FONDA RECETTE Drive`, `… Emettre Token`, `… Cloturer Token`, `… API n8n (lecture Data Table)`, `… Gmail relecture`, et (P4b) le credential `crypto` du HMAC de recette (secret ≥ 32 caractères, propre à la recette).
+4. **Credentials** (noms imposés par `profil-recette.json`) : `FONDA RECETTE Drive`, `… Emettre Token`, `… Cloturer Token`, `… Gmail relecture` (plus de credential « API n8n » : la Data Table est lue par le nœud natif), et (P4b) le credential `crypto` du HMAC de recette (secret ≥ 32 caractères, propre à la recette).
 5. Éric transmet **les identifiants seulement** (jamais un secret) -> petite PR qui renseigne `profil-recette.json` et régénère les exports.
 6. **Lot de recette** : un `set_id` **réservé au journal d'un commit ANCIEN** (aujourd'hui publié), passé en `journal_commit` ; aucune écriture au journal. Lot source synthétique conforme à `validerLot`, déposé dans `lots/` de recette. Aucune donnée d'élève.
 
@@ -108,7 +108,7 @@ Chaque valeur externe, ou qui atteint l'instance, ou qui est affichée, et son c
 |---|---|---|---|
 | G1 version +1 (conditionne P5) | ≥ 6 écritures du candidat (émission, réémission, clôture, deux écritures dans la même seconde) ; versions avant/après lues dans les exécutions | après = avant + 1 à chaque PATCH | contrôle avant écriture conservé, après = informatif, verrou CLI porteur |
 | G2 `name contains` | `decisions/` : conformes + leurres (`…_01`/`…_011`, préfixe, tirets, soulignés) ; C6 et listing de Cloturer | toute décision conforme (`fonda_set_id`) retrouvée ; leurres écartés | requête par propriété seule |
-| G3 Data Table | émission réelle | adresse lue à l'exécution ; courriel reçu à l'adresse de test ; absente de l'export ; URL de l'API relevée | nœud Data Table natif si disponible, sinon arbitrage |
+| G3 Data Table (nœud natif, décision 2026-11-10) | émission réelle | adresse lue à l'exécution par le nœud natif ; courriel reçu à l'adresse de test ; absente de l'export ; import accepté en `typeVersion` 1 (comparer-live) | arbitrage (le repli « API + clé » est écarté : clé non restreinte) |
 | G4 HMAC (Crypto v2 + credential) | GET Page jeton juste/faux ; POST Confirmer | comportements du harnais ; secret absent de l'export et des exécutions | — (mécanisme déjà le repli) : arbitrage |
 | G5 codes, en-têtes, doublons | `curl` : clé/jeton faux, candidat clos, conflit, `content-type` faux, corps trop grand, champ manquant, `lot[]` et `nonce` en double | 403/410/409/400 conformes ; `content-type`/`content-length` présents ; C1 sur la forme RÉELLE des doublons | Raw Body + analyse maison (doublons conservés), taille sur le corps brut |
 | G6 moteurs / SRI | sha384 des octets réels à l'URL publique ; Page en navigateur réel | égalité au registre ; aucune violation CSP ; SRI acceptée ; POST reçu | autre hôte public CORS (jsDelivr) |

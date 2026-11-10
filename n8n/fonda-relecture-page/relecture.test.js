@@ -209,7 +209,7 @@ function verifierReferencesRecette(textes, c) {
   const moteurs = new Set();
   const reg = JSON.parse(fs.readFileSync(path.join(RACINE, 'fonda/engine/moteurs.json'), 'utf8'));
   if (BASES_MOTEURS_AUTORISEES.includes(c.urlMoteurs) || BASE_JSDELIVR_EPINGLEE.test(c.urlMoteurs)) for (const l of reg) moteurs.add(`${c.urlMoteurs}/${path.basename(l.fichier)}`);
-  const urls = new Set([`${c.urlN8n}/webhook/${c.cheminPage}`, `${c.urlN8n}/webhook/${c.cheminConfirmer}`, `${c.urlN8n}/api/v1/data-tables/${c.tableRelecteurs}/rows`,
+  const urls = new Set([`${c.urlN8n}/webhook/${c.cheminPage}`, `${c.urlN8n}/webhook/${c.cheminConfirmer}`,
     'https://gmail.googleapis.com/gmail/v1/users/me/messages/send', 'https://www.googleapis.com/drive/v3/files', 'https://www.googleapis.com/drive/v3/files/',
     'https://www.googleapis.com/upload/drive/v3/files', 'https://www.googleapis.com/upload/drive/v3/files/',
     ...['fonda/data/referentiel.json', 'fonda/data/set_ids-journal.json', 'fonda/engine/moteurs.json'].map((f) => `https://api.github.com/repos/${c.depot}/contents/${f}`), ...moteurs]);
@@ -221,6 +221,8 @@ function verifierReferencesRecette(textes, c) {
     for (const n of wf.nodes) {
       for (const r of Object.values(n.credentials || {})) assert.ok(creds.has(JSON.stringify([r.id, r.name])), `${n.name} : credential hors profil`);
       if (n.type === 'n8n-nodes-base.webhook') assert.ok(chemins.has(n.parameters.path), `${n.name} : chemin hors profil`);
+      // Data Table native : identifiant EXACT de la table du profil, par id (jamais par nom ni depuis une liste).
+      if (n.type === 'n8n-nodes-base.dataTable') assert.deepEqual(n.parameters.dataTableId, { __rl: true, mode: 'id', value: c.tableRelecteurs }, `${n.name} : Data Table hors profil`);
     }
     for (const m of t.matchAll(/https?:\/\/[^"'\s\\)]+/g)) {
       const u = m[0].replace(/\$\{.*$/, '').replace(/\?.*$/, '');
@@ -307,7 +309,7 @@ describe('1 bis. profil de recette (P4a) : exports de production INCHANGÉS, cop
     const avec = (modif) => { const p = copie(PROFIL_RECETTE); modif(p); return () => B.configRecette(p); };
     const refus = (modif) => assert.throws(avec(modif), (e) => /identifiant de production|remplacement de PRODUCTION/.test(e.message) && !/GfnXr5hYrYgC5RwA|YnhTnSOc1u7S99Q7|11KWo13pczVB|box-select/.test(e.message));
     refus((p) => { p.credentialEmettre = { id: 'GfnXr5hYrYgC5RwA', name: 'FONDA RECETTE Emettre Token' }; }); // FONDA Webhook Token (génération)
-    refus((p) => { p.credentialApiN8n = { id: 'YnhTnSOc1u7S99Q7', name: 'FONDA RECETTE API n8n' }; }); // Anthropic FONDA (génération)
+    refus((p) => { p.credentialGmail = { id: 'YnhTnSOc1u7S99Q7', name: 'FONDA RECETTE Gmail relecture' }; }); // Anthropic FONDA (génération)
     refus((p) => { p.dossierDecisions = '11KWo13pczVB_eOXw-FHUXWuutfSQqbbT'; }); // dossier BOX-Flashcards (sauvegarde BOX)
     assert.throws(avec((p) => { p.dossierRelecture = 'A_RENSEIGNER_P4_DOSSIER_RELECTURE'; }), /remplacement hors recette/); // refusé dès la construction
     assert.throws(avec((p) => { p.credentialGmail = { id: 'A_RENSEIGNER_P4_CREDENTIAL_GMAIL', name: 'FONDA RECETTE Gmail' }; }), /remplacement hors recette/);
@@ -357,7 +359,7 @@ fs.readFileSync = function (p, ...r) { if (String(p).endsWith(${JSON.stringify(c
   test('instantané de surface (constructeur) : CLES_RECETTE, grammaires du profil et constructeurs recopiés LITTÉRALEMENT (élargir = modifier ce test)', () => {
     assert.deepEqual(B.CLES_RECETTE, ['nomEmettre', 'nomCloturer', 'nomConfirmer', 'nomPage', 'cheminEmettre', 'cheminCloturer', 'cheminPage', 'cheminConfirmer',
       'dossierCandidats', 'dossierRelecture', 'dossierDecisions', 'tableRelecteurs', 'urlMoteurs',
-      'credentialDrive', 'credentialEmettre', 'credentialCloturer', 'credentialApiN8n', 'credentialGmail']);
+      'credentialDrive', 'credentialEmettre', 'credentialCloturer', 'credentialGmail']);
     assert.deepEqual(Object.fromEntries(Object.entries(B.GRAMMAIRES_RECETTE).map(([k, r]) => [k, r.source])), {
       nom: /^FONDA RECETTE - [A-Z][a-z]+ relecture$/.source,
       chemin: /^fonda-recette-[a-z]{1,20}(-[a-z]{1,20}){0,3}$/.source,
@@ -650,8 +652,20 @@ function mondeAvecLot(o = {}, sets = [SET]) {
   for (const s of sets) d.ajouter(CAND, `${s}.lot.json`, `${JSON.stringify(lotSource(s), null, 2)}\n`);
   return d;
 }
-async function emettre(d, { setId = SET, k = K, reponses = {}, octJournal = OCT_JOURNAL, corps } = {}) {
-  return executerGraphe(avecK(JSON.parse(lireExport('emettre')), k), {
+// Data Table native (le simulateur partagé, sous le témoin, ne la connaît pas) : le nœud est REMPLACÉ par un nœud Code
+// qui rend les lignes, APRÈS vérification de sa forme exacte (row/get, toutes les lignes, sortie toujours émise).
+// Sémantique n8n : un item par ligne ; aucune ligne -> un item vide seulement grâce à alwaysOutputData.
+const LIGNES_RELECTEURS = () => [{ id: 1, relecteur_attribue: RELECTEUR, adresse: 'relectrice@exemple.invalid' }, { id: 2, relecteur_attribue: 'eric', adresse: 'relecteur@exemple.invalid' }];
+function avecLignes(wf, lignes) {
+  const w = copie(wf); const i = w.nodes.findIndex((x) => x.name === N_E.adresse); const n = w.nodes[i];
+  assert.equal(n.type, 'n8n-nodes-base.dataTable'); assert.deepEqual([n.parameters.resource, n.parameters.operation, n.parameters.returnAll], ['row', 'get', true]);
+  if (!lignes.length && n.alwaysOutputData !== true) throw new Error('Data Table vide sans alwaysOutputData : branche arrêtée en silence');
+  const items = lignes.length ? lignes.map((l) => ({ json: l })) : [{ json: {} }];
+  w.nodes[i] = { name: n.name, type: 'n8n-nodes-base.code', typeVersion: 2, parameters: { jsCode: `return ${JSON.stringify(items)};` } };
+  return w;
+}
+async function emettre(d, { setId = SET, k = K, reponses = {}, octJournal = OCT_JOURNAL, corps, lignes = LIGNES_RELECTEURS() } = {}) {
+  return executerGraphe(avecLignes(avecK(JSON.parse(lireExport('emettre')), k), lignes), {
     corps: corps || { set_id: setId, journal_commit: COMMIT, referentiel_version: REF_VERSION, moteur: MOTEUR },
     reponses: {
       [N_E.referentiel]: async (r) => { assert.match(r.url, new RegExp(`ref=${COMMIT}$`)); return { statusCode: 200, body: contents('fonda/data/referentiel.json', OCT_REF) }; },
@@ -659,7 +673,6 @@ async function emettre(d, { setId = SET, k = K, reponses = {}, octJournal = OCT_
       [N_E.journal]: async (r) => { assert.match(r.url, new RegExp(`set_ids-journal\\.json\\?ref=${COMMIT}$`)); return { statusCode: 200, body: contents('fonda/data/set_ids-journal.json', octJournal) }; },
       [N_E.chercherLot]: d.n8nListe, [N_E.lireLot]: d.n8nMedia, [N_E.existant]: d.n8nListe, [N_E.decisions]: d.n8nListe,
       [N_E.lireExistant]: d.n8nMedia, [N_E.relireVersion]: d.n8nMeta, [N_E.ecrire]: d.n8nCreer, [N_E.reecrire]: d.n8nReecrire, [N_E.relister]: d.n8nListe,
-      [N_E.adresse]: async () => ({ statusCode: 200, body: { data: [{ relecteur_attribue: RELECTEUR, adresse: 'relectrice@exemple.invalid' }, { relecteur_attribue: 'eric', adresse: 'relecteur@exemple.invalid' }] } }),
       [N_E.envoyer]: async (r) => { d.envois.push(Buffer.from(JSON.parse(r.jsonBody).raw, 'base64url').toString('utf8')); return { statusCode: 200, body: { id: `msg-${d.envois.length}` } }; },
       ...reponses,
     },
@@ -1141,6 +1154,41 @@ describe('7 bis. recherches par NOM EXACT paginées (défaut P3 corrigé en P2) 
     d.ajouter(CAND, `${SET}.lot.json`, `${JSON.stringify(lotSource(SET), null, 2)}\n`);
     const e = await emettre(d);
     assert.equal(e.status, 'error'); assert.match(e.erreur, /2 fichier\(s\) pour du lot source/);
+  });
+});
+
+describe('7 ter. Emettre : adresse lue par le nœud Data Table NATIF (aucune clé d\'API, aucun credential)', () => {
+  const noeud = (k) => JSON.parse(lireExport(k)).nodes;
+  test('forme EXACTE du nœud : row/get, table par id = CONFIG.tableRelecteurs, toutes les lignes, sortie toujours émise, sans credential', () => {
+    const n = noeud('emettre').find((x) => x.name === N_E.adresse);
+    const { id, position, ...reste } = n;
+    assert.deepEqual(reste, { name: N_E.adresse, type: 'n8n-nodes-base.dataTable', typeVersion: 1, retryOnFail: false, alwaysOutputData: true,
+      parameters: { resource: 'row', operation: 'get', dataTableId: { __rl: true, mode: 'id', value: B.CONFIG.tableRelecteurs }, returnAll: true } });
+  });
+  test('surface réduite : aucun chemin /api/v1/ ni « data-tables », aucun credential httpHeaderAuth hors webhooks, dans les 4 exports (production et recette)', () => {
+    for (const k of Object.keys(EXPORTS)) for (const t of [lireExport(k).toString('utf8'), lireRecette(k).toString('utf8')]) {
+      assert.equal(/\/api\/v1\/|data-tables/.test(t), false, k);
+      for (const n of JSON.parse(t).nodes) if (n.credentials && n.credentials.httpHeaderAuth) assert.equal(n.type, 'n8n-nodes-base.webhook', `${k} : ${n.name}`);
+      assert.equal(JSON.parse(t).nodes.filter((n) => n.type === 'n8n-nodes-base.dataTable').length, k === 'emettre' ? 1 : 0, k);
+    }
+    assert.equal('credentialApiN8n' in B.CONFIG, false);
+  });
+  const lignes = (l) => ({ lignes: l });
+  test('adresse : EXACTEMENT une ligne pour le relecteur ; table vide, ligne absente, doublon, adresse invalide -> ERREUR, aucun courriel', async () => {
+    for (const [cas, l] of [['table vide', []], ['relecteur absent', [{ id: 1, relecteur_attribue: 'autre', adresse: 'a@exemple.invalid' }]],
+      ['doublon', [{ id: 1, relecteur_attribue: RELECTEUR, adresse: 'a@exemple.invalid' }, { id: 2, relecteur_attribue: RELECTEUR, adresse: 'b@exemple.invalid' }]],
+      ['adresse invalide', [{ id: 1, relecteur_attribue: RELECTEUR, adresse: 'pas une adresse' }]], ['adresse absente', [{ id: 1, relecteur_attribue: RELECTEUR }]]]) {
+      const d = mondeAvecLot();
+      const e = await emettre(d, lignes(l));
+      assert.equal(e.status, 'error', cas); assert.equal(e.noeudErreur, N_E.courriel, cas); assert.match(e.erreur, /adresse du relecteur introuvable ou ambiguë/, cas);
+      assert.equal(d.envois.length, 0, cas);
+    }
+  });
+  test('adresse du relecteur : lue à l\'exécution, JAMAIS dans un export', async () => {
+    const d = mondeAvecLot();
+    const e = await emettre(d);
+    assert.equal(e.status, 'success', e.erreur); assert.equal(d.envois.length, 1); assert.match(d.envois[0], /^To: relectrice@exemple\.invalid\r\n/);
+    for (const k of Object.keys(EXPORTS)) assert.equal(/@exemple\.invalid/.test(lireExport(k).toString('utf8') + lireRecette(k).toString('utf8')), false, k);
   });
 });
 

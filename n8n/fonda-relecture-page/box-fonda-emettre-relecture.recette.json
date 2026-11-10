@@ -709,22 +709,19 @@
         0
       ],
       "name": "Lire adresse relecteur",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
       "retryOnFail": false,
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "A_RENSEIGNER_RECETTE_CREDENTIAL_API_N8N",
-          "name": "FONDA RECETTE API n8n (lecture Data Table)"
-        }
-      },
+      "alwaysOutputData": true,
       "parameters": {
-        "url": "https://n8n.srv868991.hstgr.cloud/api/v1/data-tables/A_RENSEIGNER_RECETTE_ID_DATA_TABLE_RELECTEURS/rows",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "options": {
-          "timeout": 30000
-        }
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "A_RENSEIGNER_RECETTE_ID_DATA_TABLE_RELECTEURS"
+        },
+        "returnAll": true
       }
     },
     {
@@ -737,7 +734,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "parameters": {
-        "jsCode": "// FONDA — courriel au relecteur : adresse lue dans la Data Table (clé = relecteur_attribue), lien …?lot=&k=.\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('Preparer courriel : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nconst CONFIG = {\"urlPage\":\"https://n8n.srv868991.hstgr.cloud/webhook/fonda-recette-select\",\"dureeCleJours\":14};\nconst p = unItem(\"Preparer candidat\");\nunItem(\"Verifier ecriture\");\nconst t = unItem(\"Lire adresse relecteur\");\nconst lignes = Array.isArray(t.data) ? t.data.filter((l) => l && l.relecteur_attribue === p.relecteur) : [];\nif (lignes.length !== 1 || typeof lignes[0].adresse !== 'string' || !/^[^@\\s]+@[^@\\s]+$/.test(lignes[0].adresse)) throw new Error('adresse du relecteur introuvable ou ambiguë dans la Data Table');\nconst lien = CONFIG.urlPage + '?lot=' + encodeURIComponent(p.set_id) + '&k=' + p.k;\nconst message = ['To: ' + lignes[0].adresse, 'Subject: Relecture FONDA ' + p.set_id, 'Content-Type: text/plain; charset=UTF-8', '',\n  'Bonjour,', '', 'Une fiche FONDA est à relire, carte par carte :', lien, '',\n  'Le lien expire dans ' + CONFIG.dureeCleJours + ' jours.' + (p.reemission ? ' Il remplace le lien envoyé précédemment, désormais inactif.' : '')].join('\\r\\n');\n// base64url d'UTF-8, sans Buffer (nœud Code n8n).\nconst o = []; for (const ch of message) { const c = ch.codePointAt(0); if (c < 0x80) o.push(c); else if (c < 0x800) o.push(0xc0 | (c >> 6), 0x80 | (c & 63)); else if (c < 0x10000) o.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63)); else o.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63)); }\nconst A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';\nlet raw = '';\nfor (let i = 0; i < o.length; i += 3) { const n = (o[i] << 16) | ((o[i + 1] || 0) << 8) | (o[i + 2] || 0); raw += A[(n >> 18) & 63] + A[(n >> 12) & 63] + (i + 1 < o.length ? A[(n >> 6) & 63] : '') + (i + 2 < o.length ? A[n & 63] : ''); }\nreturn [{ json: { raw } }];"
+        "jsCode": "// FONDA — courriel au relecteur : adresse lue dans la Data Table (clé = relecteur_attribue), lien …?lot=&k=.\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('Preparer courriel : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nconst CONFIG = {\"urlPage\":\"https://n8n.srv868991.hstgr.cloud/webhook/fonda-recette-select\",\"dureeCleJours\":14};\nconst p = unItem(\"Preparer candidat\");\nunItem(\"Verifier ecriture\");\n// Nœud Data Table natif (Get, toutes les lignes, sortie toujours émise) : un item par ligne ; table vide -> un item {}.\nconst lignes = $(\"Lire adresse relecteur\").all().map((x) => x.json).filter((l) => l && l.relecteur_attribue === p.relecteur);\nif (lignes.length !== 1 || typeof lignes[0].adresse !== 'string' || !/^[^@\\s]+@[^@\\s]+$/.test(lignes[0].adresse)) throw new Error('adresse du relecteur introuvable ou ambiguë dans la Data Table');\nconst lien = CONFIG.urlPage + '?lot=' + encodeURIComponent(p.set_id) + '&k=' + p.k;\nconst message = ['To: ' + lignes[0].adresse, 'Subject: Relecture FONDA ' + p.set_id, 'Content-Type: text/plain; charset=UTF-8', '',\n  'Bonjour,', '', 'Une fiche FONDA est à relire, carte par carte :', lien, '',\n  'Le lien expire dans ' + CONFIG.dureeCleJours + ' jours.' + (p.reemission ? ' Il remplace le lien envoyé précédemment, désormais inactif.' : '')].join('\\r\\n');\n// base64url d'UTF-8, sans Buffer (nœud Code n8n).\nconst o = []; for (const ch of message) { const c = ch.codePointAt(0); if (c < 0x80) o.push(c); else if (c < 0x800) o.push(0xc0 | (c >> 6), 0x80 | (c & 63)); else if (c < 0x10000) o.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63)); else o.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63)); }\nconst A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';\nlet raw = '';\nfor (let i = 0; i < o.length; i += 3) { const n = (o[i] << 16) | ((o[i + 1] || 0) << 8) | (o[i + 2] || 0); raw += A[(n >> 18) & 63] + A[(n >> 12) & 63] + (i + 1 < o.length ? A[(n >> 6) & 63] : '') + (i + 2 < o.length ? A[n & 63] : ''); }\nreturn [{ json: { raw } }];"
       }
     },
     {
