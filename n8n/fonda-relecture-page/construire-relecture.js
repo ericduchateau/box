@@ -92,62 +92,79 @@ function exportsProduction(dossier = RACINE_N8N) {
   }
   return sortie.sort();
 }
-function inventaireExport(wf, v) {
+// « stricts » : identifiants nommés (credentials, chemins de webhook, noms/ids de workflows, webhookId,
+// CONFIG_PRODUCTION) ; « jetons » : tout jeton ≥ 25 caractères des paramètres (identifiants Drive ; code compris,
+// appartenance seulement). Les stricts ne doivent apparaître NULLE PART dans un export de recette (harnais).
+function inventaireExport(wf, stricts, jetonsVus) {
   if (!wf || typeof wf !== 'object' || !Array.isArray(wf.nodes)) return;
-  v.add(wf.name); v.add(wf.id);
-  const jetons = (x) => { if (typeof x === 'string') { for (const j of x.match(/[A-Za-z0-9_-]{25,}/g) || []) v.add(j); } else if (x && typeof x === 'object') for (const y of Object.values(x)) jetons(y); };
+  stricts.add(wf.name); stricts.add(wf.id);
+  const jetons = (x) => { if (typeof x === 'string') { for (const j of x.match(/[A-Za-z0-9_-]{25,}/g) || []) jetonsVus.add(j); } else if (x && typeof x === 'object') for (const y of Object.values(x)) jetons(y); };
   for (const n of wf.nodes) {
-    if (n && n.credentials && typeof n.credentials === 'object') for (const c of Object.values(n.credentials)) if (c && typeof c === 'object') { v.add(c.id); v.add(c.name); }
-    if (n && n.type === 'n8n-nodes-base.webhook' && n.parameters) v.add(n.parameters.path);
-    if (n && n.webhookId) v.add(n.webhookId);
-    if (n && n.parameters) jetons(n.parameters); // code compris : appartenance seulement, le bruit est sans effet
+    if (n && n.credentials && typeof n.credentials === 'object') for (const c of Object.values(n.credentials)) if (c && typeof c === 'object') { stricts.add(c.id); stricts.add(c.name); }
+    if (n && n.type === 'n8n-nodes-base.webhook' && n.parameters) stricts.add(n.parameters.path);
+    if (n && n.webhookId) stricts.add(n.webhookId);
+    if (n && n.parameters) jetons(n.parameters);
   }
 }
-function identifiantsProduction() {
-  const v = new Set();
+function inventaireProduction() {
+  const stricts = new Set(); const jetons = new Set();
   for (const [cle, val] of Object.entries(CONFIG_PRODUCTION)) {
     if (!CLES_RECETTE.includes(cle) && cle !== 'urlPage') continue;
-    if (val && typeof val === 'object') { v.add(val.id); v.add(val.name); } else v.add(val);
+    if (val && typeof val === 'object') { stricts.add(val.id); stricts.add(val.name); } else stricts.add(val);
   }
   for (const f of exportsProduction()) {
     let wf;
     try { wf = JSON.parse(fs.readFileSync(f, 'utf8')); } catch { throw new Error(`inventaire de production : ${path.relative(RACINE, f)} illisible`); }
-    inventaireExport(wf, v);
+    inventaireExport(wf, stricts, jetons);
   }
-  return new Set([...v].filter((x) => typeof x === 'string' && x !== '' && !x.startsWith('A_RENSEIGNER_P4_')));
+  const net = (e) => new Set([...e].filter((x) => typeof x === 'string' && x !== '' && !x.startsWith('A_RENSEIGNER_P4_')));
+  return { stricts: net(stricts), jetons: net(jetons) };
 }
+// Grammaires FERMÉES par champ (connu-bon ; jamais une denylist) : un identifiant réel OU une valeur de
+// remplacement de RECETTE. Aucune quote, espace ou opérateur ne peut atteindre une requête Drive.
+const REMPLACEMENT_RECETTE = /^A_RENSEIGNER_RECETTE_[A-Z0-9_]{1,60}$/;
+const GRAMMAIRES_RECETTE = Object.freeze({
+  nom: /^FONDA RECETTE - [A-Z][a-z]+ relecture$/,
+  chemin: /^fonda-recette-[a-z]{1,20}(-[a-z]{1,20}){0,3}$/,
+  dossier: /^[A-Za-z0-9_-]{10,80}$/,
+  credentialId: /^[A-Za-z0-9]{8,32}$/,
+  credentialNom: /^FONDA RECETTE [A-Za-z0-9]{1,20}( [A-Za-z0-9()]{1,20}){0,6}$/,
+  urlMoteurs: /^https:\/\/[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+(\/[A-Za-z0-9._~@-]{1,80}){0,8}$/,
+});
+const GRAMMAIRE_DE = (c) => (c.startsWith('nom') ? 'nom' : c.startsWith('chemin') ? 'chemin' : c === 'urlMoteurs' ? 'urlMoteurs' : c.startsWith('credential') ? 'credential' : 'dossier');
 function configRecette(brut = JSON.parse(fs.readFileSync(PROFIL_RECETTE, 'utf8'))) {
   if (!brut || typeof brut !== 'object' || Array.isArray(brut)) throw new Error('profil de recette : objet attendu');
   if (brut.profil !== 'recette') throw new Error('profil de recette : « profil » doit valoir « recette »');
   const cles = Object.keys(brut).filter((c) => c !== 'profil').sort();
   if (cles.join(',') !== [...CLES_RECETTE].sort().join(',')) throw new Error('profil de recette : clés ≠ liste fermée CLES_RECETTE');
-  const chaine = (x) => typeof x === 'string' && x.length > 0 && x.trim() === x;
+  const G = GRAMMAIRES_RECETTE;
+  const ok = (re, x) => typeof x === 'string' && re.test(x);
   for (const c of CLES_RECETTE) {
-    const v = brut[c];
-    if (c.startsWith('credential')) {
-      if (!v || typeof v !== 'object' || Array.isArray(v) || Object.keys(v).sort().join(',') !== 'id,name' || !chaine(v.id) || !chaine(v.name)) throw new Error(`profil de recette : ${c} = { id, name }`);
-      if (!v.name.startsWith('FONDA RECETTE ')) throw new Error(`profil de recette : ${c}.name doit commencer par « FONDA RECETTE »`);
-    } else if (!chaine(v)) throw new Error(`profil de recette : ${c} invalide`);
+    const v = brut[c]; const g = GRAMMAIRE_DE(c);
+    // Une valeur de remplacement n'est admise que si c'est une valeur de RECETTE (jamais A_RENSEIGNER_P4_…).
+    for (const x of v && typeof v === 'object' ? [v.id, v.name] : [v]) if (typeof x === 'string' && x.startsWith('A_RENSEIGNER_') && !REMPLACEMENT_RECETTE.test(x)) throw new Error(`profil de recette : ${c} = valeur de remplacement hors recette`);
+    if (g === 'credential') {
+      if (!v || typeof v !== 'object' || Array.isArray(v) || Object.keys(v).sort().join(',') !== 'id,name') throw new Error(`profil de recette : ${c} = { id, name }`);
+      if (!ok(G.credentialId, v.id) && !ok(REMPLACEMENT_RECETTE, v.id)) throw new Error(`profil de recette : ${c}.id hors grammaire`);
+      if (!ok(G.credentialNom, v.name)) throw new Error(`profil de recette : ${c}.name hors grammaire « FONDA RECETTE … »`);
+    } else if (g === 'nom') { if (!ok(G.nom, v)) throw new Error(`profil de recette : ${c} hors grammaire « FONDA RECETTE - … »`); } else if (g === 'chemin') { if (!ok(G.chemin, v)) throw new Error(`profil de recette : ${c} hors grammaire « fonda-recette-… »`); } else if (!ok(G[g], v) && !ok(REMPLACEMENT_RECETTE, v)) throw new Error(`profil de recette : ${c} hors grammaire`);
   }
-  for (const c of ['nomEmettre', 'nomCloturer', 'nomConfirmer', 'nomPage']) if (!brut[c].startsWith('FONDA RECETTE - ')) throw new Error(`profil de recette : ${c} doit commencer par « FONDA RECETTE - »`);
-  for (const c of ['cheminEmettre', 'cheminCloturer', 'cheminPage', 'cheminConfirmer']) if (!/^fonda-recette-[a-z-]+$/.test(brut[c])) throw new Error(`profil de recette : ${c} doit commencer par « fonda-recette- »`);
   const config = Object.freeze({ ...CONFIG_PRODUCTION, ...Object.fromEntries(CLES_RECETTE.map((c) => [c, brut[c]])),
     urlPage: `${CONFIG_PRODUCTION.urlN8n}/webhook/${brut.cheminPage}` });
   // Isolation : aucune valeur de recette n'est un identifiant de production (dossiers, credentials, noms, chemins).
-  // Valeur jamais citée dans le message (elle peut venir d'un export local non publié).
-  const prod = identifiantsProduction();
+  // Valeur jamais citée dans le message (elle peut venir d'un export local non publié). La grammaire
+  // ferme déjà toute valeur composée ; l'inventaire écarte la réutilisation d'un identifiant connu.
+  const { stricts, jetons } = inventaireProduction();
   for (const c of CLES_RECETTE) {
     const v = brut[c];
-    for (const x of v && typeof v === 'object' ? [v.id, v.name] : [v]) {
-      if (x.startsWith('A_RENSEIGNER_P4_')) throw new Error(`profil de recette : ${c} = valeur de remplacement de PRODUCTION`);
-      if (prod.has(x)) throw new Error(`profil de recette : ${c} réutilise un identifiant de production`);
-    }
+    for (const x of v && typeof v === 'object' ? [v.id, v.name] : [v]) if (stricts.has(x) || jetons.has(x)) throw new Error(`profil de recette : ${c} réutilise un identifiant de production`);
   }
   return config;
 }
 // Profil ACTIF pendant une construction (production par défaut) : chaque constructeur lit CONFIG et
 // ESPACE_UUID à l'appel ; avecProfil les remplace le temps d'une construction, puis RESTAURE la production.
-// SYNCHRONE seulement : un résultat « thenable » est refusé (après un await, le profil serait restauré).
+// INTERNE (non exporté) : appelé seulement par construireExport, avec la liste fermée des constructeurs
+// SYNCHRONES du module ; aucune fonction externe ne s'exécute sous le profil de recette.
 let CONFIG = CONFIG_PRODUCTION;
 let ESPACE_UUID = 'fonda-relecture-page';
 function avecProfil(profil, fn) {
@@ -158,11 +175,7 @@ function avecProfil(profil, fn) {
   if (suivant[0].maxPagesDrive !== CONFIG_PRODUCTION.maxPagesDrive) throw new Error('profil : maxPagesDrive partagé (PAGINATION_DRIVE)');
   const avant = [CONFIG, ESPACE_UUID];
   [CONFIG, ESPACE_UUID] = suivant;
-  try {
-    const r = fn();
-    if (r && (typeof r === 'object' || typeof r === 'function') && typeof r.then === 'function') throw new Error('avecProfil : construction asynchrone refusée');
-    return r;
-  } finally { [CONFIG, ESPACE_UUID] = avant; }
+  try { return fn(); } finally { [CONFIG, ESPACE_UUID] = avant; }
 }
 
 // Noms de nœuds : ceux du consommateur gelé pour la clôture (ROLES.cloture).
@@ -1317,14 +1330,15 @@ function construirePage() {
   return { name: CONFIG.nomPage, nodes: noeuds, connections, settings: REGLAGES };
 }
 
-module.exports = { CONFIG: CONFIG_PRODUCTION, CLES_RECETTE, configRecette, avecProfil, MODULES, NOEUDS_CLOTURER, NOEUDS_EMETTRE, NOEUDS_CONFIRMER, NOEUDS_PAGE, CODES_HTTP, CHAMPS_FORMULAIRE, COMMUN_PAGE, GABARIT_PAGE,
+module.exports = { CONFIG: CONFIG_PRODUCTION, CLES_RECETTE, GRAMMAIRES_RECETTE, configRecette, inventaireProduction, MODULES, NOEUDS_CLOTURER, NOEUDS_EMETTRE, NOEUDS_CONFIRMER, NOEUDS_PAGE, CODES_HTTP, CHAMPS_FORMULAIRE, COMMUN_PAGE, GABARIT_PAGE,
   PROFILS_MOTEUR, chargerCommun, registrePage, appPage, construireCloturer, construireEmettre, construireConfirmer, construirePage };
 
-const CONSTRUCTEURS = { '--emettre': construireEmettre, '--cloturer': construireCloturer, '--confirmer': construireConfirmer, '--page': construirePage };
+const CONSTRUCTEURS = Object.freeze(Object.assign(Object.create(null), { '--emettre': construireEmettre, '--cloturer': construireCloturer, '--confirmer': construireConfirmer, '--page': construirePage }));
+const estConstructeur = (o) => typeof o === 'string' && Object.prototype.hasOwnProperty.call(CONSTRUCTEURS, o);
 // Construction sous un profil : JSON exact de l'export (production : box-fonda-<k>-relecture.json ;
 // recette : box-fonda-<k>-relecture.recette.json).
 function construireExport(option, profil = 'production') {
-  if (!CONSTRUCTEURS[option]) throw new Error(`constructeur inconnu : ${option}`);
+  if (!estConstructeur(option)) throw new Error('constructeur inconnu');
   return `${JSON.stringify(avecProfil(profil, CONSTRUCTEURS[option]), null, 2)}\n`;
 }
 module.exports.construireExport = construireExport;
@@ -1334,12 +1348,12 @@ function analyserArguments(argv) {
   let option = null; let profil = null;
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
-    if (CONSTRUCTEURS[a]) { if (option) throw new Error('un seul constructeur'); option = a; } else if (a === '--profil') {
+    if (estConstructeur(a)) { if (option) throw new Error('un seul constructeur'); option = a; } else if (a === '--profil') {
       if (profil !== null) throw new Error('--profil en double');
       const v = argv[i + 1];
       if (v !== 'production' && v !== 'recette') throw new Error('--profil : valeur attendue « production » ou « recette »');
       profil = v; i += 1;
-    } else throw new Error(`argument inconnu : ${a}`);
+    } else throw new Error('argument inconnu');
   }
   if (!option) throw new Error('constructeur absent');
   return { option, profil: profil || 'production' };

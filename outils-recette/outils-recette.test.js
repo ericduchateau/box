@@ -11,6 +11,7 @@ const path = require('path');
 const LS = require('./lecture-seule.js');
 const S = require('./sonde-executions.js');
 const CL = require('./comparer-live.js');
+const AR = require('./arguments.js');
 
 const URL_I = 'https://n8n.exemple.test';
 const reponse = (corps, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => corps });
@@ -56,6 +57,16 @@ describe('lecture seule : prouvée avant le réseau', () => {
     await g(`${URL_I}/api/v1/executions?workflowId=a`, { headers: { a: '1' } });
     assert.deepEqual(appels.at(-1).init, { headers: { a: '1' }, method: 'GET', redirect: 'error' });
   });
+  test('origine NORMALISÉE partout : https://hôte/ accepté et utilisé sans double barre', async () => {
+    const { f, appels } = reseau([]);
+    const r = await S.sonder({ workflowId: 'WfA', url: `${URL_I}/`, cle: 'k', fetch: f });
+    assert.equal(r.refus_observer, null);
+    assert.equal(appels.length, 3);
+    assert.ok(appels.every((x) => new URL(x.url).pathname === '/api/v1/executions'));
+    const vus = []; const g = async (url) => { vus.push(new URL(url).pathname); return reponse({ active: false }); };
+    await CL.lireLive({ workflowId: 'WfA', url: `${URL_I}/`, cle: 'k', fetch: g });
+    assert.deepEqual(vus, ['/api/v1/workflows/WfA']);
+  });
   test('instance : HTTPS exigé, base sans chemin, requête, fragment ni identifiants', () => {
     for (const u of ['http://n8n.exemple.test', 'https://n8n.exemple.test/api', 'https://n8n.exemple.test/?a=1', 'https://n8n.exemple.test/#x', 'https://u:p@n8n.exemple.test', 'pas une url', 'ftp://n8n.exemple.test'])
       assert.throws(() => LS.fetchLectureSeule({ url: u, fetch: f }), /HTTPS|sans chemin|invalide/, u);
@@ -97,7 +108,7 @@ describe('sonde-executions : observe comme le signataire (running, waiting, list
     const f = async (url, init) => { const st = new URL(url).searchParams.get('status'); return reponse({ data: st === 'running' ? [] : [{ id: 9, workflowId: 'WfA', status: st === 'waiting' ? 'waiting' : 'success', startedAt: st ? '2026-11-10T10:00:00.000Z' : '2026-11-10T10:05:00.000Z', stoppedAt: st ? null : '2026-11-10T10:06:00.000Z' }], nextCursor: null }); };
     const r = await S.sonder({ workflowId: 'WfA', url: URL_I, cle: 'k', fetch: f });
     assert.equal(r.fusion, null); assert.equal(r.en_vol, null);
-    assert.match(r.refus_observer, /contradictoires \(startedAt\)/);
+    assert.equal(r.refus_observer, 'observations contradictoires', 'catégorie FIXE, jamais le message');
     assert.deepEqual(Object.keys(r.brut).sort(), ['liste', 'running', 'waiting'], 'brut = les réponses consommées par observer(), même en cas de refus');
     assert.equal(r.brut.liste[0].startedAt, '2026-11-10T10:05:00.000Z');
   });
@@ -112,6 +123,34 @@ describe('sonde-executions : observe comme le signataire (running, waiting, list
     assert.deepEqual(r.brut.running.map((x) => x.id), ['5']);
     assert.deepEqual(r.fusion, [{ id: '5', status: 'success' }]);
   });
+  test('identifiant d\'exécution non numérique, statut et mode hors liste : marqueurs (idSur, listes fermées)', async () => {
+    const f = async (url) => { const st = new URL(url).searchParams.get('status'); return reponse({ data: st === 'running' ? [{ id: 'SECRET_ID', workflowId: 'WfA', status: 'running', startedAt: '2026-11-10T10:00:00.000Z', stoppedAt: null }] : [], nextCursor: null }); };
+    const r = await S.sonder({ workflowId: 'WfA', url: URL_I, cle: 'k', fetch: f });
+    assert.deepEqual(r.brut.running, [{ id: '<id hors grammaire>', status: 'running', startedAt: '2026-11-10T10:00:00.000Z', stoppedAt: null }]);
+    assert.equal(JSON.stringify(r).includes('SECRET'), false);
+    const { f: g } = reseau([], { 9: { id: 9, workflowId: 'WfA', status: 'deadbeefcafe', mode: 'SECRETmode', startedAt: '2026-11-10T10:00:00Z', stoppedAt: '2026-11-10 10:00', data: {} } });
+    const e = await S.sonderExecution({ id: '9', url: URL_I, cle: 'k', fetch: g });
+    assert.deepEqual([e.status, e.mode, e.startedAt, e.stoppedAt, e.runData_present], ['<hors liste>', '<hors liste>', '2026-11-10T10:00:00Z', '<date hors grammaire>', false]);
+  });
+  test('refus d\'observer() : chaque message connu -> sa catégorie ; inconnu -> « refus non catégorisé » ; message JAMAIS restitué', async () => {
+    const cas = [[{ id: '', workflowId: 'WfA', status: 'success' }, 'identifiant inexploitable'], [{ id: 1, workflowId: 'Autre', status: 'success', startedAt: '2026-11-10T10:00:00.000Z', stoppedAt: '2026-11-10T10:00:01.000Z' }, 'workflowId inattendu'],
+      [{ id: 1, workflowId: 'WfA', status: 'SECRET_STATUT' }, 'statut inconnu'], [{ id: 1, workflowId: 'WfA', status: 'success', startedAt: 'SECRET_DATE', stoppedAt: null }, 'date hors grammaire'],
+      [{ id: 1, workflowId: 'WfA', status: 'success', startedAt: '2026-11-10T10:00:01.000Z', stoppedAt: '2026-11-10T10:00:00.000Z' }, 'chronologie incohérente'], [{ id: 1, workflowId: 'WfA', status: 'success', startedAt: null, stoppedAt: null }, 'dates manquantes']];
+    for (const [x, attendu] of cas) {
+      const f = async (url) => reponse({ data: new URL(url).searchParams.get('status') ? [] : [x], nextCursor: null });
+      const r = await S.sonder({ workflowId: 'WfA', url: URL_I, cle: 'k', fetch: f });
+      assert.equal(r.refus_observer, attendu, JSON.stringify(x)); assert.equal(JSON.stringify(r).includes('SECRET'), false);
+    }
+    const f = async () => reponse('SECRET');
+    assert.equal((await S.sonder({ workflowId: 'WfA', url: URL_I, cle: 'k', fetch: f })).refus_observer, 'liste inexploitable');
+    const h = async () => ({ ok: false, status: 503, json: async () => ({}) });
+    assert.equal((await S.sonder({ workflowId: 'WfA', url: URL_I, cle: 'k', fetch: h })).refus_observer, 'erreur HTTP');
+  });
+  test('liste de confiance = noms des 4 exports de recette + workflow d\'attente (dépôt)', () => {
+    const n = S.nomsDeConfiance();
+    for (const x of ['FONDA Entree confirmation', 'Webhook confirmation', 'Webhook page', ...S.NOEUDS_ATTENTE]) assert.ok(n.has(x), x);
+    assert.equal(n.has('Webhook'), false);
+  });
   test('valeurs hors grammaire (statut, dates, message de refus) jamais restituées', async () => {
     const f = async (url) => { const st = new URL(url).searchParams.get('status'); return reponse({ data: st ? [] : [{ id: 6, workflowId: 'WfA', status: 'SECRET {x}', startedAt: 'SECRET_DATE{', stoppedAt: null }], nextCursor: null }); };
     const r = await S.sonder({ workflowId: 'WfA', url: URL_I, cle: 'k', fetch: f });
@@ -122,8 +161,8 @@ describe('sonde-executions : observe comme le signataire (running, waiting, list
     const { f, appels } = reseau([], { 77: { id: 77, workflowId: 'WfA', status: 'error', mode: 'webhook', startedAt: 'a', stoppedAt: 'b',
       data: { resultData: { runData: { 'FONDA Entree confirmation': [{ data: { main: [[{ json: { k: secret, adresse } }]] } }], Webhook: [], [`noeud ${secret} {}`]: [] }, error: { node: { name: 'Verifier formulaire' }, message: secret } } } } });
     const r = await S.sonderExecution({ id: '77', url: URL_I, cle: 'k', fetch: f });
-    assert.deepEqual(r.noeuds_executes, ['FONDA Entree confirmation', 'Webhook', '<nom hors grammaire n°2>']);
-    assert.equal(r.runData_present, true); assert.equal(r.erreur_noeud, 'Verifier formulaire');
+    assert.deepEqual(r.noeuds_executes, ['FONDA Entree confirmation', '<nom hors liste n°1>', '<nom hors liste n°2>'], 'liste de CONFIANCE : « Webhook » n\'est pas un nom des exports de recette');
+    assert.equal(r.runData_present, true); assert.equal(r.erreur_noeud, 'Verifier formulaire', 'nom d\'un export de recette : de confiance');
     const t = JSON.stringify(r); assert.equal(t.includes(secret), false); assert.equal(t.includes(adresse), false);
     assert.deepEqual(appels.map((a) => [a.init.method, new URL(a.url).pathname]), [['GET', '/api/v1/executions/77']]);
     assert.deepEqual(await S.sonderExecution({ id: '78', url: URL_I, cle: 'k', fetch: f }), { schema: 'sonde-execution/v1', id: '78', present: false });
@@ -165,6 +204,10 @@ describe('comparer-live : dépôt <-> live strict, métadonnées en liste fermé
     const c = live(); c.activeVersion = { versionId: 'v' }; assert.match(CL.comparer(c, texte).ecarts.join(), /version active/);
     const d = live(); d.activeVersionId = 'v'; assert.match(CL.comparer(d, texte).ecarts.join(), /version active/);
     const e = live(); e.activeVersion = null; e.activeVersionId = null; e.staticData = {}; assert.equal(CL.comparer(e, texte).identique, true);
+    for (const [k, v] of [['activeVersion', {}], ['activeVersionId', {}], ['activeVersionId', ''], ['isArchived', undefined], ['isArchived', 'false'], ['active', 0], ['staticData', []], ['pinData', []], ['staticData', Object.create({ x: 1 })]]) {
+      const x = live(); if (v === undefined) delete x[k]; else x[k] = v;
+      assert.equal(CL.comparer(x, texte).identique, false, `${k} = ${JSON.stringify(v)}`);
+    }
   });
   test('lecture du live : GET /api/v1/workflows/<id> seulement', async () => {
     const appels = []; const f = async (url, init) => { appels.push([init.method, new URL(url).pathname]); return reponse(live()); };
@@ -189,6 +232,23 @@ describe('lignes de commande : stdout et stderr sans extrait de réponse ni secr
       if (script === 'comparer-live.js') { assert.equal(r.status, 1); assert.match(r.stderr, /réponse JSON illisible/); }
     });
   }
+  test('sonde : observation impossible -> CODE 1, diagnostic JSON conservé sur stdout', () => {
+    const r = lancer('sonde-executions.js', ['WfA', '--url', URL_I]);
+    assert.equal(r.status, 1); const j = JSON.parse(r.stdout); assert.equal(j.refus_observer, 'réponse JSON illisible'); assert.equal(j.fusion, null);
+  });
+  test('lignes de commande STRICTES (3 commandes) : option inconnue, valeur absente, doublon, positionnels en trop/manquants -> code 1', () => {
+    for (const a of [['WfA', '--url'], ['WfA', '--execution'], ['--execution', '12', 'WfA'], ['WfA', '--url', URL_I, '--url', URL_I], ['WfA', '--inconnue', 'x'], [], ['WfA', 'WfB'], ['--execution', '--url', URL_I]]) {
+      const r = lancer('sonde-executions.js', a); assert.equal(r.status, 1, a.join(' ')); assert.equal(r.stdout, '', a.join(' '));
+    }
+    for (const a of [['WfA'], ['WfA', 'x.json', 'y'], ['WfA', 'x.json', '--url'], ['WfA', 'x.json', '--profil', 'recette']]) {
+      const r = lancer('comparer-live.js', a); assert.equal(r.status, 1, a.join(' ')); assert.equal(r.stdout, '', a.join(' '));
+    }
+    assert.throws(() => AR.analyser(['--a', 'x', '--a', 'y'], { options: ['--a'], positionnels: 0 }), /en double/);
+    assert.throws(() => AR.analyser(['--b', 'x'], { options: ['--a'], positionnels: 0 }), /inconnue/);
+    assert.throws(() => AR.analyser(['--a'], { options: ['--a'], positionnels: 0 }), /absente/);
+    assert.throws(() => AR.analyser(['--a', ''], { options: ['--a'], positionnels: 0 }), /absente/);
+    assert.deepEqual(AR.analyser(['p', '--a', 'x'], { options: ['--a'], positionnels: 1 }).positionnels, ['p']);
+  });
   test('URL http refusée par la ligne de commande (clé jamais en clair)', () => {
     const r = lancer('comparer-live.js', ['WfA', 'x.json', '--url', 'http://n8n.exemple.test']);
     assert.equal(r.status, 1); assert.match(r.stderr, /HTTPS exigé/);

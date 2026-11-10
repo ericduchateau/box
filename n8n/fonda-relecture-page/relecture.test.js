@@ -218,6 +218,35 @@ describe('1 bis. profil de recette (P4a) : exports de production INCHANGÉS, cop
       assert.deepEqual(wf, prod);
     });
   }
+  test('exports de recette : TOUTES les références d\'instance appartiennent à un ENSEMBLE FERMÉ de connu-bon (profil de recette)', () => {
+    const c = B.configRecette();
+    const creds = new Set(B.CLES_RECETTE.filter((k) => k.startsWith('credential')).map((k) => JSON.stringify([c[k].id, c[k].name])));
+    const chemins = new Set(['cheminEmettre', 'cheminCloturer', 'cheminPage', 'cheminConfirmer'].map((k) => c[k]));
+    const noms = new Set(['nomEmettre', 'nomCloturer', 'nomConfirmer', 'nomPage'].map((k) => c[k]));
+    const dossiers = new Set([c.dossierCandidats, c.dossierRelecture, c.dossierDecisions]);
+    const urls = new Set([`${c.urlN8n}/webhook/${c.cheminPage}`, `${c.urlN8n}/webhook/${c.cheminConfirmer}`, `${c.urlN8n}/api/v1/data-tables/${c.tableRelecteurs}/rows`,
+      'https://gmail.googleapis.com/gmail/v1/users/me/messages/send', 'https://www.googleapis.com/drive/v3/files', 'https://www.googleapis.com/drive/v3/files/',
+      'https://www.googleapis.com/upload/drive/v3/files', 'https://www.googleapis.com/upload/drive/v3/files/',
+      ...['fonda/data/referentiel.json', 'fonda/data/set_ids-journal.json', 'fonda/engine/moteurs.json'].map((f) => `https://api.github.com/repos/${c.depot}/contents/${f}`)]);
+    const { stricts } = B.inventaireProduction();
+    for (const k of Object.keys(EXPORTS)) {
+      const t = lireRecette(k).toString('utf8'); const wf = JSON.parse(t);
+      assert.ok(noms.has(wf.name), `${k} : nom de workflow hors profil`);
+      for (const n of wf.nodes) {
+        for (const r of Object.values(n.credentials || {})) assert.ok(creds.has(JSON.stringify([r.id, r.name])), `${n.name} : credential hors profil`);
+        if (n.type === 'n8n-nodes-base.webhook') assert.ok(chemins.has(n.parameters.path), `${n.name} : chemin hors profil`);
+      }
+      const brut = JSON.parse(JSON.stringify(t)); // texte JSON tel quel (échappements compris)
+      for (const m of t.matchAll(/https?:\/\/[^"'\s\\)]+/g)) { const u = m[0].replace(/\$\{.*$/, '').replace(/\?.*$/, ''); assert.ok(urls.has(u), `${k} : URL hors liste fermée (${u})`); }
+      for (const m of t.matchAll(/'([^'\\]*)' in parents/g)) assert.ok(dossiers.has(m[1]), `${k} : dossier hors profil dans une requête Drive`);
+      for (const m of t.matchAll(/const CONFIG = (\{(?:[^{}]|\\")*?\});/g)) {
+        const o = JSON.parse(JSON.parse(`"${m[1]}"`));
+        for (const [cle, v] of Object.entries(o)) assert.equal(v, c[cle], `${k} : CONFIG embarqué ${cle} ≠ profil de recette`);
+      }
+      const sansDomaine = brut.replace(/fonda-select(-form)?\/v\d+/g, '<domaine>');
+      for (const x of stricts) assert.equal(sansDomaine.includes(x), false, `${k} : identifiant de production (inventaire complet) présent`);
+    }
+  });
   test('profil-recette.json : liste fermée de clés, préfixes « FONDA RECETTE » / « fonda-recette- », urlPage DÉRIVÉE', () => {
     const c = B.configRecette();
     assert.equal(c.urlPage, `${B.CONFIG.urlN8n}/webhook/${PROFIL_RECETTE.cheminPage}`);
@@ -229,14 +258,15 @@ describe('1 bis. profil de recette (P4a) : exports de production INCHANGÉS, cop
     assert.throws(avec((p) => { delete p.dossierDecisions; }), /liste fermée/);
     assert.throws(avec((p) => { p.dossierBox = 'x'; }), /liste fermée/);
     assert.throws(avec((p) => { p.profil = 'production'; }), /« recette »/);
-    assert.throws(avec((p) => { p.nomPage = 'FONDA - Page relecture test'; }), /FONDA RECETTE - /);
-    assert.throws(avec((p) => { p.cheminPage = 'fonda-select'; }), /fonda-recette-/);
-    assert.throws(avec((p) => { p.credentialGmail = { id: 'x', name: 'FONDA Gmail' }; }), /FONDA RECETTE/);
+    assert.throws(avec((p) => { p.nomPage = 'FONDA - Page relecture test'; }), /hors grammaire « FONDA RECETTE - … »/);
+    assert.throws(avec((p) => { p.cheminPage = 'fonda-select'; }), /hors grammaire « fonda-recette-… »/);
+    assert.throws(avec((p) => { p.credentialGmail = { id: 'AbCdEfGh12', name: 'FONDA Gmail' }; }), /name hors grammaire/);
+    assert.throws(avec((p) => { p.credentialGmail = { id: 'x', name: 'FONDA RECETTE Gmail' }; }), /id hors grammaire/);
     assert.throws(avec((p) => { p.credentialDrive = { id: 'x' }; }), /\{ id, name \}/);
     assert.throws(avec((p) => { p.dossierCandidats = B.CONFIG.dossierCandidats; }), /identifiant de production/);
     assert.throws(avec((p) => { p.dossierRelecture = B.CONFIG.dossierCandidats; }), /identifiant de production/);
     assert.throws(avec((p) => { p.credentialDrive = { id: B.CONFIG.credentialDrive.id, name: 'FONDA RECETTE Drive' }; }), /identifiant de production/);
-    assert.throws(avec((p) => { p.tableRelecteurs = ' x'; }), /invalide/);
+    assert.throws(avec((p) => { p.tableRelecteurs = ' x'; }), /hors grammaire/);
   });
   test('identifiants de production d\'AUTRES workflows du dépôt refusés (génération, sauvegardes BOX) ; valeur jamais citée', () => {
     const avec = (modif) => { const p = copie(PROFIL_RECETTE); modif(p); return () => B.configRecette(p); };
@@ -244,7 +274,8 @@ describe('1 bis. profil de recette (P4a) : exports de production INCHANGÉS, cop
     refus((p) => { p.credentialEmettre = { id: 'GfnXr5hYrYgC5RwA', name: 'FONDA RECETTE Emettre Token' }; }); // FONDA Webhook Token (génération)
     refus((p) => { p.credentialApiN8n = { id: 'YnhTnSOc1u7S99Q7', name: 'FONDA RECETTE API n8n' }; }); // Anthropic FONDA (génération)
     refus((p) => { p.dossierDecisions = '11KWo13pczVB_eOXw-FHUXWuutfSQqbbT'; }); // dossier BOX-Flashcards (sauvegarde BOX)
-    refus((p) => { p.dossierRelecture = 'A_RENSEIGNER_P4_DOSSIER_RELECTURE'; }); // remplacement de PRODUCTION, refusé dès la construction
+    assert.throws(avec((p) => { p.dossierRelecture = 'A_RENSEIGNER_P4_DOSSIER_RELECTURE'; }), /remplacement hors recette/); // refusé dès la construction
+    assert.throws(avec((p) => { p.credentialGmail = { id: 'A_RENSEIGNER_P4_CREDENTIAL_GMAIL', name: 'FONDA RECETTE Gmail' }; }), /remplacement hors recette/);
     assert.throws(avec((p) => { p.cheminConfirmer = 'box-select-confirm'; }), /fonda-recette-/);
   });
   test('ligne de commande STRICTE : option sans valeur, inconnue, en double, ou constructeur absent -> erreur (jamais la production par défaut)', () => {
@@ -261,14 +292,26 @@ describe('1 bis. profil de recette (P4a) : exports de production INCHANGÉS, cop
     assert.ok(rec.size > 0);
     for (const u of rec) assert.equal(prod.has(u), false, `uuid partagé avec la production : ${u}`);
   });
-  test('avecProfil : construction asynchrone refusée, profil restauré', async () => {
-    assert.throws(() => B.avecProfil('recette', async () => B.construirePage()), /asynchrone/);
-    assert.throws(() => B.avecProfil('recette', () => ({ then() {} })), /asynchrone/);
-    assert.ok(lireExport('page').equals(Buffer.from(`${JSON.stringify(B.construirePage(), null, 2)}\n`, 'utf8')));
+  test('INJECTION composite (quote, opérateur, espace, URL) refusée par la grammaire FERMÉE de chaque champ', () => {
+    const avec = (modif) => { const p = copie(PROFIL_RECETTE); modif(p); return () => B.configRecette(p); };
+    const prodId = B.CONFIG.dossierCandidats;
+    for (const v of [`x' in parents or '${prodId}`, `${prodId}' or '1'='1`, 'abc def ghij', 'A_RENSEIGNER_RECETTE_X\' or \'', 'dossier/../x12345', 'courte', 'x'.repeat(81)])
+      for (const c of ['dossierCandidats', 'dossierRelecture', 'dossierDecisions', 'tableRelecteurs']) assert.throws(avec((p) => { p[c] = v; }), /hors grammaire|remplacement hors recette/, `${c}=${v}`);
+    for (const v of ['http://exemple.test/m', 'https://exemple.test/m?x=1', 'https://exemple.test/m/', "https://exemple.test/m'", 'https://exemple', 'https://u@exemple.test/m'])
+      assert.throws(avec((p) => { p.urlMoteurs = v; }), /hors grammaire/, v);
+    assert.doesNotThrow(avec((p) => { p.urlMoteurs = 'https://cdn.jsdelivr.net/gh/ericduchateau/box@abc123/fonda/engine'; p.dossierDecisions = '1AbC_d-EfGhIjKlMnOpQrStUvWxYz012'; p.credentialGmail = { id: 'AbCdEfGh12345678', name: 'FONDA RECETTE Gmail relecture' }; }));
+    for (const v of ["FONDA RECETTE - Page relecture'", 'FONDA RECETTE - Page  relecture', 'FONDA RECETTE - page relecture']) assert.throws(avec((p) => { p.nomPage = v; }), /hors grammaire/, v);
+    for (const v of ['fonda-recette-select/x', 'fonda-recette-', 'fonda-recette-Select', "fonda-recette-select'"]) assert.throws(avec((p) => { p.cheminPage = v; }), /hors grammaire/, v);
   });
-  test('profil inconnu -> erreur, profil actif restauré même en cas d\'erreur', () => {
-    assert.throws(() => B.avecProfil('prod', () => 1), /profil inconnu/);
-    assert.throws(() => B.avecProfil('recette', () => { throw new Error('panne'); }), /panne/);
+  test('avecProfil INTERNE : non exporté ; construireExport n\'accepte que la liste fermée de constructeurs (propriétés propres)', () => {
+    assert.equal(B.avecProfil, undefined);
+    for (const o of ['toString', 'constructor', '__proto__', 'hasOwnProperty', '--Page', '']) assert.throws(() => B.construireExport(o, 'recette'), /constructeur inconnu/, o);
+    assert.throws(() => B.analyserArguments(['toString']), /argument inconnu/);
+    assert.throws(() => B.analyserArguments(['--page', '--profil', 'constructor']), /valeur attendue/);
+  });
+  test('profil inconnu ou profil de recette invalide -> erreur, profil actif restauré', () => {
+    assert.throws(() => B.construireExport('--page', 'prod'), /profil inconnu/);
+    assert.throws(() => B.construireExport('--page', 'toString'), /profil inconnu/);
     assert.ok(lireExport('page').equals(Buffer.from(`${JSON.stringify(B.construirePage(), null, 2)}\n`, 'utf8')));
   });
 });

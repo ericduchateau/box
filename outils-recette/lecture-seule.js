@@ -48,7 +48,12 @@ function cleDEnvironnement(nom = 'FONDA_N8N_CLE_RECETTE', env = process.env) {
   return c.trim();
 }
 
-// Texte de diagnostic affichable : grammaire étroite et longueur bornée, sinon un marqueur fixe.
-const affichable = (t, marqueur) => (typeof t === 'string' && t.length <= 200 && /^[\p{L}\p{N} :()=,'’«».\/?_-]*$/u.test(t) ? t : marqueur);
+// Messages d'erreur PROPRES aux outils (ensemble fermé) : seuls affichables tels quels ; tout autre
+// message (venu d'un module tiers ou du réseau) est remplacé par un marqueur fixe.
+const MESSAGES_SURS = new Set(['lecture seule : réponse JSON illisible', 'lecture seule : échec du transport', 'lecture seule : HTTPS exigé pour l\'instance',
+  'lecture seule : URL de l\'instance invalide', 'lecture seule : URL de l\'instance = https://hôte, sans chemin ni paramètres', 'workflowId invalide', 'identifiant d\'exécution invalide',
+  'option inconnue', 'option en double', 'valeur d\'option absente', '1 argument(s) positionnel(s) attendu(s)', '2 argument(s) positionnel(s) attendu(s)', '0 argument(s) positionnel(s) attendu(s)',
+  'utiliser soit <workflowId>, soit --execution <id>', 'export du dépôt illisible']);
+const messageSur = (e) => (e && MESSAGES_SURS.has(e.message) ? e.message : (e && /^(API n8n|lecture seule)[^:]*: HTTP [0-9]{3}$/.test(e.message) ? e.message.replace(/\(.*\)/, '').replace(/ +/g, ' ') : 'erreur (message non affichable)'));
 
-module.exports = { CHEMINS_N8N, origineInstance, fetchLectureSeule, cleDEnvironnement, affichable };
+module.exports = { CHEMINS_N8N, origineInstance, fetchLectureSeule, cleDEnvironnement, messageSur };
