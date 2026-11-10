@@ -164,7 +164,9 @@ const GRAMMAIRES_RECETTE = Object.freeze({
   dossier: /^[A-Za-z0-9_-]{10,80}$/,
   credentialId: /^[A-Za-z0-9]{8,32}$/,
   credentialNom: /^FONDA RECETTE [A-Za-z0-9]{1,20}( [A-Za-z0-9()]{1,20}){0,6}$/,
-  urlMoteurs: /^https:\/\/[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+(\/[A-Za-z0-9._~@-]{1,80}){0,8}$/,
+  // urlMoteurs : LISTE FERMÉE de bases (jamais une grammaire d'hôte) : GitHub Pages (sert main, cible mouvante)
+  // ou jsDelivr épinglé sur un commit (immuable, à préférer en production pour un moteur versionné).
+  urlMoteurs: /^(https:\/\/ericduchateau\.github\.io\/box\/fonda\/engine|https:\/\/cdn\.jsdelivr\.net\/gh\/ericduchateau\/box@[0-9a-f]{40}\/fonda\/engine)$/,
 });
 const GRAMMAIRE_DE = (c) => (c.startsWith('nom') ? 'nom' : c.startsWith('chemin') ? 'chemin' : c === 'urlMoteurs' ? 'urlMoteurs' : c.startsWith('credential') ? 'credential' : 'dossier');
 function lireProfilRecette() {

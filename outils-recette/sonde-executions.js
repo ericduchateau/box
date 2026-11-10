@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 'use strict';
+
+// Erreur au CHARGEMENT des dépendances (avant toute protection) ou rejet non géré : jamais affichée telle
+// quelle (pile, chemins, extraits) ; message fixe et code 1.
+if (require.main === module) {
+  const arret = () => { process.stderr.write('sonde : erreur (message non affichable)\n'); process.exit(1); };
+  process.on('uncaughtException', arret); process.on('unhandledRejection', arret);
+}
 // Sonde d'observation des exécutions n8n, LECTURE SEULE (recette P4, porte G7 « finding 3 » ; §21.4).
 // UNE SEULE série d'observations : observer() de signer-cloture.js (running, waiting, puis liste complète,
 // aucune réimplémentation) ; les réponses qu'il consomme réellement sont capturées (« brut »), sa fusion aussi.

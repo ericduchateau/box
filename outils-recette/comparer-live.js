@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 'use strict';
+
+// Erreur au CHARGEMENT des dépendances (avant toute protection) ou rejet non géré : jamais affichée telle
+// quelle (pile, chemins, extraits) ; message fixe et code 1.
+if (require.main === module) {
+  const arret = () => { process.stderr.write('comparer-live : erreur (message non affichable)\n'); process.exit(1); };
+  process.on('uncaughtException', arret); process.on('unhandledRejection', arret);
+}
 // Octet-identité dépôt <-> live (recette P4, phase 2) : l'export du workflow importé (GET
 // /api/v1/workflows/<id>, LECTURE SEULE) doit contenir EXACTEMENT name, nodes, connections, settings de
 // l'export construit depuis le dépôt, sérialisés à l'identique (même ordre de clés). Toute autre clé du
@@ -73,6 +80,8 @@ async function lireLive({ workflowId, url, cle, fetch: f = globalThis.fetch }) {
   if (!r.ok) throw new ErreurOutil('HTTP', r.status);
   const live = await r.json();
   if (!live || typeof live !== 'object' || Array.isArray(live)) throw new ErreurOutil('REPONSE');
+  // Identité : la réponse doit porter l'identifiant DEMANDÉ (sinon faux GO sur un autre workflow).
+  if (typeof live.id !== 'string' || !ID_WORKFLOW.test(live.id) || live.id !== workflowId) throw new ErreurOutil('IDENTITE');
   return live;
 }
 

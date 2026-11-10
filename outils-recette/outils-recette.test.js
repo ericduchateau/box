@@ -255,6 +255,9 @@ describe('comparateur : références fermées, états typés, écarts sans conte
     await assert.rejects(CL.lireLive({ workflowId: 'WfA/activate', url: URL_I, cle: CLE, fetch: f }), (e) => e.code === 'WORKFLOW_ID');
     await assert.rejects(CL.lireLive({ workflowId: 'WfA', url: URL_I, cle: CLE, fetch: async () => reponse([]) }), (e) => e.code === 'REPONSE');
     await assert.rejects(CL.lireLive({ workflowId: 'WfA', url: URL_I, cle: CLE, fetch: async () => reponse({}, 403) }), (e) => e.code === 'HTTP' && e.http === 403);
+    // Identité : réponse pour un AUTRE workflow (contenu conforme) -> IDENTITE, jamais un faux GO.
+    for (const id of ['AutreWorkflow', undefined, 12, 'wfa', 'WfA ', ''])
+      await assert.rejects(CL.lireLive({ workflowId: 'WfA', url: URL_I, cle: CLE, fetch: async () => reponse({ ...live(), id }) }), (e) => e.code === 'IDENTITE', String(id));
   });
   test('principal : référence hors liste fermée refusée AVANT toute lecture ou requête ; nom affiché depuis la liste', async () => {
     const appels = []; const f = async (url) => { appels.push(url); return reponse(live()); };
@@ -264,6 +267,7 @@ describe('comparateur : références fermées, états typés, écarts sans conte
     assert.equal(appels.length, 0);
     const { r, code } = await CL.principal(['WfA', REF], { fetch: f, env });
     assert.equal(code, 0); assert.equal(r.export, REF); assert.equal(r.identique, true);
+    await assert.rejects(CL.principal(['WfA', REF], { fetch: async () => reponse({ ...live(), id: 'AutreWorkflow' }), env }), (e) => e.code === 'IDENTITE');
   });
 });
 
@@ -305,6 +309,15 @@ describe('lignes de commande : arguments stricts, codes de sortie, aucun secret 
     }
     for (const a of [['--a', 'x', '--a', 'y'], ['--b', 'x'], ['--a'], ['--a', '']]) assert.throws(() => AR.analyser(a, { options: ['--a'], positionnels: 0 }), (e) => e instanceof LS.ErreurOutil);
     assert.deepEqual(AR.analyser(['p', '--a', 'x'], { options: ['--a'], positionnels: 1 }).positionnels, ['p']);
+  });
+  test('erreur au CHARGEMENT d\'une dépendance (avant toute protection) : message fixe, code 1, aucun extrait (2 outils)', () => {
+    const p = path.join(dir, 'chargement.js');
+    fs.writeFileSync(p, `const M = require('module'); const req = M.prototype.require;
+M.prototype.require = function (id) { if (process.env.CIBLE && String(id).includes(process.env.CIBLE)) throw new Error('SECRET_SYNTHETIQUE /chemin/prive'); return req.apply(this, arguments); };\n`);
+    for (const [script, cible, nom] of [['sonde-executions.js', 'signer-cloture', 'sonde'], ['sonde-executions.js', 'lecture-seule', 'sonde'], ['comparer-live.js', 'arguments', 'comparer-live'], ['comparer-live.js', 'lecture-seule', 'comparer-live']]) {
+      const r = spawnSync(process.execPath, ['-r', p, path.join(__dirname, script), 'WfA', CL.REFERENCES[0]], { env: { ...process.env, CIBLE: cible, FONDA_N8N_CLE_RECETTE: CLE }, encoding: 'utf8' });
+      assert.equal(r.status, 1, `${script} ${cible}`); assert.equal(r.stdout, ''); assert.equal(r.stderr, `${nom} : erreur (message non affichable)\n`, `${script} ${cible}`);
+    }
   });
   test('clé hors grammaire refusée avant toute requête (message de la liste fermée)', () => {
     const r = lancer('sonde-executions.js', ['WfA'], 'vide', 'courte'); assert.equal(r.status, 1); assert.match(r.stderr, /clé d'API absente ou hors grammaire/);

@@ -193,6 +193,10 @@ function versProduction(k) {
   });
   return { wf: JSON.parse(t.replace(UUID, (u) => aller.get(u))), prod };
 }
+// Bases des moteurs autorisées (décision de l'architecte, 2026-11-10), écrites ICI indépendamment du constructeur :
+// GitHub Pages (sert main) et jsDelivr épinglé sur un commit (40 hexadécimaux, immuable).
+const BASES_MOTEURS_AUTORISEES = Object.freeze(['https://ericduchateau.github.io/box/fonda/engine']);
+const BASE_JSDELIVR_EPINGLEE = /^https:\/\/cdn\.jsdelivr\.net\/gh\/ericduchateau\/box@[0-9a-f]{40}\/fonda\/engine$/;
 // Références d'instance d'exports de recette ⊆ ENSEMBLE FERMÉ dérivé du profil c (connu-bon) : URL exactes (instance,
 // API Google fixes, dépôt public, moteurs du registre sous urlMoteurs), dossiers des requêtes Drive, CONFIG embarqués,
 // credentials, chemins, noms ; aucun identifiant de l'inventaire de production. Renvoie le nombre d'URL de moteurs vues.
@@ -201,9 +205,10 @@ function verifierReferencesRecette(textes, c) {
   const chemins = new Set(['cheminEmettre', 'cheminCloturer', 'cheminPage', 'cheminConfirmer'].map((k) => c[k]));
   const noms = new Set(['nomEmettre', 'nomCloturer', 'nomConfirmer', 'nomPage'].map((k) => c[k]));
   const dossiers = new Set([c.dossierCandidats, c.dossierRelecture, c.dossierDecisions]);
+  // URL des moteurs : base contrôlée contre la liste fermée DU HARNAIS (indépendante du profil et du constructeur).
   const moteurs = new Set();
   const reg = JSON.parse(fs.readFileSync(path.join(RACINE, 'fonda/engine/moteurs.json'), 'utf8'));
-  for (const l of reg) moteurs.add(`${c.urlMoteurs}/${path.basename(l.fichier)}`);
+  if (BASES_MOTEURS_AUTORISEES.includes(c.urlMoteurs) || BASE_JSDELIVR_EPINGLEE.test(c.urlMoteurs)) for (const l of reg) moteurs.add(`${c.urlMoteurs}/${path.basename(l.fichier)}`);
   const urls = new Set([`${c.urlN8n}/webhook/${c.cheminPage}`, `${c.urlN8n}/webhook/${c.cheminConfirmer}`, `${c.urlN8n}/api/v1/data-tables/${c.tableRelecteurs}/rows`,
     'https://gmail.googleapis.com/gmail/v1/users/me/messages/send', 'https://www.googleapis.com/drive/v3/files', 'https://www.googleapis.com/drive/v3/files/',
     'https://www.googleapis.com/upload/drive/v3/files', 'https://www.googleapis.com/upload/drive/v3/files/',
@@ -263,7 +268,7 @@ describe('1 bis. profil de recette (P4a) : exports de production INCHANGÉS, cop
   test('profil ENTIÈREMENT renseigné (en mémoire, via configRecette) : mêmes références fermées, URL des moteurs comprises ; aucune valeur de remplacement', () => {
     const p = copie(PROFIL_RECETTE);
     Object.assign(p, { dossierCandidats: '1RecetteLots_abcdefghijklmnopqrs', dossierRelecture: '1RecetteRelecture_abcdefghijklmn', dossierDecisions: '1RecetteDecisions_abcdefghijklm',
-      tableRelecteurs: 'RecetteTable0123', urlMoteurs: 'https://cdn.jsdelivr.net/gh/ericduchateau/box@0123456789abcdef/fonda/engine' });
+      tableRelecteurs: 'RecetteTable0123', urlMoteurs: 'https://cdn.jsdelivr.net/gh/ericduchateau/box@0123456789abcdef0123456789abcdef01234567/fonda/engine' });
     for (const c of B.CLES_RECETTE.filter((x) => x.startsWith('credential'))) p[c] = { ...p[c], id: `Rec${c.slice(10)}0123456789`.slice(0, 32).replace(/[^A-Za-z0-9]/g, '') };
     const textes = Object.fromEntries(Object.keys(EXPORTS).map((k) => [k, B.construireExport(`--${k}`, 'recette', p)]));
     for (const t of Object.values(textes)) { assert.equal(t.includes('A_RENSEIGNER_'), false); controlesStatiques(JSON.parse(t)); }
@@ -343,9 +348,13 @@ fs.readFileSync = function (p, ...r) { if (String(p).endsWith(${JSON.stringify(c
     const prodId = B.CONFIG.dossierCandidats;
     for (const v of [`x' in parents or '${prodId}`, `${prodId}' or '1'='1`, 'abc def ghij', 'A_RENSEIGNER_RECETTE_X\' or \'', 'dossier/../x12345', 'courte', 'x'.repeat(81)])
       for (const c of ['dossierCandidats', 'dossierRelecture', 'dossierDecisions', 'tableRelecteurs']) assert.throws(avec((p) => { p[c] = v; }), /hors grammaire|remplacement hors recette/, `${c}=${v}`);
-    for (const v of ['http://exemple.test/m', 'https://exemple.test/m?x=1', 'https://exemple.test/m/', "https://exemple.test/m'", 'https://exemple', 'https://u@exemple.test/m'])
+    for (const v of ['http://exemple.test/m', 'https://exemple.test/m?x=1', 'https://exemple.test/m/', "https://exemple.test/m'", 'https://exemple', 'https://u@exemple.test/m',
+      'https://hostile.example/moteurs', 'https://127.0.0.1/moteurs', 'https://ericduchateau.github.io/box/fonda/engine/../../autre', 'https://ericduchateau.github.io/box/fonda/engine/',
+      'https://ericduchateau.github.io/autre/fonda/engine', 'https://cdn.jsdelivr.net/gh/autre/box@0123456789abcdef0123456789abcdef01234567/fonda/engine', 'https://cdn.jsdelivr.net/gh/ericduchateau/box@main/fonda/engine',
+      'https://cdn.jsdelivr.net/gh/ericduchateau/box@0123456789abcdef0123456789abcdef0123456/fonda/engine', 'https://cdn.jsdelivr.net/gh/ericduchateau/box@0123456789ABCDEF0123456789ABCDEF01234567/fonda/engine', 'http://ericduchateau.github.io/box/fonda/engine'])
       assert.throws(avec((p) => { p.urlMoteurs = v; }), /hors grammaire/, v);
-    assert.doesNotThrow(avec((p) => { p.urlMoteurs = 'https://cdn.jsdelivr.net/gh/ericduchateau/box@abc123/fonda/engine'; p.dossierDecisions = '1AbC_d-EfGhIjKlMnOpQrStUvWxYz012'; p.credentialGmail = { id: 'AbCdEfGh12345678', name: 'FONDA RECETTE Gmail relecture' }; }));
+    for (const v of BASES_MOTEURS_AUTORISEES) assert.doesNotThrow(avec((p) => { p.urlMoteurs = v; }), v);
+    assert.doesNotThrow(avec((p) => { p.urlMoteurs = 'https://cdn.jsdelivr.net/gh/ericduchateau/box@0123456789abcdef0123456789abcdef01234567/fonda/engine'; p.dossierDecisions = '1AbC_d-EfGhIjKlMnOpQrStUvWxYz012'; p.credentialGmail = { id: 'AbCdEfGh12345678', name: 'FONDA RECETTE Gmail relecture' }; }));
     for (const v of ["FONDA RECETTE - Page relecture'", 'FONDA RECETTE - Page  relecture', 'FONDA RECETTE - page relecture']) assert.throws(avec((p) => { p.nomPage = v; }), /hors grammaire/, v);
     for (const v of ['fonda-recette-select/x', 'fonda-recette-', 'fonda-recette-Select', "fonda-recette-select'"]) assert.throws(avec((p) => { p.cheminPage = v; }), /hors grammaire/, v);
   });
