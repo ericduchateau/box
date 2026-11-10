@@ -20,7 +20,12 @@
 // (jetons, valeurs de credentials, clé HMAC) et les ADRESSES ne sont jamais dans le dépôt : credentials
 // n8n référencés par id, adresse lue à l'exécution dans une Data Table (clé = relecteur_attribue).
 //
-// Usage : node n8n/fonda-relecture-page/construire-relecture.js --emettre | --cloturer | --confirmer | --page > export.json
+// Profils (P4a) : « production » (défaut, exports box-fonda-*-relecture.json) et « recette » (copie de test
+// P4, exports box-fonda-*-relecture.recette.json) ; le profil de recette REMPLACE tous les identifiants
+// d'instance (noms, chemins, dossiers, Data Table, credentials) par ceux de profil-recette.json et ne doit
+// référencer AUCUN identifiant de production (vérifié à la construction et par le harnais).
+//
+// Usage : node n8n/fonda-relecture-page/construire-relecture.js --emettre | --cloturer | --confirmer | --page [--profil recette] > export.json
 
 'use strict';
 
@@ -37,7 +42,7 @@ const RACINE = path.join(__dirname, '..', '..');
 
 // --- Configuration (valeurs de remplacement, renseignées en P4) ------------------------------
 const P4 = (nom) => `A_RENSEIGNER_P4_${nom}`;
-const CONFIG = Object.freeze({
+const CONFIG_PRODUCTION = Object.freeze({
   nomEmettre: 'FONDA - Emettre relecture',
   nomCloturer: 'FONDA - Cloturer relecture',
   nomConfirmer: 'FONDA - Confirmer relecture',
@@ -63,6 +68,62 @@ const CONFIG = Object.freeze({
   credentialApiN8n: { id: P4('CREDENTIAL_API_N8N'), name: 'FONDA API n8n (lecture Data Table)' },
   credentialGmail: { id: P4('CREDENTIAL_GMAIL'), name: 'FONDA Gmail relecture' },
 });
+
+// --- Profil de recette (P4a) : copie de test isolée sur l'instance -----------------------------
+// Clés REMPLACÉES par profil-recette.json (toutes, exactement) ; les autres sont partagées avec la
+// production (dépôt public lu, URL de l'instance, durée de clé, plafond de pagination). urlPage est
+// DÉRIVÉE (instance + chemin de la page de recette), jamais saisie.
+const CLES_RECETTE = Object.freeze(['nomEmettre', 'nomCloturer', 'nomConfirmer', 'nomPage', 'cheminEmettre', 'cheminCloturer', 'cheminPage', 'cheminConfirmer',
+  'dossierCandidats', 'dossierRelecture', 'dossierDecisions', 'tableRelecteurs', 'urlMoteurs',
+  'credentialDrive', 'credentialEmettre', 'credentialCloturer', 'credentialApiN8n', 'credentialGmail']);
+const PROFIL_RECETTE = path.join(__dirname, 'profil-recette.json');
+function identifiantsProduction() {
+  const v = [];
+  for (const [cle, val] of Object.entries(CONFIG_PRODUCTION)) {
+    if (!CLES_RECETTE.includes(cle) && cle !== 'urlPage') continue;
+    if (val && typeof val === 'object') v.push(val.id, val.name); else v.push(val);
+  }
+  return v.filter((x) => typeof x === 'string' && !x.startsWith('A_RENSEIGNER_P4_'));
+}
+function configRecette(brut = JSON.parse(fs.readFileSync(PROFIL_RECETTE, 'utf8'))) {
+  if (!brut || typeof brut !== 'object' || Array.isArray(brut)) throw new Error('profil de recette : objet attendu');
+  if (brut.profil !== 'recette') throw new Error('profil de recette : « profil » doit valoir « recette »');
+  const cles = Object.keys(brut).filter((c) => c !== 'profil').sort();
+  if (cles.join(',') !== [...CLES_RECETTE].sort().join(',')) throw new Error('profil de recette : clés ≠ liste fermée CLES_RECETTE');
+  const chaine = (x) => typeof x === 'string' && x.length > 0 && x.trim() === x;
+  for (const c of CLES_RECETTE) {
+    const v = brut[c];
+    if (c.startsWith('credential')) {
+      if (!v || typeof v !== 'object' || Array.isArray(v) || Object.keys(v).sort().join(',') !== 'id,name' || !chaine(v.id) || !chaine(v.name)) throw new Error(`profil de recette : ${c} = { id, name }`);
+      if (!v.name.startsWith('FONDA RECETTE ')) throw new Error(`profil de recette : ${c}.name doit commencer par « FONDA RECETTE »`);
+    } else if (!chaine(v)) throw new Error(`profil de recette : ${c} invalide`);
+  }
+  for (const c of ['nomEmettre', 'nomCloturer', 'nomConfirmer', 'nomPage']) if (!brut[c].startsWith('FONDA RECETTE - ')) throw new Error(`profil de recette : ${c} doit commencer par « FONDA RECETTE - »`);
+  for (const c of ['cheminEmettre', 'cheminCloturer', 'cheminPage', 'cheminConfirmer']) if (!/^fonda-recette-[a-z-]+$/.test(brut[c])) throw new Error(`profil de recette : ${c} doit commencer par « fonda-recette- »`);
+  const config = Object.freeze({ ...CONFIG_PRODUCTION, ...Object.fromEntries(CLES_RECETTE.map((c) => [c, brut[c]])),
+    urlPage: `${CONFIG_PRODUCTION.urlN8n}/webhook/${brut.cheminPage}` });
+  // Isolation : aucune valeur de recette n'est un identifiant de production (dossiers, credentials, noms, chemins).
+  const prod = new Set(identifiantsProduction());
+  for (const c of CLES_RECETTE) {
+    const v = brut[c];
+    for (const x of v && typeof v === 'object' ? [v.id, v.name] : [v]) if (prod.has(x)) throw new Error(`profil de recette : ${c} réutilise un identifiant de production`);
+  }
+  return config;
+}
+// Profil ACTIF pendant une construction (production par défaut) : chaque constructeur lit CONFIG et
+// ESPACE_UUID à l'appel ; avecProfil les remplace le temps d'une construction, puis RESTAURE la production.
+let CONFIG = CONFIG_PRODUCTION;
+let ESPACE_UUID = 'fonda-relecture-page';
+function avecProfil(profil, fn) {
+  let suivant;
+  if (profil === 'production') suivant = [CONFIG_PRODUCTION, 'fonda-relecture-page'];
+  else if (profil === 'recette') suivant = [configRecette(), 'fonda-relecture-page:recette'];
+  else throw new Error(`profil inconnu : ${profil}`);
+  if (suivant[0].maxPagesDrive !== CONFIG_PRODUCTION.maxPagesDrive) throw new Error('profil : maxPagesDrive partagé (PAGINATION_DRIVE)');
+  const avant = [CONFIG, ESPACE_UUID];
+  [CONFIG, ESPACE_UUID] = suivant;
+  try { return fn(); } finally { [CONFIG, ESPACE_UUID] = avant; }
+}
 
 // Noms de nœuds : ceux du consommateur gelé pour la clôture (ROLES.cloture).
 const NOEUDS_CLOTURER = Object.freeze({
@@ -114,7 +175,7 @@ const NOEUDS_EMETTRE = Object.freeze({
 const MODULES = Object.freeze({ catalogue: 'fonda/engine/catalogue.js', journal: 'fonda/engine/journal-set-ids.js', canonique: 'fonda/engine/canonique.js' });
 
 const uuid = (graine) => {
-  const h = crypto.createHash('sha256').update(`fonda-relecture-page:${graine}`).digest('hex');
+  const h = crypto.createHash('sha256').update(`${ESPACE_UUID}:${graine}`).digest('hex');
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;
 };
 const ENTETE = (role) => [
@@ -1216,11 +1277,20 @@ function construirePage() {
   return { name: CONFIG.nomPage, nodes: noeuds, connections, settings: REGLAGES };
 }
 
-module.exports = { CONFIG, MODULES, NOEUDS_CLOTURER, NOEUDS_EMETTRE, NOEUDS_CONFIRMER, NOEUDS_PAGE, CODES_HTTP, CHAMPS_FORMULAIRE, COMMUN_PAGE, GABARIT_PAGE,
+module.exports = { CONFIG: CONFIG_PRODUCTION, CLES_RECETTE, configRecette, avecProfil, MODULES, NOEUDS_CLOTURER, NOEUDS_EMETTRE, NOEUDS_CONFIRMER, NOEUDS_PAGE, CODES_HTTP, CHAMPS_FORMULAIRE, COMMUN_PAGE, GABARIT_PAGE,
   PROFILS_MOTEUR, chargerCommun, registrePage, appPage, construireCloturer, construireEmettre, construireConfirmer, construirePage };
 
 const CONSTRUCTEURS = { '--emettre': construireEmettre, '--cloturer': construireCloturer, '--confirmer': construireConfirmer, '--page': construirePage };
+// Construction sous un profil : JSON exact de l'export (production : box-fonda-<k>-relecture.json ;
+// recette : box-fonda-<k>-relecture.recette.json).
+function construireExport(option, profil = 'production') {
+  if (!CONSTRUCTEURS[option]) throw new Error(`constructeur inconnu : ${option}`);
+  return `${JSON.stringify(avecProfil(profil, CONSTRUCTEURS[option]), null, 2)}\n`;
+}
+module.exports.construireExport = construireExport;
 if (require.main === module) {
   const option = Object.keys(CONSTRUCTEURS).find((o) => process.argv.includes(o));
-  if (!option) { process.stderr.write(`usage : construire-relecture.js ${Object.keys(CONSTRUCTEURS).join(' | ')}\n`); process.exitCode = 1; } else process.stdout.write(`${JSON.stringify(CONSTRUCTEURS[option](), null, 2)}\n`);
+  const i = process.argv.indexOf('--profil');
+  const profil = i === -1 ? 'production' : process.argv[i + 1];
+  if (!option) { process.stderr.write(`usage : construire-relecture.js ${Object.keys(CONSTRUCTEURS).join(' | ')} [--profil recette]\n`); process.exitCode = 1; } else process.stdout.write(construireExport(option, profil));
 }

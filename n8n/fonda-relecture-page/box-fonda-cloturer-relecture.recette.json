@@ -1,0 +1,564 @@
+{
+  "name": "FONDA RECETTE - Cloturer relecture",
+  "nodes": [
+    {
+      "id": "238d7093-89fa-45b2-aa84-b79080dd32b1",
+      "position": [
+        0,
+        0
+      ],
+      "name": "Webhook cloture",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "webhookId": "9a4c4e12-2c12-42c4-a987-dd9c053897a7",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "A_RENSEIGNER_RECETTE_CREDENTIAL_CLOTURER",
+          "name": "FONDA RECETTE Cloturer Token"
+        }
+      },
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "fonda-recette-cloturer",
+        "authentication": "headerAuth",
+        "options": {}
+      }
+    },
+    {
+      "id": "49469b53-0467-4656-a47e-7953d40eda75",
+      "position": [
+        220,
+        0
+      ],
+      "name": "FONDA Entree cloture",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "// FONDA — entrée de clôture : { set_id } copié tel quel (chaîne ≤ 128, sinon null), sans validation.\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nconst items = $input.all();\nconst corps = items.length === 1 && items[0] && items[0].json ? items[0].json.body : undefined;\nconst v = corps && typeof corps === 'object' && !Array.isArray(corps) ? corps.set_id : undefined;\nreturn [{ json: { set_id: typeof v === 'string' && v.length <= 128 ? v : null } }];"
+      }
+    },
+    {
+      "id": "e6251134-5428-4874-a2ee-d92b3b942af6",
+      "position": [
+        440,
+        0
+      ],
+      "name": "Valider cloture",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "// FONDA — validation de l'entrée de clôture (une erreur rend l'exécution « error », attribuée au lot si lisible).\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nconst SET_ID_PATTERN = new RegExp(\"^set_fonda_[a-z0-9-]+_n[IF]_\\\\d{2}$\", \"\");\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('Valider cloture : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nconst e = unItem(\"FONDA Entree cloture\");\nif (typeof e.set_id !== 'string' || !SET_ID_PATTERN.test(e.set_id)) throw new Error('set_id invalide');\nreturn [{ json: { set_id: e.set_id } }];"
+      }
+    },
+    {
+      "id": "2e35748e-23dd-4187-a807-277a53c69a79",
+      "position": [
+        660,
+        0
+      ],
+      "name": "Chercher candidat",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": false,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "A_RENSEIGNER_RECETTE_CREDENTIAL_DRIVE",
+          "name": "FONDA RECETTE Drive"
+        }
+      },
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ \"'A_RENSEIGNER_RECETTE_DOSSIER_RELECTURE' in parents and trashed = false and name = '\" + $('Valider cloture').first().json.set_id + \".candidat.json'\" }}"
+            },
+            {
+              "name": "fields",
+              "value": "nextPageToken,incompleteSearch,files(id,name,version)"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            }
+          ]
+        },
+        "options": {
+          "pagination": {
+            "pagination": {
+              "paginationMode": "updateAParameterInEachRequest",
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "qs",
+                    "name": "pageToken",
+                    "value": "={{ $response.body.nextPageToken }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.nextPageToken }}",
+              "limitPagesFetched": true,
+              "maxRequests": 50
+            }
+          },
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "b87271ec-5ebf-455c-a229-46c559446eb4",
+      "position": [
+        880,
+        0
+      ],
+      "name": "Verifier recherche candidat",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "// FONDA — recherche du candidat : exactement un fichier, recherche paginée complète, avant lecture.\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('Verifier recherche candidat : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nfunction agregerPages(nom) {\n  const pages = $(nom).all().map((i) => i.json);\n  if (!pages.length) throw new Error(nom + ' : aucune page');\n  const fichiers = []; let incompleteSearch = false;\n  for (const pg of pages) {\n    if (!pg || !Array.isArray(pg.files)) throw new Error(nom + ' : page de listing inexploitable');\n    if (pg.incompleteSearch === true) incompleteSearch = true;\n    fichiers.push(...pg.files);\n  }\n  const plafond = Boolean(pages[pages.length - 1].nextPageToken);\n  return { fichiers, incompleteSearch, plafond, complet: !incompleteSearch && !plafond };\n}\n\nconst liste = agregerPages(\"Chercher candidat\");\nif (!liste.complet) throw new Error('recherche du candidat incomplète (incompleteSearch ou plafond de pagination)');\nconst fichiers = liste.fichiers;\nif (fichiers.length !== 1 || typeof fichiers[0].id !== 'string') throw new Error(fichiers.length + ' fichier(s) pour du candidat : exactement un attendu');\nif (typeof fichiers[0].version !== 'string' || !/^[0-9]+$/.test(fichiers[0].version)) throw new Error('du candidat : version Drive illisible');\nreturn [{ json: { fichier_id: fichiers[0].id, version: fichiers[0].version } }];"
+      }
+    },
+    {
+      "id": "6026ea20-c3d3-49d1-aae4-ed8baa775971",
+      "position": [
+        1100,
+        0
+      ],
+      "name": "Lire candidat",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": false,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "A_RENSEIGNER_RECETTE_CREDENTIAL_DRIVE",
+          "name": "FONDA RECETTE Drive"
+        }
+      },
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files/' + $('Verifier recherche candidat').first().json.fichier_id }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "alt",
+              "value": "media"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "0e8eca2b-1d1b-49bf-ae05-9412e288adb9",
+      "position": [
+        1320,
+        0
+      ],
+      "name": "Preparer cloture",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "// FONDA — candidat lu : en_attente -> clos (PREMIER clos_le) ; clos -> déjà clos (rien réécrit) ; sinon refus.\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('Preparer cloture : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nfunction dateIso(v) {\n  return typeof v === 'string' && /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/.test(v) && !Number.isNaN(Date.parse(v)) && new Date(Date.parse(v)).toISOString() === v;\n}\n\nconst setId = unItem(\"Valider cloture\").set_id;\nconst fichier = unItem(\"Verifier recherche candidat\");\nconst c = unItem(\"Lire candidat\");\nif (!c || c.schema !== 'candidat-fonda/v1' || !c.lot || !c.relecture || c.lot.set_id !== setId) throw new Error('candidat non conforme');\nconst rel = c.relecture;\nif (!Number.isSafeInteger(rel.generation_cle) || rel.generation_cle < 1 || typeof rel.cle_sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(rel.cle_sha256)) throw new Error('candidat : generation_cle ou cle_sha256 invalide');\nlet dejaClos; let closLe;\nif (rel.statut === 'clos') {\n  // Format VALIDÉ avant toute sortie réussie, jamais réécrit (premier clos_le).\n  if (!dateIso(rel.clos_le)) throw new Error('candidat clos : clos_le absent ou mal formé (jamais réécrit)');\n  dejaClos = true; closLe = rel.clos_le;\n} else if (rel.statut === 'en_attente') {\n  if (rel.clos_le !== null) throw new Error('candidat en_attente avec clos_le');\n  dejaClos = false; closLe = new Date().toISOString();\n} else throw new Error('statut « ' + rel.statut + ' » : clôture impossible');\nconst nouveau = dejaClos ? null : JSON.stringify({ schema: c.schema, lot: c.lot, relecture: { ...rel, statut: 'clos', clos_le: closLe } }, null, 2) + '\\n';\n// version (relevée AVANT la lecture), generation_cle et cle_sha256 LUS : contrôlés avant et après l'écriture.\nreturn [{ json: { set_id: setId, fichier_id: fichier.fichier_id, version: fichier.version, generation_cle: rel.generation_cle, cle_sha256: rel.cle_sha256, deja_clos: dejaClos, clos_le: closLe, contenu: nouveau } }];"
+      }
+    },
+    {
+      "id": "7098da5d-b2c1-4c7e-ae25-f497bbf0e12c",
+      "position": [
+        1540,
+        0
+      ],
+      "name": "Deja clos ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "40e229b8-b398-44fa-a8c6-8016c47d8870",
+              "leftValue": "={{ $json.deja_clos }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "126d740c-4392-4edc-abe8-40b9230d4825",
+      "position": [
+        1760,
+        0
+      ],
+      "name": "Relire version cloture",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": false,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "A_RENSEIGNER_RECETTE_CREDENTIAL_DRIVE",
+          "name": "FONDA RECETTE Drive"
+        }
+      },
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files/' + $('Preparer cloture').first().json.fichier_id }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id,version,trashed"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "228ebdc1-bcd4-40fc-a8a0-622594780d66",
+      "position": [
+        1980,
+        0
+      ],
+      "name": "Verifier version cloture",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "// FONDA — clôture : candidat INCHANGÉ depuis sa lecture (version Drive identique, hors corbeille) avant réécriture.\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('Verifier version cloture : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nconst p = unItem(\"Preparer cloture\");\nconst m = unItem(\"Relire version cloture\");\nif (!m || m.id !== p.fichier_id || m.trashed !== false || m.version !== p.version) throw new Error('clôture : candidat modifié depuis sa lecture (course détectée : version ' + (m && m.version) + ' ≠ ' + p.version + ') : rien réécrit');\nreturn [{ json: { fichier_id: p.fichier_id, contenu: p.contenu } }];"
+      }
+    },
+    {
+      "id": "161204bd-c6ca-4faf-a09b-a1db40d4ff01",
+      "position": [
+        2200,
+        0
+      ],
+      "name": "FONDA Ecrire candidat clos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": false,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "A_RENSEIGNER_RECETTE_CREDENTIAL_DRIVE",
+          "name": "FONDA RECETTE Drive"
+        }
+      },
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "method": "PATCH",
+        "url": "={{ 'https://www.googleapis.com/upload/drive/v3/files/' + $json.fichier_id }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "uploadType",
+              "value": "media"
+            },
+            {
+              "name": "fields",
+              "value": "id,name,version"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json; charset=UTF-8",
+        "body": "={{ $json.contenu }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "68feb50e-2d33-4737-a4e3-0842cf8c6315",
+      "position": [
+        2420,
+        0
+      ],
+      "name": "Relire candidat",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": false,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "A_RENSEIGNER_RECETTE_CREDENTIAL_DRIVE",
+          "name": "FONDA RECETTE Drive"
+        }
+      },
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files/' + $('Preparer cloture').first().json.fichier_id }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "alt",
+              "value": "media"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "68add9f3-1dcd-41d4-a18c-c664ebb9d6e3",
+      "position": [
+        2640,
+        0
+      ],
+      "name": "Lister decisions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": false,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "A_RENSEIGNER_RECETTE_CREDENTIAL_DRIVE",
+          "name": "FONDA RECETTE Drive"
+        }
+      },
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ \"'A_RENSEIGNER_RECETTE_DOSSIER_DECISIONS' in parents and (name contains '\" + $('Valider cloture').first().json.set_id + \"-' or properties has { key='fonda_set_id' and value='\" + $('Valider cloture').first().json.set_id + \"' })\" }}"
+            },
+            {
+              "name": "fields",
+              "value": "nextPageToken,incompleteSearch,files(id,name)"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            }
+          ]
+        },
+        "options": {
+          "pagination": {
+            "pagination": {
+              "paginationMode": "updateAParameterInEachRequest",
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "qs",
+                    "name": "pageToken",
+                    "value": "={{ $response.body.nextPageToken }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.nextPageToken }}",
+              "limitPagesFetched": true,
+              "maxRequests": 50
+            }
+          },
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "26f673d3-086d-429b-a760-2afdfefc4d48",
+      "position": [
+        2860,
+        0
+      ],
+      "name": "FONDA Sortie cloture",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "// FONDA — sortie OBSERVÉE cloture-fonda/v1 (forme exacte du consommateur gelé, §21.1).\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('FONDA Sortie cloture : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nfunction dateIso(v) {\n  return typeof v === 'string' && /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/.test(v) && !Number.isNaN(Date.parse(v)) && new Date(Date.parse(v)).toISOString() === v;\n}\n\nfunction agregerPages(nom) {\n  const pages = $(nom).all().map((i) => i.json);\n  if (!pages.length) throw new Error(nom + ' : aucune page');\n  const fichiers = []; let incompleteSearch = false;\n  for (const pg of pages) {\n    if (!pg || !Array.isArray(pg.files)) throw new Error(nom + ' : page de listing inexploitable');\n    if (pg.incompleteSearch === true) incompleteSearch = true;\n    fichiers.push(...pg.files);\n  }\n  const plafond = Boolean(pages[pages.length - 1].nextPageToken);\n  return { fichiers, incompleteSearch, plafond, complet: !incompleteSearch && !plafond };\n}\n\nfunction versionSuivante(v) {\n  if (typeof v !== 'string' || !/^[0-9]+$/.test(v)) throw new Error('version Drive illisible');\n  return String(BigInt(v) + 1n);\n}\n\nconst p = unItem(\"Preparer cloture\");\nif (!p.deja_clos) {\n  // Détection AU MIEUX d'une écriture glissée entre le contrôle de version et la nôtre (version après ≠ avant + 1).\n  const w = unItem(\"FONDA Ecrire candidat clos\");\n  if (!w || w.id !== p.fichier_id || w.version !== versionSuivante(p.version)) throw new Error('clôture : écriture concurrente détectée (version ' + (w && w.version) + ' ≠ ' + versionSuivante(p.version) + ')');\n}\nconst relu = unItem(\"Relire candidat\");\nif (!relu || relu.schema !== 'candidat-fonda/v1' || !relu.lot || relu.lot.set_id !== p.set_id || !relu.relecture || relu.relecture.statut !== 'clos') throw new Error('candidat relu non clos');\nif (!dateIso(relu.relecture.clos_le) || relu.relecture.clos_le !== p.clos_le) throw new Error('candidat relu : clos_le mal formé ou ≠ clos_le préparé');\nif (relu.relecture.generation_cle !== p.generation_cle || relu.relecture.cle_sha256 !== p.cle_sha256) throw new Error('candidat relu : generation_cle ou cle_sha256 ≠ candidat lu (course détectée)');\nconst d = agregerPages(\"Lister decisions\");\n// Plafond atteint = pagination NON terminée : aucune sortie (§21.1 exige une pagination complète) -> exécution en erreur.\nif (d.plafond) throw new Error('decisions/ : pagination interrompue au plafond de 50 pages : clôture impossible');\nreturn [{ json: { schema: 'cloture-fonda/v1', set_id: p.set_id, clos_le: relu.relecture.clos_le, deja_clos: p.deja_clos,\n  candidat_fichier_id: p.fichier_id, nb_decisions_listees: d.fichiers.length, incomplete_search: d.incompleteSearch } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook cloture": {
+      "main": [
+        [
+          {
+            "node": "FONDA Entree cloture",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FONDA Entree cloture": {
+      "main": [
+        [
+          {
+            "node": "Valider cloture",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valider cloture": {
+      "main": [
+        [
+          {
+            "node": "Chercher candidat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chercher candidat": {
+      "main": [
+        [
+          {
+            "node": "Verifier recherche candidat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verifier recherche candidat": {
+      "main": [
+        [
+          {
+            "node": "Lire candidat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lire candidat": {
+      "main": [
+        [
+          {
+            "node": "Preparer cloture",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparer cloture": {
+      "main": [
+        [
+          {
+            "node": "Deja clos ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deja clos ?": {
+      "main": [
+        [
+          {
+            "node": "Relire candidat",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Relire version cloture",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Relire version cloture": {
+      "main": [
+        [
+          {
+            "node": "Verifier version cloture",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verifier version cloture": {
+      "main": [
+        [
+          {
+            "node": "FONDA Ecrire candidat clos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FONDA Ecrire candidat clos": {
+      "main": [
+        [
+          {
+            "node": "Relire candidat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Relire candidat": {
+      "main": [
+        [
+          {
+            "node": "Lister decisions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lister decisions": {
+      "main": [
+        [
+          {
+            "node": "FONDA Sortie cloture",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "timezone": "Europe/Paris"
+  }
+}

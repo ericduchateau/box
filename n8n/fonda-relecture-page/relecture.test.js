@@ -54,24 +54,27 @@ const { dossierCandidats: CAND, dossierRelecture: RELEC, dossierDecisions: DEC }
 
 // ── 1. et 2. Contrôles statiques ──
 const SANS_MODULES = (js) => js.replace(/\/\/ >>> MODULE [\s\S]*?\/\/ <<< MODULE [^\n]*/g, '');
+// Contrôles statiques communs aux exports de production ET de recette (P4a).
+function controlesStatiques(wf) {
+  for (const n of wf.nodes) {
+    const t = sansHexPublics(n.type === 'n8n-nodes-base.code' ? JSON.stringify({ ...n, parameters: { jsCode: SANS_MODULES(n.parameters.jsCode) } }) : JSON.stringify(n));
+    assert.doesNotMatch(t, /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}/, `${n.name} : adresse électronique`);
+    assert.doesNotMatch(t, /BEGIN [A-Z ]*PRIVATE KEY|sk-ant-|Bearer [A-Za-z0-9]|ghp_|xox[bp]-/, `${n.name} : clé ou jeton`);
+    assert.doesNotMatch(t, /\b[0-9a-f]{64}\b/, `${n.name} : littéral hexadécimal de 64 caractères`);
+    if (n.credentials) for (const c of Object.values(n.credentials)) assert.deepEqual(Object.keys(c).sort(), ['id', 'name'], `${n.name} : credential = référence (id, nom) seulement`);
+    assert.equal(n.retryOnFail === true, false, `${n.name} : retryOnFail interdit`);
+    assert.equal(n.disabled, undefined, `${n.name} : aucun nœud désactivé`);
+  }
+  assert.equal(wf.pinData, undefined, 'aucune donnée épinglée');
+  assert.equal(wf.active, undefined, 'export sans état actif (créé INACTIF en P4)');
+}
 describe('1. octet-identité interne et 2. contrôles statiques', () => {
   for (const [k, construire] of Object.entries(CONSTRUCTEURS)) {
     test(`${EXPORTS[k]} == construction depuis le dépôt, octet pour octet`, () => {
       assert.ok(lireExport(k).equals(Buffer.from(`${JSON.stringify(construire(), null, 2)}\n`, 'utf8')), `${EXPORTS[k]} ≠ construction : regénérer par construire-relecture.js --${k}`);
     });
     test(`${EXPORTS[k]} : détection de motifs connus de secret/PII (adresse, clé, jeton, hex 64) hors modules embarqués vérifiés`, () => {
-      const wf = JSON.parse(lireExport(k));
-      for (const n of wf.nodes) {
-        const t = sansHexPublics(n.type === 'n8n-nodes-base.code' ? JSON.stringify({ ...n, parameters: { jsCode: SANS_MODULES(n.parameters.jsCode) } }) : JSON.stringify(n));
-        assert.doesNotMatch(t, /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}/, `${n.name} : adresse électronique`);
-        assert.doesNotMatch(t, /BEGIN [A-Z ]*PRIVATE KEY|sk-ant-|Bearer [A-Za-z0-9]|ghp_|xox[bp]-/, `${n.name} : clé ou jeton`);
-        assert.doesNotMatch(t, /\b[0-9a-f]{64}\b/, `${n.name} : littéral hexadécimal de 64 caractères`);
-        if (n.credentials) for (const c of Object.values(n.credentials)) assert.deepEqual(Object.keys(c).sort(), ['id', 'name'], `${n.name} : credential = référence (id, nom) seulement`);
-        assert.equal(n.retryOnFail === true, false, `${n.name} : retryOnFail interdit`);
-        assert.equal(n.disabled, undefined, `${n.name} : aucun nœud désactivé`);
-      }
-      assert.equal(wf.pinData, undefined, 'aucune donnée épinglée');
-      assert.equal(wf.active, undefined, 'export sans état actif (créé INACTIF en P4)');
+      controlesStatiques(JSON.parse(lireExport(k)));
     });
     test(`${EXPORTS[k]} : webhook POST (CLI : authentification d'en-tête ; relecteur : public, réponse par nœud) ; IF v2 STRICTS sur un booléen`, () => {
       const wf = JSON.parse(lireExport(k));
@@ -150,6 +153,95 @@ describe('1. octet-identité interne et 2. contrôles statiques', () => {
     const r = JSON.parse(lireExport('confirmer')).nodes.filter((n) => n.type === 'n8n-nodes-base.respondToWebhook');
     assert.equal(r.length, 1);
     assert.deepEqual([r[0].parameters.respondWith, r[0].parameters.responseBody, r[0].parameters.options.responseCode], ['text', '={{ $json.html }}', '={{ $json.code }}']);
+  });
+});
+
+// ── 1 bis. Profil de RECETTE (P4a) : copie de test isolée, construite depuis le dépôt ──
+const EXPORTS_RECETTE = Object.fromEntries(Object.entries(EXPORTS).map(([k, f]) => [k, f.replace(/\.json$/, '.recette.json')]));
+const lireRecette = (k) => fs.readFileSync(path.join(__dirname, EXPORTS_RECETTE[k]));
+const PROFIL_RECETTE = JSON.parse(fs.readFileSync(path.join(__dirname, 'profil-recette.json'), 'utf8'));
+// Identifiants de production à ne JAMAIS retrouver dans une copie de recette (hors valeurs de remplacement P4).
+const IDS_PROD = (() => {
+  const v = [];
+  for (const c of [...B.CLES_RECETTE, 'urlPage']) { const x = B.CONFIG[c]; if (x && typeof x === 'object') v.push(x.id, x.name); else v.push(x); }
+  return v.filter((x) => typeof x === 'string' && !x.startsWith('A_RENSEIGNER_P4_'));
+})();
+// Recette -> production : identifiants du profil remplacés par ceux de la production ; uuid (ids de nœuds,
+// webhookId, ids de conditions) appariés DANS L'ORDRE d'apparition, appariement bijectif exigé. Résultat
+// attendu : l'export de production, à l'identique.
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-a[0-9a-f]{3}-[0-9a-f]{12}/g;
+function versProduction(k) {
+  const prod = JSON.parse(lireExport(k));
+  let t = lireRecette(k).toString('utf8');
+  const cfgR = B.configRecette();
+  const paires = [];
+  for (const c of [...B.CLES_RECETTE, 'urlPage']) {
+    const r = cfgR[c]; const p = B.CONFIG[c];
+    if (r && typeof r === 'object') paires.push([r.id, p.id], [r.name, p.name]); else paires.push([r, p]);
+  }
+  paires.sort((x, y) => y[0].length - x[0].length); // plus longs d'abord (urlPage contient cheminPage)
+  const echapper = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Borne de fin : l'URL de la page est préfixe de celle de Confirmer (…/fonda-recette-select-confirm).
+  for (const [r, p] of paires) t = t.replace(new RegExp(`${echapper(JSON.stringify(r).slice(1, -1))}(?![A-Za-z0-9_-])`, 'g'), () => JSON.stringify(p).slice(1, -1));
+  const uR = t.match(UUID) || []; const uP = lireExport(k).toString('utf8').match(UUID) || [];
+  assert.equal(uR.length, uP.length, 'nombre d\'uuid différent');
+  const aller = new Map(); const retour = new Map();
+  uR.forEach((u, i) => {
+    assert.equal(aller.get(u) ?? uP[i], uP[i], `uuid ${u} apparié à deux uuid de production`);
+    assert.equal(retour.get(uP[i]) ?? u, u, `uuid de production ${uP[i]} apparié à deux uuid de recette`);
+    aller.set(u, uP[i]); retour.set(uP[i], u);
+  });
+  return { wf: JSON.parse(t.replace(UUID, (u) => aller.get(u))), prod };
+}
+describe('1 bis. profil de recette (P4a) : exports de production INCHANGÉS, copie isolée', () => {
+  for (const k of Object.keys(CONSTRUCTEURS)) {
+    test(`${EXPORTS_RECETTE[k]} == construction --profil recette, octet pour octet ; ${EXPORTS[k]} inchangé après (aucune fuite de profil)`, () => {
+      assert.ok(lireRecette(k).equals(Buffer.from(B.construireExport(`--${k}`, 'recette'), 'utf8')), `${EXPORTS_RECETTE[k]} ≠ construction : regénérer par construire-relecture.js --${k} --profil recette`);
+      assert.ok(lireExport(k).equals(Buffer.from(B.construireExport(`--${k}`), 'utf8')), 'production ≠ construction après une construction de recette');
+      assert.ok(lireExport(k).equals(Buffer.from(`${JSON.stringify(CONSTRUCTEURS[k](), null, 2)}\n`, 'utf8')), 'profil actif non restauré');
+    });
+    test(`${EXPORTS_RECETTE[k]} : mêmes contrôles statiques (secret/PII, credentials par référence, inactif)`, () => {
+      controlesStatiques(JSON.parse(lireRecette(k)));
+    });
+    test(`${EXPORTS_RECETTE[k]} : AUCUN identifiant de production (dossiers, credentials, noms, chemins, URL ; ids de nœuds et webhookId)`, () => {
+      const t = lireRecette(k).toString('utf8');
+      // Seules exceptions admises : les séparateurs de domaine « fonda-select/v<N> » (jeton §21.6) et
+      // « fonda-select-form/v<N> » (hash_formulaire §21.1), contrats et non chemins.
+      const sansDomaine = t.replace(/fonda-select(-form)?\/v\d+/g, '<domaine>');
+      for (const x of IDS_PROD) assert.equal(sansDomaine.includes(JSON.stringify(x).slice(1, -1)), false, `identifiant de production présent : ${x}`);
+      assert.equal(t.includes('A_RENSEIGNER_P4_'), false, 'valeur de remplacement de PRODUCTION présente');
+      const prod = JSON.parse(lireExport(k)); const ids = new Set(prod.nodes.flatMap((n) => [n.id, n.webhookId].filter(Boolean)));
+      for (const n of JSON.parse(t).nodes) for (const x of [n.id, n.webhookId].filter(Boolean)) assert.equal(ids.has(x), false, `${n.name} : id partagé avec la production`);
+    });
+    test(`${EXPORTS_RECETTE[k]} = ${EXPORTS[k]} aux identifiants d'instance près (même graphe, même code)`, () => {
+      const { wf, prod } = versProduction(k);
+      assert.deepEqual(wf, prod);
+    });
+  }
+  test('profil-recette.json : liste fermée de clés, préfixes « FONDA RECETTE » / « fonda-recette- », urlPage DÉRIVÉE', () => {
+    const c = B.configRecette();
+    assert.equal(c.urlPage, `${B.CONFIG.urlN8n}/webhook/${PROFIL_RECETTE.cheminPage}`);
+    for (const x of ['depot', 'urlN8n', 'dureeCleJours', 'maxPagesDrive']) assert.equal(c[x], B.CONFIG[x], `${x} partagé`);
+    assert.deepEqual(Object.keys(PROFIL_RECETTE).filter((x) => x !== 'profil').sort(), [...B.CLES_RECETTE].sort());
+  });
+  test('profil de recette refusé : clé manquante ou en trop, préfixe absent, identifiant de PRODUCTION réutilisé, credential mal formé', () => {
+    const avec = (modif) => { const p = copie(PROFIL_RECETTE); modif(p); return () => B.configRecette(p); };
+    assert.throws(avec((p) => { delete p.dossierDecisions; }), /liste fermée/);
+    assert.throws(avec((p) => { p.dossierBox = 'x'; }), /liste fermée/);
+    assert.throws(avec((p) => { p.profil = 'production'; }), /« recette »/);
+    assert.throws(avec((p) => { p.nomPage = 'FONDA - Page relecture test'; }), /FONDA RECETTE - /);
+    assert.throws(avec((p) => { p.cheminPage = 'fonda-select'; }), /fonda-recette-/);
+    assert.throws(avec((p) => { p.credentialGmail = { id: 'x', name: 'FONDA Gmail' }; }), /FONDA RECETTE/);
+    assert.throws(avec((p) => { p.credentialDrive = { id: 'x' }; }), /\{ id, name \}/);
+    assert.throws(avec((p) => { p.dossierCandidats = B.CONFIG.dossierCandidats; }), /identifiant de production/);
+    assert.throws(avec((p) => { p.dossierRelecture = B.CONFIG.dossierCandidats; }), /identifiant de production/);
+    assert.throws(avec((p) => { p.credentialDrive = { id: B.CONFIG.credentialDrive.id, name: 'FONDA RECETTE Drive' }; }), /identifiant de production/);
+    assert.throws(avec((p) => { p.tableRelecteurs = ' x'; }), /invalide/);
+  });
+  test('profil inconnu -> erreur, profil actif restauré même en cas d\'erreur', () => {
+    assert.throws(() => B.avecProfil('prod', () => 1), /profil inconnu/);
+    assert.throws(() => B.avecProfil('recette', () => { throw new Error('panne'); }), /panne/);
+    assert.ok(lireExport('page').equals(Buffer.from(`${JSON.stringify(B.construirePage(), null, 2)}\n`, 'utf8')));
   });
 });
 

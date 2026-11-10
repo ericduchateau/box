@@ -1,0 +1,21 @@
+{
+  "profil": "recette",
+  "nomEmettre": "FONDA RECETTE - Emettre relecture",
+  "nomCloturer": "FONDA RECETTE - Cloturer relecture",
+  "nomConfirmer": "FONDA RECETTE - Confirmer relecture",
+  "nomPage": "FONDA RECETTE - Page relecture",
+  "cheminEmettre": "fonda-recette-emettre",
+  "cheminCloturer": "fonda-recette-cloturer",
+  "cheminPage": "fonda-recette-select",
+  "cheminConfirmer": "fonda-recette-select-confirm",
+  "dossierCandidats": "A_RENSEIGNER_RECETTE_DOSSIER_LOTS",
+  "dossierRelecture": "A_RENSEIGNER_RECETTE_DOSSIER_RELECTURE",
+  "dossierDecisions": "A_RENSEIGNER_RECETTE_DOSSIER_DECISIONS",
+  "tableRelecteurs": "A_RENSEIGNER_RECETTE_ID_DATA_TABLE_RELECTEURS",
+  "urlMoteurs": "A_RENSEIGNER_RECETTE_URL_BASE_MOTEURS",
+  "credentialDrive": { "id": "A_RENSEIGNER_RECETTE_CREDENTIAL_DRIVE", "name": "FONDA RECETTE Drive" },
+  "credentialEmettre": { "id": "A_RENSEIGNER_RECETTE_CREDENTIAL_EMETTRE", "name": "FONDA RECETTE Emettre Token" },
+  "credentialCloturer": { "id": "A_RENSEIGNER_RECETTE_CREDENTIAL_CLOTURER", "name": "FONDA RECETTE Cloturer Token" },
+  "credentialApiN8n": { "id": "A_RENSEIGNER_RECETTE_CREDENTIAL_API_N8N", "name": "FONDA RECETTE API n8n (lecture Data Table)" },
+  "credentialGmail": { "id": "A_RENSEIGNER_RECETTE_CREDENTIAL_GMAIL", "name": "FONDA RECETTE Gmail relecture" }
+}
