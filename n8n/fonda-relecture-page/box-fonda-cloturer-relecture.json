@@ -83,11 +83,29 @@
             },
             {
               "name": "pageSize",
-              "value": "100"
+              "value": "1000"
             }
           ]
         },
         "options": {
+          "pagination": {
+            "pagination": {
+              "paginationMode": "updateAParameterInEachRequest",
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "qs",
+                    "name": "pageToken",
+                    "value": "={{ $response.body.nextPageToken }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.nextPageToken }}",
+              "limitPagesFetched": true,
+              "maxRequests": 50
+            }
+          },
           "timeout": 30000
         }
       }
@@ -102,7 +120,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "parameters": {
-        "jsCode": "// FONDA — recherche du candidat : exactement un fichier, recherche complète, avant lecture.\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('Verifier recherche candidat : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nconst liste = unItem(\"Chercher candidat\");\nif (!Array.isArray(liste.files) || liste.nextPageToken || liste.incompleteSearch) throw new Error('recherche du candidat inexploitable ou incomplète');\nif (liste.files.length !== 1 || typeof liste.files[0].id !== 'string') throw new Error(liste.files.length + ' fichier(s) pour du candidat : exactement un attendu');\nif (typeof liste.files[0].version !== 'string' || !/^[0-9]+$/.test(liste.files[0].version)) throw new Error('du candidat : version Drive illisible');\nreturn [{ json: { fichier_id: liste.files[0].id, version: liste.files[0].version } }];"
+        "jsCode": "// FONDA — recherche du candidat : exactement un fichier, recherche paginée complète, avant lecture.\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('Verifier recherche candidat : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nfunction agregerPages(nom) {\n  const pages = $(nom).all().map((i) => i.json);\n  if (!pages.length) throw new Error(nom + ' : aucune page');\n  const fichiers = []; let incompleteSearch = false;\n  for (const pg of pages) {\n    if (!pg || !Array.isArray(pg.files)) throw new Error(nom + ' : page de listing inexploitable');\n    if (pg.incompleteSearch === true) incompleteSearch = true;\n    fichiers.push(...pg.files);\n  }\n  const plafond = Boolean(pages[pages.length - 1].nextPageToken);\n  return { fichiers, incompleteSearch, plafond, complet: !incompleteSearch && !plafond };\n}\n\nconst liste = agregerPages(\"Chercher candidat\");\nif (!liste.complet) throw new Error('recherche du candidat incomplète (incompleteSearch ou plafond de pagination)');\nconst fichiers = liste.fichiers;\nif (fichiers.length !== 1 || typeof fichiers[0].id !== 'string') throw new Error(fichiers.length + ' fichier(s) pour du candidat : exactement un attendu');\nif (typeof fichiers[0].version !== 'string' || !/^[0-9]+$/.test(fichiers[0].version)) throw new Error('du candidat : version Drive illisible');\nreturn [{ json: { fichier_id: fichiers[0].id, version: fichiers[0].version } }];"
       }
     },
     {

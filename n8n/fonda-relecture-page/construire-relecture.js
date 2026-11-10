@@ -4,7 +4,10 @@
 //                                    émission initiale OU réémission (statut en_attente ET decisions/
 //                                    du lot PROUVÉ vide), §21.5 ;
 //   « FONDA - Cloturer relecture » : clôture technique (statut clos, PREMIER clos_le), sortie OBSERVÉE
-//                                    cloture-fonda/v1 consommée par rattachement-page.js (GELÉ, P1).
+//                                    cloture-fonda/v1 consommée par rattachement-page.js (GELÉ, P1) ;
+//   « FONDA - Page relecture » (P2) : GET du relecteur, aucune écriture, page carte par carte (§21.6) ;
+//   « FONDA - Confirmer relecture » (P2) : POST du relecteur, C1–C7, decisions/<set_id>-<nonce>.json,
+//                                    sortie OBSERVÉE confirmation-fonda/v1 (ROLES.confirmation, GELÉ).
 // Le CONSOMMATEUR est gelé : les noms de nœuds et la forme de sortie sont ceux que rattachement-page.js
 // exige (ROLES.cloture) ; ce constructeur s'y CONFORME, il ne redéfinit rien.
 //
@@ -17,7 +20,7 @@
 // (jetons, valeurs de credentials, clé HMAC) et les ADRESSES ne sont jamais dans le dépôt : credentials
 // n8n référencés par id, adresse lue à l'exécution dans une Data Table (clé = relecteur_attribue).
 //
-// Usage : node n8n/fonda-relecture-page/construire-relecture.js --emettre | --cloturer > export.json
+// Usage : node n8n/fonda-relecture-page/construire-relecture.js --emettre | --cloturer | --confirmer | --page > export.json
 
 'use strict';
 
@@ -27,6 +30,7 @@ const path = require('path');
 const C = require('../../fonda/engine/catalogue.js');
 const R = require('../../fonda/scripts/rattachement-page.js');
 const L = require('../../fonda/scripts/liaison-generation.js');
+const SC = require('../../fonda/scripts/signer-cloture.js');
 const { OUTILS } = require('../fonda-generation-ia/construire-workflow.js');
 
 const RACINE = path.join(__dirname, '..', '..');
@@ -36,8 +40,12 @@ const P4 = (nom) => `A_RENSEIGNER_P4_${nom}`;
 const CONFIG = Object.freeze({
   nomEmettre: 'FONDA - Emettre relecture',
   nomCloturer: 'FONDA - Cloturer relecture',
+  nomConfirmer: 'FONDA - Confirmer relecture',
+  nomPage: 'FONDA - Page relecture',
   cheminEmettre: P4('CHEMIN_EMETTRE'),
   cheminCloturer: P4('CHEMIN_CLOTURER'),
+  cheminPage: 'fonda-select', // §21.0 : GET public (lien du courriel), aucune écriture
+  cheminConfirmer: 'fonda-select-confirm', // §21.0 : POST public (relecteur), protégé par k + jeton, jamais une route BOX
   depot: 'ericduchateau/box',
   dossierCandidats: '1Ir-iJGZoSk5_FmJ9dnf_PM-NEBZWyn8d', // lot source immuable (génération, §20.4)
   dossierRelecture: P4('DOSSIER_RELECTURE'), // relecture/<set_id>.candidat.json (enveloppe mutable)
@@ -45,6 +53,7 @@ const CONFIG = Object.freeze({
   urlN8n: 'https://n8n.srv868991.hstgr.cloud',
   tableRelecteurs: P4('ID_DATA_TABLE_RELECTEURS'), // Data Table : relecteur_attribue -> adresse (jamais dans le dépôt)
   urlPage: P4('URL_PAGE_RELECTURE'), // …/webhook/<chemin> de « FONDA - Page relecture » (P2)
+  urlMoteurs: P4('URL_BASE_MOTEURS'), // base publique des fichiers moteur (URL EXACTE en CSP, SRI sha384 calculée à la construction)
   dureeCleJours: 14,
   maxPagesDrive: 50, // plafond de pagination : atteint = ERREUR d'exécution (jamais « complet ») ; pageSize est un MAXIMUM, Drive peut rendre moins
   // Credentials : RÉFÉRENCES (id, nom) seulement ; aucune valeur dans le dépôt.
@@ -238,13 +247,16 @@ const REGLAGES = { executionOrder: 'v1', saveDataSuccessExecution: 'all', saveDa
 // Recherche d'UN fichier par nom exact : vérifiée AVANT toute lecture de contenu (message explicite).
 // avecVersion : la version Drive est relevée ICI, AVANT la lecture du contenu (une écriture intercalée
 // ne peut que la faire paraître périmée : détection prudente).
+// Recherche PAGINÉE (P2 : une page vide portant un jeton est normale chez Drive) : toutes les pages suivies,
+// puis comptage inchangé (exactement un fichier).
 function codeVerifierRecherche(noeud, recherche, quoi, avecVersion = false) {
-  return [ENTETE(`recherche ${quoi} : exactement un fichier, recherche complète, avant lecture.`), UN_ITEM(noeud),
-    `const liste = unItem(${JSON.stringify(recherche)});
-if (!Array.isArray(liste.files) || liste.nextPageToken || liste.incompleteSearch) throw new Error('recherche ${quoi} inexploitable ou incomplète');
-if (liste.files.length !== 1 || typeof liste.files[0].id !== 'string') throw new Error(liste.files.length + ' fichier(s) pour ${quoi} : exactement un attendu');
-${avecVersion ? `if (typeof liste.files[0].version !== 'string' || !/^[0-9]+$/.test(liste.files[0].version)) throw new Error('${quoi} : version Drive illisible');
-return [{ json: { fichier_id: liste.files[0].id, version: liste.files[0].version } }];` : 'return [{ json: { fichier_id: liste.files[0].id } }];'}`].join('\n\n');
+  return [ENTETE(`recherche ${quoi} : exactement un fichier, recherche paginée complète, avant lecture.`), UN_ITEM(noeud), AGREGER,
+    `const liste = agregerPages(${JSON.stringify(recherche)});
+if (!liste.complet) throw new Error('recherche ${quoi} incomplète (incompleteSearch ou plafond de pagination)');
+const fichiers = liste.fichiers;
+if (fichiers.length !== 1 || typeof fichiers[0].id !== 'string') throw new Error(fichiers.length + ' fichier(s) pour ${quoi} : exactement un attendu');
+${avecVersion ? `if (typeof fichiers[0].version !== 'string' || !/^[0-9]+$/.test(fichiers[0].version)) throw new Error('${quoi} : version Drive illisible');
+return [{ json: { fichier_id: fichiers[0].id, version: fichiers[0].version } }];` : 'return [{ json: { fichier_id: fichiers[0].id } }];'}`].join('\n\n');
 }
 
 // ═══ CLÔTURER (sortie observée cloture-fonda/v1) ═══
@@ -324,7 +336,7 @@ function construireCloturer() {
     webhook(N.webhook, CONFIG.cheminCloturer, CONFIG.credentialCloturer, 'webhook-cloturer'),
     code(N.entree, codeEntreeCloture()),
     code(N.valider, codeValiderCloture()),
-    listing(N.chercher, `={{ "'${CONFIG.dossierRelecture}' in parents and trashed = false and name = '" + ${setIdExpr} + ".candidat.json'" }}`, 'nextPageToken,incompleteSearch,files(id,name,version)', false),
+    listing(N.chercher, `={{ "'${CONFIG.dossierRelecture}' in parents and trashed = false and name = '" + ${setIdExpr} + ".candidat.json'" }}`, 'nextPageToken,incompleteSearch,files(id,name,version)', true),
     code(N.verifierListe, codeVerifierRecherche(N.verifierListe, N.chercher, 'du candidat', true)),
     contenuDrive(N.lire, `$('${N.verifierListe}').first().json.fichier_id`),
     code(N.preparer, codePreparerCloture()),
@@ -390,8 +402,9 @@ const notions = (referentiel.notions || []).filter((n) => n && n.id === lot.noti
 if (notions.length !== 1 || typeof notions[0].relecteur !== 'string' || !notions[0].relecteur) throw new Error('notion du lot absente, ambiguë ou sans relecteur au référentiel archivé');
 const relecteur = notions[0].relecteur;
 // 6. Candidat existant (corbeille comprise) et decisions/ du lot : PROUVÉ vide, sinon refus (fail-closed).
-const ex = unItem(${JSON.stringify(NOEUDS_EMETTRE.existant)});
-if (!Array.isArray(ex.files) || ex.nextPageToken || ex.incompleteSearch) throw new Error('recherche du candidat existant inexploitable ou incomplète');
+const exPages = agregerPages(${JSON.stringify(NOEUDS_EMETTRE.existant)});
+if (!exPages.complet) throw new Error('recherche du candidat existant incomplète (incompleteSearch ou plafond de pagination)');
+const ex = { files: exPages.fichiers };
 if (ex.files.length > 1) throw new Error(ex.files.length + ' candidats existants : refus');
 if (ex.files.length === 1 && ex.files[0].trashed !== false) throw new Error('candidat existant à la corbeille : refus');
 const d = agregerPages(${JSON.stringify(NOEUDS_EMETTRE.decisions)});
@@ -529,11 +542,11 @@ function construireEmettre() {
     contents(N.referentiel, 'fonda/data/referentiel.json'),
     contents(N.moteurs, 'fonda/engine/moteurs.json'),
     contents(N.journal, 'fonda/data/set_ids-journal.json'),
-    listing(N.chercherLot, `={{ "'${CONFIG.dossierCandidats}' in parents and trashed = false and name = '" + ${setIdExpr} + ".lot.json'" }}`, CHAMPS_LISTE, false),
+    listing(N.chercherLot, `={{ "'${CONFIG.dossierCandidats}' in parents and trashed = false and name = '" + ${setIdExpr} + ".lot.json'" }}`, CHAMPS_LISTE, true),
     code(N.verifierLot, codeVerifierRecherche(N.verifierLot, N.chercherLot, 'du lot source')),
     contenuDrive(N.lireLot, `$('${N.verifierLot}').first().json.fichier_id`),
     // Corbeille COMPRISE : un candidat à la corbeille bloque (refus), jamais ignoré.
-    listing(N.existant, `={{ "'${CONFIG.dossierRelecture}' in parents and name = '" + ${setIdExpr} + ".candidat.json'" }}`, 'nextPageToken,incompleteSearch,files(id,name,trashed,version)', false),
+    listing(N.existant, `={{ "'${CONFIG.dossierRelecture}' in parents and name = '" + ${setIdExpr} + ".candidat.json'" }}`, 'nextPageToken,incompleteSearch,files(id,name,trashed,version)', true),
     listing(N.decisions, qDecisions(setIdExpr), CHAMPS_LISTE, true),
     code(N.analyser, codeAnalyserEmission()),
     siBooleen(N.siReemission, 'reemission', 'si-reemission'),
@@ -578,9 +591,636 @@ function construireEmettre() {
   return { name: CONFIG.nomEmettre, nodes: noeuds, connections, settings: REGLAGES };
 }
 
-module.exports = { CONFIG, MODULES, NOEUDS_CLOTURER, NOEUDS_EMETTRE, construireCloturer, construireEmettre };
+// ═══ COMMUN PAGE / CONFIRMER (P2) : jeton (§21.6) et hash_formulaire (§21.1) ═══
+// SOURCE UNIQUE, embarquée telle quelle dans les nœuds Code de la Page ET de Confirmer (avec OUTILS :
+// octetsUtf8, sha256Hex), et chargée par le harnais (chargerCommun) pour les vecteurs.
+// « Octets canoniques » d'un TABLEAU à schéma FIXE : chaque élément est VALIDÉ (type, entier sûr, paires de
+// choix), puis sérialisé par JSON.stringify (aucun objet : aucun ordre de clés en jeu ; chaînes sans
+// normalisation, comme canonique.js §1), UTF-8. hash_formulaire = AUDIT RAPPROCHÉ, NON SIGNÉ : dans la décision
+// decision-fonda/v1, couvert par decision_sha256 (R1) AVANT la signature, absent de l'instantané v1 signé ;
+// calculé ici, vérifié par le harnais seul, sans re-dérivation aval — README « Où vit chaque garantie ».
+const COMMUN_PAGE = `function tableauCanonique(schema, valeurs) {
+  if (!Array.isArray(valeurs) || valeurs.length !== schema.length) throw new Error('tableau canonique : longueur ≠ schéma');
+  const conforme = (s, v) => (s === 'chaine' ? typeof v === 'string'
+    : s === 'entier' ? Number.isSafeInteger(v) && v >= 0
+      : s === 'choix' ? Array.isArray(v) && v.every((p) => Array.isArray(p) && p.length === 2 && typeof p[0] === 'string' && p[0] !== '' && (p[1] === 'garder' || p[1] === 'ecarter'))
+        : false);
+  for (let i = 0; i < schema.length; i += 1) if (!conforme(schema[i], valeurs[i])) throw new Error('tableau canonique : élément ' + i + ' ≠ ' + schema[i]);
+  return octetsUtf8(JSON.stringify(valeurs.map((v, i) => (schema[i] === 'choix' ? v.map((p) => [p[0], p[1]]) : v))));
+}
+const SCHEMA_JETON = ['chaine', 'chaine', 'entier', 'chaine', 'chaine', 'chaine', 'chaine', 'chaine', 'chaine'];
+const SCHEMA_FORMULAIRE = ['chaine', 'chaine', 'entier', 'chaine', 'chaine', 'chaine', 'chaine', 'chaine', 'chaine', 'choix'];
+function hexVersOctets(h) {
+  const o = [];
+  for (let i = 0; i < h.length; i += 2) o.push(parseInt(h.slice(i, i + 2), 16));
+  return o;
+}
+// HMAC-SHA256 (RFC 2104), JavaScript pur (aucun module crypto dans un nœud Code n8n).
+function hmacSha256Hex(cle, message) {
+  let k = cle.length > 64 ? hexVersOctets(sha256Hex(cle)) : cle.slice();
+  while (k.length < 64) k.push(0);
+  const interne = sha256Hex(k.map((x) => x ^ 0x36).concat(message));
+  return sha256Hex(k.map((x) => x ^ 0x5c).concat(hexVersOctets(interne)));
+}
+// Jeton §21.6 : HMAC-SHA256(secret, canonique(["fonda-select/v7", set_id, generation_cle, cle_sha256,
+// empreinte_affichee, moteur.version, moteur.sha256, expire_page, nonce])). Secret : variable d'environnement
+// de l'instance (jamais dans l'export) ; absent ou court -> ERREUR (configuration), jamais un jeton faible.
+function jetonPage(secret, j) {
+  if (typeof secret !== 'string' || secret.length < 32) throw new Error('secret HMAC de la page absent ou trop court (configuration de l\\'instance)');
+  return hmacSha256Hex(octetsUtf8(secret), tableauCanonique(SCHEMA_JETON, ['fonda-select/v7', j.set_id, j.generation_cle, j.cle_sha256, j.empreinte, j.moteur_version, j.moteur_sha256, j.expire_page, j.nonce]));
+}
+// hash_formulaire §21.1 : choix = [[item_id, "garder"|"ecarter"], …] dans l'ORDRE DU CANDIDAT ([] pour « tout
+// rejeter ») ; k et jeton EXCLUS (secrets).
+function hashFormulaire(f) {
+  return 'sha256:' + sha256Hex(tableauCanonique(SCHEMA_FORMULAIRE, ['fonda-select-form/v1', f.lot, f.generation, f.empreinte, f.moteur_version, f.moteur_sha256, f.expire_page, f.nonce, f.action, f.choix]));
+}
+function egalConstant(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  let x = 0;
+  for (let i = 0; i < a.length; i += 1) x |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return x === 0;
+}`;
+// Chargement pour le harnais : MÊME texte que les nœuds, évalué avec OUTILS dans un contexte nu.
+function chargerCommun() {
+  // eslint-disable-next-line global-require
+  return require('vm').runInNewContext(`${OUTILS}\n${COMMUN_PAGE}\n({ tableauCanonique, hmacSha256Hex, jetonPage, hashFormulaire, egalConstant, octetsUtf8, sha256Hex })`, {});
+}
+const CODES_HTTP = Object.freeze({ decision: 200, conflit: 409, C1: 400, C2: 403, C3: 410, C4: 410, C5: 400, C5bis: 410 });
+const CHAMPS_FORMULAIRE = Object.freeze(['lot', 'k', 'generation', 'empreinte', 'moteur_version', 'moteur_sha256', 'expire_page', 'nonce', 'jeton', 'action']);
+const TAILLE_MAX_POST = 65536;
 
+// ═══ CONFIRMER (sortie observée confirmation-fonda/v1, consommateur gelé ROLES.confirmation) ═══
+// Déclenché par le RELECTEUR (non fiable, hors verrou P5) : tout ce qu'il provoque seul est fermé par le
+// pilier 1 (signataire). C1 (syntaxe, avant Drive) -> C2 (jeton sur les valeurs POSTÉES : authenticité) ->
+// C3 (candidat COURANT : statut, clé, génération, expirations, moteur : fraîcheur, 410) -> C4 (empreinte
+// affichée = actuelle) -> C5 (sélection) -> C6 (même nom : cœur identique -> « existante » relue ; cœur
+// différent -> « conflit », 409 ; sinon) C5bis (candidat RELU juste avant l'écriture) -> écriture -> réponse.
+// PRINCIPE (arbitrage P2) : le statut d'une exécution OBSERVÉE porte l'intégrité (E4 abandonne tout non-success) ;
+// elle ne contient donc QUE le travail essentiel déterministe, AUCUN effet de bord au mieux (notification, journal
+// externe) qui pourrait échouer ou dépasser le délai et empoisonner son statut. Le courriel C7 n'est PAS ici :
+// notification par le CLI de clôture ou par un workflow séparé non observé (à définir, P5).
+// Tout REJET est une exécution « success » (sortie rejet, rien écrit) ; une panne (Drive, configuration)
+// est une ERREUR d'exécution (E4 : abandon au signataire si le lot est lisible) — jamais « réussi ».
+const NOEUDS_CONFIRMER = Object.freeze({
+  webhook: 'Webhook confirmation',
+  entree: R.ROLES.confirmation.entree, // FONDA Entree confirmation
+  formulaire: 'Verifier formulaire',
+  siFormulaire: 'Formulaire valide ?',
+  chercher: 'Chercher candidat',
+  verifierListe: 'Verifier recherche candidat',
+  siCandidat: 'Candidat trouve ?',
+  lire: 'Lire candidat',
+  controler: 'Controler candidat',
+  siDecision: 'Decision construite ?',
+  chercherDecision: 'Chercher decision',
+  analyserDecision: 'Analyser decision existante',
+  siExistante: 'Decision existante ?',
+  lireDecision: 'Lire decision existante',
+  comparer: 'Comparer decision',
+  relire: 'Relire candidat',
+  verifierRelecture: 'Verifier relecture candidat',
+  siRelecture: 'Relecture conforme ?',
+  ecrire: R.ROLES.confirmation.ecriture, // FONDA Ecrire decision
+  verifierEcriture: 'Verifier ecriture decision',
+  sortie: R.ROLES.confirmation.sortie, // FONDA Sortie confirmation
+  reponse: 'Preparer reponse',
+  repondre: 'Repondre confirmation',
+});
+const DEJA_REJET = `const rejet = (motif, apresC2) => [{ json: { poursuivre: false, resultat: { type: 'rejet', motif, set_id: apresC2 ? f.lot : null, nonce: apresC2 ? f.nonce : null } } }];`;
+
+function codeEntreeConfirmation() {
+  // Ne fait que COPIER les champs nommés (chaîne ≤ 128, sinon null) : ne lève JAMAIS (§21.1). Jamais k, jeton ni choix.
+  return [
+    ENTETE('entrée de confirmation : { lot, nonce } copiés tels quels (chaîne ≤ 128, sinon null), sans validation.'),
+    `const items = $input.all();
+const corps = items.length === 1 && items[0] && items[0].json ? items[0].json.body : undefined;
+const champ = (n) => { const v = corps && typeof corps === 'object' && !Array.isArray(corps) ? corps[n] : undefined; return typeof v === 'string' && v.length <= 128 ? v : null; };
+return [{ json: { lot: champ('lot'), nonce: champ('nonce') } }];`,
+  ].join('\n\n');
+}
+function codeVerifierFormulaire() {
+  return [ENTETE('C1 (syntaxe, avant Drive : taille, champs EXACTS, doublons) puis C2 (jeton HMAC recalculé sur les valeurs POSTÉES).'),
+    UN_ITEM(NOEUDS_CONFIRMER.formulaire), SET_ID, DATE_ISO, OUTILS, COMMUN_PAGE,
+    `const CHAMPS = ${JSON.stringify(CHAMPS_FORMULAIRE)};
+const w = unItem(${JSON.stringify(NOEUDS_CONFIRMER.webhook)});
+const b = w.body; const h = w.headers && typeof w.headers === 'object' ? w.headers : {};
+const f = { lot: null, nonce: null };
+${DEJA_REJET}
+const a = (o, c) => Object.prototype.hasOwnProperty.call(o, c);
+// C1 — taille : octets annoncés (content-length) ET somme des champs reçus, chacun ≤ ${TAILLE_MAX_POST}.
+// Encodage IMPOSÉ : formulaire URL-encodé (seul encodage où un doublon reste visible) ; tout autre -> C1.
+if (typeof h['content-type'] !== 'string' || !/^application\\/x-www-form-urlencoded\\s*(;|$)/i.test(h['content-type'])) return rejet('C1', false);
+const lg = h['content-length'];
+if (typeof lg !== 'string' || !/^[0-9]{1,7}$/.test(lg) || Number(lg) > ${TAILLE_MAX_POST}) return rejet('C1', false);
+if (!b || typeof b !== 'object' || Array.isArray(b)) return rejet('C1', false);
+const cles = Object.keys(b);
+// Doublon (même champ deux fois) : n8n le livre en TABLEAU -> non-chaîne -> refus.
+if (!cles.every((c) => typeof b[c] === 'string')) return rejet('C1', false);
+if (cles.reduce((t, c) => t + c.length + b[c].length, 0) > ${TAILLE_MAX_POST}) return rejet('C1', false);
+if (!CHAMPS.every((c) => a(b, c))) return rejet('C1', false);
+const autres = cles.filter((c) => !CHAMPS.includes(c));
+let choix;
+if (b.action === 'accepter') {
+  if (!autres.length || !autres.every((c) => /^choix_it[0-9]{2}$/.test(c) && (b[c] === 'garder' || b[c] === 'ecarter'))) return rejet('C1', false);
+  choix = autres.map((c) => [c.slice(6), b[c]]);
+} else if (b.action === 'rejeter') {
+  if (autres.length !== 1 || autres[0] !== 'confirmer_rejet' || b.confirmer_rejet !== 'oui') return rejet('C1', false);
+  choix = [];
+} else return rejet('C1', false);
+if (!SET_ID_PATTERN.test(b.lot) || !/^[0-9a-f]{64}$/.test(b.k) || !/^[1-9][0-9]{0,14}$/.test(b.generation) || !/^sha256:[0-9a-f]{64}$/.test(b.empreinte)
+  || !/^[A-Za-z0-9._-]{1,64}$/.test(b.moteur_version) || !/^[0-9a-f]{64}$/.test(b.moteur_sha256) || !dateIso(b.expire_page)
+  || !/^[0-9a-f]{32}$/.test(b.nonce) || !/^[0-9a-f]{64}$/.test(b.jeton)) return rejet('C1', false);
+// C2 — authenticité du formulaire : jeton recalculé sur les valeurs POSTÉES (cle_sha256 = SHA-256 de k reçue).
+// La FRAÎCHEUR (clé révoquée, génération, expiration) est C3, contre le candidat COURANT (§21.10).
+const cleSha = sha256Hex(octetsUtf8(b.k));
+const generation = Number(b.generation);
+const attendu = jetonPage($env.FONDA_PAGE_HMAC, { set_id: b.lot, generation_cle: generation, cle_sha256: cleSha, empreinte: b.empreinte,
+  moteur_version: b.moteur_version, moteur_sha256: b.moteur_sha256, expire_page: b.expire_page, nonce: b.nonce });
+if (!egalConstant(attendu, b.jeton)) return rejet('C2', false);
+return [{ json: { poursuivre: true, resultat: null, lot: b.lot, nonce: b.nonce, generation, empreinte: b.empreinte, moteur_version: b.moteur_version,
+  moteur_sha256: b.moteur_sha256, expire_page: b.expire_page, action: b.action, choix, cle_sha256: cleSha } }];`].join('\n\n');
+}
+function codeVerifierRechercheConfirmation() {
+  return [ENTETE('candidat : recherche PAGINÉE et COMPLÈTE exigée (sinon erreur) ; 0 ou plusieurs fichiers -> rejet C3 (410).'),
+    UN_ITEM(NOEUDS_CONFIRMER.verifierListe), AGREGER,
+    `const f = unItem(${JSON.stringify(NOEUDS_CONFIRMER.formulaire)});
+${DEJA_REJET}
+const liste = agregerPages(${JSON.stringify(NOEUDS_CONFIRMER.chercher)});
+if (!liste.complet) throw new Error('recherche du candidat incomplète (incompleteSearch ou plafond de pagination)');
+if (liste.fichiers.length !== 1 || typeof liste.fichiers[0].id !== 'string') return rejet('C3', true);
+return [{ json: { poursuivre: true, resultat: null, fichier_id: liste.fichiers[0].id } }];`].join('\n\n');
+}
+// Contrôles de FRAÎCHEUR d'un candidat lu (C3 au premier passage, C5bis à la relecture) : MÊME texte.
+const CANDIDAT_COURANT = `function candidatCourant(c, f, maintenant) {
+  if (!c || typeof c !== 'object' || c.schema !== 'candidat-fonda/v1' || !c.lot || typeof c.lot !== 'object' || c.lot.set_id !== f.lot || !c.relecture || typeof c.relecture !== 'object') return false;
+  const r = c.relecture;
+  if (r.statut !== 'en_attente' || r.clos_le !== null) return false; // clos (clôture technique) ou abandonné : clé révoquée
+  if (r.cle_sha256 !== f.cle_sha256 || r.generation_cle !== f.generation) return false; // clé ou génération ≠ courante
+  if (!dateIso(r.expire_le) || !(maintenant < Date.parse(r.expire_le)) || !(maintenant < Date.parse(f.expire_page)) || Date.parse(f.expire_page) > Date.parse(r.expire_le)) return false;
+  return Boolean(r.moteur) && r.moteur.version === f.moteur_version && r.moteur.sha256 === f.moteur_sha256;
+}`;
+function codeControlerCandidat() {
+  return [ENTETE('C3 (candidat courant), C4 (empreinte affichée = actuelle), C5 (sélection) ; décision decision-fonda/v1 construite (ordre du candidat).'),
+    UN_ITEM(NOEUDS_CONFIRMER.controler), DATE_ISO, OUTILS, COMMUN_PAGE, CANDIDAT_COURANT, REQUIS, blocModule('catalogue'), blocModule('canonique'),
+    blocFonction('fonda/scripts/liaison-generation.js', 'projectionComplete', L.projectionComplete),
+    blocFonction('fonda/scripts/signer-cloture.js', 'lotPublie', SC.lotPublie),
+    `const { validerLot, calculerEmpreinte } = M_catalogue.exports;
+const Canonique = M_canonique.exports;
+const CONFIG = ${JSON.stringify({ dossierDecisions: CONFIG.dossierDecisions })};
+const empreinteComplete = (x) => 'sha256:' + sha256Hex(Canonique.octetsContrat('lot-complet-fonda/v1', projectionComplete(x)));
+const sha = (t) => sha256Hex(octetsUtf8(t));
+const f = unItem(${JSON.stringify(NOEUDS_CONFIRMER.formulaire)});
+const fichier = unItem(${JSON.stringify(NOEUDS_CONFIRMER.verifierListe)});
+const c = unItem(${JSON.stringify(NOEUDS_CONFIRMER.lire)});
+${DEJA_REJET}
+// C3 — fraîcheur contre le candidat COURANT, lot conforme.
+if (!candidatCourant(c, f, Date.now()) || !validerLot(c.lot).valide) return rejet('C3', true);
+// C4 — empreinte pédagogique actuelle = affichée.
+const empreinte = await calculerEmpreinte(c.lot, sha);
+if (empreinte !== f.empreinte) return rejet('C4', true);
+// C5 — un choix par carte, exactement (accepter, au moins une carte gardée) ; « tout rejeter » : toutes écartées.
+const ids = c.lot.cartes.map((x) => x.item_id);
+let choix;
+if (f.action === 'accepter') {
+  const postes = f.choix.map((p) => p[0]);
+  if (postes.length !== ids.length || new Set(postes).size !== postes.length || !ids.every((id) => postes.includes(id))) return rejet('C5', true);
+  choix = ids.map((id) => [id, f.choix.find((p) => p[0] === id)[1]]);
+  if (!choix.some((p) => p[1] === 'garder')) return rejet('C5', true);
+} else choix = ids.map((id) => [id, 'ecarter']);
+const selection = choix.filter((p) => p[1] === 'garder').map((p) => p[0]);
+const ecartees = choix.filter((p) => p[1] === 'ecarter').map((p) => p[0]);
+const rel = c.relecture;
+// §21.1 : empreinte_publiee = lot FILTRÉ (accepter) ; = lot SOURCE (« tout rejeter »).
+const coeur = { action: f.action, selection, ecartees, empreinte_relue: empreinte,
+  empreinte_publiee: f.action === 'accepter' ? await calculerEmpreinte(lotPublie(c.lot, { selection }), sha) : empreinte,
+  moteur: { version: rel.moteur.version, sha256: rel.moteur.sha256 } };
+const hash = hashFormulaire({ lot: f.lot, generation: f.generation, empreinte: f.empreinte, moteur_version: f.moteur_version, moteur_sha256: f.moteur_sha256,
+  expire_page: f.expire_page, nonce: f.nonce, action: f.action, choix: f.action === 'accepter' ? choix : [] }); // §21.1 : [] pour « tout rejeter »
+const decision = { schema: 'decision-fonda/v1', set_id: f.lot, generation: rel.generation_cle, nonce: f.nonce, recu_le: new Date().toISOString(), coeur,
+  lot_relu: { set_id: f.lot, empreinte_complete: empreinteComplete(c.lot), cartes: choix.map((p) => ({ item_id: p[0], choix: p[1] })) }, hash_formulaire: hash };
+const decisionSha = 'sha256:' + sha256Hex(Canonique.octetsContrat('decision-fonda/v1', decision));
+const contenu = JSON.stringify(decision, null, 2) + '\\n';
+const nom = f.lot + '-' + f.nonce + '.json';
+const metadonnees = { name: nom, parents: [CONFIG.dossierDecisions], mimeType: 'application/json', properties: { fonda_set_id: f.lot, fonda_nonce: f.nonce } };
+const frontiere = 'fonda-' + sha256Hex(octetsUtf8(contenu)).slice(0, 32);
+const corps = '--' + frontiere + '\\r\\nContent-Type: application/json; charset=UTF-8\\r\\n\\r\\n' + JSON.stringify(metadonnees)
+  + '\\r\\n--' + frontiere + '\\r\\nContent-Type: application/json; charset=UTF-8\\r\\n\\r\\n' + contenu + '\\r\\n--' + frontiere + '--\\r\\n';
+return [{ json: { poursuivre: true, resultat: null, candidat_fichier_id: fichier.fichier_id, generation: rel.generation_cle, decision, decision_sha256: decisionSha,
+  depot: { nom, frontiere, corps } } }];`].join('\n\n');
+}
+function codeAnalyserDecision() {
+  return [ENTETE('C6 : fichiers de MÊME NOM dans decisions/ (corbeille comprise), recherche PAGINÉE complète ; 0 -> écrire, 1 -> relire, plusieurs -> erreur.'),
+    UN_ITEM(NOEUDS_CONFIRMER.analyserDecision), AGREGER,
+    `const liste = agregerPages(${JSON.stringify(NOEUDS_CONFIRMER.chercherDecision)});
+if (!liste.complet) throw new Error('decisions/ : recherche du nom incomplète (incompleteSearch ou plafond) : absence non prouvée');
+if (liste.fichiers.length > 1) throw new Error(liste.fichiers.length + ' décisions de même nom : état anormal');
+const existante = liste.fichiers.length === 1;
+if (existante && typeof liste.fichiers[0].id !== 'string') throw new Error('decisions/ : identifiant illisible');
+return [{ json: { existante, fichier_id: existante ? liste.fichiers[0].id : null } }];`].join('\n\n');
+}
+function codeComparerDecision() {
+  return [ENTETE('C6 : même nom ; même lot, nonce, génération et CŒUR (octets canoniques) -> « existante » (décision RELUE, jamais reconstruite) ; sinon « conflit ».'),
+    UN_ITEM(NOEUDS_CONFIRMER.comparer), OUTILS, REQUIS, blocModule('canonique'),
+    `const Canonique = M_canonique.exports;
+const p = unItem(${JSON.stringify(NOEUDS_CONFIRMER.controler)});
+const a = unItem(${JSON.stringify(NOEUDS_CONFIRMER.analyserDecision)});
+const ex = unItem(${JSON.stringify(NOEUDS_CONFIRMER.lireDecision)});
+const memesOctets = (x, y) => x.length === y.length && x.every((o, i) => o === y[i]);
+let shaExistante = null; let identique = false;
+try {
+  shaExistante = 'sha256:' + sha256Hex(Canonique.octetsContrat('decision-fonda/v1', ex));
+  identique = ex.set_id === p.decision.set_id && ex.nonce === p.decision.nonce && ex.generation === p.decision.generation
+    && memesOctets(Canonique.octetsContrat('coeur-decision-fonda/v1', ex.coeur), Canonique.octetsContrat('coeur-decision-fonda/v1', p.decision.coeur));
+} catch (e) { identique = false; } // fichier existant non conforme : jamais « même résultat »
+const base = { set_id: p.decision.set_id, nonce: p.decision.nonce, generation: p.generation, decision_fichier_id: a.fichier_id };
+return [{ json: { resultat: identique ? { type: 'decision', ...base, decision_sha256: shaExistante, ecriture: 'existante' } : { type: 'conflit', ...base, decision_sha256: p.decision_sha256 } } }];`].join('\n\n');
+}
+function codeVerifierRelecture() {
+  return [ENTETE('C5bis : candidat RELU juste avant l\'écriture, toujours courant (même clé, génération, en_attente, non expiré) ; sinon rejet, rien écrit.'),
+    UN_ITEM(NOEUDS_CONFIRMER.verifierRelecture), DATE_ISO, CANDIDAT_COURANT,
+    `const f = unItem(${JSON.stringify(NOEUDS_CONFIRMER.formulaire)});
+${DEJA_REJET}
+if (!candidatCourant(unItem(${JSON.stringify(NOEUDS_CONFIRMER.relire)}), f, Date.now())) return rejet('C5bis', true);
+return [{ json: { poursuivre: true, resultat: null } }];`].join('\n\n');
+}
+function codeVerifierEcritureDecision() {
+  return [ENTETE('écriture constatée : identifiant, nom, dossier et propriétés attendus ; decision_sha256 = décision ÉCRITE.'),
+    UN_ITEM(NOEUDS_CONFIRMER.verifierEcriture),
+    `const CONFIG = ${JSON.stringify({ dossierDecisions: CONFIG.dossierDecisions })};
+const p = unItem(${JSON.stringify(NOEUDS_CONFIRMER.controler)});
+const r = unItem(${JSON.stringify(NOEUDS_CONFIRMER.ecrire)});
+const d = p.decision;
+if (!r || typeof r.id !== 'string' || !r.id || r.name !== p.depot.nom || !Array.isArray(r.parents) || r.parents.length !== 1 || r.parents[0] !== CONFIG.dossierDecisions
+  || !r.properties || r.properties.fonda_set_id !== d.set_id || r.properties.fonda_nonce !== d.nonce) throw new Error('décision non écrite ou écrite ailleurs');
+return [{ json: { resultat: { type: 'decision', set_id: d.set_id, nonce: d.nonce, generation: p.generation, decision_fichier_id: r.id, decision_sha256: p.decision_sha256, ecriture: 'creee' } } }];`].join('\n\n');
+}
+function codeSortieConfirmation() {
+  return [ENTETE('sortie OBSERVÉE confirmation-fonda/v1 (forme exacte du consommateur gelé, §21.1) ; jamais k, jeton ni choix.'),
+    UN_ITEM(NOEUDS_CONFIRMER.sortie),
+    `const MOTIFS = ['C1', 'C2', 'C3', 'C4', 'C5', 'C5bis'];
+const e = unItem(${JSON.stringify(NOEUDS_CONFIRMER.entree)});
+const x = unItem(null).resultat;
+if (!x || typeof x !== 'object') throw new Error('résultat de confirmation absent');
+const s = { schema: 'confirmation-fonda/v1', type: x.type, set_id: null, nonce: null, generation: null, decision_fichier_id: null, decision_sha256: null, ecriture: null, motif: null };
+if (x.type === 'rejet') {
+  if (!MOTIFS.includes(x.motif)) throw new Error('motif de rejet inconnu');
+  if (x.set_id !== null || x.nonce !== null) {
+    if (x.set_id !== e.lot || x.nonce !== e.nonce) throw new Error('rejet : lot ou nonce ≠ entrée');
+    s.set_id = x.set_id; s.nonce = x.nonce;
+  }
+  s.motif = x.motif;
+} else if (x.type === 'decision' || x.type === 'conflit') {
+  if (x.set_id !== e.lot || x.nonce !== e.nonce || !Number.isSafeInteger(x.generation) || x.generation < 1 || typeof x.decision_fichier_id !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(x.decision_sha256)) throw new Error('sortie ' + x.type + ' incohérente');
+  Object.assign(s, { set_id: x.set_id, nonce: x.nonce, generation: x.generation, decision_fichier_id: x.decision_fichier_id, decision_sha256: x.decision_sha256 });
+  if (x.type === 'decision') {
+    if (x.ecriture !== 'creee' && x.ecriture !== 'existante') throw new Error('écriture inconnue');
+    s.ecriture = x.ecriture;
+  }
+} else throw new Error('type de confirmation inconnu');
+return [{ json: s }];`].join('\n\n');
+}
+function codePreparerReponse() {
+  return [ENTETE('réponse HTTP au relecteur : code (§21.1 : 200, 409, 400/403/410) et page sans donnée du lot.'),
+    UN_ITEM(NOEUDS_CONFIRMER.reponse),
+    `const CODES = ${JSON.stringify(CODES_HTTP)};
+const s = unItem(${JSON.stringify(NOEUDS_CONFIRMER.sortie)});
+const code = s.type === 'rejet' ? CODES[s.motif] : CODES[s.type];
+const messages = {
+  decision: 'Votre relecture est enregistrée. Merci ! Vous pouvez fermer cette page.',
+  conflit: 'Une autre réponse a déjà été enregistrée pour ce formulaire : rien n\\'a été modifié. Prévenez Éric Duchateau.',
+  C1: 'Formulaire incomplet ou mal formé : rien n\\'a été enregistré. Rouvrez le lien reçu par courriel.',
+  C2: 'Formulaire non reconnu : rien n\\'a été enregistré. Rouvrez le lien reçu par courriel.',
+  C3: 'Ce lien n\\'est plus valable (relecture close, lien remplacé ou expiré) : rien n\\'a été enregistré.',
+  C4: 'Le lot a changé depuis l\\'affichage : rien n\\'a été enregistré. Rouvrez le lien reçu par courriel.',
+  C5: 'Chaque carte doit avoir un choix (ou utilisez « Tout rejeter ») : rien n\\'a été enregistré.',
+  C5bis: 'Ce lien vient d\\'être remplacé ou clos : rien n\\'a été enregistré.',
+};
+const texte = messages[s.type === 'rejet' ? s.motif : s.type];
+const html = '<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
+  + '<meta http-equiv="Content-Security-Policy" content="default-src \\'none\\'; style-src \\'unsafe-inline\\'; base-uri \\'none\\'; form-action \\'none\\'">'
+  + '<title>Relecture FONDA</title></head><body style="font-family:system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem"><p>' + texte + '</p></body></html>';
+return [{ json: { code, html } }];`].join('\n\n');
+}
+function construireConfirmer() {
+  const N = NOEUDS_CONFIRMER;
+  const lotExpr = `$('${N.formulaire}').first().json.lot`;
+  const nonceExpr = `$('${N.formulaire}').first().json.nonce`;
+  const noeuds = [
+    { name: N.webhook, type: 'n8n-nodes-base.webhook', typeVersion: 2, webhookId: uuid('webhook-confirmer'),
+      parameters: { httpMethod: 'POST', path: CONFIG.cheminConfirmer, responseMode: 'responseNode', options: {} } },
+    code(N.entree, codeEntreeConfirmation()),
+    code(N.formulaire, codeVerifierFormulaire()),
+    siBooleen(N.siFormulaire, 'poursuivre', 'si-formulaire'),
+    listing(N.chercher, `={{ "'${CONFIG.dossierRelecture}' in parents and trashed = false and name = '" + ${lotExpr} + ".candidat.json'" }}`, CHAMPS_LISTE, true),
+    code(N.verifierListe, codeVerifierRechercheConfirmation()),
+    siBooleen(N.siCandidat, 'poursuivre', 'si-candidat'),
+    contenuDrive(N.lire, `$('${N.verifierListe}').first().json.fichier_id`),
+    code(N.controler, codeControlerCandidat()),
+    siBooleen(N.siDecision, 'poursuivre', 'si-decision'),
+    // Corbeille COMPRISE : un fichier de même nom à la corbeille existe toujours (C6).
+    listing(N.chercherDecision, `={{ "'${CONFIG.dossierDecisions}' in parents and name = '" + ${lotExpr} + "-" + ${nonceExpr} + ".json'" }}`, CHAMPS_LISTE, true),
+    code(N.analyserDecision, codeAnalyserDecision()),
+    siBooleen(N.siExistante, 'existante', 'si-existante'),
+    contenuDrive(N.lireDecision, `$('${N.analyserDecision}').first().json.fichier_id`),
+    code(N.comparer, codeComparerDecision()),
+    contenuDrive(N.relire, `$('${N.verifierListe}').first().json.fichier_id`),
+    code(N.verifierRelecture, codeVerifierRelecture()),
+    siBooleen(N.siRelecture, 'poursuivre', 'si-relecture'),
+    drive(N.ecrire, {
+      method: 'POST', url: 'https://www.googleapis.com/upload/drive/v3/files',
+      sendQuery: true, queryParameters: { parameters: [{ name: 'uploadType', value: 'multipart' }, { name: 'fields', value: 'id,name,parents,properties' }] },
+      sendBody: true, contentType: 'raw', rawContentType: `={{ 'multipart/related; boundary=' + $('${N.controler}').first().json.depot.frontiere }}`, body: `={{ $('${N.controler}').first().json.depot.corps }}`,
+      options: { timeout: 60000 },
+    }),
+    code(N.verifierEcriture, codeVerifierEcritureDecision()),
+    code(N.sortie, codeSortieConfirmation()),
+    code(N.reponse, codePreparerReponse()),
+    { name: N.repondre, type: 'n8n-nodes-base.respondToWebhook', typeVersion: 1.1,
+      parameters: { respondWith: 'text', responseBody: '={{ $json.html }}', options: { responseCode: '={{ $json.code }}',
+        responseHeaders: { entries: [{ name: 'Content-Type', value: 'text/html; charset=utf-8' }, { name: 'Cache-Control', value: 'no-store' }, { name: 'Referrer-Policy', value: 'no-referrer' }] } } } },
+  ].map(positionner('confirmer'));
+  const connections = lineaire([N.webhook, N.entree, N.formulaire, N.siFormulaire]);
+  connections[N.siFormulaire] = { main: [lien(N.chercher), lien(N.sortie)] };
+  Object.assign(connections, lineaire([N.chercher, N.verifierListe, N.siCandidat]));
+  connections[N.siCandidat] = { main: [lien(N.lire), lien(N.sortie)] };
+  Object.assign(connections, lineaire([N.lire, N.controler, N.siDecision]));
+  connections[N.siDecision] = { main: [lien(N.chercherDecision), lien(N.sortie)] };
+  Object.assign(connections, lineaire([N.chercherDecision, N.analyserDecision, N.siExistante]));
+  connections[N.siExistante] = { main: [lien(N.lireDecision), lien(N.relire)] };
+  Object.assign(connections, lineaire([N.lireDecision, N.comparer, N.sortie]), lineaire([N.relire, N.verifierRelecture, N.siRelecture]));
+  connections[N.siRelecture] = { main: [lien(N.ecrire), lien(N.sortie)] };
+  Object.assign(connections, lineaire([N.ecrire, N.verifierEcriture, N.sortie]), lineaire([N.sortie, N.reponse, N.repondre]));
+  return { name: CONFIG.nomConfirmer, nodes: noeuds, connections, settings: { ...REGLAGES, executionTimeout: 120 } };
+}
+
+// ═══ PAGE (GET, aucune écriture, non observée) — §21.6 ═══
+// C3 au GET (candidat courant pour la clé reçue) ; sinon page « indisponible » SANS donnée du lot. Deux aléas
+// distincts par affichage (Crypto v1 « Generate ») : csp_nonce (jamais posté) et nonce (formulaire). Jeton lié
+// à cle_sha256 et à l'empreinte AFFICHÉE. Moteur du candidat chargé depuis son URL exacte, SRI sha384 calculée
+// À LA CONSTRUCTION depuis le fichier du REGISTRE (sha256 du fichier = registre, sinon la construction échoue) ;
+// un moteur absent du registre embarqué -> page indisponible. Données dans <script type="application/json">
+// échappé ; aucun gestionnaire inline ; CSP en <meta> (n8n remplace l'en-tête) ; sans JavaScript : message, et
+// AUCUN formulaire dans le HTML (construit par le script à l'envoi, jamais un formulaire dégradé).
+const NOEUDS_PAGE = Object.freeze({
+  webhook: 'Webhook page',
+  requete: 'Lire requete',
+  siRequete: 'Requete valide ?',
+  chercher: 'Chercher candidat',
+  verifierListe: 'Verifier recherche candidat',
+  siCandidat: 'Candidat trouve ?',
+  lire: 'Lire candidat',
+  nonceCsp: 'Generer nonce CSP',
+  nonce: 'Generer nonce formulaire',
+  construire: 'Construire page',
+  indisponible: 'Page indisponible',
+  repondre: 'Repondre page',
+});
+// Registre des moteurs pour la page : fichiers du dépôt RELUS à la construction, sha256 vérifié, SRI sha384.
+function registrePage() {
+  const reg = JSON.parse(lireSource('fonda/engine/moteurs.json'));
+  return reg.map((l) => {
+    const octets = fs.readFileSync(path.join(RACINE, l.fichier));
+    if (crypto.createHash('sha256').update(octets).digest('hex') !== l.sha256) throw new Error(`${l.fichier} : sha256 ≠ registre`);
+    return { version: l.version, sha256: l.sha256, url: `${CONFIG.urlMoteurs}/${path.basename(l.fichier)}`, integrite: `sha384-${crypto.createHash('sha384').update(octets).digest('base64')}` };
+  });
+}
+// Profils : comportement du moteur VERSIONNÉ (v1, CDC §4.3 ; écart documenté au PRD §5.1 : le singulier/pluriel
+// n'est PAS pardonné en « sens »). Chaque exemple est VÉRIFIÉ par le moteur dans le harnais (issue attendue).
+const PROFILS_MOTEUR = Object.freeze({
+  v1: {
+    sens: { explication: 'Le sens compte : majuscules, espaces, accents, apostrophes et . ! ? en début ou fin sont pardonnés. Le singulier/pluriel n’est PAS pardonné.',
+      exemples: [['été', 'Ete', 'juste'], ['l’école', 'lecole', 'juste'], ['chat', 'chats', 'faux']] },
+    orthographe: { explication: 'L’orthographe est l’objet : majuscules, espaces et . ! ? en début ou fin sont pardonnés ; accents, apostrophes, pluriels et accords sont exigés (un accent seul manquant donne « presque », compté faux).',
+      exemples: [['été', 'Été', 'juste'], ['été', 'ete', 'presque'], ['les chats', 'les chat', 'faux']] },
+    numerique: { explication: 'La valeur compte : virgule ou point, espaces et zéros inutiles pardonnés ; fraction équivalente acceptée ; unité exigée si la carte l’indique (oubli : « presque », compté juste) ; décimaux exacts sauf arrondi indiqué.',
+      exemples: [['3/4', '0,75', 'juste'], ['3/4', '6/8', 'juste'], ['3/4', '0,7', 'faux']] },
+    exact: { explication: 'Seuls les espaces sont pardonnés : tout le reste (majuscules, symboles, ponctuation) doit être identique.',
+      exemples: [['H2O', ' H2O ', 'juste'], ['H2O', 'h2o', 'faux'], ['H2O', 'H2O.', 'faux']] },
+  },
+});
+const LIBELLE_ISSUE = Object.freeze({ juste: 'accepté', presque: '« presque »', faux: 'refusé' });
+function profilsPage(version) {
+  const p = PROFILS_MOTEUR[version];
+  if (!p) throw new Error(`explications de profil absentes pour le moteur ${version} : à rédiger (et vérifier) avant toute page`);
+  return Object.fromEntries(Object.entries(p).map(([nom, x]) => [nom, { explication: x.explication,
+    exemples: x.exemples.map(([attendue, saisie, issue]) => `« ${saisie} » : ${LIBELLE_ISSUE[issue]} pour « ${attendue} »`) }]));
+}
+
+// Script de la page (navigateur), embarqué par toString() sous le nonce CSP. Aucun innerHTML : textContent
+// seulement. UX §21.6 : une carte à la fois (ordre du candidat), Garder/Écarter DÉSACTIVÉS jusqu'au rendu
+// complet, aucun choix par défaut, « Carte suivante » après un choix, retour possible, récapitulatif final
+// (envoi seulement depuis lui, chaque carte choisie), « Tout rejeter » séparé et confirmé explicitement.
+function appPage() {
+  'use strict';
+  var D = JSON.parse(document.getElementById('donnees').textContent);
+  var app = document.getElementById('app');
+  var cartes = D.cartes; var choix = {}; var envoye = false;
+  var moteur = null;
+  try { var M = self.FondaMoteurs && self.FondaMoteurs[D.moteur.version]; moteur = M && typeof M.creerMoteur === 'function' ? M.creerMoteur() : null; } catch (e) { moteur = null; }
+  function vider(n) { while (n.firstChild) n.removeChild(n.firstChild); }
+  function el(tag, texte, parent) { var e = document.createElement(tag); if (texte !== undefined && texte !== null) e.textContent = String(texte); if (parent) parent.appendChild(e); return e; }
+  function bouton(texte, parent, action) { var b = el('button', texte, parent); b.type = 'button'; b.addEventListener('click', action); return b; }
+  function ligne(dl, terme, valeur) { el('dt', terme, dl); el('dd', valeur, dl); }
+  if (!moteur) { vider(app); el('p', 'Moteur de correction indisponible : relecture impossible pour l\'instant. Prévenez Éric Duchateau.', app); return; }
+  function afficherCarte(i) {
+    vider(app);
+    var c = cartes[i];
+    el('p', 'Carte ' + (i + 1) + ' sur ' + cartes.length, app).className = 'avancement';
+    var art = el('article', null, app);
+    el('h2', c.question, art);
+    var dl = el('dl', null, art);
+    ligne(dl, 'Réponse attendue', c.reponse === null ? '(non renseignée)' : c.reponse);
+    ligne(dl, 'Réponses acceptées', c.reponses_acceptees.map(function (x) { return '« ' + x + ' »'; }).join(' ; '));
+    var p = D.profils[c.profil_correction];
+    ligne(dl, 'Profil de correction', c.profil_correction + (p ? ' — ' + p.explication : ''));
+    if (p) ligne(dl, 'Exemples', p.exemples.join(' ; '));
+    ligne(dl, 'Unité', c.unite === null ? 'aucune (par défaut)' : c.unite);
+    ligne(dl, 'Arrondi', c.arrondi === null ? 'aucun (par défaut)' : String(c.arrondi));
+    ligne(dl, 'Seconde chance', c.seconde_chance === null ? 'non (par défaut)' : (c.seconde_chance ? 'oui' : 'non'));
+    if (c.contexte !== null) ligne(dl, 'Contexte', c.contexte);
+    // « Essayer une réponse » : le MOTEUR du candidat corrige, exactement comme pour l'élève.
+    var essai = el('fieldset', null, art); el('legend', 'Essayer une réponse', essai);
+    var saisie = el('input', null, essai); saisie.type = 'text'; saisie.setAttribute('aria-label', 'Réponse à essayer');
+    var verdict = el('p', null, essai); verdict.setAttribute('aria-live', 'polite');
+    bouton('Corriger', essai, function () {
+      try { var r = moteur.soumettre(moteur.demarrer(moteur.preparerCarte(c)), saisie.value).resultat; verdict.textContent = r.verdict.texte + (r.cible_affichee ? ' (attendu : ' + r.cible_affichee + ')' : ''); } catch (e) { verdict.textContent = 'Correction impossible pour cette carte.'; }
+    });
+    var actions = el('div', null, app); actions.className = 'actions';
+    var garder = bouton('Garder', actions, function () { choisir(i, 'garder'); });
+    var ecarter = bouton('Écarter', actions, function () { choisir(i, 'ecarter'); });
+    garder.disabled = true; ecarter.disabled = true;
+    if (choix[c.item_id]) el('p', 'Choix actuel : ' + (choix[c.item_id] === 'garder' ? 'Garder' : 'Écarter') + ' (vous pouvez le changer).', app);
+    var nav = el('div', null, app); nav.className = 'navigation';
+    if (i > 0) bouton('Carte précédente', nav, function () { afficherCarte(i - 1); });
+    if (choix[c.item_id]) bouton(i + 1 < cartes.length ? 'Carte suivante' : 'Récapitulatif', nav, function () { suite(i); });
+    // Garder/Écarter activés seulement APRÈS le rendu complet de la carte (deux images).
+    requestAnimationFrame(function () { requestAnimationFrame(function () { garder.disabled = false; ecarter.disabled = false; }); });
+    window.scrollTo(0, 0);
+  }
+  function choisir(i, v) { choix[cartes[i].item_id] = v; afficherCarte(i); }
+  function suite(i) { if (i + 1 < cartes.length) afficherCarte(i + 1); else afficherRecap(); }
+  function afficherRecap() {
+    vider(app);
+    el('h2', 'Récapitulatif', app);
+    var ol = el('ol', null, app);
+    var complet = true;
+    cartes.forEach(function (c, i) {
+      var li = el('li', null, ol);
+      var v = choix[c.item_id]; if (!v) complet = false;
+      el('span', c.question + ' — ' + (v === 'garder' ? 'GARDÉE' : v === 'ecarter' ? 'ÉCARTÉE' : 'sans choix'), li);
+      bouton('Revoir', li, function () { afficherCarte(i); });
+    });
+    var gardees = cartes.filter(function (c) { return choix[c.item_id] === 'garder'; }).length;
+    if (complet && !gardees) el('p', 'Aucune carte gardée : utilisez « Tout rejeter » ci-dessous.', app);
+    var envoyer = bouton('Envoyer ma relecture', app, function () { soumettre('accepter'); });
+    envoyer.disabled = !complet || !gardees;
+  }
+  function soumettre(action) {
+    if (envoye) return; envoye = true;
+    var f = document.createElement('form'); f.method = 'post'; f.action = D.formulaire.action;
+    function champ(n, v) { var x = document.createElement('input'); x.type = 'hidden'; x.name = n; x.value = v; f.appendChild(x); }
+    Object.keys(D.formulaire.champs).forEach(function (n) { champ(n, D.formulaire.champs[n]); });
+    champ('action', action);
+    if (action === 'accepter') cartes.forEach(function (c) { champ('choix_' + c.item_id, choix[c.item_id]); });
+    else champ('confirmer_rejet', 'oui');
+    document.body.appendChild(f); f.submit();
+  }
+  // « Tout rejeter » : section SÉPARÉE, confirmation explicite.
+  var rej = document.getElementById('rejet');
+  var case_ = el('input', null); case_.type = 'checkbox'; case_.id = 'confirmer-rejet';
+  var lab = el('label', ' Je confirme rejeter TOUT le lot (aucune carte publiée).'); lab.setAttribute('for', 'confirmer-rejet'); lab.insertBefore(case_, lab.firstChild);
+  rej.appendChild(lab);
+  var btRej = bouton('Tout rejeter', rej, function () { if (case_.checked) soumettre('rejeter'); });
+  btRej.disabled = true; case_.addEventListener('change', function () { btRej.disabled = !case_.checked; });
+  rej.hidden = false;
+  afficherCarte(0);
+}
+
+// Gabarit HTML (nœud Code) : CSP EXACTE du §21.6, deux aléas, données échappées, script sous nonce.
+const GABARIT_PAGE = `function echapperJson(v) {
+  return JSON.stringify(v).replace(/</g, '\\\\u003c').replace(/>/g, '\\\\u003e').replace(/&/g, '\\\\u0026').replace(/\\u2028/g, '\\\\u2028').replace(/\\u2029/g, '\\\\u2029');
+}
+function echapperAttribut(s) { return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function csp(nonceCsp, urlMoteur, urlConfirmer) {
+  return "default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-" + nonceCsp + "' " + urlMoteur + '; form-action ' + urlConfirmer + "; base-uri 'none'";
+}
+const STYLE = 'body{font-family:system-ui,sans-serif;max-width:46rem;margin:1.5rem auto;padding:0 1rem;line-height:1.45}dt{font-weight:600;margin-top:.5rem}dd{margin:0 0 0 1rem}'
+  + '.actions button,.navigation button{margin:.75rem .5rem 0 0;padding:.5rem 1rem}#rejet{margin-top:3rem;border-top:1px solid #999;padding-top:1rem}';
+function pageHtml({ titre, nonceCsp, moteur, urlConfirmer, donnees, script }) {
+  return '<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
+    + '<meta http-equiv="Content-Security-Policy" content="' + echapperAttribut(csp(nonceCsp, moteur.url, urlConfirmer)) + '">'
+    + '<meta name="referrer" content="no-referrer"><title>' + echapperAttribut(titre) + '</title><style>' + STYLE + '</style></head><body>'
+    + '<h1>Relecture FONDA, carte par carte</h1>'
+    + '<noscript><p>Page de relecture indisponible sans JavaScript.</p></noscript>'
+    + '<main id="app"></main><section id="rejet" hidden><h2>Tout rejeter</h2></section>'
+    + '<script type="application/json" id="donnees">' + echapperJson(donnees) + '</script>'
+    + '<script src="' + echapperAttribut(moteur.url) + '" integrity="' + echapperAttribut(moteur.integrite) + '" crossorigin="anonymous" referrerpolicy="no-referrer"></script>'
+    + '<script nonce="' + nonceCsp + '">' + script + '</script></body></html>';
+}
+function pageIndisponible(texte) {
+  return '<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
+    + '<meta http-equiv="Content-Security-Policy" content="default-src \\'none\\'; style-src \\'unsafe-inline\\'; base-uri \\'none\\'; form-action \\'none\\'">'
+    + '<meta name="referrer" content="no-referrer"><title>Relecture FONDA</title></head><body style="font-family:system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem"><p>'
+    + texte + '</p></body></html>';
+}`;
+
+const MESSAGE_INDISPONIBLE = 'Ce lien de relecture n’est pas (ou plus) valable. Si vous pensez qu’il s’agit d’une erreur, prévenez Éric Duchateau.';
+function codeLireRequete() {
+  return [ENTETE('requête GET : ?lot=&k= exactement (formats stricts) ; k réduite à cle_sha256 pour la recherche, conservée pour le formulaire.'),
+    UN_ITEM(NOEUDS_PAGE.requete), SET_ID, OUTILS,
+    `const w = unItem(null);
+const q = w && w.query && typeof w.query === 'object' && !Array.isArray(w.query) ? w.query : {};
+const cles = Object.keys(q).sort().join(',');
+const ok = cles === 'k,lot' && typeof q.lot === 'string' && SET_ID_PATTERN.test(q.lot) && typeof q.k === 'string' && /^[0-9a-f]{64}$/.test(q.k);
+return [{ json: ok ? { poursuivre: true, lot: q.lot, k: q.k, cle_sha256: sha256Hex(octetsUtf8(q.k)), code: null } : { poursuivre: false, lot: null, k: null, cle_sha256: null, code: 400 } }];`].join('\n\n');
+}
+function codeVerifierRecherchePage() {
+  return [ENTETE('candidat : recherche PAGINÉE et COMPLÈTE exigée (sinon erreur) ; 0 ou plusieurs fichiers -> page indisponible (410).'),
+    UN_ITEM(NOEUDS_PAGE.verifierListe), AGREGER,
+    `const liste = agregerPages(${JSON.stringify(NOEUDS_PAGE.chercher)});
+if (!liste.complet) throw new Error('recherche du candidat incomplète (incompleteSearch ou plafond de pagination)');
+const ok = liste.fichiers.length === 1 && typeof liste.fichiers[0].id === 'string';
+return [{ json: { poursuivre: ok, fichier_id: ok ? liste.fichiers[0].id : null, code: ok ? null : 410 } }];`].join('\n\n');
+}
+function codePageIndisponible() {
+  return [ENTETE('page indisponible : aucune donnée du lot.'), GABARIT_PAGE,
+    `const x = $input.first().json;
+return [{ json: { code: x.code === 400 ? 400 : 410, html: pageIndisponible(${JSON.stringify(MESSAGE_INDISPONIBLE)}) } }];`].join('\n\n');
+}
+function codeConstruirePage() {
+  return [ENTETE('C3 au GET (candidat courant pour k), puis page carte par carte : jeton, deux aléas, CSP, SRI, données échappées.'),
+    UN_ITEM(NOEUDS_PAGE.construire), DATE_ISO, OUTILS, COMMUN_PAGE, GABARIT_PAGE, REQUIS, blocModule('catalogue'),
+    `const { validerLot, calculerEmpreinte } = M_catalogue.exports;
+const REGISTRE = ${JSON.stringify(registrePage())};
+// Explications par VERSION du moteur (celle du candidat est choisie à l'exécution).
+const PROFILS = ${JSON.stringify(Object.fromEntries(registrePage().map((l) => [l.version, profilsPage(l.version)])))};
+const URL_CONFIRMER = ${JSON.stringify(`${CONFIG.urlN8n}/webhook/${CONFIG.cheminConfirmer}`)};
+const SCRIPT = ${JSON.stringify(`(${appPage.toString()})();`)};
+const sha = (t) => sha256Hex(octetsUtf8(t));
+const r = unItem(${JSON.stringify(NOEUDS_PAGE.requete)});
+const c = unItem(${JSON.stringify(NOEUDS_PAGE.lire)});
+const nonceCsp = unItem(${JSON.stringify(NOEUDS_PAGE.nonceCsp)}).nonce_csp;
+const nonce = unItem(${JSON.stringify(NOEUDS_PAGE.nonce)}).nonce;
+// Deux aléas DISTINCTS de 128 bits (hex 32), un par affichage.
+if (!/^[0-9a-f]{32}$/.test(nonceCsp) || !/^[0-9a-f]{32}$/.test(nonce) || nonceCsp === nonce) throw new Error('aléas de la page invalides ou égaux');
+const indisponible = () => [{ json: { code: 410, html: pageIndisponible(${JSON.stringify(MESSAGE_INDISPONIBLE)}) } }];
+// C3 (GET) : candidat courant pour la clé reçue, lot conforme, moteur au registre.
+const maintenant = Date.now();
+if (!c || c.schema !== 'candidat-fonda/v1' || !c.lot || !c.relecture || c.lot.set_id !== r.lot) return indisponible();
+const rel = c.relecture;
+if (rel.statut !== 'en_attente' || rel.clos_le !== null || rel.cle_sha256 !== r.cle_sha256 || !Number.isSafeInteger(rel.generation_cle) || rel.generation_cle < 1
+  || !dateIso(rel.expire_le) || !(maintenant < Date.parse(rel.expire_le)) || !validerLot(c.lot).valide) return indisponible();
+const moteur = rel.moteur ? REGISTRE.find((l) => l.version === rel.moteur.version) : null;
+if (!moteur || moteur.sha256 !== rel.moteur.sha256) return indisponible(); // moteur absent du registre : jamais chargé
+const empreinte = await calculerEmpreinte(c.lot, sha);
+const expirePage = new Date(Math.min(maintenant + 3600000, Date.parse(rel.expire_le))).toISOString(); // affichage + 60 min, borné par expire_le
+const jeton = jetonPage($env.FONDA_PAGE_HMAC, { set_id: r.lot, generation_cle: rel.generation_cle, cle_sha256: r.cle_sha256, empreinte, moteur_version: moteur.version,
+  moteur_sha256: moteur.sha256, expire_page: expirePage, nonce });
+const n = (v) => (v === undefined ? null : v);
+const donnees = {
+  moteur: { version: moteur.version },
+  profils: PROFILS[moteur.version],
+  cartes: c.lot.cartes.map((x) => ({ item_id: x.item_id, question: x.question, reponse: n(x.reponse), profil_correction: x.profil_correction, reponses_acceptees: x.reponses_acceptees,
+    unite: n(x.unite), arrondi: n(x.arrondi), seconde_chance: n(x.seconde_chance), contexte: n(x.contexte) })),
+  // Seul endroit où k figure dans la page : champ du formulaire POSTÉ (C1 l'exige), jamais affichée.
+  formulaire: { action: URL_CONFIRMER, champs: { lot: r.lot, k: r.k, generation: String(rel.generation_cle), empreinte, moteur_version: moteur.version, moteur_sha256: moteur.sha256, expire_page: expirePage, nonce, jeton } },
+};
+return [{ json: { code: 200, html: pageHtml({ titre: 'Relecture FONDA', nonceCsp, moteur, urlConfirmer: URL_CONFIRMER, donnees, script: SCRIPT }) } }];`].join('\n\n');
+}
+function construirePage() {
+  const N = NOEUDS_PAGE;
+  const lotExpr = `$('${N.requete}').first().json.lot`;
+  const alea = (nom, champ) => ({ name: nom, type: 'n8n-nodes-base.crypto', typeVersion: 1, parameters: { action: 'generate', dataPropertyName: champ, encodingType: 'hex', stringLength: 32 } });
+  const noeuds = [
+    { name: N.webhook, type: 'n8n-nodes-base.webhook', typeVersion: 2, webhookId: uuid('webhook-page'),
+      parameters: { httpMethod: 'GET', path: CONFIG.cheminPage, responseMode: 'responseNode', options: {} } },
+    code(N.requete, codeLireRequete()),
+    siBooleen(N.siRequete, 'poursuivre', 'si-requete'),
+    listing(N.chercher, `={{ "'${CONFIG.dossierRelecture}' in parents and trashed = false and name = '" + ${lotExpr} + ".candidat.json'" }}`, CHAMPS_LISTE, true),
+    code(N.verifierListe, codeVerifierRecherchePage()),
+    siBooleen(N.siCandidat, 'poursuivre', 'si-candidat-page'),
+    contenuDrive(N.lire, `$('${N.verifierListe}').first().json.fichier_id`),
+    alea(N.nonceCsp, 'nonce_csp'),
+    alea(N.nonce, 'nonce'),
+    code(N.construire, codeConstruirePage()),
+    code(N.indisponible, codePageIndisponible()),
+    { name: N.repondre, type: 'n8n-nodes-base.respondToWebhook', typeVersion: 1.1,
+      parameters: { respondWith: 'text', responseBody: '={{ $json.html }}', options: { responseCode: '={{ $json.code }}',
+        responseHeaders: { entries: [{ name: 'Content-Type', value: 'text/html; charset=utf-8' }, { name: 'Cache-Control', value: 'no-store' }, { name: 'Referrer-Policy', value: 'no-referrer' }, { name: 'X-Frame-Options', value: 'DENY' }] } } } },
+  ].map(positionner('page'));
+  const connections = lineaire([N.webhook, N.requete, N.siRequete]);
+  connections[N.siRequete] = { main: [lien(N.chercher), lien(N.indisponible)] };
+  Object.assign(connections, lineaire([N.chercher, N.verifierListe, N.siCandidat]));
+  connections[N.siCandidat] = { main: [lien(N.lire), lien(N.indisponible)] };
+  Object.assign(connections, lineaire([N.lire, N.nonceCsp, N.nonce, N.construire, N.repondre]), lineaire([N.indisponible, N.repondre]));
+  return { name: CONFIG.nomPage, nodes: noeuds, connections, settings: REGLAGES };
+}
+
+module.exports = { CONFIG, MODULES, NOEUDS_CLOTURER, NOEUDS_EMETTRE, NOEUDS_CONFIRMER, NOEUDS_PAGE, CODES_HTTP, CHAMPS_FORMULAIRE, COMMUN_PAGE, GABARIT_PAGE,
+  PROFILS_MOTEUR, chargerCommun, registrePage, appPage, construireCloturer, construireEmettre, construireConfirmer, construirePage };
+
+const CONSTRUCTEURS = { '--emettre': construireEmettre, '--cloturer': construireCloturer, '--confirmer': construireConfirmer, '--page': construirePage };
 if (require.main === module) {
-  const wf = process.argv.includes('--emettre') ? construireEmettre() : process.argv.includes('--cloturer') ? construireCloturer() : null;
-  if (!wf) { process.stderr.write('usage : construire-relecture.js --emettre | --cloturer\n'); process.exitCode = 1; } else process.stdout.write(`${JSON.stringify(wf, null, 2)}\n`);
+  const option = Object.keys(CONSTRUCTEURS).find((o) => process.argv.includes(o));
+  if (!option) { process.stderr.write(`usage : construire-relecture.js ${Object.keys(CONSTRUCTEURS).join(' | ')}\n`); process.exitCode = 1; } else process.stdout.write(`${JSON.stringify(CONSTRUCTEURS[option](), null, 2)}\n`);
 }
