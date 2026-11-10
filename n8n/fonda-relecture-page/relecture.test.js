@@ -54,24 +54,27 @@ const { dossierCandidats: CAND, dossierRelecture: RELEC, dossierDecisions: DEC }
 
 // ── 1. et 2. Contrôles statiques ──
 const SANS_MODULES = (js) => js.replace(/\/\/ >>> MODULE [\s\S]*?\/\/ <<< MODULE [^\n]*/g, '');
+// Contrôles statiques communs aux exports de production ET de recette (P4a).
+function controlesStatiques(wf) {
+  for (const n of wf.nodes) {
+    const t = sansHexPublics(n.type === 'n8n-nodes-base.code' ? JSON.stringify({ ...n, parameters: { jsCode: SANS_MODULES(n.parameters.jsCode) } }) : JSON.stringify(n));
+    assert.doesNotMatch(t, /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}/, `${n.name} : adresse électronique`);
+    assert.doesNotMatch(t, /BEGIN [A-Z ]*PRIVATE KEY|sk-ant-|Bearer [A-Za-z0-9]|ghp_|xox[bp]-/, `${n.name} : clé ou jeton`);
+    assert.doesNotMatch(t, /\b[0-9a-f]{64}\b/, `${n.name} : littéral hexadécimal de 64 caractères`);
+    if (n.credentials) for (const c of Object.values(n.credentials)) assert.deepEqual(Object.keys(c).sort(), ['id', 'name'], `${n.name} : credential = référence (id, nom) seulement`);
+    assert.equal(n.retryOnFail === true, false, `${n.name} : retryOnFail interdit`);
+    assert.equal(n.disabled, undefined, `${n.name} : aucun nœud désactivé`);
+  }
+  assert.equal(wf.pinData, undefined, 'aucune donnée épinglée');
+  assert.equal(wf.active, undefined, 'export sans état actif (créé INACTIF en P4)');
+}
 describe('1. octet-identité interne et 2. contrôles statiques', () => {
   for (const [k, construire] of Object.entries(CONSTRUCTEURS)) {
     test(`${EXPORTS[k]} == construction depuis le dépôt, octet pour octet`, () => {
       assert.ok(lireExport(k).equals(Buffer.from(`${JSON.stringify(construire(), null, 2)}\n`, 'utf8')), `${EXPORTS[k]} ≠ construction : regénérer par construire-relecture.js --${k}`);
     });
     test(`${EXPORTS[k]} : détection de motifs connus de secret/PII (adresse, clé, jeton, hex 64) hors modules embarqués vérifiés`, () => {
-      const wf = JSON.parse(lireExport(k));
-      for (const n of wf.nodes) {
-        const t = sansHexPublics(n.type === 'n8n-nodes-base.code' ? JSON.stringify({ ...n, parameters: { jsCode: SANS_MODULES(n.parameters.jsCode) } }) : JSON.stringify(n));
-        assert.doesNotMatch(t, /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}/, `${n.name} : adresse électronique`);
-        assert.doesNotMatch(t, /BEGIN [A-Z ]*PRIVATE KEY|sk-ant-|Bearer [A-Za-z0-9]|ghp_|xox[bp]-/, `${n.name} : clé ou jeton`);
-        assert.doesNotMatch(t, /\b[0-9a-f]{64}\b/, `${n.name} : littéral hexadécimal de 64 caractères`);
-        if (n.credentials) for (const c of Object.values(n.credentials)) assert.deepEqual(Object.keys(c).sort(), ['id', 'name'], `${n.name} : credential = référence (id, nom) seulement`);
-        assert.equal(n.retryOnFail === true, false, `${n.name} : retryOnFail interdit`);
-        assert.equal(n.disabled, undefined, `${n.name} : aucun nœud désactivé`);
-      }
-      assert.equal(wf.pinData, undefined, 'aucune donnée épinglée');
-      assert.equal(wf.active, undefined, 'export sans état actif (créé INACTIF en P4)');
+      controlesStatiques(JSON.parse(lireExport(k)));
     });
     test(`${EXPORTS[k]} : webhook POST (CLI : authentification d'en-tête ; relecteur : public, réponse par nœud) ; IF v2 STRICTS sur un booléen`, () => {
       const wf = JSON.parse(lireExport(k));
@@ -150,6 +153,277 @@ describe('1. octet-identité interne et 2. contrôles statiques', () => {
     const r = JSON.parse(lireExport('confirmer')).nodes.filter((n) => n.type === 'n8n-nodes-base.respondToWebhook');
     assert.equal(r.length, 1);
     assert.deepEqual([r[0].parameters.respondWith, r[0].parameters.responseBody, r[0].parameters.options.responseCode], ['text', '={{ $json.html }}', '={{ $json.code }}']);
+  });
+});
+
+// ── 1 bis. Profil de RECETTE (P4a) : copie de test isolée, construite depuis le dépôt ──
+const EXPORTS_RECETTE = Object.fromEntries(Object.entries(EXPORTS).map(([k, f]) => [k, f.replace(/\.json$/, '.recette.json')]));
+const lireRecette = (k) => fs.readFileSync(path.join(__dirname, EXPORTS_RECETTE[k]));
+const PROFIL_RECETTE = JSON.parse(fs.readFileSync(path.join(__dirname, 'profil-recette.json'), 'utf8'));
+// Identifiants de production à ne JAMAIS retrouver dans une copie de recette (hors valeurs de remplacement P4).
+const IDS_PROD = (() => {
+  const v = [];
+  for (const c of [...B.CLES_RECETTE, 'urlPage']) { const x = B.CONFIG[c]; if (x && typeof x === 'object') v.push(x.id, x.name); else v.push(x); }
+  return v.filter((x) => typeof x === 'string' && !x.startsWith('A_RENSEIGNER_P4_'));
+})();
+// Recette -> production : identifiants du profil remplacés par ceux de la production ; uuid (ids de nœuds,
+// webhookId, ids de conditions) appariés DANS L'ORDRE d'apparition, appariement bijectif exigé. Résultat
+// attendu : l'export de production, à l'identique.
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-a[0-9a-f]{3}-[0-9a-f]{12}/g;
+function versProduction(k) {
+  const prod = JSON.parse(lireExport(k));
+  let t = lireRecette(k).toString('utf8');
+  const cfgR = B.configRecette();
+  const paires = [];
+  for (const c of [...B.CLES_RECETTE, 'urlPage']) {
+    const r = cfgR[c]; const p = B.CONFIG[c];
+    if (r && typeof r === 'object') paires.push([r.id, p.id], [r.name, p.name]); else paires.push([r, p]);
+  }
+  paires.sort((x, y) => y[0].length - x[0].length); // plus longs d'abord (urlPage contient cheminPage)
+  const echapper = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Borne de fin : l'URL de la page est préfixe de celle de Confirmer (…/fonda-recette-select-confirm).
+  for (const [r, p] of paires) t = t.replace(new RegExp(`${echapper(JSON.stringify(r).slice(1, -1))}(?![A-Za-z0-9_-])`, 'g'), () => JSON.stringify(p).slice(1, -1));
+  const uR = t.match(UUID) || []; const uP = lireExport(k).toString('utf8').match(UUID) || [];
+  assert.equal(uR.length, uP.length, 'nombre d\'uuid différent');
+  const aller = new Map(); const retour = new Map();
+  uR.forEach((u, i) => {
+    assert.equal(aller.get(u) ?? uP[i], uP[i], `uuid ${u} apparié à deux uuid de production`);
+    assert.equal(retour.get(uP[i]) ?? u, u, `uuid de production ${uP[i]} apparié à deux uuid de recette`);
+    aller.set(u, uP[i]); retour.set(uP[i], u);
+  });
+  return { wf: JSON.parse(t.replace(UUID, (u) => aller.get(u))), prod };
+}
+// Bases des moteurs autorisées (décision de l'architecte, 2026-11-10), écrites ICI indépendamment du constructeur :
+// GitHub Pages (sert main) et jsDelivr épinglé sur un commit (40 hexadécimaux, immuable).
+const BASES_MOTEURS_AUTORISEES = Object.freeze(['https://ericduchateau.github.io/box/fonda/engine']);
+const BASE_JSDELIVR_EPINGLEE = /^https:\/\/cdn\.jsdelivr\.net\/gh\/ericduchateau\/box@[0-9a-f]{40}\/fonda\/engine$/;
+// Références d'instance d'exports de recette ⊆ ENSEMBLE FERMÉ dérivé du profil c (connu-bon) : URL exactes (instance,
+// API Google fixes, dépôt public, moteurs du registre sous urlMoteurs), dossiers des requêtes Drive, CONFIG embarqués,
+// credentials, chemins, noms ; aucun identifiant de l'inventaire de production. Renvoie le nombre d'URL de moteurs vues.
+function verifierReferencesRecette(textes, c) {
+  const creds = new Set(B.CLES_RECETTE.filter((k) => k.startsWith('credential')).map((k) => JSON.stringify([c[k].id, c[k].name])));
+  const chemins = new Set(['cheminEmettre', 'cheminCloturer', 'cheminPage', 'cheminConfirmer'].map((k) => c[k]));
+  const noms = new Set(['nomEmettre', 'nomCloturer', 'nomConfirmer', 'nomPage'].map((k) => c[k]));
+  const dossiers = new Set([c.dossierCandidats, c.dossierRelecture, c.dossierDecisions]);
+  // URL des moteurs : base contrôlée contre la liste fermée DU HARNAIS (indépendante du profil et du constructeur).
+  const moteurs = new Set();
+  const reg = JSON.parse(fs.readFileSync(path.join(RACINE, 'fonda/engine/moteurs.json'), 'utf8'));
+  if (BASES_MOTEURS_AUTORISEES.includes(c.urlMoteurs) || BASE_JSDELIVR_EPINGLEE.test(c.urlMoteurs)) for (const l of reg) moteurs.add(`${c.urlMoteurs}/${path.basename(l.fichier)}`);
+  const urls = new Set([`${c.urlN8n}/webhook/${c.cheminPage}`, `${c.urlN8n}/webhook/${c.cheminConfirmer}`, `${c.urlN8n}/api/v1/data-tables/${c.tableRelecteurs}/rows`,
+    'https://gmail.googleapis.com/gmail/v1/users/me/messages/send', 'https://www.googleapis.com/drive/v3/files', 'https://www.googleapis.com/drive/v3/files/',
+    'https://www.googleapis.com/upload/drive/v3/files', 'https://www.googleapis.com/upload/drive/v3/files/',
+    ...['fonda/data/referentiel.json', 'fonda/data/set_ids-journal.json', 'fonda/engine/moteurs.json'].map((f) => `https://api.github.com/repos/${c.depot}/contents/${f}`), ...moteurs]);
+  const { stricts } = B.inventaireProduction();
+  let vusMoteurs = 0;
+  for (const [k, t] of Object.entries(textes)) {
+    const wf = JSON.parse(t);
+    assert.ok(noms.has(wf.name), `${k} : nom de workflow hors profil`);
+    for (const n of wf.nodes) {
+      for (const r of Object.values(n.credentials || {})) assert.ok(creds.has(JSON.stringify([r.id, r.name])), `${n.name} : credential hors profil`);
+      if (n.type === 'n8n-nodes-base.webhook') assert.ok(chemins.has(n.parameters.path), `${n.name} : chemin hors profil`);
+    }
+    for (const m of t.matchAll(/https?:\/\/[^"'\s\\)]+/g)) {
+      const u = m[0].replace(/\$\{.*$/, '').replace(/\?.*$/, '');
+      assert.ok(urls.has(u), `${k} : URL hors liste fermée`);
+      if (moteurs.has(u)) vusMoteurs += 1;
+    }
+    for (const m of t.matchAll(/'([^'\\]*)' in parents/g)) assert.ok(dossiers.has(m[1]), `${k} : dossier hors profil dans une requête Drive`);
+    for (const m of t.matchAll(/const CONFIG = (\{(?:[^{}]|\\")*?\});/g)) {
+      const o = JSON.parse(JSON.parse(`"${m[1]}"`));
+      for (const [cle, v] of Object.entries(o)) assert.equal(v, c[cle], `${k} : CONFIG embarqué ${cle} ≠ profil de recette`);
+    }
+    const sansDomaine = t.replace(/fonda-select(-form)?\/v\d+/g, '<domaine>');
+    for (const x of stricts) assert.equal(sansDomaine.includes(x), false, `${k} : identifiant de production (inventaire complet) présent`);
+  }
+  return vusMoteurs;
+}
+describe('1 bis. profil de recette (P4a) : exports de production INCHANGÉS, copie isolée', () => {
+  for (const k of Object.keys(CONSTRUCTEURS)) {
+    test(`${EXPORTS_RECETTE[k]} == construction --profil recette, octet pour octet ; ${EXPORTS[k]} inchangé après (aucune fuite de profil)`, () => {
+      assert.ok(lireRecette(k).equals(Buffer.from(B.construireExport(`--${k}`, 'recette'), 'utf8')), `${EXPORTS_RECETTE[k]} ≠ construction : regénérer par construire-relecture.js --${k} --profil recette`);
+      assert.ok(lireExport(k).equals(Buffer.from(B.construireExport(`--${k}`), 'utf8')), 'production ≠ construction après une construction de recette');
+      assert.ok(lireExport(k).equals(Buffer.from(`${JSON.stringify(CONSTRUCTEURS[k](), null, 2)}\n`, 'utf8')), 'profil actif non restauré');
+    });
+    test(`${EXPORTS_RECETTE[k]} : mêmes contrôles statiques (secret/PII, credentials par référence, inactif)`, () => {
+      controlesStatiques(JSON.parse(lireRecette(k)));
+    });
+    test(`${EXPORTS_RECETTE[k]} : AUCUN identifiant de production (dossiers, credentials, noms, chemins, URL ; ids de nœuds et webhookId)`, () => {
+      const t = lireRecette(k).toString('utf8');
+      // Seules exceptions admises : les séparateurs de domaine « fonda-select/v<N> » (jeton §21.6) et
+      // « fonda-select-form/v<N> » (hash_formulaire §21.1), contrats et non chemins.
+      const sansDomaine = t.replace(/fonda-select(-form)?\/v\d+/g, '<domaine>');
+      for (const x of IDS_PROD) assert.equal(sansDomaine.includes(JSON.stringify(x).slice(1, -1)), false, `identifiant de production présent : ${x}`);
+      assert.equal(t.includes('A_RENSEIGNER_P4_'), false, 'valeur de remplacement de PRODUCTION présente');
+      const prod = JSON.parse(lireExport(k)); const ids = new Set(prod.nodes.flatMap((n) => [n.id, n.webhookId].filter(Boolean)));
+      for (const n of JSON.parse(t).nodes) for (const x of [n.id, n.webhookId].filter(Boolean)) assert.equal(ids.has(x), false, `${n.name} : id partagé avec la production`);
+    });
+    test(`${EXPORTS_RECETTE[k]} = ${EXPORTS[k]} aux identifiants d'instance près (même graphe, même code)`, () => {
+      const { wf, prod } = versProduction(k);
+      assert.deepEqual(wf, prod);
+    });
+  }
+  test('exports de recette (fichiers commités) : TOUTES les références d\'instance appartiennent à un ENSEMBLE FERMÉ de connu-bon', () => {
+    verifierReferencesRecette(Object.fromEntries(Object.keys(EXPORTS).map((k) => [k, lireRecette(k).toString('utf8')])), B.configRecette());
+  });
+  test('profil ENTIÈREMENT renseigné (en mémoire, via configRecette) : mêmes références fermées, URL des moteurs comprises ; aucune valeur de remplacement', () => {
+    const p = copie(PROFIL_RECETTE);
+    Object.assign(p, { dossierCandidats: '1RecetteLots_abcdefghijklmnopqrs', dossierRelecture: '1RecetteRelecture_abcdefghijklmn', dossierDecisions: '1RecetteDecisions_abcdefghijklm',
+      tableRelecteurs: 'RecetteTable0123', urlMoteurs: 'https://cdn.jsdelivr.net/gh/ericduchateau/box@0123456789abcdef0123456789abcdef01234567/fonda/engine' });
+    for (const c of B.CLES_RECETTE.filter((x) => x.startsWith('credential'))) p[c] = { ...p[c], id: `Rec${c.slice(10)}0123456789`.slice(0, 32).replace(/[^A-Za-z0-9]/g, '') };
+    const textes = Object.fromEntries(Object.keys(EXPORTS).map((k) => [k, B.construireExport(`--${k}`, 'recette', p)]));
+    for (const t of Object.values(textes)) { assert.equal(t.includes('A_RENSEIGNER_'), false); controlesStatiques(JSON.parse(t)); }
+    const c = B.configRecette(p);
+    const urlsMoteurs = verifierReferencesRecette(textes, c);
+    assert.ok(urlsMoteurs >= 1, 'URL des moteurs effectivement contrôlées');
+    assert.throws(() => B.construireExport('--page', 'production', p), /réservé à la recette/);
+  });
+  test('inventaire de production : LISTE EXPLICITE = exports n8n suivis par Git hors recette (jamais un glob)', () => {
+    const suivis = require('child_process').execFileSync('git', ['ls-files', 'n8n/*.json'], { cwd: RACINE, encoding: 'utf8' }).trim().split('\n')
+      .filter((f) => !f.endsWith('.recette.json') && !f.endsWith('/profil-recette.json')).sort();
+    assert.deepEqual([...B.EXPORTS_PRODUCTION_INVENTAIRE].sort(), suivis);
+  });
+  test('profil-recette.json : liste fermée de clés, préfixes « FONDA RECETTE » / « fonda-recette- », urlPage DÉRIVÉE', () => {
+    const c = B.configRecette();
+    assert.equal(c.urlPage, `${B.CONFIG.urlN8n}/webhook/${PROFIL_RECETTE.cheminPage}`);
+    for (const x of ['depot', 'urlN8n', 'dureeCleJours', 'maxPagesDrive']) assert.equal(c[x], B.CONFIG[x], `${x} partagé`);
+    assert.deepEqual(Object.keys(PROFIL_RECETTE).filter((x) => x !== 'profil').sort(), [...B.CLES_RECETTE].sort());
+  });
+  test('profil de recette refusé : clé manquante ou en trop, préfixe absent, identifiant de PRODUCTION réutilisé, credential mal formé', () => {
+    const avec = (modif) => { const p = copie(PROFIL_RECETTE); modif(p); return () => B.configRecette(p); };
+    assert.throws(avec((p) => { delete p.dossierDecisions; }), /liste fermée/);
+    assert.throws(avec((p) => { p.dossierBox = 'x'; }), /liste fermée/);
+    assert.throws(avec((p) => { p.profil = 'production'; }), /« recette »/);
+    assert.throws(avec((p) => { p.nomPage = 'FONDA - Page relecture test'; }), /hors grammaire « FONDA RECETTE - … »/);
+    assert.throws(avec((p) => { p.cheminPage = 'fonda-select'; }), /hors grammaire « fonda-recette-… »/);
+    assert.throws(avec((p) => { p.credentialGmail = { id: 'AbCdEfGh12', name: 'FONDA Gmail' }; }), /name hors grammaire/);
+    assert.throws(avec((p) => { p.credentialGmail = { id: 'x', name: 'FONDA RECETTE Gmail' }; }), /id hors grammaire/);
+    assert.throws(avec((p) => { p.credentialDrive = { id: 'x' }; }), /\{ id, name \}/);
+    assert.throws(avec((p) => { p.dossierCandidats = B.CONFIG.dossierCandidats; }), /identifiant de production/);
+    assert.throws(avec((p) => { p.dossierRelecture = B.CONFIG.dossierCandidats; }), /identifiant de production/);
+    assert.throws(avec((p) => { p.credentialDrive = { id: B.CONFIG.credentialDrive.id, name: 'FONDA RECETTE Drive' }; }), /identifiant de production/);
+    assert.throws(avec((p) => { p.tableRelecteurs = ' x'; }), /hors grammaire/);
+  });
+  test('identifiants de production d\'AUTRES workflows du dépôt refusés (génération, sauvegardes BOX) ; valeur jamais citée', () => {
+    const avec = (modif) => { const p = copie(PROFIL_RECETTE); modif(p); return () => B.configRecette(p); };
+    const refus = (modif) => assert.throws(avec(modif), (e) => /identifiant de production|remplacement de PRODUCTION/.test(e.message) && !/GfnXr5hYrYgC5RwA|YnhTnSOc1u7S99Q7|11KWo13pczVB|box-select/.test(e.message));
+    refus((p) => { p.credentialEmettre = { id: 'GfnXr5hYrYgC5RwA', name: 'FONDA RECETTE Emettre Token' }; }); // FONDA Webhook Token (génération)
+    refus((p) => { p.credentialApiN8n = { id: 'YnhTnSOc1u7S99Q7', name: 'FONDA RECETTE API n8n' }; }); // Anthropic FONDA (génération)
+    refus((p) => { p.dossierDecisions = '11KWo13pczVB_eOXw-FHUXWuutfSQqbbT'; }); // dossier BOX-Flashcards (sauvegarde BOX)
+    assert.throws(avec((p) => { p.dossierRelecture = 'A_RENSEIGNER_P4_DOSSIER_RELECTURE'; }), /remplacement hors recette/); // refusé dès la construction
+    assert.throws(avec((p) => { p.credentialGmail = { id: 'A_RENSEIGNER_P4_CREDENTIAL_GMAIL', name: 'FONDA RECETTE Gmail' }; }), /remplacement hors recette/);
+    assert.throws(avec((p) => { p.cheminConfirmer = 'box-select-confirm'; }), /fonda-recette-/);
+  });
+  test('ligne de commande STRICTE : option sans valeur, inconnue, en double, ou constructeur absent -> erreur (jamais la production par défaut)', () => {
+    assert.deepEqual(B.analyserArguments(['--page']), { option: '--page', profil: 'production' });
+    assert.deepEqual(B.analyserArguments(['--profil', 'recette', '--page']), { option: '--page', profil: 'recette' });
+    for (const a of [['--page', '--profil'], ['--page', '--profil', 'recete'], ['--page', '--profil', '--emettre'], ['--page', '--profil', 'recette', '--profil', 'recette'],
+      ['--page', '--emettre'], ['--page', '--recette'], ['--profil', 'recette'], [], ['--page', 'recette']]) assert.throws(() => B.analyserArguments(a), Error, a.join(' '));
+    const r = require('child_process').spawnSync(process.execPath, [path.join(__dirname, 'construire-relecture.js'), '--page', '--profil'], { encoding: 'utf8' });
+    assert.equal(r.status, 1); assert.equal(r.stdout, '');
+  });
+  test('ligne de commande : messages de la liste fermée (ErreurConstruction) ; profil illisible ou erreur tierce -> aucun extrait sur stderr', () => {
+    const os = require('os'); const cp = require('child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'construire-'));
+    const pre = (cible, contenu) => { const f = path.join(dir, `${cible}.js`); fs.writeFileSync(f, `const fs = require('fs'); const lire = fs.readFileSync;
+fs.readFileSync = function (p, ...r) { if (String(p).endsWith(${JSON.stringify(cible)})) { ${contenu} } return lire.call(this, p, ...r); };\n`); return f; };
+    const lancer = (f, args) => cp.spawnSync(process.execPath, ['-r', f, path.join(__dirname, 'construire-relecture.js'), ...args], { encoding: 'utf8' });
+    const a = lancer(pre('profil-recette.json', "return 'SECRET_SYNTHETIQUE{';"), ['--page', '--profil', 'recette']);
+    assert.equal(a.status, 1); assert.equal(a.stdout, ''); assert.match(a.stderr, /profil de recette : illisible \(JSON\)/); assert.equal(a.stderr.includes('SECRET'), false);
+    const b = lancer(pre('moteurs.json', "throw new Error('SECRET_SYNTHETIQUE /chemin/prive');"), ['--page']);
+    assert.equal(b.status, 1); assert.match(b.stderr, /message non affichable/); assert.equal(b.stderr.includes('SECRET'), false);
+    // Erreur tierce levée PENDANT la construction (registre de la Page, après le chargement) : catch final -> marqueur.
+    const d = lancer(pre('moteur-correction-v1.js', "if (new Error().stack.includes('registrePage')) throw new Error('SECRET_SYNTHETIQUE /chemin/prive');"), ['--page']);
+    assert.equal(d.status, 1); assert.equal(d.stdout, ''); assert.match(d.stderr, /erreur de construction \(message non affichable\)\nusage/); assert.equal(d.stderr.includes('SECRET'), false);
+    // Inventaire (source de la protection) : export illisible -> message fixe ; export hors schéma ({}) -> refus, jamais ignoré.
+    const e = lancer(pre('box-fonda-generation-ia.json', "throw new Error('SECRET_SYNTHETIQUE');"), ['--page', '--profil', 'recette']);
+    assert.equal(e.status, 1); assert.equal(e.stdout, ''); assert.match(e.stderr, /inventaire de production : export illisible/); assert.equal(e.stderr.includes('SECRET'), false);
+    for (const forme of ["return '{}';", "return '[]';", "return JSON.stringify({ nodes: {} });", "return JSON.stringify({ nodes: [null] });"]) {
+      const g = lancer(pre('box-fonda-generation-ia.json', forme), ['--page', '--profil', 'recette']);
+      assert.equal(g.status, 1, forme); assert.equal(g.stdout, '', forme); assert.match(g.stderr, /inventaire de production : export hors schéma \(nodes\)/, forme);
+    }
+    const c = lancer(pre('profil-recette.json', "return JSON.stringify({ profil: 'recette', SECRET_SYNTHETIQUE: 1 });"), ['--page', '--profil', 'recette']);
+    assert.equal(c.status, 1); assert.match(c.stderr, /liste fermée CLES_RECETTE/); assert.equal(c.stderr.includes('SECRET'), false);
+  });
+  test('F1 (constructeur) : exports et paramètres des fonctions exportées = LISTE FERMÉE', () => {
+    const signature = (f) => { const t = f.toString(); if (/^class\b/.test(t)) return '<classe>'; const i = t.indexOf('('); let d = 0; let j = i;
+      for (; j < t.length; j += 1) { if (t[j] === '(') d += 1; else if (t[j] === ')') { d -= 1; if (!d) break; } } return t.slice(i + 1, j).replace(/\s+/g, ' ').trim(); };
+    const attendu = { CHAMPS_FORMULAIRE: 'object', CLES_RECETTE: 'object', CODES_HTTP: 'object', COMMUN_PAGE: 'string', CONFIG: 'object', EXPORTS_PRODUCTION_INVENTAIRE: 'object',
+      ErreurConstruction: '<classe>', GABARIT_PAGE: 'string', GRAMMAIRES_RECETTE: 'object', MODULES: 'object', NOEUDS_CLOTURER: 'object', NOEUDS_CONFIRMER: 'object', NOEUDS_EMETTRE: 'object',
+      NOEUDS_PAGE: 'object', PROFILS_MOTEUR: 'object', analyserArguments: 'argv', appPage: '', chargerCommun: '', configRecette: 'brut = lireProfilRecette()', construireCloturer: '',
+      construireConfirmer: '', construireEmettre: '', construireExport: "option, profil = 'production', brutRecette = undefined", construirePage: '', inventaireProduction: '', registrePage: '' };
+    assert.deepEqual(Object.keys(B).sort(), Object.keys(attendu).sort());
+    for (const [k, v] of Object.entries(B)) assert.equal(typeof v === 'function' ? signature(v) : typeof v, attendu[k], k);
+  });
+  test('instantané de surface (constructeur) : CLES_RECETTE, grammaires du profil et constructeurs recopiés LITTÉRALEMENT (élargir = modifier ce test)', () => {
+    assert.deepEqual(B.CLES_RECETTE, ['nomEmettre', 'nomCloturer', 'nomConfirmer', 'nomPage', 'cheminEmettre', 'cheminCloturer', 'cheminPage', 'cheminConfirmer',
+      'dossierCandidats', 'dossierRelecture', 'dossierDecisions', 'tableRelecteurs', 'urlMoteurs',
+      'credentialDrive', 'credentialEmettre', 'credentialCloturer', 'credentialApiN8n', 'credentialGmail']);
+    assert.deepEqual(Object.fromEntries(Object.entries(B.GRAMMAIRES_RECETTE).map(([k, r]) => [k, r.source])), {
+      nom: /^FONDA RECETTE - [A-Z][a-z]+ relecture$/.source,
+      chemin: /^fonda-recette-[a-z]{1,20}(-[a-z]{1,20}){0,3}$/.source,
+      dossier: /^[A-Za-z0-9_-]{10,80}$/.source,
+      credentialId: /^[A-Za-z0-9]{8,32}$/.source,
+      credentialNom: /^FONDA RECETTE [A-Za-z0-9]{1,20}( [A-Za-z0-9()]{1,20}){0,6}$/.source,
+      urlMoteurs: /^(https:\/\/ericduchateau\.github\.io\/box\/fonda\/engine|https:\/\/cdn\.jsdelivr\.net\/gh\/ericduchateau\/box@[0-9a-f]{40}\/fonda\/engine)$/.source,
+    });
+    assert.deepEqual(Object.values(B.GRAMMAIRES_RECETTE).map((r) => r.flags), ['', '', '', '', '', '']);
+    // Constructeurs admis par la ligne de commande : les 4 exactement, chacun sous les 2 profils exactement.
+    for (const o of ['--emettre', '--cloturer', '--confirmer', '--page']) for (const p of ['production', 'recette'])
+      assert.deepEqual(B.analyserArguments([o, '--profil', p]), { option: o, profil: p });
+    for (const a of [['--generation'], ['--emettre', '--profil', 'staging'], ['toString'], ['__proto__'], ['--constructor']]) assert.throws(() => B.analyserArguments(a), B.ErreurConstruction, a.join(' '));
+  });
+  test('X1 (constructeur) : modules chargés, TRACÉS (Module._load), = LISTE FERMÉE, pour les deux profils', () => {
+    const os = require('os'); const cp = require('child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'trace-'));
+    const trace = path.join(dir, 'trace.js');
+    fs.writeFileSync(trace, `const M = require('module'); const fs = require('fs'); const path = require('path');
+const vus = new Set(); const orig = M._load;
+M._load = function (req, parent, isMain) { const r = orig.apply(this, arguments);
+  try { if (M.isBuiltin(req)) vus.add('node:' + req.replace(/^node:/, '')); else vus.add(path.relative(process.env.RACINE, M._resolveFilename(req, parent, isMain))); } catch { vus.add('<non résolu>'); }
+  return r; };
+process.on('exit', () => fs.writeFileSync(process.env.TRACE, JSON.stringify([...vus].sort())));\n`);
+    const attendu = ['fonda/engine/canonique.js', 'fonda/engine/catalogue.js', 'fonda/engine/generation.js', 'fonda/engine/journal-set-ids.js', 'fonda/scripts/attestation-signee.js',
+      'fonda/scripts/generer-lot-fonda.js', 'fonda/scripts/interim.js', 'fonda/scripts/liaison-generation.js', 'fonda/scripts/moteurs.js', 'fonda/scripts/rattachement-page.js',
+      'fonda/scripts/referentiel-archive.js', 'fonda/scripts/signer-cloture.js', 'fonda/scripts/verifier-moteurs.js', 'n8n/fonda-generation-ia/construire-workflow.js',
+      'n8n/fonda-relecture-page/construire-relecture.js', 'node:child_process', 'node:crypto', 'node:fs', 'node:https', 'node:path', 'node:vm'];
+    for (const args of [['--page', '--profil', 'recette'], ['--emettre', '--profil', 'recette'], ['--confirmer'], ['--cloturer']]) {
+      const sortie = path.join(dir, `t-${args.join('')}.json`);
+      const r = cp.spawnSync(process.execPath, ['-r', trace, path.join(__dirname, 'construire-relecture.js'), ...args], { cwd: RACINE, env: { ...process.env, RACINE, TRACE: sortie }, encoding: 'utf8' });
+      assert.equal(r.status, 0, args.join(' '));
+      assert.deepEqual(JSON.parse(fs.readFileSync(sortie, 'utf8')), attendu, args.join(' '));
+    }
+  });
+  test('TOUS les uuid (nœuds, webhookId, conditions) disjoints entre les 4 exports de recette et les 4 de production', () => {
+    const tous = (lire) => new Set(Object.keys(EXPORTS).flatMap((k) => lire(k).toString('utf8').match(UUID) || []));
+    const prod = tous(lireExport); const rec = tous(lireRecette);
+    assert.ok(rec.size > 0);
+    for (const u of rec) assert.equal(prod.has(u), false, `uuid partagé avec la production : ${u}`);
+  });
+  test('INJECTION composite (quote, opérateur, espace, URL) refusée par la grammaire FERMÉE de chaque champ', () => {
+    const avec = (modif) => { const p = copie(PROFIL_RECETTE); modif(p); return () => B.configRecette(p); };
+    const prodId = B.CONFIG.dossierCandidats;
+    for (const v of [`x' in parents or '${prodId}`, `${prodId}' or '1'='1`, 'abc def ghij', 'A_RENSEIGNER_RECETTE_X\' or \'', 'dossier/../x12345', 'courte', 'x'.repeat(81)])
+      for (const c of ['dossierCandidats', 'dossierRelecture', 'dossierDecisions', 'tableRelecteurs']) assert.throws(avec((p) => { p[c] = v; }), /hors grammaire|remplacement hors recette/, `${c}=${v}`);
+    for (const v of ['http://exemple.test/m', 'https://exemple.test/m?x=1', 'https://exemple.test/m/', "https://exemple.test/m'", 'https://exemple', 'https://u@exemple.test/m',
+      'https://hostile.example/moteurs', 'https://127.0.0.1/moteurs', 'https://ericduchateau.github.io/box/fonda/engine/../../autre', 'https://ericduchateau.github.io/box/fonda/engine/',
+      'https://ericduchateau.github.io/autre/fonda/engine', 'https://cdn.jsdelivr.net/gh/autre/box@0123456789abcdef0123456789abcdef01234567/fonda/engine', 'https://cdn.jsdelivr.net/gh/ericduchateau/box@main/fonda/engine',
+      'https://cdn.jsdelivr.net/gh/ericduchateau/box@0123456789abcdef0123456789abcdef0123456/fonda/engine', 'https://cdn.jsdelivr.net/gh/ericduchateau/box@0123456789ABCDEF0123456789ABCDEF01234567/fonda/engine', 'http://ericduchateau.github.io/box/fonda/engine'])
+      assert.throws(avec((p) => { p.urlMoteurs = v; }), /hors grammaire/, v);
+    for (const v of BASES_MOTEURS_AUTORISEES) assert.doesNotThrow(avec((p) => { p.urlMoteurs = v; }), v);
+    assert.doesNotThrow(avec((p) => { p.urlMoteurs = 'https://cdn.jsdelivr.net/gh/ericduchateau/box@0123456789abcdef0123456789abcdef01234567/fonda/engine'; p.dossierDecisions = '1AbC_d-EfGhIjKlMnOpQrStUvWxYz012'; p.credentialGmail = { id: 'AbCdEfGh12345678', name: 'FONDA RECETTE Gmail relecture' }; }));
+    for (const v of ["FONDA RECETTE - Page relecture'", 'FONDA RECETTE - Page  relecture', 'FONDA RECETTE - page relecture']) assert.throws(avec((p) => { p.nomPage = v; }), /hors grammaire/, v);
+    for (const v of ['fonda-recette-select/x', 'fonda-recette-', 'fonda-recette-Select', "fonda-recette-select'"]) assert.throws(avec((p) => { p.cheminPage = v; }), /hors grammaire/, v);
+  });
+  test('avecProfil INTERNE : non exporté ; construireExport n\'accepte que la liste fermée de constructeurs (propriétés propres)', () => {
+    assert.equal(B.avecProfil, undefined);
+    for (const o of ['toString', 'constructor', '__proto__', 'hasOwnProperty', '--Page', '']) assert.throws(() => B.construireExport(o, 'recette'), /constructeur inconnu/, o);
+    assert.throws(() => B.analyserArguments(['toString']), /argument inconnu/);
+    assert.throws(() => B.analyserArguments(['--page', '--profil', 'constructor']), /valeur attendue/);
+  });
+  test('profil inconnu ou profil de recette invalide -> erreur, profil actif restauré', () => {
+    assert.throws(() => B.construireExport('--page', 'prod'), /profil inconnu/);
+    assert.throws(() => B.construireExport('--page', 'toString'), /profil inconnu/);
+    assert.ok(lireExport('page').equals(Buffer.from(`${JSON.stringify(B.construirePage(), null, 2)}\n`, 'utf8')));
   });
 });
 

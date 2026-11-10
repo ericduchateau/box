@@ -20,9 +20,18 @@
 // (jetons, valeurs de credentials, clé HMAC) et les ADRESSES ne sont jamais dans le dépôt : credentials
 // n8n référencés par id, adresse lue à l'exécution dans une Data Table (clé = relecteur_attribue).
 //
-// Usage : node n8n/fonda-relecture-page/construire-relecture.js --emettre | --cloturer | --confirmer | --page > export.json
+// Profils (P4a) : « production » (défaut, exports box-fonda-*-relecture.json) et « recette » (copie de test
+// P4, exports box-fonda-*-relecture.recette.json) ; le profil de recette REMPLACE tous les identifiants
+// d'instance (noms, chemins, dossiers, Data Table, credentials) par ceux de profil-recette.json et ne doit
+// référencer AUCUN identifiant de production (vérifié à la construction et par le harnais).
+//
+// Usage : node n8n/fonda-relecture-page/construire-relecture.js --emettre | --cloturer | --confirmer | --page [--profil recette] > export.json
 
 'use strict';
+
+// Ligne de commande : une erreur levée PENDANT LE CHARGEMENT des dépendances (avant le try/catch final) n'est
+// jamais affichée telle quelle (pile, chemins, extraits) : marqueur fixe et code 1.
+if (require.main === module) process.on('uncaughtException', () => { process.stderr.write('construire-relecture : erreur de construction (message non affichable)\n'); process.exit(1); });
 
 const crypto = require('crypto');
 const fs = require('fs');
@@ -37,7 +46,7 @@ const RACINE = path.join(__dirname, '..', '..');
 
 // --- Configuration (valeurs de remplacement, renseignées en P4) ------------------------------
 const P4 = (nom) => `A_RENSEIGNER_P4_${nom}`;
-const CONFIG = Object.freeze({
+const CONFIG_PRODUCTION = Object.freeze({
   nomEmettre: 'FONDA - Emettre relecture',
   nomCloturer: 'FONDA - Cloturer relecture',
   nomConfirmer: 'FONDA - Confirmer relecture',
@@ -63,6 +72,153 @@ const CONFIG = Object.freeze({
   credentialApiN8n: { id: P4('CREDENTIAL_API_N8N'), name: 'FONDA API n8n (lecture Data Table)' },
   credentialGmail: { id: P4('CREDENTIAL_GMAIL'), name: 'FONDA Gmail relecture' },
 });
+
+// --- Profil de recette (P4a) : copie de test isolée sur l'instance -----------------------------
+// Clés REMPLACÉES par profil-recette.json (toutes, exactement) ; les autres sont partagées avec la
+// production (dépôt public lu, URL de l'instance, durée de clé, plafond de pagination). urlPage est
+// DÉRIVÉE (instance + chemin de la page de recette), jamais saisie.
+const CLES_RECETTE = Object.freeze(['nomEmettre', 'nomCloturer', 'nomConfirmer', 'nomPage', 'cheminEmettre', 'cheminCloturer', 'cheminPage', 'cheminConfirmer',
+  'dossierCandidats', 'dossierRelecture', 'dossierDecisions', 'tableRelecteurs', 'urlMoteurs',
+  'credentialDrive', 'credentialEmettre', 'credentialCloturer', 'credentialApiN8n', 'credentialGmail']);
+const PROFIL_RECETTE = path.join(__dirname, 'profil-recette.json');
+// Identifiants de production CONNUS DU DÉPÔT : CONFIG_PRODUCTION + inventaire de TOUS les exports n8n
+// du dépôt hors recette (génération, portier, collecte, sauvegardes BOX, copies TEST…) : ids et noms de
+// credentials, chemins de webhook, noms et ids de workflows, et tout jeton ≥ 25 caractères des paramètres
+// (identifiants Drive). LIMITE : le dépôt ne connaît pas tous les credentials de l'instance ; la garantie
+// finale reste la création de credentials NEUFS par Éric (phase 1) et comparer-live (phase 2).
+// Erreurs du profil et de la ligne de commande : messages formés UNIQUEMENT de constantes et de noms de champs
+// de CLES_RECETTE (liste fermée) ; la ligne de commande n'affiche que celles-ci (sinon un marqueur fixe).
+class ErreurConstruction extends Error {}
+// Sources de l'inventaire : LISTE EXPLICITE des exports n8n suivis par Git hors recette (jamais un glob ; le
+// harnais vérifie qu'elle égale `git ls-files 'n8n/*.json'` hors recette). Un fichier local non suivi n'est
+// jamais lu.
+const EXPORTS_PRODUCTION_INVENTAIRE = Object.freeze([
+  'n8n/backup-2026-10-05/box-catalogue-api.json',
+  'n8n/backup-2026-10-05/box-fiche-api.json',
+  'n8n/backup-2026-10-05/box-generation-flashcards.json',
+  'n8n/backup-2026-10-05/box-generation-tally.json',
+  'n8n/backup-2026-10-05/box-question-eleve.json',
+  'n8n/backup-2026-10-05/box-rejet-prof.json',
+  'n8n/backup-2026-10-05/box-selection-prof.json',
+  'n8n/backup-2026-10-05/box-suppression.json',
+  'n8n/backup-2026-10-05/box-validation-prof.json',
+  'n8n/backup-2026-10-08-prebascule/box-fiche-api.json',
+  'n8n/backup-2026-10-08-prebascule/box-generation-flashcards.json',
+  'n8n/backup-2026-10-08-prebascule/box-generation-tally.json',
+  'n8n/backup-2026-10-08-prebascule/box-selection-prof.json',
+  'n8n/backup-2026-10-08-prebascule/box-validation-prof.json',
+  'n8n/fonda-collecte/box-fonda-events.json',
+  'n8n/fonda-generation-ia/box-fonda-generation-ia-portier.json',
+  'n8n/fonda-generation-ia/box-fonda-generation-ia.json',
+  'n8n/fonda-generation/box-fonda-generation.json',
+  'n8n/fonda-relecture-page/box-fonda-cloturer-relecture.json',
+  'n8n/fonda-relecture-page/box-fonda-confirmer-relecture.json',
+  'n8n/fonda-relecture-page/box-fonda-emettre-relecture.json',
+  'n8n/fonda-relecture-page/box-fonda-page-relecture.json',
+  'n8n/fonda-sonde-modele/box-fonda-sonde-modele.json',
+  'n8n/t-sec-2026-10-06/prod/box-fiche-api.json',
+  'n8n/t-sec-2026-10-06/prod/box-generation-flashcards.json',
+  'n8n/t-sec-2026-10-06/prod/box-generation-tally.json',
+  'n8n/t-sec-2026-10-06/prod/box-selection-prof.json',
+  'n8n/t-sec-2026-10-06/prod/box-validation-prof.json',
+  'n8n/t-sec-2026-10-06/test/box-fiche-api-TEST.json',
+  'n8n/t-sec-2026-10-06/test/box-generation-flashcards-TEST.json',
+  'n8n/t-sec-2026-10-06/test/box-generation-tally-TEST.json',
+  'n8n/t-sec-2026-10-06/test/box-selection-prof-TEST.json',
+  'n8n/t-sec-2026-10-06/test/box-validation-prof-TEST.json',
+]);
+// « stricts » : identifiants nommés (credentials, chemins de webhook, noms/ids de workflows, webhookId,
+// CONFIG_PRODUCTION) ; « jetons » : tout jeton ≥ 25 caractères des paramètres (identifiants Drive ; code compris,
+// appartenance seulement). Les stricts ne doivent apparaître NULLE PART dans un export de recette (harnais).
+function inventaireExport(wf, stricts, jetonsVus) {
+  // La SOURCE de la protection est validée : un export hors schéma (ex. remplacé par {}) retirerait en silence
+  // ses identifiants de la protection -> refus, message fixe.
+  if (!wf || typeof wf !== 'object' || Array.isArray(wf) || !Array.isArray(wf.nodes) || wf.nodes.some((n) => !n || typeof n !== 'object' || Array.isArray(n))) throw new ErreurConstruction('inventaire de production : export hors schéma (nodes)');
+  stricts.add(wf.name); stricts.add(wf.id);
+  const jetons = (x) => { if (typeof x === 'string') { for (const j of x.match(/[A-Za-z0-9_-]{25,}/g) || []) jetonsVus.add(j); } else if (x && typeof x === 'object') for (const y of Object.values(x)) jetons(y); };
+  for (const n of wf.nodes) {
+    if (n && n.credentials && typeof n.credentials === 'object') for (const c of Object.values(n.credentials)) if (c && typeof c === 'object') { stricts.add(c.id); stricts.add(c.name); }
+    if (n && n.type === 'n8n-nodes-base.webhook' && n.parameters) stricts.add(n.parameters.path);
+    if (n && n.webhookId) stricts.add(n.webhookId);
+    if (n && n.parameters) jetons(n.parameters);
+  }
+}
+function inventaireProduction() {
+  const stricts = new Set(); const jetons = new Set();
+  for (const [cle, val] of Object.entries(CONFIG_PRODUCTION)) {
+    if (!CLES_RECETTE.includes(cle) && cle !== 'urlPage') continue;
+    if (val && typeof val === 'object') { stricts.add(val.id); stricts.add(val.name); } else stricts.add(val);
+  }
+  for (const f of EXPORTS_PRODUCTION_INVENTAIRE) {
+    let wf;
+    try { wf = JSON.parse(fs.readFileSync(path.join(RACINE, f), 'utf8')); } catch { throw new ErreurConstruction('inventaire de production : export illisible'); }
+    inventaireExport(wf, stricts, jetons);
+  }
+  const net = (e) => new Set([...e].filter((x) => typeof x === 'string' && x !== '' && !x.startsWith('A_RENSEIGNER_P4_')));
+  return { stricts: net(stricts), jetons: net(jetons) };
+}
+// Grammaires FERMÉES par champ (connu-bon ; jamais une denylist) : un identifiant réel OU une valeur de
+// remplacement de RECETTE. Aucune quote, espace ou opérateur ne peut atteindre une requête Drive.
+const REMPLACEMENT_RECETTE = /^A_RENSEIGNER_RECETTE_[A-Z0-9_]{1,60}$/;
+const GRAMMAIRES_RECETTE = Object.freeze({
+  nom: /^FONDA RECETTE - [A-Z][a-z]+ relecture$/,
+  chemin: /^fonda-recette-[a-z]{1,20}(-[a-z]{1,20}){0,3}$/,
+  dossier: /^[A-Za-z0-9_-]{10,80}$/,
+  credentialId: /^[A-Za-z0-9]{8,32}$/,
+  credentialNom: /^FONDA RECETTE [A-Za-z0-9]{1,20}( [A-Za-z0-9()]{1,20}){0,6}$/,
+  // urlMoteurs : LISTE FERMÉE de bases (jamais une grammaire d'hôte) : GitHub Pages (sert main, cible mouvante)
+  // ou jsDelivr épinglé sur un commit (immuable, à préférer en production pour un moteur versionné).
+  urlMoteurs: /^(https:\/\/ericduchateau\.github\.io\/box\/fonda\/engine|https:\/\/cdn\.jsdelivr\.net\/gh\/ericduchateau\/box@[0-9a-f]{40}\/fonda\/engine)$/,
+});
+const GRAMMAIRE_DE = (c) => (c.startsWith('nom') ? 'nom' : c.startsWith('chemin') ? 'chemin' : c === 'urlMoteurs' ? 'urlMoteurs' : c.startsWith('credential') ? 'credential' : 'dossier');
+function lireProfilRecette() {
+  try { return JSON.parse(fs.readFileSync(PROFIL_RECETTE, 'utf8')); } catch { throw new ErreurConstruction('profil de recette : illisible (JSON)'); }
+}
+function configRecette(brut = lireProfilRecette()) {
+  if (!brut || typeof brut !== 'object' || Array.isArray(brut)) throw new ErreurConstruction('profil de recette : objet attendu');
+  if (brut.profil !== 'recette') throw new ErreurConstruction('profil de recette : « profil » doit valoir « recette »');
+  const cles = Object.keys(brut).filter((c) => c !== 'profil').sort();
+  if (cles.join(',') !== [...CLES_RECETTE].sort().join(',')) throw new ErreurConstruction('profil de recette : clés ≠ liste fermée CLES_RECETTE');
+  const G = GRAMMAIRES_RECETTE;
+  const ok = (re, x) => typeof x === 'string' && re.test(x);
+  for (const c of CLES_RECETTE) {
+    const v = brut[c]; const g = GRAMMAIRE_DE(c);
+    // Une valeur de remplacement n'est admise que si c'est une valeur de RECETTE (jamais A_RENSEIGNER_P4_…).
+    for (const x of v && typeof v === 'object' ? [v.id, v.name] : [v]) if (typeof x === 'string' && x.startsWith('A_RENSEIGNER_') && !REMPLACEMENT_RECETTE.test(x)) throw new ErreurConstruction(`profil de recette : ${c} = valeur de remplacement hors recette`);
+    if (g === 'credential') {
+      if (!v || typeof v !== 'object' || Array.isArray(v) || Object.keys(v).sort().join(',') !== 'id,name') throw new ErreurConstruction(`profil de recette : ${c} = { id, name }`);
+      if (!ok(G.credentialId, v.id) && !ok(REMPLACEMENT_RECETTE, v.id)) throw new ErreurConstruction(`profil de recette : ${c}.id hors grammaire`);
+      if (!ok(G.credentialNom, v.name)) throw new ErreurConstruction(`profil de recette : ${c}.name hors grammaire « FONDA RECETTE … »`);
+    } else if (g === 'nom') { if (!ok(G.nom, v)) throw new ErreurConstruction(`profil de recette : ${c} hors grammaire « FONDA RECETTE - … »`); } else if (g === 'chemin') { if (!ok(G.chemin, v)) throw new ErreurConstruction(`profil de recette : ${c} hors grammaire « fonda-recette-… »`); } else if (!ok(G[g], v) && !ok(REMPLACEMENT_RECETTE, v)) throw new ErreurConstruction(`profil de recette : ${c} hors grammaire`);
+  }
+  const config = Object.freeze({ ...CONFIG_PRODUCTION, ...Object.fromEntries(CLES_RECETTE.map((c) => [c, brut[c]])),
+    urlPage: `${CONFIG_PRODUCTION.urlN8n}/webhook/${brut.cheminPage}` });
+  // Isolation : aucune valeur de recette n'est un identifiant de production (dossiers, credentials, noms, chemins).
+  // Valeur jamais citée dans le message (elle peut venir d'un export local non publié). La grammaire
+  // ferme déjà toute valeur composée ; l'inventaire écarte la réutilisation d'un identifiant connu.
+  const { stricts, jetons } = inventaireProduction();
+  for (const c of CLES_RECETTE) {
+    const v = brut[c];
+    for (const x of v && typeof v === 'object' ? [v.id, v.name] : [v]) if (stricts.has(x) || jetons.has(x)) throw new ErreurConstruction(`profil de recette : ${c} réutilise un identifiant de production`);
+  }
+  return config;
+}
+// Profil ACTIF pendant une construction (production par défaut) : chaque constructeur lit CONFIG et
+// ESPACE_UUID à l'appel ; avecProfil les remplace le temps d'une construction, puis RESTAURE la production.
+// INTERNE (non exporté) : appelé seulement par construireExport, avec la liste fermée des constructeurs
+// SYNCHRONES du module ; aucune fonction externe ne s'exécute sous le profil de recette.
+let CONFIG = CONFIG_PRODUCTION;
+let ESPACE_UUID = 'fonda-relecture-page';
+function avecProfil(profil, fn, brutRecette = undefined) {
+  let suivant;
+  if (profil === 'production') suivant = [CONFIG_PRODUCTION, 'fonda-relecture-page'];
+  else if (profil === 'recette') suivant = [brutRecette === undefined ? configRecette() : configRecette(brutRecette), 'fonda-relecture-page:recette'];
+  else throw new ErreurConstruction('profil inconnu');
+  if (suivant[0].maxPagesDrive !== CONFIG_PRODUCTION.maxPagesDrive) throw new ErreurConstruction('profil : maxPagesDrive partagé (PAGINATION_DRIVE)');
+  const avant = [CONFIG, ESPACE_UUID];
+  [CONFIG, ESPACE_UUID] = suivant;
+  try { return fn(); } finally { [CONFIG, ESPACE_UUID] = avant; }
+}
 
 // Noms de nœuds : ceux du consommateur gelé pour la clôture (ROLES.cloture).
 const NOEUDS_CLOTURER = Object.freeze({
@@ -114,7 +270,7 @@ const NOEUDS_EMETTRE = Object.freeze({
 const MODULES = Object.freeze({ catalogue: 'fonda/engine/catalogue.js', journal: 'fonda/engine/journal-set-ids.js', canonique: 'fonda/engine/canonique.js' });
 
 const uuid = (graine) => {
-  const h = crypto.createHash('sha256').update(`fonda-relecture-page:${graine}`).digest('hex');
+  const h = crypto.createHash('sha256').update(`${ESPACE_UUID}:${graine}`).digest('hex');
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;
 };
 const ENTETE = (role) => [
@@ -1216,11 +1372,43 @@ function construirePage() {
   return { name: CONFIG.nomPage, nodes: noeuds, connections, settings: REGLAGES };
 }
 
-module.exports = { CONFIG, MODULES, NOEUDS_CLOTURER, NOEUDS_EMETTRE, NOEUDS_CONFIRMER, NOEUDS_PAGE, CODES_HTTP, CHAMPS_FORMULAIRE, COMMUN_PAGE, GABARIT_PAGE,
+module.exports = { CONFIG: CONFIG_PRODUCTION, CLES_RECETTE, GRAMMAIRES_RECETTE, EXPORTS_PRODUCTION_INVENTAIRE, ErreurConstruction, configRecette, inventaireProduction, MODULES, NOEUDS_CLOTURER, NOEUDS_EMETTRE, NOEUDS_CONFIRMER, NOEUDS_PAGE, CODES_HTTP, CHAMPS_FORMULAIRE, COMMUN_PAGE, GABARIT_PAGE,
   PROFILS_MOTEUR, chargerCommun, registrePage, appPage, construireCloturer, construireEmettre, construireConfirmer, construirePage };
 
-const CONSTRUCTEURS = { '--emettre': construireEmettre, '--cloturer': construireCloturer, '--confirmer': construireConfirmer, '--page': construirePage };
+const CONSTRUCTEURS = Object.freeze(Object.assign(Object.create(null), { '--emettre': construireEmettre, '--cloturer': construireCloturer, '--confirmer': construireConfirmer, '--page': construirePage }));
+const estConstructeur = (o) => typeof o === 'string' && Object.prototype.hasOwnProperty.call(CONSTRUCTEURS, o);
+// Construction sous un profil : JSON exact de l'export (production : box-fonda-<k>-relecture.json ;
+// recette : box-fonda-<k>-relecture.recette.json).
+// brutRecette (facultatif, harnais) : profil de recette fourni EN MÉMOIRE, validé par configRecette comme le fichier.
+function construireExport(option, profil = 'production', brutRecette = undefined) {
+  if (!estConstructeur(option)) throw new ErreurConstruction('constructeur inconnu');
+  if (brutRecette !== undefined && profil !== 'recette') throw new ErreurConstruction('profil en mémoire réservé à la recette');
+  return `${JSON.stringify(avecProfil(profil, CONSTRUCTEURS[option], brutRecette), null, 2)}\n`;
+}
+module.exports.construireExport = construireExport;
+// Ligne de commande STRICTE : exactement un constructeur, au plus un « --profil <production|recette> » ;
+// option inconnue, valeur absente ou doublon -> erreur (jamais la production par défaut sur une faute).
+function analyserArguments(argv) {
+  let option = null; let profil = null;
+  for (let i = 0; i < argv.length; i += 1) {
+    const a = argv[i];
+    if (estConstructeur(a)) { if (option) throw new ErreurConstruction('un seul constructeur'); option = a; } else if (a === '--profil') {
+      if (profil !== null) throw new ErreurConstruction('--profil en double');
+      const v = argv[i + 1];
+      if (v !== 'production' && v !== 'recette') throw new ErreurConstruction('--profil : valeur attendue « production » ou « recette »');
+      profil = v; i += 1;
+    } else throw new ErreurConstruction('argument inconnu');
+  }
+  if (!option) throw new ErreurConstruction('constructeur absent');
+  return { option, profil: profil || 'production' };
+}
+module.exports.analyserArguments = analyserArguments;
 if (require.main === module) {
-  const option = Object.keys(CONSTRUCTEURS).find((o) => process.argv.includes(o));
-  if (!option) { process.stderr.write(`usage : construire-relecture.js ${Object.keys(CONSTRUCTEURS).join(' | ')}\n`); process.exitCode = 1; } else process.stdout.write(`${JSON.stringify(CONSTRUCTEURS[option](), null, 2)}\n`);
+  try {
+    const { option, profil } = analyserArguments(process.argv.slice(2));
+    process.stdout.write(construireExport(option, profil));
+  } catch (e) {
+    process.stderr.write(`construire-relecture : ${e instanceof ErreurConstruction ? e.message : 'erreur de construction (message non affichable)'}\nusage : construire-relecture.js ${Object.keys(CONSTRUCTEURS).join(' | ')} [--profil production|recette]\n`);
+    process.exitCode = 1;
+  }
 }
