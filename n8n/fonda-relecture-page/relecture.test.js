@@ -193,6 +193,45 @@ function versProduction(k) {
   });
   return { wf: JSON.parse(t.replace(UUID, (u) => aller.get(u))), prod };
 }
+// Références d'instance d'exports de recette ⊆ ENSEMBLE FERMÉ dérivé du profil c (connu-bon) : URL exactes (instance,
+// API Google fixes, dépôt public, moteurs du registre sous urlMoteurs), dossiers des requêtes Drive, CONFIG embarqués,
+// credentials, chemins, noms ; aucun identifiant de l'inventaire de production. Renvoie le nombre d'URL de moteurs vues.
+function verifierReferencesRecette(textes, c) {
+  const creds = new Set(B.CLES_RECETTE.filter((k) => k.startsWith('credential')).map((k) => JSON.stringify([c[k].id, c[k].name])));
+  const chemins = new Set(['cheminEmettre', 'cheminCloturer', 'cheminPage', 'cheminConfirmer'].map((k) => c[k]));
+  const noms = new Set(['nomEmettre', 'nomCloturer', 'nomConfirmer', 'nomPage'].map((k) => c[k]));
+  const dossiers = new Set([c.dossierCandidats, c.dossierRelecture, c.dossierDecisions]);
+  const moteurs = new Set();
+  const reg = JSON.parse(fs.readFileSync(path.join(RACINE, 'fonda/engine/moteurs.json'), 'utf8'));
+  for (const l of reg) moteurs.add(`${c.urlMoteurs}/${path.basename(l.fichier)}`);
+  const urls = new Set([`${c.urlN8n}/webhook/${c.cheminPage}`, `${c.urlN8n}/webhook/${c.cheminConfirmer}`, `${c.urlN8n}/api/v1/data-tables/${c.tableRelecteurs}/rows`,
+    'https://gmail.googleapis.com/gmail/v1/users/me/messages/send', 'https://www.googleapis.com/drive/v3/files', 'https://www.googleapis.com/drive/v3/files/',
+    'https://www.googleapis.com/upload/drive/v3/files', 'https://www.googleapis.com/upload/drive/v3/files/',
+    ...['fonda/data/referentiel.json', 'fonda/data/set_ids-journal.json', 'fonda/engine/moteurs.json'].map((f) => `https://api.github.com/repos/${c.depot}/contents/${f}`), ...moteurs]);
+  const { stricts } = B.inventaireProduction();
+  let vusMoteurs = 0;
+  for (const [k, t] of Object.entries(textes)) {
+    const wf = JSON.parse(t);
+    assert.ok(noms.has(wf.name), `${k} : nom de workflow hors profil`);
+    for (const n of wf.nodes) {
+      for (const r of Object.values(n.credentials || {})) assert.ok(creds.has(JSON.stringify([r.id, r.name])), `${n.name} : credential hors profil`);
+      if (n.type === 'n8n-nodes-base.webhook') assert.ok(chemins.has(n.parameters.path), `${n.name} : chemin hors profil`);
+    }
+    for (const m of t.matchAll(/https?:\/\/[^"'\s\\)]+/g)) {
+      const u = m[0].replace(/\$\{.*$/, '').replace(/\?.*$/, '');
+      assert.ok(urls.has(u), `${k} : URL hors liste fermée`);
+      if (moteurs.has(u)) vusMoteurs += 1;
+    }
+    for (const m of t.matchAll(/'([^'\\]*)' in parents/g)) assert.ok(dossiers.has(m[1]), `${k} : dossier hors profil dans une requête Drive`);
+    for (const m of t.matchAll(/const CONFIG = (\{(?:[^{}]|\\")*?\});/g)) {
+      const o = JSON.parse(JSON.parse(`"${m[1]}"`));
+      for (const [cle, v] of Object.entries(o)) assert.equal(v, c[cle], `${k} : CONFIG embarqué ${cle} ≠ profil de recette`);
+    }
+    const sansDomaine = t.replace(/fonda-select(-form)?\/v\d+/g, '<domaine>');
+    for (const x of stricts) assert.equal(sansDomaine.includes(x), false, `${k} : identifiant de production (inventaire complet) présent`);
+  }
+  return vusMoteurs;
+}
 describe('1 bis. profil de recette (P4a) : exports de production INCHANGÉS, copie isolée', () => {
   for (const k of Object.keys(CONSTRUCTEURS)) {
     test(`${EXPORTS_RECETTE[k]} == construction --profil recette, octet pour octet ; ${EXPORTS[k]} inchangé après (aucune fuite de profil)`, () => {
@@ -218,34 +257,25 @@ describe('1 bis. profil de recette (P4a) : exports de production INCHANGÉS, cop
       assert.deepEqual(wf, prod);
     });
   }
-  test('exports de recette : TOUTES les références d\'instance appartiennent à un ENSEMBLE FERMÉ de connu-bon (profil de recette)', () => {
-    const c = B.configRecette();
-    const creds = new Set(B.CLES_RECETTE.filter((k) => k.startsWith('credential')).map((k) => JSON.stringify([c[k].id, c[k].name])));
-    const chemins = new Set(['cheminEmettre', 'cheminCloturer', 'cheminPage', 'cheminConfirmer'].map((k) => c[k]));
-    const noms = new Set(['nomEmettre', 'nomCloturer', 'nomConfirmer', 'nomPage'].map((k) => c[k]));
-    const dossiers = new Set([c.dossierCandidats, c.dossierRelecture, c.dossierDecisions]);
-    const urls = new Set([`${c.urlN8n}/webhook/${c.cheminPage}`, `${c.urlN8n}/webhook/${c.cheminConfirmer}`, `${c.urlN8n}/api/v1/data-tables/${c.tableRelecteurs}/rows`,
-      'https://gmail.googleapis.com/gmail/v1/users/me/messages/send', 'https://www.googleapis.com/drive/v3/files', 'https://www.googleapis.com/drive/v3/files/',
-      'https://www.googleapis.com/upload/drive/v3/files', 'https://www.googleapis.com/upload/drive/v3/files/',
-      ...['fonda/data/referentiel.json', 'fonda/data/set_ids-journal.json', 'fonda/engine/moteurs.json'].map((f) => `https://api.github.com/repos/${c.depot}/contents/${f}`)]);
-    const { stricts } = B.inventaireProduction();
-    for (const k of Object.keys(EXPORTS)) {
-      const t = lireRecette(k).toString('utf8'); const wf = JSON.parse(t);
-      assert.ok(noms.has(wf.name), `${k} : nom de workflow hors profil`);
-      for (const n of wf.nodes) {
-        for (const r of Object.values(n.credentials || {})) assert.ok(creds.has(JSON.stringify([r.id, r.name])), `${n.name} : credential hors profil`);
-        if (n.type === 'n8n-nodes-base.webhook') assert.ok(chemins.has(n.parameters.path), `${n.name} : chemin hors profil`);
-      }
-      const brut = JSON.parse(JSON.stringify(t)); // texte JSON tel quel (échappements compris)
-      for (const m of t.matchAll(/https?:\/\/[^"'\s\\)]+/g)) { const u = m[0].replace(/\$\{.*$/, '').replace(/\?.*$/, ''); assert.ok(urls.has(u), `${k} : URL hors liste fermée (${u})`); }
-      for (const m of t.matchAll(/'([^'\\]*)' in parents/g)) assert.ok(dossiers.has(m[1]), `${k} : dossier hors profil dans une requête Drive`);
-      for (const m of t.matchAll(/const CONFIG = (\{(?:[^{}]|\\")*?\});/g)) {
-        const o = JSON.parse(JSON.parse(`"${m[1]}"`));
-        for (const [cle, v] of Object.entries(o)) assert.equal(v, c[cle], `${k} : CONFIG embarqué ${cle} ≠ profil de recette`);
-      }
-      const sansDomaine = brut.replace(/fonda-select(-form)?\/v\d+/g, '<domaine>');
-      for (const x of stricts) assert.equal(sansDomaine.includes(x), false, `${k} : identifiant de production (inventaire complet) présent`);
-    }
+  test('exports de recette (fichiers commités) : TOUTES les références d\'instance appartiennent à un ENSEMBLE FERMÉ de connu-bon', () => {
+    verifierReferencesRecette(Object.fromEntries(Object.keys(EXPORTS).map((k) => [k, lireRecette(k).toString('utf8')])), B.configRecette());
+  });
+  test('profil ENTIÈREMENT renseigné (en mémoire, via configRecette) : mêmes références fermées, URL des moteurs comprises ; aucune valeur de remplacement', () => {
+    const p = copie(PROFIL_RECETTE);
+    Object.assign(p, { dossierCandidats: '1RecetteLots_abcdefghijklmnopqrs', dossierRelecture: '1RecetteRelecture_abcdefghijklmn', dossierDecisions: '1RecetteDecisions_abcdefghijklm',
+      tableRelecteurs: 'RecetteTable0123', urlMoteurs: 'https://cdn.jsdelivr.net/gh/ericduchateau/box@0123456789abcdef/fonda/engine' });
+    for (const c of B.CLES_RECETTE.filter((x) => x.startsWith('credential'))) p[c] = { ...p[c], id: `Rec${c.slice(10)}0123456789`.slice(0, 32).replace(/[^A-Za-z0-9]/g, '') };
+    const textes = Object.fromEntries(Object.keys(EXPORTS).map((k) => [k, B.construireExport(`--${k}`, 'recette', p)]));
+    for (const t of Object.values(textes)) { assert.equal(t.includes('A_RENSEIGNER_'), false); controlesStatiques(JSON.parse(t)); }
+    const c = B.configRecette(p);
+    const urlsMoteurs = verifierReferencesRecette(textes, c);
+    assert.ok(urlsMoteurs >= 1, 'URL des moteurs effectivement contrôlées');
+    assert.throws(() => B.construireExport('--page', 'production', p), /réservé à la recette/);
+  });
+  test('inventaire de production : LISTE EXPLICITE = exports n8n suivis par Git hors recette (jamais un glob)', () => {
+    const suivis = require('child_process').execFileSync('git', ['ls-files', 'n8n/*.json'], { cwd: RACINE, encoding: 'utf8' }).trim().split('\n')
+      .filter((f) => !f.endsWith('.recette.json') && !f.endsWith('/profil-recette.json')).sort();
+    assert.deepEqual([...B.EXPORTS_PRODUCTION_INVENTAIRE].sort(), suivis);
   });
   test('profil-recette.json : liste fermée de clés, préfixes « FONDA RECETTE » / « fonda-recette- », urlPage DÉRIVÉE', () => {
     const c = B.configRecette();
@@ -285,6 +315,19 @@ describe('1 bis. profil de recette (P4a) : exports de production INCHANGÉS, cop
       ['--page', '--emettre'], ['--page', '--recette'], ['--profil', 'recette'], [], ['--page', 'recette']]) assert.throws(() => B.analyserArguments(a), Error, a.join(' '));
     const r = require('child_process').spawnSync(process.execPath, [path.join(__dirname, 'construire-relecture.js'), '--page', '--profil'], { encoding: 'utf8' });
     assert.equal(r.status, 1); assert.equal(r.stdout, '');
+  });
+  test('ligne de commande : messages de la liste fermée (ErreurConstruction) ; profil illisible ou erreur tierce -> aucun extrait sur stderr', () => {
+    const os = require('os'); const cp = require('child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'construire-'));
+    const pre = (cible, contenu) => { const f = path.join(dir, `${cible}.js`); fs.writeFileSync(f, `const fs = require('fs'); const lire = fs.readFileSync;
+fs.readFileSync = function (p, ...r) { if (String(p).endsWith(${JSON.stringify(cible)})) { ${contenu} } return lire.call(this, p, ...r); };\n`); return f; };
+    const lancer = (f, args) => cp.spawnSync(process.execPath, ['-r', f, path.join(__dirname, 'construire-relecture.js'), ...args], { encoding: 'utf8' });
+    const a = lancer(pre('profil-recette.json', "return 'SECRET_SYNTHETIQUE{';"), ['--page', '--profil', 'recette']);
+    assert.equal(a.status, 1); assert.equal(a.stdout, ''); assert.match(a.stderr, /profil de recette : illisible \(JSON\)/); assert.equal(a.stderr.includes('SECRET'), false);
+    const b = lancer(pre('moteurs.json', "throw new Error('SECRET_SYNTHETIQUE /chemin/prive');"), ['--page']);
+    assert.equal(b.status, 1); assert.match(b.stderr, /message non affichable/); assert.equal(b.stderr.includes('SECRET'), false);
+    const c = lancer(pre('profil-recette.json', "return JSON.stringify({ profil: 'recette', SECRET_SYNTHETIQUE: 1 });"), ['--page', '--profil', 'recette']);
+    assert.equal(c.status, 1); assert.match(c.stderr, /liste fermée CLES_RECETTE/); assert.equal(c.stderr.includes('SECRET'), false);
   });
   test('TOUS les uuid (nœuds, webhookId, conditions) disjoints entre les 4 exports de recette et les 4 de production', () => {
     const tous = (lire) => new Set(Object.keys(EXPORTS).flatMap((k) => lire(k).toString('utf8').match(UUID) || []));

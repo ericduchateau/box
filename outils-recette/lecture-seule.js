@@ -1,59 +1,129 @@
 'use strict';
-// Transport HTTP en LECTURE SEULE pour la recette P4 (CDC relecture §13, §21.3) : toute requête qui
-// n'est pas un GET sans corps, vers l'origine de l'instance et un chemin de la liste blanche, est
-// REFUSÉE avant d'atteindre le réseau. Les redirections sont refusées (redirect: 'error').
-// Aucun secret n'est journalisé : la clé d'API n'est lue que dans l'environnement et passée en en-tête.
-// L'instance est en HTTPS (clé jamais en clair). Le corps d'une réponse n'apparaît JAMAIS dans un message
-// d'erreur : une réponse JSON illisible donne un diagnostic FIXE (aucun extrait).
+// Transport HTTP en LECTURE SEULE pour la recette P4 (CDC relecture §13, §21.3). Règle : tout ce qui peut
+// atteindre l'instance appartient à un ENSEMBLE FERMÉ de connu-bon, jamais une denylist ni une grammaire
+// permissive :
+//   - instance : liste fermée d'origines HTTPS (INSTANCES) ;
+//   - requête : GET sans corps, sans redirection, en-têtes en liste fermée (clé d'API en grammaire bornée,
+//     accept = application/json) ;
+//   - route : liste fermée (ROUTES), chacune avec sa liste fermée de paramètres de requête (clé, grammaire de
+//     valeur, au plus une occurrence, présence obligatoire ou non). Un curseur de pagination renvoyé par le
+//     serveur (nextCursor) hors grammaire est donc REFUSÉ avant la requête suivante ;
+//   - erreurs : codes d'une liste fermée (ErreurOutil) ; le texte affiché est RECONSTRUIT de composants validés
+//     (jamais e.message d'un tiers, jamais un extrait de réponse). Code HTTP : 3 chiffres validés.
 
-const CHEMINS_N8N = Object.freeze([
-  /^\/api\/v1\/executions$/, // liste (workflowId, status, cursor, limit)
-  /^\/api\/v1\/executions\/[0-9]+$/, // détail (includeData)
-  /^\/api\/v1\/workflows\/[A-Za-z0-9]+$/, // export du workflow (comparaison dépôt <-> live)
+const INSTANCES = Object.freeze(['https://n8n.srv868991.hstgr.cloud']);
+const ID_WORKFLOW = /^[A-Za-z0-9]{1,40}$/;
+const ID_EXECUTION = /^[0-9]{1,20}$/;
+const CURSEUR = /^[A-Za-z0-9+/=_-]{1,512}$/;
+const CLE_API = /^[A-Za-z0-9._-]{16,4096}$/;
+
+const ROUTES = Object.freeze([
+  { nom: 'liste-executions', chemin: /^\/api\/v1\/executions$/, params: {
+    workflowId: { re: ID_WORKFLOW, requis: true }, status: { valeurs: ['running', 'waiting'] }, limit: { valeurs: ['250'], requis: true }, cursor: { re: CURSEUR } } },
+  { nom: 'detail-execution', chemin: /^\/api\/v1\/executions\/[0-9]{1,20}$/, params: { includeData: { valeurs: ['true'], requis: true } } },
+  { nom: 'export-workflow', chemin: /^\/api\/v1\/workflows\/[A-Za-z0-9]{1,40}$/, params: {} },
 ]);
 
-// Base de l'instance : https://hôte[:port] sans chemin, requête, fragment ni identifiants.
-function origineInstance(url) {
-  let u;
-  try { u = new URL(String(url)); } catch { throw new Error('lecture seule : URL de l\'instance invalide'); }
-  if (u.protocol !== 'https:') throw new Error('lecture seule : HTTPS exigé pour l\'instance');
-  if (u.username || u.password || u.search || u.hash || (u.pathname !== '/' && u.pathname !== '')) throw new Error('lecture seule : URL de l\'instance = https://hôte, sans chemin ni paramètres');
-  return u.origin;
+// Messages : liste FERMÉE, indexée par code.
+const MESSAGES = Object.freeze({
+  INSTANCE: 'lecture seule : instance hors liste fermée (HTTPS, origine exacte)',
+  METHODE: 'lecture seule : méthode refusée (GET seulement)',
+  CORPS: 'lecture seule : corps de requête refusé',
+  URL: 'lecture seule : URL de requête invalide',
+  ORIGINE: 'lecture seule : origine refusée',
+  ROUTE: 'lecture seule : route hors liste fermée',
+  PARAMETRE: 'lecture seule : paramètre de requête hors liste fermée',
+  ENTETES: 'lecture seule : en-têtes hors liste fermée',
+  TRANSPORT: 'lecture seule : échec du transport',
+  JSON: 'lecture seule : réponse JSON illisible',
+  CLE: 'clé d\'API absente ou hors grammaire (variable FONDA_N8N_CLE_RECETTE ; jamais en argument ni dans le dépôt)',
+  FETCH: 'lecture seule : fetch absent',
+  WORKFLOW_ID: 'workflowId invalide',
+  EXECUTION_ID: 'identifiant d\'exécution invalide',
+  OPTION_INCONNUE: 'option inconnue',
+  OPTION_DOUBLE: 'option en double',
+  OPTION_VALEUR: 'valeur d\'option absente',
+  POSITIONNELS: 'nombre d\'arguments positionnels incorrect',
+  EXPORT_HORS_LISTE: 'export de référence hors liste fermée (4 exports de recette)',
+  EXPORT_ILLISIBLE: 'export du dépôt illisible',
+  REPONSE: 'réponse de l\'API hors schéma attendu',
+  IDENTITE: 'réponse de l\'API : identifiant ≠ identifiant demandé',
+  HTTP: 'API n8n : HTTP',
+});
+class ErreurOutil extends Error {
+  constructor(code, http = null) {
+    if (!Object.prototype.hasOwnProperty.call(MESSAGES, code)) throw new TypeError('code d\'erreur hors liste fermée');
+    super(MESSAGES[code]);
+    this.code = code;
+    this.http = Number.isInteger(http) && http >= 100 && http <= 599 ? http : null;
+  }
 }
-// Réponse réduite à ok, status et json() ; json() illisible -> message FIXE (jamais d'extrait du corps).
-function reponseSure(r) {
-  return { ok: r.ok, status: r.status, json: async () => { try { return await r.json(); } catch { throw new Error('lecture seule : réponse JSON illisible'); } } };
+// Texte affichable : reconstruit du code (liste fermée) ou du seul statut HTTP validé ; sinon marqueur.
+function messageSur(e) {
+  if (e instanceof ErreurOutil) return e.code === 'HTTP' ? (e.http === null ? 'API n8n : HTTP (statut hors grammaire)' : `API n8n : HTTP ${e.http}`) : MESSAGES[e.code];
+  if (e && e.name === 'ErreurAdaptateur' && Number.isInteger(e.statut) && e.statut >= 100 && e.statut <= 599) return `API n8n : HTTP ${e.statut}`; // ErreurAdaptateur (adaptateurs-production.js)
+  return 'erreur (message non affichable)';
 }
 
-function fetchLectureSeule({ url, fetch: f = globalThis.fetch, chemins = CHEMINS_N8N }) {
+function origineInstance(url) {
+  let u;
+  try { u = new URL(String(url)); } catch { throw new ErreurOutil('INSTANCE'); }
+  if (u.username || u.password || u.search || u.hash || (u.pathname !== '/' && u.pathname !== '') || !INSTANCES.includes(u.origin)) throw new ErreurOutil('INSTANCE');
+  return u.origin;
+}
+function verifierParametres(route, recherche) {
+  const vus = new Set();
+  for (const [cle, valeur] of recherche) {
+    const spec = Object.prototype.hasOwnProperty.call(route.params, cle) ? route.params[cle] : null;
+    if (!spec || vus.has(cle)) throw new ErreurOutil('PARAMETRE');
+    if (spec.valeurs ? !spec.valeurs.includes(valeur) : !spec.re.test(valeur)) throw new ErreurOutil('PARAMETRE');
+    vus.add(cle);
+  }
+  for (const [cle, spec] of Object.entries(route.params)) if (spec.requis && !vus.has(cle)) throw new ErreurOutil('PARAMETRE');
+}
+function verifierEntetes(h) {
+  if (!h || typeof h !== 'object' || Array.isArray(h)) throw new ErreurOutil('ENTETES');
+  const cles = Object.keys(h).sort();
+  if (cles.join(',') !== 'X-N8N-API-KEY,accept' || typeof h['X-N8N-API-KEY'] !== 'string' || !CLE_API.test(h['X-N8N-API-KEY']) || h.accept !== 'application/json') throw new ErreurOutil('ENTETES');
+  return { 'X-N8N-API-KEY': h['X-N8N-API-KEY'], accept: 'application/json' };
+}
+// Réponse réduite à ok, status (entier) et json() ; json() illisible -> message FIXE. Route « liste » : le
+// curseur renvoyé (nextCursor) est TYPÉ ici (absent, nul, ou chaîne de la grammaire CURSEUR), avant que
+// l'adaptateur ne le convertisse en chaîne pour la requête suivante (un tableau ['a'] deviendrait 'a').
+function reponseSure(r, route) {
+  const status = r && Number.isInteger(r.status) ? r.status : 0;
+  return { ok: status >= 200 && status < 300, status, json: async () => {
+    let j;
+    try { j = await r.json(); } catch { throw new ErreurOutil('JSON'); }
+    if (route.nom === 'liste-executions' && status >= 200 && status < 300 && j && typeof j === 'object' && !Array.isArray(j)
+      && !(j.nextCursor === undefined || j.nextCursor === null || (typeof j.nextCursor === 'string' && CURSEUR.test(j.nextCursor)))) throw new ErreurOutil('PARAMETRE');
+    return j;
+  } };
+}
+
+function fetchLectureSeule({ url, fetch: f = globalThis.fetch }) {
   const origine = origineInstance(url);
-  if (typeof f !== 'function') throw new Error('lecture seule : fetch absent');
+  if (typeof f !== 'function') throw new ErreurOutil('FETCH');
   return async (cible, init = {}) => {
-    const u = new URL(String(cible));
-    const methode = String(init.method || 'GET').toUpperCase();
-    if (methode !== 'GET') throw new Error(`lecture seule : méthode ${methode} refusée`);
-    if (init.body !== undefined && init.body !== null) throw new Error('lecture seule : corps de requête refusé');
-    if (u.origin !== origine) throw new Error(`lecture seule : origine ${u.origin} refusée`);
-    if (u.username || u.password) throw new Error('lecture seule : identifiants dans l\'URL refusés');
-    if (!chemins.some((re) => re.test(u.pathname))) throw new Error(`lecture seule : chemin ${u.pathname} hors liste blanche`);
+    let u;
+    try { u = new URL(String(cible)); } catch { throw new ErreurOutil('URL'); }
+    if (String(init.method || 'GET').toUpperCase() !== 'GET' || (init.method !== undefined && init.method !== 'GET')) throw new ErreurOutil('METHODE');
+    if (init.body !== undefined && init.body !== null) throw new ErreurOutil('CORPS');
+    if (u.origin !== origine || u.username || u.password || u.hash) throw new ErreurOutil('ORIGINE');
+    const route = ROUTES.find((r) => r.chemin.test(u.pathname));
+    if (!route) throw new ErreurOutil('ROUTE');
+    verifierParametres(route, u.searchParams);
+    const entetes = verifierEntetes(init.headers);
     let r;
-    try { r = await f(u.href, { headers: init.headers, method: 'GET', redirect: 'error' }); } catch { throw new Error('lecture seule : échec du transport'); }
-    return reponseSure(r);
+    try { r = await f(u.href, { headers: entetes, method: 'GET', redirect: 'error' }); } catch { throw new ErreurOutil('TRANSPORT'); }
+    return reponseSure(r, route);
   };
 }
 
-function cleDEnvironnement(nom = 'FONDA_N8N_CLE_RECETTE', env = process.env) {
-  const c = env[nom];
-  if (typeof c !== 'string' || c.trim() === '') throw new Error(`clé d'API absente : variable ${nom} (jamais en argument ni dans le dépôt)`);
-  return c.trim();
+function cleDEnvironnement(env = process.env) {
+  const c = env.FONDA_N8N_CLE_RECETTE;
+  if (typeof c !== 'string' || !CLE_API.test(c)) throw new ErreurOutil('CLE');
+  return c;
 }
 
-// Messages d'erreur PROPRES aux outils (ensemble fermé) : seuls affichables tels quels ; tout autre
-// message (venu d'un module tiers ou du réseau) est remplacé par un marqueur fixe.
-const MESSAGES_SURS = new Set(['lecture seule : réponse JSON illisible', 'lecture seule : échec du transport', 'lecture seule : HTTPS exigé pour l\'instance',
-  'lecture seule : URL de l\'instance invalide', 'lecture seule : URL de l\'instance = https://hôte, sans chemin ni paramètres', 'workflowId invalide', 'identifiant d\'exécution invalide',
-  'option inconnue', 'option en double', 'valeur d\'option absente', '1 argument(s) positionnel(s) attendu(s)', '2 argument(s) positionnel(s) attendu(s)', '0 argument(s) positionnel(s) attendu(s)',
-  'utiliser soit <workflowId>, soit --execution <id>', 'export du dépôt illisible']);
-const messageSur = (e) => (e && MESSAGES_SURS.has(e.message) ? e.message : (e && /^(API n8n|lecture seule)[^:]*: HTTP [0-9]{3}$/.test(e.message) ? e.message.replace(/\(.*\)/, '').replace(/ +/g, ' ') : 'erreur (message non affichable)'));
-
-module.exports = { CHEMINS_N8N, origineInstance, fetchLectureSeule, cleDEnvironnement, messageSur };
+module.exports = { INSTANCES, ROUTES, MESSAGES, ErreurOutil, ID_WORKFLOW, ID_EXECUTION, CURSEUR, CLE_API, origineInstance, fetchLectureSeule, cleDEnvironnement, messageSur };
