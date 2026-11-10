@@ -90,3 +90,4 @@
 # Recette P4 (outils d'isolement recette/prod, hors chemin de signature et hors périmètre du témoin) :
 # transport GET seulement, sonde d'observation, comparateur dépôt <-> live, et leurs tests.
 /outils-recette/                           @ericduchateau
+/n8n/fonda-relecture-page/                 @ericduchateau
