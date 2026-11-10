@@ -653,11 +653,13 @@ if (!d.complet || d.fichiers.length) throw new Error('decisions/ après écritur
 return [{ json: { candidat_fichier_id: r.id } }];`].join('\n\n');
 }
 // Destinataire (§21.5) : EXACTEMENT une ligne de la Data Table pour relecteur_attribue, adresse d'UNE seule boîte en
-// grammaire STRICTE et bornée (partie locale ≤ 64, labels de domaine ≤ 63 sans tiret en bord, au moins un point,
+// grammaire STRICTE et bornée (partie locale ≤ 64 en segments non vides séparés par un point, labels de domaine ≤ 63 sans tiret en bord, au moins un point,
 // total ≤ 254) : virgules, chevrons, blancs, caractères de contrôle -> refus. Source UNIQUE, embarquée dans le nœud
-// qui valide AVANT toute écriture (aucune clé fantôme) et dans le courriel (même décision, mêmes données).
+// qui valide AVANT toute écriture (aucune clé fantôme) et dans le courriel : revalidation au POINT D'USAGE (To: est
+// un puits sensible), défense en profondeur ; mutant « sans revalidation » ÉQUIVALENT PAR CONCEPTION (mêmes lignes).
+// Robustesse : l'adresse vient de NOTRE Data Table, ce n'est pas une barrière contre un attaquant.
 const DESTINATAIRE = `function destinataireUnique(lignes, relecteur) {
-  const BOITE = /^[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
+  const BOITE = /^(?=[^@]{1,64}@)[A-Za-z0-9_%+-]+(?:\\.[A-Za-z0-9_%+-]+)*@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
   const l = lignes.filter((x) => x && x.relecteur_attribue === relecteur);
   if (l.length !== 1 || typeof l[0].adresse !== 'string' || l[0].adresse.length > 254 || !BOITE.test(l[0].adresse)) throw new Error('adresse du relecteur introuvable ou ambiguë, ou hors grammaire, dans la Data Table');
   return l[0].adresse;

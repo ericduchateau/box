@@ -647,7 +647,14 @@ const lotSource = (setId) => {
 };
 const RELECTEUR = JSON.parse(OCT_REF.toString('utf8')).notions.find((n) => n.id === lotSource(SET).notion_id).relecteur;
 const contents = (chemin, octets) => ({ type: 'file', encoding: 'base64', path: chemin, size: octets.length, sha: 'blob', content: octets.toString('base64').replace(/(.{60})/g, '$1\n') + '\n' });
-const avecK = (wf, k) => { const w = copie(wf); const i = w.nodes.findIndex((x) => x.name === N_E.cle); w.nodes[i] = { ...w.nodes[i], type: 'n8n-nodes-base.code', typeVersion: 2, parameters: { jsCode: `return [{ json: { k: ${JSON.stringify(k)} } }];` } }; return w; };
+// Crypto (non simulé) : configuration EXACTE vérifiée AVANT substitution (comme la Page) ; le remplacement reproduit
+// Crypto v1 « generate » de n8n 2.6.3 : COPIE de l'item reçu + champ k (l'item source n'est jamais modifié).
+const avecK = (wf, k) => {
+  const w = copie(wf); const i = w.nodes.findIndex((x) => x.name === N_E.cle); const n = w.nodes[i];
+  assert.deepEqual([n.type, n.typeVersion, n.parameters], ['n8n-nodes-base.crypto', 1, { action: 'generate', dataPropertyName: 'k', encodingType: 'hex', stringLength: 64 }], 'Crypto d\'Emettre : configuration');
+  w.nodes[i] = { ...n, type: 'n8n-nodes-base.code', typeVersion: 2, parameters: { jsCode: `const recu = $input.first().json; return [{ json: { ...JSON.parse(JSON.stringify(recu)), k: ${JSON.stringify(k)} } }];` } };
+  return w;
+};
 
 function mondeAvecLot(o = {}, sets = [SET]) {
   const d = fauxDrive(o);
@@ -1181,7 +1188,7 @@ describe('7 ter. Emettre : adresse lue par le nœud Data Table NATIF (aucune cl�
     ['doublon', [...ligne('a@exemple.invalid'), { id: 2, relecteur_attribue: RELECTEUR, adresse: 'b@exemple.invalid' }]], ['adresse absente', [{ id: 1, relecteur_attribue: RELECTEUR }]],
     ...['pas une adresse', 'a,b@exemple.invalid', 'a@exemple.invalid,local', 'a@exemple.invalid\u0000', '<a@exemple.invalid>', 'a@exemple', 'a@-exemple.invalid', 'a@exemple-.invalid',
       'a b@exemple.invalid', 'a@exemple..invalid', 'a@@exemple.invalid', `${'a'.repeat(65)}@exemple.invalid`, `a@${'b'.repeat(64)}.invalid`, `a@${Array(51).fill('bcde').join('.')}.invalid`,
-      'a@exemple.invalid\r\nBcc: x@exemple.invalid', 'é@exemple.invalid', 12, null].map((x) => [`adresse ${JSON.stringify(x)}`, ligne(x)])];
+      'a@exemple.invalid\r\nBcc: x@exemple.invalid', 'é@exemple.invalid', '.a@exemple.invalid', 'a.@exemple.invalid', 'a..b@exemple.invalid', '.@exemple.invalid', 12, null].map((x) => [`adresse ${JSON.stringify(x)}`, ligne(x)])];
   test('destinataire validé AVANT toute écriture : table vide, relecteur absent, doublon, adresse hors grammaire -> ERREUR au nœud de validation, AUCUNE écriture Drive, aucun courriel', async () => {
     for (const [cas, l] of MAUVAISES) {
       const d = mondeAvecLot(); const avant = JSON.stringify([...d.fichiers.values()]);
@@ -1194,7 +1201,7 @@ describe('7 ter. Emettre : adresse lue par le nœud Data Table NATIF (aucune cl�
   });
   test('RÉÉMISSION avec destinataire invalide : candidat INCHANGÉ (même clé, même generation_cle), l\'ancien lien reste valide — aucune clé fantôme', async () => {
     const { d } = await lotEmis(); const avant = d.candidat(SET).contenu;
-    for (const [cas, l] of MAUVAISES.slice(0, 6)) {
+    for (const [cas, l] of MAUVAISES) {
       const e = await emettre(d, { k: K2, ...lignes(l) });
       assert.equal(e.status, 'error', cas); assert.equal(e.noeudErreur, N_E.destinataire, cas); assert.equal(d.candidat(SET).contenu, avant, cas);
     }
@@ -1202,7 +1209,7 @@ describe('7 ter. Emettre : adresse lue par le nœud Data Table NATIF (aucune cl�
   });
   test('grammaire de la boîte : formes valides acceptées (partie locale 64, labels 63, total ≤ 254)', async () => {
     const lab = 'c'.repeat(63); assert.equal(`a@${lab}.${lab}.${lab}.${'d'.repeat(60)}`.length, 254);
-    for (const x of ['a@exemple.invalid', 'prenom.nom+fonda@ac-lille.fr', `${'a'.repeat(64)}@exemple.invalid`, `a@${lab}.${lab}.${lab}.${'d'.repeat(60)}`]) {
+    for (const x of ['a@exemple.invalid', 'prenom.nom+fonda@ac-lille.fr', 'a.b.c_d%e-f@exemple.invalid', `${'a'.repeat(64)}@exemple.invalid`, `a@${lab}.${lab}.${lab}.${'d'.repeat(60)}`]) {
       assert.ok(x.length <= 254, x);
       const d = mondeAvecLot(); const e = await emettre(d, lignes(ligne(x)));
       assert.equal(e.status, 'success', `${x} : ${e.erreur}`); assert.match(d.envois[0], new RegExp(`^To: ${x.replace(/[.+]/g, '\\$&')}\r\n`));
@@ -1210,10 +1217,23 @@ describe('7 ter. Emettre : adresse lue par le nœud Data Table NATIF (aucune cl�
     const trop = `a@${'c'.repeat(63)}.${'c'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(61)}`; assert.equal(trop.length, 255);
     const d = mondeAvecLot(); assert.equal((await emettre(d, lignes(ligne(trop)))).noeudErreur, N_E.destinataire);
   });
-  test('Gmail en échec APRÈS écriture : cas DISTINCT documenté (candidat écrit, aucun courriel, erreur à l\'envoi)', async () => {
+  test('Gmail en échec APRÈS écriture : cas DISTINCT, envoi NON CONFIRMÉ (candidat déjà écrit) — refus HTTP, ou message ACCEPTÉ puis transport en échec', async () => {
     const d = mondeAvecLot();
     const e = await emettre(d, { reponses: { [N_E.envoyer]: async () => ({ statusCode: 500, body: {} }) } });
-    assert.equal(e.status, 'error'); assert.equal(e.noeudErreur, N_E.envoyer); assert.notEqual(d.candidat(SET), undefined); assert.equal(d.envois.length, 0);
+    assert.equal(e.status, 'error'); assert.equal(e.noeudErreur, N_E.envoyer); assert.notEqual(d.candidat(SET), undefined);
+    // Message accepté par Gmail, réponse perdue : l'exécution est en erreur ALORS QUE le courriel est parti -> « non confirmé ».
+    const d2 = mondeAvecLot();
+    const e2 = await emettre(d2, { reponses: { [N_E.envoyer]: async (r) => { d2.envois.push(Buffer.from(JSON.parse(r.jsonBody).raw, 'base64url').toString('utf8')); throw new Error('transport : connexion interrompue'); } } });
+    assert.equal(e2.status, 'error'); assert.equal(e2.noeudErreur, N_E.envoyer); assert.equal(d2.envois.length, 1); assert.notEqual(d2.candidat(SET), undefined);
+    assert.equal(candidatDe(d2).relecture.generation_cle, 1);
+  });
+  test('Crypto : item reçu COPIÉ + k (émission : item d\'analyse ; réémission : candidat existant) ; item source jamais modifié, k absent des nœuds amont', async () => {
+    const { d, e } = await lotEmis();
+    assert.deepEqual(e.sorties[N_E.cle][0].json, { ...e.sorties[N_E.destinataire][0].json, k: K });
+    assert.equal('k' in e.sorties[N_E.destinataire][0].json, false); assert.deepEqual(e.sorties[N_E.destinataire][0].json, e.sorties[N_E.analyser][0].json);
+    const r = await emettre(d, { k: K2 });
+    assert.equal(r.status, 'success', r.erreur);
+    assert.deepEqual(r.sorties[N_E.cle][0].json, { ...r.sorties[N_E.lireExistant][0].json, k: K2 }); assert.equal('k' in r.sorties[N_E.lireExistant][0].json, false);
   });
   test('adresse du relecteur : lue à l\'exécution, JAMAIS dans un export', async () => {
     const d = mondeAvecLot();
