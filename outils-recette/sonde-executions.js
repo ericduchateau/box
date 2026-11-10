@@ -93,7 +93,7 @@ async function sonder({ workflowId, url = INSTANCE, cle, fetch: f = globalThis.f
 }
 
 // Détail d'une exécution : { r, code } (0 présent ; 1 inobservable ; 2 absent).
-async function sonderExecution({ id, url = INSTANCE, cle, fetch: f = globalThis.fetch, noms = nomsDeConfiance() }) {
+async function sonderExecution({ id, url = INSTANCE, cle, fetch: f = globalThis.fetch }) {
   if (typeof id !== 'string' || !ID_EXECUTION.test(id)) throw new ErreurOutil('EXECUTION_ID');
   const base = origineInstance(url);
   const api = apiN8n({ url: base, cle, fetch: fetchLectureSeule({ url: base, fetch: f }) });
@@ -105,6 +105,7 @@ async function sonderExecution({ id, url = INSTANCE, cle, fetch: f = globalThis.
   if (!objet(e) || !objet(e.data) || !objet(e.data.resultData) || !STATUTS.includes(e.status) || typeof e.workflowId !== 'string' || !ID_WORKFLOW.test(e.workflowId))
     return { r: { schema: 'sonde-execution/v1', id, observation: 'inobservable', cause: 'réponse hors schéma attendu' }, code: 1 };
   if (idSur(e.id) !== id) return { r: { schema: 'sonde-execution/v1', id, observation: 'inobservable', cause: 'identifiant renvoyé ≠ identifiant demandé' }, code: 1 };
+  const noms = nomsDeConfiance(); // liste de confiance : TOUJOURS depuis le dépôt (aucun paramètre ne la remplace)
   const res = e.data.resultData;
   const runData = objet(res.runData) ? res.runData : null;
   let hors = 0;

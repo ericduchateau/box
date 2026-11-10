@@ -344,6 +344,37 @@ fs.readFileSync = function (p, ...r) { if (String(p).endsWith(${JSON.stringify(c
     const c = lancer(pre('profil-recette.json', "return JSON.stringify({ profil: 'recette', SECRET_SYNTHETIQUE: 1 });"), ['--page', '--profil', 'recette']);
     assert.equal(c.status, 1); assert.match(c.stderr, /liste fermée CLES_RECETTE/); assert.equal(c.stderr.includes('SECRET'), false);
   });
+  test('F1 (constructeur) : exports et paramètres des fonctions exportées = LISTE FERMÉE', () => {
+    const signature = (f) => { const t = f.toString(); if (/^class\b/.test(t)) return '<classe>'; const i = t.indexOf('('); let d = 0; let j = i;
+      for (; j < t.length; j += 1) { if (t[j] === '(') d += 1; else if (t[j] === ')') { d -= 1; if (!d) break; } } return t.slice(i + 1, j).replace(/\s+/g, ' ').trim(); };
+    const attendu = { CHAMPS_FORMULAIRE: 'object', CLES_RECETTE: 'object', CODES_HTTP: 'object', COMMUN_PAGE: 'string', CONFIG: 'object', EXPORTS_PRODUCTION_INVENTAIRE: 'object',
+      ErreurConstruction: '<classe>', GABARIT_PAGE: 'string', GRAMMAIRES_RECETTE: 'object', MODULES: 'object', NOEUDS_CLOTURER: 'object', NOEUDS_CONFIRMER: 'object', NOEUDS_EMETTRE: 'object',
+      NOEUDS_PAGE: 'object', PROFILS_MOTEUR: 'object', analyserArguments: 'argv', appPage: '', chargerCommun: '', configRecette: 'brut = lireProfilRecette()', construireCloturer: '',
+      construireConfirmer: '', construireEmettre: '', construireExport: "option, profil = 'production', brutRecette = undefined", construirePage: '', inventaireProduction: '', registrePage: '' };
+    assert.deepEqual(Object.keys(B).sort(), Object.keys(attendu).sort());
+    for (const [k, v] of Object.entries(B)) assert.equal(typeof v === 'function' ? signature(v) : typeof v, attendu[k], k);
+  });
+  test('X1 (constructeur) : modules chargés, TRACÉS (Module._load), = LISTE FERMÉE, pour les deux profils', () => {
+    const os = require('os'); const cp = require('child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'trace-'));
+    const trace = path.join(dir, 'trace.js');
+    fs.writeFileSync(trace, `const M = require('module'); const fs = require('fs'); const path = require('path');
+const vus = new Set(); const orig = M._load;
+M._load = function (req, parent, isMain) { const r = orig.apply(this, arguments);
+  try { if (M.isBuiltin(req)) vus.add('node:' + req.replace(/^node:/, '')); else vus.add(path.relative(process.env.RACINE, M._resolveFilename(req, parent, isMain))); } catch { vus.add('<non résolu>'); }
+  return r; };
+process.on('exit', () => fs.writeFileSync(process.env.TRACE, JSON.stringify([...vus].sort())));\n`);
+    const attendu = ['fonda/engine/canonique.js', 'fonda/engine/catalogue.js', 'fonda/engine/generation.js', 'fonda/engine/journal-set-ids.js', 'fonda/scripts/attestation-signee.js',
+      'fonda/scripts/generer-lot-fonda.js', 'fonda/scripts/interim.js', 'fonda/scripts/liaison-generation.js', 'fonda/scripts/moteurs.js', 'fonda/scripts/rattachement-page.js',
+      'fonda/scripts/referentiel-archive.js', 'fonda/scripts/signer-cloture.js', 'fonda/scripts/verifier-moteurs.js', 'n8n/fonda-generation-ia/construire-workflow.js',
+      'n8n/fonda-relecture-page/construire-relecture.js', 'node:child_process', 'node:crypto', 'node:fs', 'node:https', 'node:path', 'node:vm'];
+    for (const args of [['--page', '--profil', 'recette'], ['--emettre', '--profil', 'recette'], ['--confirmer'], ['--cloturer']]) {
+      const sortie = path.join(dir, `t-${args.join('')}.json`);
+      const r = cp.spawnSync(process.execPath, ['-r', trace, path.join(__dirname, 'construire-relecture.js'), ...args], { cwd: RACINE, env: { ...process.env, RACINE, TRACE: sortie }, encoding: 'utf8' });
+      assert.equal(r.status, 0, args.join(' '));
+      assert.deepEqual(JSON.parse(fs.readFileSync(sortie, 'utf8')), attendu, args.join(' '));
+    }
+  });
   test('TOUS les uuid (nœuds, webhookId, conditions) disjoints entre les 4 exports de recette et les 4 de production', () => {
     const tous = (lire) => new Set(Object.keys(EXPORTS).flatMap((k) => lire(k).toString('utf8').match(UUID) || []));
     const prod = tous(lireExport); const rec = tous(lireRecette);

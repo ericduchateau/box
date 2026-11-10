@@ -19,6 +19,21 @@
 ## Énumération des frontières (exhaustivité prouvable)
 Chaque valeur externe, ou qui atteint l'instance, ou qui est affichée, et son contrôle d'**ensemble fermé** (LF = liste fermée ; GS = grammaire stricte ; LC = liste de confiance du dépôt). Toute ligne absente de ce tableau est un défaut.
 
+**Énumération auto-vérifiée** : chaque CLASSE de frontière a un test qui échoue si elle dérive (une frontière nouvelle de la classe fait rougir le test, sans relecture à la main).
+
+| Classe | Test de dérive |
+|---|---|
+| Arguments de ligne de commande (C1, C2, S1, K1) | analyse stricte : option inconnue, valeur absente, doublon, positionnels -> erreur (3 commandes) |
+| Valeurs du profil (C3–C9) | clés = `CLES_RECETTE` exactement ; grammaire fermée par champ ; injections et identifiants de production refusés |
+| Paramètres et exports des fonctions exportées (F1) | exports et signatures comparés à une liste fermée |
+| Modules chargés (X1) | modules tracés à l'exécution comparés à une liste fermée |
+| Routes, paramètres, en-têtes, instance (T1–T6) | toute requête hors liste fermée refusée avant le réseau (aucun appel enregistré) |
+| Champs de réponse réinjectés ou affichés (T7, T10, S4, S5, K4–K6, K9) | réponses hors forme (curseur, corps non objet, dates, identité, états, versionId) -> refus ou marqueur |
+| Fichiers lus (C3, C10, C15, S3, K3, K8) | listes explicites ; lecture, JSON ou schéma en échec -> message fixe ; inventaire = `git ls-files` |
+| Références d'instance des exports (C8, C12) | ensemble fermé contrôlé par le harnais, indépendamment du profil ; profil entièrement renseigné testé |
+| Chemins d'erreur, dont le chargement (C13, C14, T9, S7, K7) | erreurs tierces et de chargement injectées -> message fixe, aucun extrait |
+| Sorties et codes de sortie (C13, S6, S8, K6, K9) | formes exactes comparées ; codes 0/1/2 de la sonde distingués |
+
 | # | Outil | Frontière | Source | Contrôle | Où (test) |
 |---|---|---|---|---|---|
 | C1 | constructeur | argument : constructeur | argv | LF `CONSTRUCTEURS` (propriétés propres, prototype nul), un seul | `analyserArguments` (§1 bis « ligne de commande STRICTE », « avecProfil INTERNE ») |
@@ -61,9 +76,10 @@ Chaque valeur externe, ou qui atteint l'instance, ou qui est affichée, et son c
 | K5 | comparateur | clés et états du live | réponse n8n | contenu = 4 clés ; métadonnées LF ; états typés exacts ; clé inconnue -> marqueur | « états typés EXACTS », « écarts localisés » |
 | K6 | comparateur | sortie | — | écarts = chemins de clés du DÉPÔT + marqueurs ; `versionId` GS ; aucune valeur du live ; code 0/1 | idem |
 | K7 | comparateur | stderr, erreur au CHARGEMENT | — | `messageSur` ; gestionnaire précoce | « erreur au CHARGEMENT » |
-| K8 | comparateur | fichier de référence illisible | dépôt | `EXPORT_ILLISIBLE`, code 1 (JSON invalide compris) ; référence valide mais hors forme -> écart « clés ≠ » | « sources de fichiers illisibles » |
+| K8 | comparateur | fichier de référence illisible ou non objet | dépôt | `EXPORT_ILLISIBLE`, code 1 : lecture en échec, JSON invalide, ou JSON qui n'est pas un objet simple (`null`, tableau, nombre, chaîne ; même typage que S3) ; objet aux clés ≠ name/nodes/connections/settings -> écart « clés ≠ » | « sources de fichiers illisibles », « K8 : référence dont le JSON n'est pas un objet » |
 | K9 | comparateur | **champs de sortie construits** | comparateur | `schema` : constante ; `workflowId` : argument validé (K2) ; `export` : élément de LF (K3) ; `versionId` : GS hexadécimal/tirets sinon null ; `identique` : booléen dérivé ; `ecarts` : K6 | « versionId affiché seulement en grammaire stricte », « principal » |
-| X1 | tous | **modules chargés (directement ou transitivement)** | dépôt | constructeur : `fonda/engine/catalogue.js`, `fonda/scripts/{liaison-generation,rattachement-page,signer-cloture}.js`, `n8n/fonda-generation-ia/construire-workflow.js` (+ Node `fs`, `path`, `crypto`) ; outils : `fonda/scripts/{adaptateurs-production,signer-cloture}.js`, `outils-recette/{lecture-seule,arguments}.js` (+ Node `fs`, `path`) ; et leurs dépendances, toutes du dépôt (fichiers de confiance §15 / CODEOWNERS, ou relus en PR). Aucun module hors dépôt. Tests seulement : Node `child_process`, `os`, `vm`, `module`, `node:test`. Erreurs de chargement : C14, S7, K7 | relecture des `require` ; « erreur au CHARGEMENT » |
+| X1 | tous | **modules chargés (directement ou transitivement)** | dépôt et Node | **tracés** par `Module._load` à l'exécution de chaque commande et comparés à une **liste fermée explicite** (constructeur, 2 profils ; sonde, liste et détail ; comparateur, comparaison complète) ; tout module nouveau fait échouer ; aucun module hors dépôt hors Node | « X1 (constructeur) … TRACÉS », « X1 : modules chargés par la sonde », « … par le comparateur » |
+| F1 | tous | **paramètres et exports des fonctions exportées** (appelant JavaScript) | appelant | exports et signature de chaque fonction en **liste fermée** ; chaque paramètre fermé : `url` -> T1 ; `cle` -> T5/T6 ; `env` -> T6 ; `fetch` -> toujours enveloppé par le transport (T2–T10) ; `argv` -> C1/C2, S1, K1 ; `option`/`profil`/`brutRecette` -> C1–C8 ; `live`/`texteExport` -> K5/K6 ; liste de confiance : **aucun** paramètre (S3) | « F1 (constructeur) », « F1 : exports et paramètres … », « F1 : la liste de confiance n'est remplaçable par AUCUN paramètre » |
 
 ## Phase 1 — constats et préparation (Éric, aucune activation)
 1. **Terminal du VPS, lecture seule** : `docker exec <ID n8n> printenv` filtré sur `N8N_BLOCK_ENV_ACCESS_IN_NODE`, `EXECUTIONS_DATA_PRUNE`, `EXECUTIONS_DATA_MAX_AGE`, `EXECUTIONS_DATA_PRUNE_MAX_COUNT`, `N8N_PAYLOAD_SIZE_MAX` ; version n8n. Consigner (trace §13.5) ; aucune modification.

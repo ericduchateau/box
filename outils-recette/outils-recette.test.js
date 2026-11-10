@@ -359,3 +359,86 @@ fs.readFileSync = function (f, ...r) { if (process.env.CIBLE && String(f).endsWi
     const r = lancer('sonde-executions.js', ['WfA'], 'vide', 'courte'); assert.equal(r.status, 1); assert.match(r.stderr, /clé d'API absente ou hors grammaire/);
   });
 });
+
+// ── Énumération AUTO-VÉRIFIÉE : chaque classe de frontière a un test qui échoue si elle dérive ──
+// Signature (texte des paramètres) d'une fonction exportée ; « <classe> » pour une classe.
+function signature(f) {
+  const t = f.toString(); if (/^class\b/.test(t)) return '<classe>';
+  const i = t.indexOf('('); let d = 0; let j = i;
+  for (; j < t.length; j += 1) { if (t[j] === '(') d += 1; else if (t[j] === ')') { d -= 1; if (!d) break; } }
+  return t.slice(i + 1, j).replace(/\s+/g, ' ').trim();
+}
+// F1 : exports et paramètres des fonctions exportées en LISTE FERMÉE (énumération, ligne F1 de RECETTE-P4.md).
+const SURFACE_OUTILS = Object.freeze({
+  './lecture-seule.js': { CLE_API: 'object', CURSEUR: 'object', ErreurOutil: '<classe>', ID_EXECUTION: 'object', ID_WORKFLOW: 'object', INSTANCES: 'object', MESSAGES: 'object', ROUTES: 'object',
+    cleDEnvironnement: 'env = process.env', fetchLectureSeule: '{ url, fetch: f = globalThis.fetch }', messageSur: 'e', origineInstance: 'url' },
+  './sonde-executions.js': { CATEGORIES: 'object', EXPORTS_RECETTE: 'object', INSTANCE: 'string', MODES: 'object', NOEUDS_ATTENTE: 'object', STATUTS: 'object',
+    dateSure: 'x', nomsDeConfiance: '', principal: 'argv, { fetch: f = globalThis.fetch, env = process.env } = {}',
+    sonder: '{ workflowId, url = INSTANCE, cle, fetch: f = globalThis.fetch }', sonderExecution: '{ id, url = INSTANCE, cle, fetch: f = globalThis.fetch }' },
+  './comparer-live.js': { CLES_CONTENU: 'object', ETATS: 'object', METADONNEES: 'object', REFERENCES: 'object',
+    comparer: 'live, texteExport', lireLive: '{ workflowId, url, cle, fetch: f = globalThis.fetch }', principal: 'argv, { fetch: f = globalThis.fetch, env = process.env } = {}' },
+  './arguments.js': { analyser: 'argv, { options = [], positionnels = 0 }' },
+});
+// X1 : modules chargés par chaque commande, TRACÉS (Module._load) et comparés à une LISTE FERMÉE.
+const NOYAU_SIGNATAIRE = ['fonda/engine/canonique.js', 'fonda/engine/catalogue.js', 'fonda/engine/journal-set-ids.js', 'fonda/scripts/adaptateurs-production.js', 'fonda/scripts/attestation-signee.js',
+  'fonda/scripts/interim.js', 'fonda/scripts/liaison-generation.js', 'fonda/scripts/moteurs.js', 'fonda/scripts/publier-lot.js', 'fonda/scripts/referentiel-archive.js', 'fonda/scripts/signer-cloture.js',
+  'fonda/scripts/verifier-moteurs.js', 'node:child_process', 'node:crypto', 'node:fs', 'node:os', 'node:path', 'node:vm'];
+const MODULES_ATTENDUS = Object.freeze({
+  sonde: [...NOYAU_SIGNATAIRE, 'outils-recette/arguments.js', 'outils-recette/lecture-seule.js', 'outils-recette/sonde-executions.js'].sort(),
+  comparateur: ['node:fs', 'node:path', 'outils-recette/arguments.js', 'outils-recette/comparer-live.js', 'outils-recette/lecture-seule.js'].sort(),
+});
+describe('énumération auto-vérifiée : F1 (surface exportée), X1 (modules chargés), K8 (référence typée)', () => {
+  test('F1 : exports et paramètres de chaque fonction exportée = LISTE FERMÉE (tout paramètre nouveau fait échouer)', () => {
+    for (const [m, attendu] of Object.entries(SURFACE_OUTILS)) {
+      const x = require(m);
+      assert.deepEqual(Object.keys(x).sort(), Object.keys(attendu).sort(), `${m} : exports`);
+      for (const [k, v] of Object.entries(x)) assert.equal(typeof v === 'function' ? signature(v) : typeof v, attendu[k], `${m} : ${k}`);
+    }
+  });
+  test('F1 : la liste de confiance n\'est remplaçable par AUCUN paramètre (noms retiré)', async () => {
+    const corps = { id: 77, workflowId: 'WfA', status: 'success', mode: 'webhook', data: { resultData: { runData: { HORS_DEPOT_SYNTHETIQUE: [] } } } };
+    const { r, code } = await S.sonderExecution({ id: '77', cle: CLE, fetch: async () => reponse(corps), noms: new Set(['HORS_DEPOT_SYNTHETIQUE']) });
+    assert.equal(code, 0); assert.deepEqual(r.noeuds_executes, ['<nom hors liste n°1>']);
+  });
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'trace-'));
+  const trace = path.join(dir, 'trace.js'); const faux = path.join(dir, 'faux-fetch.js');
+  fs.writeFileSync(trace, `const M = require('module'); const fs = require('fs'); const path = require('path');
+const vus = new Set(); const orig = M._load;
+M._load = function (req, parent, isMain) { const r = orig.apply(this, arguments);
+  try { if (M.isBuiltin(req)) vus.add('node:' + req.replace(/^node:/, '')); else vus.add(path.relative(process.env.RACINE, M._resolveFilename(req, parent, isMain))); } catch { vus.add('<non résolu>'); }
+  return r; };
+process.on('exit', () => fs.writeFileSync(process.env.TRACE, JSON.stringify([...vus].sort())));\n`);
+  fs.writeFileSync(faux, `globalThis.fetch = async (url) => { const u = new URL(url);
+  if (u.pathname.startsWith('/api/v1/executions/')) return { ok: true, status: 200, json: async () => ({ id: 12, workflowId: 'WfA', status: 'success', mode: 'webhook', data: { resultData: { runData: {} } } }) };
+  if (u.pathname.startsWith('/api/v1/workflows/')) return { ok: true, status: 200, json: async () => JSON.parse(require('fs').readFileSync(process.env.REF, 'utf8')) };
+  return { ok: true, status: 200, json: async () => ({ data: [], nextCursor: null }) }; };\n`);
+  const RACINE = path.join(__dirname, '..');
+  const tracer = (script, args) => {
+    const sortie = path.join(dir, `t-${Math.random().toString(36).slice(2)}.json`);
+    const r = spawnSync(process.execPath, ['-r', trace, '-r', faux, path.join(__dirname, script), ...args], { cwd: RACINE,
+      env: { ...process.env, RACINE, TRACE: sortie, REF: path.join(RACINE, CL.REFERENCES[3]), FONDA_N8N_CLE_RECETTE: CLE }, encoding: 'utf8' });
+    // Seul le faux réseau du test (hors dépôt) est retiré ; tout autre fichier hors dépôt resterait et ferait échouer.
+    const vus = JSON.parse(fs.readFileSync(sortie, 'utf8')).filter((x) => !(x.startsWith('..') && x.endsWith('/faux-fetch.js')));
+    return { r, vus };
+  };
+  test('X1 : modules chargés par la sonde (liste et détail), tracés = LISTE FERMÉE', () => {
+    for (const args of [['WfA'], ['--execution', '12']]) {
+      const { r, vus } = tracer('sonde-executions.js', args);
+      assert.equal(r.status, 0, args.join(' ')); assert.deepEqual(vus, MODULES_ATTENDUS.sonde, args.join(' '));
+    }
+  });
+  test('X1 : modules chargés par le comparateur (comparaison complète), tracés = LISTE FERMÉE', () => {
+    const { r, vus } = tracer('comparer-live.js', ['WfA', CL.REFERENCES[3]]);
+    assert.equal(r.status, 1); // le faux live n'a pas d'id : IDENTITE (le chemin complet de lecture est parcouru)
+    assert.deepEqual(vus, MODULES_ATTENDUS.comparateur);
+  });
+  test('K8 : référence dont le JSON n\'est pas un objet (null, [], 3) -> EXPORT_ILLISIBLE, code 1 (même typage que S3)', () => {
+    const p = path.join(dir, 'ref.js');
+    fs.writeFileSync(p, `const fs = require('fs'); const lire = fs.readFileSync;
+fs.readFileSync = function (f, ...r) { if (String(f).endsWith('box-fonda-page-relecture.recette.json')) return process.env.CORPS; return lire.call(this, f, ...r); };\n`);
+    for (const corps of ['null', '[]', '3', '"SECRET"']) {
+      const r = spawnSync(process.execPath, ['-r', faux, '-r', p, path.join(__dirname, 'comparer-live.js'), 'WfA', CL.REFERENCES[3]], { env: { ...process.env, CORPS: corps, FONDA_N8N_CLE_RECETTE: CLE, REF: '/nonexistant' }, encoding: 'utf8' });
+      assert.equal(r.status, 1, corps); assert.equal(r.stdout, ''); assert.equal(r.stderr, `comparer-live : ${LS.MESSAGES.EXPORT_ILLISIBLE}\n`, corps);
+    }
+  });
+});

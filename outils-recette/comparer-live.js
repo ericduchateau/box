@@ -93,7 +93,10 @@ async function principal(argv, { fetch: f = globalThis.fetch, env = process.env 
   if (!reference) throw new ErreurOutil('EXPORT_HORS_LISTE');
   const cle = cleDEnvironnement(env);
   let texte;
-  try { texte = fs.readFileSync(path.join(RACINE, reference), 'utf8'); JSON.parse(texte); } catch { throw new ErreurOutil('EXPORT_ILLISIBLE'); }
+  let depot;
+  try { texte = fs.readFileSync(path.join(RACINE, reference), 'utf8'); depot = JSON.parse(texte); } catch { throw new ErreurOutil('EXPORT_ILLISIBLE'); }
+  // Même typage que les sources de la sonde (S3) : la référence doit être un objet simple.
+  if (depot === null || typeof depot !== 'object' || Array.isArray(depot)) throw new ErreurOutil('EXPORT_ILLISIBLE');
   const live = await lireLive({ workflowId, url: INSTANCES[0], cle, fetch: f });
   const r = comparer(live, texte);
   return { r: { schema: 'comparaison-live/v1', workflowId, export: reference, versionId: typeof live.versionId === 'string' && /^[0-9a-f-]{1,64}$/.test(live.versionId) ? live.versionId : null, ...r }, code: r.identique ? 0 : 1 };
