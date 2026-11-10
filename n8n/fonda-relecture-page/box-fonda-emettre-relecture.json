@@ -368,9 +368,44 @@
       }
     },
     {
-      "id": "62fbecce-c94a-477a-a935-a75399dd669e",
+      "id": "e2b4c099-85c8-40f8-aa3d-9f3da1575d2e",
       "position": [
         2420,
+        0
+      ],
+      "name": "Lire adresse relecteur",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "retryOnFail": false,
+      "alwaysOutputData": true,
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "A_RENSEIGNER_P4_ID_DATA_TABLE_RELECTEURS"
+        },
+        "returnAll": true
+      }
+    },
+    {
+      "id": "8df75f36-cef0-4ab1-af40-aba69944e0e9",
+      "position": [
+        2640,
+        0
+      ],
+      "name": "Valider destinataire",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "// FONDA — destinataire validé AVANT toute écriture : une seule ligne pour relecteur_attribue, une seule boîte en grammaire stricte.\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('Valider destinataire : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nfunction destinataireUnique(lignes, relecteur) {\n  const BOITE = /^(?=[^@]{1,64}@)[A-Za-z0-9_%+-]+(?:\\.[A-Za-z0-9_%+-]+)*@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;\n  const l = lignes.filter((x) => x && x.relecteur_attribue === relecteur);\n  if (l.length !== 1 || typeof l[0].adresse !== 'string' || l[0].adresse.length > 254 || !BOITE.test(l[0].adresse)) throw new Error('adresse du relecteur introuvable ou ambiguë, ou hors grammaire, dans la Data Table');\n  return l[0].adresse;\n}\n\nconst a = unItem(\"Analyser emission\");\n// Nœud Data Table natif (Get, toutes les lignes, sortie toujours émise) : un item par ligne ; table vide -> un item {}.\ndestinataireUnique($(\"Lire adresse relecteur\").all().map((x) => x.json), a.relecteur);\n// L'item de l'analyse continue SEUL (l'adresse n'entre pas dans le flux : relue par le courriel).\nreturn [{ json: a }];"
+      }
+    },
+    {
+      "id": "62fbecce-c94a-477a-a935-a75399dd669e",
+      "position": [
+        2860,
         0
       ],
       "name": "Reemission ?",
@@ -403,7 +438,7 @@
     {
       "id": "ccf6bf99-6d43-42e1-ad24-2e5cdbf645f3",
       "position": [
-        2640,
+        3080,
         0
       ],
       "name": "Lire candidat existant",
@@ -437,7 +472,7 @@
     {
       "id": "3f1e45ce-d1a9-4028-ad6e-f53f7704d0e6",
       "position": [
-        2860,
+        3300,
         0
       ],
       "name": "Generer cle",
@@ -453,7 +488,7 @@
     {
       "id": "c1379478-1634-47f9-a537-e2c010db7ae8",
       "position": [
-        3080,
+        3520,
         0
       ],
       "name": "Preparer candidat",
@@ -466,7 +501,7 @@
     {
       "id": "57ee5d59-4127-497e-ad6c-5cd1885a4699",
       "position": [
-        3300,
+        3740,
         0
       ],
       "name": "Reecrire ?",
@@ -499,7 +534,7 @@
     {
       "id": "2d667662-0b8e-4214-aa2e-7503ee420b5e",
       "position": [
-        3520,
+        3960,
         0
       ],
       "name": "Relire version candidat",
@@ -533,7 +568,7 @@
     {
       "id": "d9260391-db68-4c25-a4d7-ef42706ea0d8",
       "position": [
-        3740,
+        4180,
         0
       ],
       "name": "Verifier version candidat",
@@ -546,7 +581,7 @@
     {
       "id": "774742f1-75a0-4fd5-ada3-670c2b11c508",
       "position": [
-        3960,
+        4400,
         0
       ],
       "name": "FONDA Ecrire candidat",
@@ -589,7 +624,7 @@
     {
       "id": "7e605229-0c59-4bb8-ab13-1a3bac5f9523",
       "position": [
-        4180,
+        4620,
         0
       ],
       "name": "FONDA Reecrire candidat",
@@ -632,7 +667,7 @@
     {
       "id": "1d262090-0c8c-48b1-ac07-89ae29c729d5",
       "position": [
-        4400,
+        4840,
         0
       ],
       "name": "Relister decisions",
@@ -692,7 +727,7 @@
     {
       "id": "c88e2ae5-995d-40ed-ada2-75f06eea1ff9",
       "position": [
-        4620,
+        5060,
         0
       ],
       "name": "Verifier ecriture",
@@ -703,47 +738,22 @@
       }
     },
     {
-      "id": "e2b4c099-85c8-40f8-aa3d-9f3da1575d2e",
-      "position": [
-        4840,
-        0
-      ],
-      "name": "Lire adresse relecteur",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "retryOnFail": false,
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "A_RENSEIGNER_P4_CREDENTIAL_API_N8N",
-          "name": "FONDA API n8n (lecture Data Table)"
-        }
-      },
-      "parameters": {
-        "url": "https://n8n.srv868991.hstgr.cloud/api/v1/data-tables/A_RENSEIGNER_P4_ID_DATA_TABLE_RELECTEURS/rows",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "options": {
-          "timeout": 30000
-        }
-      }
-    },
-    {
       "id": "ffe6dbae-063f-4746-a792-39a88a08a296",
       "position": [
-        5060,
+        5280,
         0
       ],
       "name": "Preparer courriel",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "parameters": {
-        "jsCode": "// FONDA — courriel au relecteur : adresse lue dans la Data Table (clé = relecteur_attribue), lien …?lot=&k=.\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('Preparer courriel : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nconst CONFIG = {\"urlPage\":\"A_RENSEIGNER_P4_URL_PAGE_RELECTURE\",\"dureeCleJours\":14};\nconst p = unItem(\"Preparer candidat\");\nunItem(\"Verifier ecriture\");\nconst t = unItem(\"Lire adresse relecteur\");\nconst lignes = Array.isArray(t.data) ? t.data.filter((l) => l && l.relecteur_attribue === p.relecteur) : [];\nif (lignes.length !== 1 || typeof lignes[0].adresse !== 'string' || !/^[^@\\s]+@[^@\\s]+$/.test(lignes[0].adresse)) throw new Error('adresse du relecteur introuvable ou ambiguë dans la Data Table');\nconst lien = CONFIG.urlPage + '?lot=' + encodeURIComponent(p.set_id) + '&k=' + p.k;\nconst message = ['To: ' + lignes[0].adresse, 'Subject: Relecture FONDA ' + p.set_id, 'Content-Type: text/plain; charset=UTF-8', '',\n  'Bonjour,', '', 'Une fiche FONDA est à relire, carte par carte :', lien, '',\n  'Le lien expire dans ' + CONFIG.dureeCleJours + ' jours.' + (p.reemission ? ' Il remplace le lien envoyé précédemment, désormais inactif.' : '')].join('\\r\\n');\n// base64url d'UTF-8, sans Buffer (nœud Code n8n).\nconst o = []; for (const ch of message) { const c = ch.codePointAt(0); if (c < 0x80) o.push(c); else if (c < 0x800) o.push(0xc0 | (c >> 6), 0x80 | (c & 63)); else if (c < 0x10000) o.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63)); else o.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63)); }\nconst A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';\nlet raw = '';\nfor (let i = 0; i < o.length; i += 3) { const n = (o[i] << 16) | ((o[i + 1] || 0) << 8) | (o[i + 2] || 0); raw += A[(n >> 18) & 63] + A[(n >> 12) & 63] + (i + 1 < o.length ? A[(n >> 6) & 63] : '') + (i + 2 < o.length ? A[n & 63] : ''); }\nreturn [{ json: { raw } }];"
+        "jsCode": "// FONDA — courriel au relecteur : adresse lue dans la Data Table (clé = relecteur_attribue), lien …?lot=&k=.\n// GÉNÉRÉ par n8n/fonda-relecture-page/construire-relecture.js : ne pas éditer dans\n// l'interface (le harnais compare ce code, octet pour octet, à celui du dépôt).\n\nfunction unItem(nom) {\n  const items = nom === null ? $input.all() : $(nom).all();\n  if (!Array.isArray(items) || items.length !== 1 || !items[0] || typeof items[0].json !== 'object' || items[0].json === null) {\n    throw new Error('Preparer courriel : exactement un item attendu de ' + (nom === null ? 'l\\'entrée' : nom));\n  }\n  return items[0].json;\n}\n\nfunction destinataireUnique(lignes, relecteur) {\n  const BOITE = /^(?=[^@]{1,64}@)[A-Za-z0-9_%+-]+(?:\\.[A-Za-z0-9_%+-]+)*@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;\n  const l = lignes.filter((x) => x && x.relecteur_attribue === relecteur);\n  if (l.length !== 1 || typeof l[0].adresse !== 'string' || l[0].adresse.length > 254 || !BOITE.test(l[0].adresse)) throw new Error('adresse du relecteur introuvable ou ambiguë, ou hors grammaire, dans la Data Table');\n  return l[0].adresse;\n}\n\nconst CONFIG = {\"urlPage\":\"A_RENSEIGNER_P4_URL_PAGE_RELECTURE\",\"dureeCleJours\":14};\nconst p = unItem(\"Preparer candidat\");\nunItem(\"Verifier ecriture\");\nunItem(\"Valider destinataire\"); // validé AVANT l'écriture du candidat\nconst adresse = destinataireUnique($(\"Lire adresse relecteur\").all().map((x) => x.json), p.relecteur);\nconst lien = CONFIG.urlPage + '?lot=' + encodeURIComponent(p.set_id) + '&k=' + p.k;\nconst message = ['To: ' + adresse, 'Subject: Relecture FONDA ' + p.set_id, 'Content-Type: text/plain; charset=UTF-8', '',\n  'Bonjour,', '', 'Une fiche FONDA est à relire, carte par carte :', lien, '',\n  'Le lien expire dans ' + CONFIG.dureeCleJours + ' jours.' + (p.reemission ? ' Il remplace le lien envoyé précédemment, désormais inactif.' : '')].join('\\r\\n');\n// base64url d'UTF-8, sans Buffer (nœud Code n8n).\nconst o = []; for (const ch of message) { const c = ch.codePointAt(0); if (c < 0x80) o.push(c); else if (c < 0x800) o.push(0xc0 | (c >> 6), 0x80 | (c & 63)); else if (c < 0x10000) o.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63)); else o.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63)); }\nconst A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';\nlet raw = '';\nfor (let i = 0; i < o.length; i += 3) { const n = (o[i] << 16) | ((o[i + 1] || 0) << 8) | (o[i + 2] || 0); raw += A[(n >> 18) & 63] + A[(n >> 12) & 63] + (i + 1 < o.length ? A[(n >> 6) & 63] : '') + (i + 2 < o.length ? A[n & 63] : ''); }\nreturn [{ json: { raw } }];"
       }
     },
     {
       "id": "0986ac05-2f09-4ce5-a076-f008f8d713e8",
       "position": [
-        5280,
+        5500,
         0
       ],
       "name": "Envoyer lien",
@@ -772,7 +782,7 @@
     {
       "id": "5c7205d0-9d59-457c-a95c-a7bbc72e2dee",
       "position": [
-        5500,
+        5720,
         0
       ],
       "name": "FONDA Sortie emission",
@@ -895,6 +905,28 @@
       ]
     },
     "Analyser emission": {
+      "main": [
+        [
+          {
+            "node": "Lire adresse relecteur",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lire adresse relecteur": {
+      "main": [
+        [
+          {
+            "node": "Valider destinataire",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valider destinataire": {
       "main": [
         [
           {
@@ -1030,17 +1062,6 @@
       ]
     },
     "Verifier ecriture": {
-      "main": [
-        [
-          {
-            "node": "Lire adresse relecteur",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Lire adresse relecteur": {
       "main": [
         [
           {

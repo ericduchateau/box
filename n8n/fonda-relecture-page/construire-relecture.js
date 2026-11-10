@@ -60,7 +60,7 @@ const CONFIG_PRODUCTION = Object.freeze({
   dossierRelecture: P4('DOSSIER_RELECTURE'), // relecture/<set_id>.candidat.json (enveloppe mutable)
   dossierDecisions: P4('DOSSIER_DECISIONS'), // decisions/ (écrit par Confirmer, P2)
   urlN8n: 'https://n8n.srv868991.hstgr.cloud',
-  tableRelecteurs: P4('ID_DATA_TABLE_RELECTEURS'), // Data Table : relecteur_attribue -> adresse (jamais dans le dépôt)
+  tableRelecteurs: P4('ID_DATA_TABLE_RELECTEURS'), // Data Table : relecteur_attribue -> adresse (jamais dans le dépôt), lue par le NŒUD NATIF (aucune clé d'API)
   urlPage: P4('URL_PAGE_RELECTURE'), // …/webhook/<chemin> de « FONDA - Page relecture » (P2)
   urlMoteurs: P4('URL_BASE_MOTEURS'), // base publique des fichiers moteur (URL EXACTE en CSP, SRI sha384 calculée à la construction)
   dureeCleJours: 14,
@@ -69,7 +69,6 @@ const CONFIG_PRODUCTION = Object.freeze({
   credentialDrive: { id: 'cukxQDNwWIqOAK02', name: 'Google Drive la bonne!' },
   credentialEmettre: { id: P4('CREDENTIAL_EMETTRE'), name: 'FONDA Emettre Token' },
   credentialCloturer: { id: P4('CREDENTIAL_CLOTURER'), name: 'FONDA Cloturer Token' },
-  credentialApiN8n: { id: P4('CREDENTIAL_API_N8N'), name: 'FONDA API n8n (lecture Data Table)' },
   credentialGmail: { id: P4('CREDENTIAL_GMAIL'), name: 'FONDA Gmail relecture' },
 });
 
@@ -79,7 +78,7 @@ const CONFIG_PRODUCTION = Object.freeze({
 // DÉRIVÉE (instance + chemin de la page de recette), jamais saisie.
 const CLES_RECETTE = Object.freeze(['nomEmettre', 'nomCloturer', 'nomConfirmer', 'nomPage', 'cheminEmettre', 'cheminCloturer', 'cheminPage', 'cheminConfirmer',
   'dossierCandidats', 'dossierRelecture', 'dossierDecisions', 'tableRelecteurs', 'urlMoteurs',
-  'credentialDrive', 'credentialEmettre', 'credentialCloturer', 'credentialApiN8n', 'credentialGmail']);
+  'credentialDrive', 'credentialEmettre', 'credentialCloturer', 'credentialGmail']);
 const PROFIL_RECETTE = path.join(__dirname, 'profil-recette.json');
 // Identifiants de production CONNUS DU DÉPÔT : CONFIG_PRODUCTION + inventaire de TOUS les exports n8n
 // du dépôt hors recette (génération, portier, collecte, sauvegardes BOX, copies TEST…) : ids et noms de
@@ -261,6 +260,7 @@ const NOEUDS_EMETTRE = Object.freeze({
   relister: 'Relister decisions',
   verifier: 'Verifier ecriture',
   adresse: 'Lire adresse relecteur',
+  destinataire: 'Valider destinataire',
   courriel: 'Preparer courriel',
   envoyer: 'Envoyer lien',
   sortie: 'FONDA Sortie emission',
@@ -652,17 +652,37 @@ const d = agregerPages(${JSON.stringify(NOEUDS_EMETTRE.relister)});
 if (!d.complet || d.fichiers.length) throw new Error('decisions/ après écriture : ' + (d.complet ? d.fichiers.length + ' décision(s) apparue(s)' : 'listing non prouvé complet') + ' (course détectée) : aucun courriel ; abandon et nouveau set_id si une décision existe');
 return [{ json: { candidat_fichier_id: r.id } }];`].join('\n\n');
 }
+// Destinataire (§21.5) : EXACTEMENT une ligne de la Data Table pour relecteur_attribue, adresse d'UNE seule boîte en
+// grammaire STRICTE et bornée (partie locale ≤ 64 en segments non vides séparés par un point, labels de domaine ≤ 63 sans tiret en bord, au moins un point,
+// total ≤ 254) : virgules, chevrons, blancs, caractères de contrôle -> refus. Source UNIQUE, embarquée dans le nœud
+// qui valide AVANT toute écriture (aucune clé fantôme) et dans le courriel : revalidation au POINT D'USAGE (To: est
+// un puits sensible), défense en profondeur ; mutant « sans revalidation » ÉQUIVALENT PAR CONCEPTION (mêmes lignes).
+// Robustesse : l'adresse vient de NOTRE Data Table, ce n'est pas une barrière contre un attaquant.
+const DESTINATAIRE = `function destinataireUnique(lignes, relecteur) {
+  const BOITE = /^(?=[^@]{1,64}@)[A-Za-z0-9_%+-]+(?:\\.[A-Za-z0-9_%+-]+)*@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
+  const l = lignes.filter((x) => x && x.relecteur_attribue === relecteur);
+  if (l.length !== 1 || typeof l[0].adresse !== 'string' || l[0].adresse.length > 254 || !BOITE.test(l[0].adresse)) throw new Error('adresse du relecteur introuvable ou ambiguë, ou hors grammaire, dans la Data Table');
+  return l[0].adresse;
+}`;
+function codeDestinataire() {
+  return [ENTETE('destinataire validé AVANT toute écriture : une seule ligne pour relecteur_attribue, une seule boîte en grammaire stricte.'),
+    UN_ITEM(NOEUDS_EMETTRE.destinataire), DESTINATAIRE,
+    `const a = unItem(${JSON.stringify(NOEUDS_EMETTRE.analyser)});
+// Nœud Data Table natif (Get, toutes les lignes, sortie toujours émise) : un item par ligne ; table vide -> un item {}.
+destinataireUnique($(${JSON.stringify(NOEUDS_EMETTRE.adresse)}).all().map((x) => x.json), a.relecteur);
+// L'item de l'analyse continue SEUL (l'adresse n'entre pas dans le flux : relue par le courriel).
+return [{ json: a }];`].join('\n\n');
+}
 function codeCourriel() {
   return [ENTETE('courriel au relecteur : adresse lue dans la Data Table (clé = relecteur_attribue), lien …?lot=&k=.'),
-    UN_ITEM(NOEUDS_EMETTRE.courriel),
+    UN_ITEM(NOEUDS_EMETTRE.courriel), DESTINATAIRE,
     `const CONFIG = ${JSON.stringify({ urlPage: CONFIG.urlPage, dureeCleJours: CONFIG.dureeCleJours })};
 const p = unItem(${JSON.stringify(NOEUDS_EMETTRE.preparer)});
 unItem(${JSON.stringify(NOEUDS_EMETTRE.verifier)});
-const t = unItem(${JSON.stringify(NOEUDS_EMETTRE.adresse)});
-const lignes = Array.isArray(t.data) ? t.data.filter((l) => l && l.relecteur_attribue === p.relecteur) : [];
-if (lignes.length !== 1 || typeof lignes[0].adresse !== 'string' || !/^[^@\\s]+@[^@\\s]+$/.test(lignes[0].adresse)) throw new Error('adresse du relecteur introuvable ou ambiguë dans la Data Table');
+unItem(${JSON.stringify(NOEUDS_EMETTRE.destinataire)}); // validé AVANT l'écriture du candidat
+const adresse = destinataireUnique($(${JSON.stringify(NOEUDS_EMETTRE.adresse)}).all().map((x) => x.json), p.relecteur);
 const lien = CONFIG.urlPage + '?lot=' + encodeURIComponent(p.set_id) + '&k=' + p.k;
-const message = ['To: ' + lignes[0].adresse, 'Subject: Relecture FONDA ' + p.set_id, 'Content-Type: text/plain; charset=UTF-8', '',
+const message = ['To: ' + adresse, 'Subject: Relecture FONDA ' + p.set_id, 'Content-Type: text/plain; charset=UTF-8', '',
   'Bonjour,', '', 'Une fiche FONDA est à relire, carte par carte :', lien, '',
   'Le lien expire dans ' + CONFIG.dureeCleJours + ' jours.' + (p.reemission ? ' Il remplace le lien envoyé précédemment, désormais inactif.' : '')].join('\\r\\n');
 // base64url d'UTF-8, sans Buffer (nœud Code n8n).
@@ -705,6 +725,13 @@ function construireEmettre() {
     listing(N.existant, `={{ "'${CONFIG.dossierRelecture}' in parents and name = '" + ${setIdExpr} + ".candidat.json'" }}`, 'nextPageToken,incompleteSearch,files(id,name,trashed,version)', true),
     listing(N.decisions, qDecisions(setIdExpr), CHAMPS_LISTE, true),
     code(N.analyser, codeAnalyserEmission()),
+    {
+      // Lecture par le NŒUD NATIF (décision de l'architecte, 2026-11-10) : aucune clé d'API n8n, aucun credential,
+      // aucun chemin /api/v1/data-tables. Lu et VALIDÉ AVANT toute écriture du candidat. alwaysOutputData : table vide -> la validation ÉCHOUE (jamais un arrêt silencieux).
+      name: N.adresse, type: 'n8n-nodes-base.dataTable', typeVersion: 1, retryOnFail: false, alwaysOutputData: true,
+      parameters: { resource: 'row', operation: 'get', dataTableId: { __rl: true, mode: 'id', value: CONFIG.tableRelecteurs }, returnAll: true },
+    },
+    code(N.destinataire, codeDestinataire()),
     siBooleen(N.siReemission, 'reemission', 'si-reemission'),
     contenuDrive(N.lireExistant, `$('${N.analyser}').first().json.fichier_id`),
     // Crypto v1 « Generate » (§6) : 32 octets aléatoires, hex 64 -> champ k.
@@ -722,11 +749,6 @@ function construireEmettre() {
     reecritureDrive(N.reecrire, `$('${N.preparer}').first().json.fichier_id`, `$('${N.preparer}').first().json.depot.contenu`),
     listing(N.relister, qDecisions(setIdExpr), CHAMPS_LISTE, true),
     code(N.verifier, codeVerifierEcriture()),
-    {
-      name: N.adresse, type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, retryOnFail: false,
-      credentials: { httpHeaderAuth: CONFIG.credentialApiN8n },
-      parameters: { url: `${CONFIG.urlN8n}/api/v1/data-tables/${CONFIG.tableRelecteurs}/rows`, authentication: 'genericCredentialType', genericAuthType: 'httpHeaderAuth', options: { timeout: 30000 } },
-    },
     code(N.courriel, codeCourriel()),
     {
       name: N.envoyer, type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, retryOnFail: false,
@@ -739,11 +761,11 @@ function construireEmettre() {
     },
     code(N.sortie, codeSortieEmission()),
   ].map(positionner('emettre'));
-  const connections = lineaire([N.webhook, N.entree, N.referentiel, N.moteurs, N.journal, N.chercherLot, N.verifierLot, N.lireLot, N.existant, N.decisions, N.analyser, N.siReemission]);
+  const connections = lineaire([N.webhook, N.entree, N.referentiel, N.moteurs, N.journal, N.chercherLot, N.verifierLot, N.lireLot, N.existant, N.decisions, N.analyser, N.adresse, N.destinataire, N.siReemission]);
   connections[N.siReemission] = { main: [lien(N.lireExistant), lien(N.cle)] };
   Object.assign(connections, lineaire([N.lireExistant, N.cle, N.preparer, N.siReecrire]));
   connections[N.siReecrire] = { main: [lien(N.relireVersion), lien(N.ecrire)] };
-  Object.assign(connections, lineaire([N.relireVersion, N.verifierVersion, N.reecrire, N.relister]), lineaire([N.ecrire, N.relister]), lineaire([N.relister, N.verifier, N.adresse, N.courriel, N.envoyer, N.sortie]));
+  Object.assign(connections, lineaire([N.relireVersion, N.verifierVersion, N.reecrire, N.relister]), lineaire([N.ecrire, N.relister]), lineaire([N.relister, N.verifier, N.courriel, N.envoyer, N.sortie]));
   return { name: CONFIG.nomEmettre, nodes: noeuds, connections, settings: REGLAGES };
 }
 
