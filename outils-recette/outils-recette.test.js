@@ -244,13 +244,19 @@ describe('comparateur : références fermées, états typés, écarts sans conte
   test('références = liste fermée des 4 exports de recette', () => {
     assert.deepEqual(CL.REFERENCES, ['emettre', 'cloturer', 'confirmer', 'page'].map((k) => `n8n/fonda-relecture-page/box-fonda-${k}-relecture.recette.json`));
   });
-  test('import fidèle -> identique', () => { assert.deepEqual(CL.comparer(live(), texte), { identique: true, ecarts: [] }); });
+  test('import fidèle -> identique', () => { assert.deepEqual(CL.comparer(live(), REF), { identique: true, ecarts: [] }); });
   test('écarts localisés par les seules clés du dépôt ; clé du live -> marqueur', () => {
-    const a = live(); a.nodes[0].parameters.path = 'fonda-select'; assert.match(CL.comparer(a, texte).ecarts.join(), /nodes\.0\.parameters\.path : valeur/);
-    const b = live(); b.nodes.push({ name: 'X' }); assert.equal(CL.comparer(b, texte).identique, false);
-    const c = live(); c.settings.executionTimeout = 999; assert.deepEqual(CL.comparer(c, texte).ecarts, ['$.settings.<clé inconnue n°1> : absente du dépôt']);
-    const d = live(); d.connections.SECRET_SYNTHETIQUE = {}; assert.deepEqual(CL.comparer(d, texte).ecarts, ['$.connections.<clé inconnue n°1> : absente du dépôt']);
-    const e = live(); e.SECRET_SYNTHETIQUE = 1; assert.deepEqual(CL.comparer(e, texte).ecarts, ['live : clé inconnue n°1 (à examiner)']);
+    const a = live(); a.nodes[0].parameters.path = 'fonda-select'; assert.match(CL.comparer(a, REF).ecarts.join(), /nodes\.0\.parameters\.path : valeur/);
+    const b = live(); b.nodes.push({ name: 'X' }); assert.equal(CL.comparer(b, REF).identique, false);
+    const c = live(); c.settings.executionTimeout = 999; assert.deepEqual(CL.comparer(c, REF).ecarts, ['$.settings.<clé inconnue n°1> : absente du dépôt']);
+    const d = live(); d.connections.SECRET_SYNTHETIQUE = {}; assert.deepEqual(CL.comparer(d, REF).ecarts, ['$.connections.<clé inconnue n°1> : absente du dépôt']);
+    const e = live(); e.SECRET_SYNTHETIQUE = 1; assert.deepEqual(CL.comparer(e, REF).ecarts, ['live : clé inconnue n°1 (à examiner)']);
+  });
+  test('F1 : comparer() n\'accepte qu\'un ÉLÉMENT de REFERENCES (aucun texte ni objet de l\'appelant)', () => {
+    const libre = JSON.stringify({ name: 'x', nodes: [{ SECRET_APPELANT: 1 }], connections: {}, settings: {} });
+    for (const x of [libre, JSON.parse(libre), texte, `./${REF}`, path.join(__dirname, '..', REF), 'n8n/fonda-relecture-page/box-fonda-page-relecture.json', null, undefined, 3, [REF]])
+      assert.throws(() => CL.comparer(live(), x), (e) => e instanceof LS.ErreurOutil && e.code === 'EXPORT_HORS_LISTE', String(x).slice(0, 40));
+    for (const ref of CL.REFERENCES) assert.equal(typeof CL.comparer(live(), ref).identique, 'boolean', ref);
   });
   test('versionId affiché seulement en grammaire stricte (hexadécimal et tirets), sinon null', async () => {
     const env = { FONDA_N8N_CLE_RECETTE: CLE };
@@ -262,14 +268,14 @@ describe('comparateur : références fermées, états typés, écarts sans conte
   });
   test('ordre des clés différent -> NON identique', () => {
     const a = live(); a.nodes[0] = Object.fromEntries(Object.entries(a.nodes[0]).reverse());
-    assert.deepEqual(CL.comparer(a, texte).ecarts, ['$.nodes.0 : ordre des clés']);
+    assert.deepEqual(CL.comparer(a, REF).ecarts, ['$.nodes.0 : ordre des clés']);
   });
   test('états typés EXACTS : toute forme autre que la forme inactive attendue -> échec', () => {
-    const ok = live(); ok.activeVersion = null; ok.activeVersionId = null; ok.staticData = {}; assert.equal(CL.comparer(ok, texte).identique, true);
+    const ok = live(); ok.activeVersion = null; ok.activeVersionId = null; ok.staticData = {}; assert.equal(CL.comparer(ok, REF).identique, true);
     for (const [k, v] of [['active', true], ['active', 0], ['active', undefined], ['isArchived', true], ['isArchived', undefined], ['isArchived', 'false'], ['activeVersion', {}], ['activeVersion', { versionId: 'v' }],
       ['activeVersionId', {}], ['activeVersionId', ''], ['activeVersionId', 'v'], ['staticData', []], ['staticData', { global: { x: 1 } }], ['staticData', Object.create({ x: 1 })], ['pinData', []], ['pinData', { X: [{}] }]]) {
       const x = live(); if (v === undefined) delete x[k]; else x[k] = v;
-      assert.equal(CL.comparer(x, texte).identique, false, `${k} = ${JSON.stringify(v)}`);
+      assert.equal(CL.comparer(x, REF).identique, false, `${k} = ${JSON.stringify(v)}`);
     }
   });
   test('lecture du live : GET /api/v1/workflows/<id> seul ; réponse non objet -> erreur codée', async () => {
@@ -376,7 +382,7 @@ const SURFACE_OUTILS = Object.freeze({
     dateSure: 'x', nomsDeConfiance: '', principal: 'argv, { fetch: f = globalThis.fetch, env = process.env } = {}',
     sonder: '{ workflowId, url = INSTANCE, cle, fetch: f = globalThis.fetch }', sonderExecution: '{ id, url = INSTANCE, cle, fetch: f = globalThis.fetch }' },
   './comparer-live.js': { CLES_CONTENU: 'object', ETATS: 'object', METADONNEES: 'object', REFERENCES: 'object',
-    comparer: 'live, texteExport', lireLive: '{ workflowId, url, cle, fetch: f = globalThis.fetch }', principal: 'argv, { fetch: f = globalThis.fetch, env = process.env } = {}' },
+    comparer: 'live, reference', lireLive: '{ workflowId, url, cle, fetch: f = globalThis.fetch }', principal: 'argv, { fetch: f = globalThis.fetch, env = process.env } = {}' },
   './arguments.js': { analyser: 'argv, { options = [], positionnels = 0 }' },
 });
 // X1 : modules chargés par chaque commande, TRACÉS (Module._load) et comparés à une LISTE FERMÉE.
@@ -410,7 +416,7 @@ M._load = function (req, parent, isMain) { const r = orig.apply(this, arguments)
 process.on('exit', () => fs.writeFileSync(process.env.TRACE, JSON.stringify([...vus].sort())));\n`);
   fs.writeFileSync(faux, `globalThis.fetch = async (url) => { const u = new URL(url);
   if (u.pathname.startsWith('/api/v1/executions/')) return { ok: true, status: 200, json: async () => ({ id: 12, workflowId: 'WfA', status: 'success', mode: 'webhook', data: { resultData: { runData: {} } } }) };
-  if (u.pathname.startsWith('/api/v1/workflows/')) return { ok: true, status: 200, json: async () => JSON.parse(require('fs').readFileSync(process.env.REF, 'utf8')) };
+  if (u.pathname.startsWith('/api/v1/workflows/')) return { ok: true, status: 200, json: async () => ({ id: 'WfA', ...JSON.parse(require('fs').readFileSync(process.env.REF, 'utf8')), active: false, isArchived: false }) };
   return { ok: true, status: 200, json: async () => ({ data: [], nextCursor: null }) }; };\n`);
   const RACINE = path.join(__dirname, '..');
   const tracer = (script, args) => {
@@ -429,7 +435,9 @@ process.on('exit', () => fs.writeFileSync(process.env.TRACE, JSON.stringify([...
   });
   test('X1 : modules chargés par le comparateur (comparaison complète), tracés = LISTE FERMÉE', () => {
     const { r, vus } = tracer('comparer-live.js', ['WfA', CL.REFERENCES[3]]);
-    assert.equal(r.status, 1); // le faux live n'a pas d'id : IDENTITE (le chemin complet de lecture est parcouru)
+    // Faux live CONFORME (bon id, inactif) : lecture, identité, comparaison et sortie parcourues jusqu'au code 0.
+    assert.equal(r.status, 0, r.stderr); assert.equal(r.stderr, '');
+    assert.deepEqual(JSON.parse(r.stdout), { schema: 'comparaison-live/v1', workflowId: 'WfA', export: CL.REFERENCES[3], versionId: null, identique: true, ecarts: [] });
     assert.deepEqual(vus, MODULES_ATTENDUS.comparateur);
   });
   test('K8 : référence dont le JSON n\'est pas un objet (null, [], 3) -> EXPORT_ILLISIBLE, code 1 (même typage que S3)', () => {
@@ -440,6 +448,85 @@ fs.readFileSync = function (f, ...r) { if (String(f).endsWith('box-fonda-page-re
       const r = spawnSync(process.execPath, ['-r', faux, '-r', p, path.join(__dirname, 'comparer-live.js'), 'WfA', CL.REFERENCES[3]], { env: { ...process.env, CORPS: corps, FONDA_N8N_CLE_RECETTE: CLE, REF: '/nonexistant' }, encoding: 'utf8' });
       assert.equal(r.status, 1, corps); assert.equal(r.stdout, ''); assert.equal(r.stderr, `comparer-live : ${LS.MESSAGES.EXPORT_ILLISIBLE}\n`, corps);
     }
+  });
+});
+
+// ── Instantanés de surface : chaque LISTE FERMÉE est recopiée ICI littéralement et comparée au code ; élargir
+// une liste oblige à modifier ce test (extension visible en relecture). Formes EXACTES des sorties (S8, K9). ──
+describe('instantanés de surface : listes fermées recopiées, formes exactes des sorties (S8, K9)', () => {
+  const rx = (r) => r.source;
+  test('transport : instance, grammaires, routes ET paramètres par route, codes d\'erreur = instantané littéral', () => {
+    assert.deepEqual(LS.INSTANCES, ['https://n8n.srv868991.hstgr.cloud']);
+    assert.deepEqual([LS.ID_WORKFLOW, LS.ID_EXECUTION, LS.CURSEUR, LS.CLE_API].map(rx), [/^[A-Za-z0-9]{1,40}$/, /^[0-9]{1,20}$/, /^[A-Za-z0-9+/=_-]{1,512}$/, /^[A-Za-z0-9._-]{16,4096}$/].map(rx));
+    const route = (r) => ({ nom: r.nom, chemin: r.chemin.source, params: Object.fromEntries(Object.entries(r.params).map(([k, s]) => [k, { ...(s.re ? { re: s.re.source } : { valeurs: s.valeurs }), requis: s.requis === true }])) });
+    assert.deepEqual(LS.ROUTES.map(route), [
+      { nom: 'liste-executions', chemin: rx(/^\/api\/v1\/executions$/), params: { workflowId: { re: rx(/^[A-Za-z0-9]{1,40}$/), requis: true },
+        status: { valeurs: ['running', 'waiting'], requis: false }, limit: { valeurs: ['250'], requis: true }, cursor: { re: rx(/^[A-Za-z0-9+/=_-]{1,512}$/), requis: false } } },
+      { nom: 'detail-execution', chemin: rx(/^\/api\/v1\/executions\/[0-9]{1,20}$/), params: { includeData: { valeurs: ['true'], requis: true } } },
+      { nom: 'export-workflow', chemin: rx(/^\/api\/v1\/workflows\/[A-Za-z0-9]{1,40}$/), params: {} },
+    ]);
+    for (const r of LS.ROUTES) for (const s of Object.values(r.params)) assert.deepEqual(Object.keys(s).filter((k) => !['re', 'valeurs', 'requis'].includes(k)), [], r.nom);
+    assert.deepEqual(Object.keys(LS.MESSAGES), ['INSTANCE', 'METHODE', 'CORPS', 'URL', 'ORIGINE', 'ROUTE', 'PARAMETRE', 'ENTETES', 'TRANSPORT', 'JSON', 'CLE', 'FETCH', 'WORKFLOW_ID',
+      'EXECUTION_ID', 'OPTION_INCONNUE', 'OPTION_DOUBLE', 'OPTION_VALEUR', 'POSITIONNELS', 'EXPORT_HORS_LISTE', 'EXPORT_ILLISIBLE', 'REPONSE', 'IDENTITE', 'HTTP']);
+  });
+  test('sonde et comparateur : listes fermées = instantané littéral', () => {
+    assert.deepEqual(S.STATUTS, ['new', 'running', 'waiting', 'success', 'error', 'crashed', 'canceled', 'unknown']);
+    assert.deepEqual(S.MODES, ['webhook', 'manual', 'trigger', 'retry', 'integrated', 'cli', 'internal', 'error', 'evaluation']);
+    assert.deepEqual(S.NOEUDS_ATTENTE, ['Webhook attente', 'Attendre', 'Repondre attente']);
+    assert.equal(S.INSTANCE, LS.INSTANCES[0]);
+    assert.deepEqual(S.CATEGORIES.map(([r, l]) => [r.source, l]), [['sans identifiant exploitable', 'identifiant inexploitable'], ['hors grammaire', 'date hors grammaire'],
+      ['workflowId inattendu', 'workflowId inattendu'], ['statut inconnu', 'statut inconnu'], ['terminée avant d\'avoir démarré', 'chronologie incohérente'],
+      ['observations contradictoires', 'observations contradictoires'], ['deux statuts terminaux', 'statuts terminaux contradictoires'], ['retour d\'un statut terminal', 'retour à un statut non terminal'],
+      [rx(/sans startedAt\/stoppedAt/), 'dates manquantes'], ['pagination en boucle', 'pagination en boucle'], ['liste d\'exécutions inexploitable', 'liste inexploitable']]);
+    assert.deepEqual(CL.CLES_CONTENU, ['name', 'nodes', 'connections', 'settings']);
+    assert.deepEqual(CL.METADONNEES, ['id', 'createdAt', 'updatedAt', 'versionId', 'versionCounter', 'shared', 'tags', 'meta', 'triggerCount', 'description', 'parentFolder', 'homeProject', 'scopes']);
+    assert.deepEqual(CL.ETATS, ['active', 'isArchived', 'pinData', 'staticData', 'activeVersion', 'activeVersionId']);
+  });
+  test('options de ligne de commande : spécification REÇUE par analyser() (espionnée) = instantané littéral, pour chaque commande', async () => {
+    const vues = []; const orig = AR.analyser;
+    const recharger = () => { for (const m of ['./sonde-executions.js', './comparer-live.js']) delete require.cache[require.resolve(m)]; };
+    AR.analyser = (argv, spec) => { vues.push(JSON.parse(JSON.stringify(spec))); return orig(argv, spec); };
+    try {
+      recharger();
+      const S2 = require('./sonde-executions.js'); const CL2 = require('./comparer-live.js');
+      const env = { FONDA_N8N_CLE_RECETTE: CLE };
+      await S2.principal(['WfA'], { fetch: async () => reponse({ data: [], nextCursor: null }), env });
+      await S2.principal(['--execution', '12'], { fetch: async () => reponse({}, 404), env });
+      await CL2.principal(['WfA', CL.REFERENCES[3]], { fetch: async () => reponse({}, 404), env }).catch(() => {});
+    } finally { AR.analyser = orig; recharger(); }
+    assert.deepEqual(vues, [{ options: ['--execution'], positionnels: 1 }, { options: ['--execution'], positionnels: 0 }, { options: [], positionnels: 2 }]);
+  });
+  const env = { FONDA_N8N_CLE_RECETTE: CLE, nouveau: 'SECRET_ENV' };
+  const SONDE_LISTE = ['schema', 'workflowId', 'observe_le', 'brut', 'fusion', 'en_vol', 'refus_observer'];
+  test('S8 : forme EXACTE de chaque sortie de la sonde (liste observée, liste refusée, présent, absent, inobservable)', async () => {
+    const ex = [{ id: 1, workflowId: 'WfA', status: 'success', startedAt: '2026-11-10T10:00:00.000Z', stoppedAt: '2026-11-10T10:00:01.000Z' },
+      { id: 2, workflowId: 'WfA', status: 'running', startedAt: '2026-11-10T10:01:00.000Z', stoppedAt: null }];
+    const a = await S.principal(['WfA'], { fetch: reseau(ex).f, env });
+    assert.deepEqual(Object.keys(a), ['r', 'code']); assert.equal(a.code, 0);
+    assert.deepEqual(Object.keys(a.r), SONDE_LISTE);
+    assert.deepEqual({ ...a.r, observe_le: '<horloge>' }, { schema: 'sonde-executions/v1', workflowId: 'WfA', observe_le: '<horloge>',
+      brut: { running: [{ id: '2', status: 'running', startedAt: '2026-11-10T10:01:00.000Z', stoppedAt: null }], waiting: [], liste: [{ id: '1', status: 'success', startedAt: '2026-11-10T10:00:00.000Z', stoppedAt: '2026-11-10T10:00:01.000Z' }] },
+      fusion: a.r.fusion, en_vol: ['2'], refus_observer: null });
+    assert.deepEqual([...a.r.fusion].sort((x, y) => x.id.localeCompare(y.id)), [{ id: '1', status: 'success' }, { id: '2', status: 'running' }]);
+    assert.equal(S.dateSure(a.r.observe_le), a.r.observe_le);
+    const b = await S.principal(['WfA'], { fetch: async () => reponse(null), env });
+    assert.deepEqual({ ...b, r: { ...b.r, observe_le: '<horloge>' } }, { r: { schema: 'sonde-executions/v1', workflowId: 'WfA', observe_le: '<horloge>', brut: {}, fusion: null, en_vol: null, refus_observer: 'réponse hors schéma attendu' }, code: 1 });
+    const corps = { id: 12, workflowId: 'WfA', status: 'success', mode: 'webhook', startedAt: '2026-11-10T10:00:00.000Z', stoppedAt: null, data: { resultData: { runData: { Attendre: [] } } } };
+    assert.deepEqual(await S.principal(['--execution', '12'], { fetch: async () => reponse(corps), env }), { r: { schema: 'sonde-execution/v1', id: '12', observation: 'present', workflowId: 'WfA',
+      status: 'success', mode: 'webhook', startedAt: '2026-11-10T10:00:00.000Z', stoppedAt: null, runData_present: true, noeuds_executes: ['Attendre'], erreur_noeud: null }, code: 0 });
+    assert.deepEqual(await S.principal(['--execution', '12'], { fetch: async () => reponse({}, 404), env }), { r: { schema: 'sonde-execution/v1', id: '12', observation: 'absent' }, code: 2 });
+    assert.deepEqual(await S.principal(['--execution', '12'], { fetch: async () => reponse({}, 500), env }), { r: { schema: 'sonde-execution/v1', id: '12', observation: 'inobservable', cause: 'erreur HTTP' }, code: 1 });
+    assert.deepEqual(await S.principal(['--execution', '12'], { fetch: async () => reponse({ ...corps, id: 13 }), env }), { r: { schema: 'sonde-execution/v1', id: '12', observation: 'inobservable', cause: 'identifiant renvoyé ≠ identifiant demandé' }, code: 1 });
+  });
+  test('K9 : forme EXACTE de la sortie du comparateur (principal et comparer)', async () => {
+    const texte = fs.readFileSync(path.join(__dirname, '..', CL.REFERENCES[0]), 'utf8');
+    const live = { id: 'WfA', ...JSON.parse(texte), active: false, isArchived: false, versionId: '2881d35a' };
+    assert.deepEqual(await CL.principal(['WfA', CL.REFERENCES[0]], { fetch: async () => reponse(live), env }),
+      { r: { schema: 'comparaison-live/v1', workflowId: 'WfA', export: CL.REFERENCES[0], versionId: '2881d35a', identique: true, ecarts: [] }, code: 0 });
+    assert.deepEqual(await CL.principal(['WfA', CL.REFERENCES[0]], { fetch: async () => reponse({ ...live, active: true }), env }),
+      { r: { schema: 'comparaison-live/v1', workflowId: 'WfA', export: CL.REFERENCES[0], versionId: '2881d35a', identique: false, ecarts: ['live : workflow ACTIF ou état inconnu (attendu : active = false)'] }, code: 1 });
+    assert.deepEqual(Object.keys(CL.comparer(live, CL.REFERENCES[0])), ['identique', 'ecarts']);
+    assert.deepEqual(CL.comparer(null, CL.REFERENCES[0]), { identique: false, ecarts: ['live : objet attendu'] });
   });
 });
 

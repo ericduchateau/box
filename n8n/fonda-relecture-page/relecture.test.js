@@ -354,6 +354,24 @@ fs.readFileSync = function (p, ...r) { if (String(p).endsWith(${JSON.stringify(c
     assert.deepEqual(Object.keys(B).sort(), Object.keys(attendu).sort());
     for (const [k, v] of Object.entries(B)) assert.equal(typeof v === 'function' ? signature(v) : typeof v, attendu[k], k);
   });
+  test('instantané de surface (constructeur) : CLES_RECETTE, grammaires du profil et constructeurs recopiés LITTÉRALEMENT (élargir = modifier ce test)', () => {
+    assert.deepEqual(B.CLES_RECETTE, ['nomEmettre', 'nomCloturer', 'nomConfirmer', 'nomPage', 'cheminEmettre', 'cheminCloturer', 'cheminPage', 'cheminConfirmer',
+      'dossierCandidats', 'dossierRelecture', 'dossierDecisions', 'tableRelecteurs', 'urlMoteurs',
+      'credentialDrive', 'credentialEmettre', 'credentialCloturer', 'credentialApiN8n', 'credentialGmail']);
+    assert.deepEqual(Object.fromEntries(Object.entries(B.GRAMMAIRES_RECETTE).map(([k, r]) => [k, r.source])), {
+      nom: /^FONDA RECETTE - [A-Z][a-z]+ relecture$/.source,
+      chemin: /^fonda-recette-[a-z]{1,20}(-[a-z]{1,20}){0,3}$/.source,
+      dossier: /^[A-Za-z0-9_-]{10,80}$/.source,
+      credentialId: /^[A-Za-z0-9]{8,32}$/.source,
+      credentialNom: /^FONDA RECETTE [A-Za-z0-9]{1,20}( [A-Za-z0-9()]{1,20}){0,6}$/.source,
+      urlMoteurs: /^(https:\/\/ericduchateau\.github\.io\/box\/fonda\/engine|https:\/\/cdn\.jsdelivr\.net\/gh\/ericduchateau\/box@[0-9a-f]{40}\/fonda\/engine)$/.source,
+    });
+    assert.deepEqual(Object.values(B.GRAMMAIRES_RECETTE).map((r) => r.flags), ['', '', '', '', '', '']);
+    // Constructeurs admis par la ligne de commande : les 4 exactement, chacun sous les 2 profils exactement.
+    for (const o of ['--emettre', '--cloturer', '--confirmer', '--page']) for (const p of ['production', 'recette'])
+      assert.deepEqual(B.analyserArguments([o, '--profil', p]), { option: o, profil: p });
+    for (const a of [['--generation'], ['--emettre', '--profil', 'staging'], ['toString'], ['__proto__'], ['--constructor']]) assert.throws(() => B.analyserArguments(a), B.ErreurConstruction, a.join(' '));
+  });
   test('X1 (constructeur) : modules chargés, TRACÉS (Module._load), = LISTE FERMÉE, pour les deux profils', () => {
     const os = require('os'); const cp = require('child_process');
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'trace-'));

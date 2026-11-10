@@ -54,8 +54,17 @@ function ecartsProfonds(a, b, chemin = '$', sortie = []) {
   return sortie;
 }
 
-function comparer(live, texteExport) {
-  const depot = JSON.parse(texteExport);
+// Référence du dépôt : élément de la LISTE FERMÉE REFERENCES, lu ICI (jamais un texte ni un objet fourni par
+// l'appelant) ; illisible, JSON invalide ou JSON qui n'est pas un objet simple -> EXPORT_ILLISIBLE.
+function lireReference(reference) {
+  if (typeof reference !== 'string' || !REFERENCES.includes(reference)) throw new ErreurOutil('EXPORT_HORS_LISTE');
+  let texte; let depot;
+  try { texte = fs.readFileSync(path.join(RACINE, reference), 'utf8'); depot = JSON.parse(texte); } catch { throw new ErreurOutil('EXPORT_ILLISIBLE'); }
+  if (depot === null || typeof depot !== 'object' || Array.isArray(depot)) throw new ErreurOutil('EXPORT_ILLISIBLE');
+  return depot;
+}
+
+function comparerDepot(live, depot) {
   const ecarts = [];
   if (Object.keys(depot).join(',') !== CLES_CONTENU.join(',')) ecarts.push('export du dépôt : clés ≠ name, nodes, connections, settings');
   if (!live || typeof live !== 'object' || Array.isArray(live)) return { identique: false, ecarts: ['live : objet attendu'] };
@@ -71,6 +80,8 @@ function comparer(live, texteExport) {
   if (!strict && !ecarts.length) ecarts.push('sérialisation différente');
   return { identique: ecarts.length === 0, ecarts };
 }
+// Surface exportée : la référence est un ÉLÉMENT de REFERENCES (F1 : réduction de surface, aucun texte libre).
+function comparer(live, reference) { return comparerDepot(live, lireReference(reference)); }
 
 async function lireLive({ workflowId, url, cle, fetch: f = globalThis.fetch }) {
   if (typeof workflowId !== 'string' || !ID_WORKFLOW.test(workflowId)) throw new ErreurOutil('WORKFLOW_ID');
@@ -92,13 +103,10 @@ async function principal(argv, { fetch: f = globalThis.fetch, env = process.env 
   const reference = REFERENCES.find((x) => x === fichier);
   if (!reference) throw new ErreurOutil('EXPORT_HORS_LISTE');
   const cle = cleDEnvironnement(env);
-  let texte;
-  let depot;
-  try { texte = fs.readFileSync(path.join(RACINE, reference), 'utf8'); depot = JSON.parse(texte); } catch { throw new ErreurOutil('EXPORT_ILLISIBLE'); }
-  // Même typage que les sources de la sonde (S3) : la référence doit être un objet simple.
-  if (depot === null || typeof depot !== 'object' || Array.isArray(depot)) throw new ErreurOutil('EXPORT_ILLISIBLE');
+  // Référence lue et typée AVANT toute requête (même typage que les sources de la sonde, S3).
+  const depot = lireReference(reference);
   const live = await lireLive({ workflowId, url: INSTANCES[0], cle, fetch: f });
-  const r = comparer(live, texte);
+  const r = comparerDepot(live, depot);
   return { r: { schema: 'comparaison-live/v1', workflowId, export: reference, versionId: typeof live.versionId === 'string' && /^[0-9a-f-]{1,64}$/.test(live.versionId) ? live.versionId : null, ...r }, code: r.identique ? 0 : 1 };
 }
 
