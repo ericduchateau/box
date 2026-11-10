@@ -85,13 +85,21 @@ Chaque valeur externe, ou qui atteint l'instance, ou qui est affichée, et son c
 | X1 | tous | **modules chargés (directement ou transitivement)** | dépôt et Node | **tracés** par `Module._load` à l'exécution de chaque commande et comparés à une **liste fermée explicite** (constructeur, 2 profils ; sonde, liste et détail ; comparateur, comparaison complète jusqu'au code 0 avec un faux live conforme) ; tout module nouveau fait échouer ; aucun module hors dépôt hors Node | « X1 (constructeur) … TRACÉS », « X1 : modules chargés par la sonde », « … par le comparateur » |
 | F1 | tous | **paramètres et exports des fonctions exportées** (appelant JavaScript) | appelant | exports et signature de chaque fonction en **liste fermée** ; chaque paramètre fermé : `url` -> T1 ; `cle` -> T5/T6 ; `env` -> T6 ; `fetch` -> toujours enveloppé par le transport (T2–T10) ; `argv` -> C1/C2, S1, K1 ; `option`/`profil`/`brutRecette` -> C1–C8 ; `live` -> K5/K6 ; `reference` -> K3 (élément de `REFERENCES`, aucun texte ni objet de l'appelant) ; liste de confiance : **aucun** paramètre (S3) | « F1 (constructeur) », « F1 : exports et paramètres … », « F1 : la liste de confiance n'est remplaçable par AUCUN paramètre », « F1 : comparer() n'accepte qu'un ÉLÉMENT de REFERENCES » |
 
-## Constats d'Éric (2026-11-10) et contrainte opérationnelle
+## Constats d'Éric (2026-11-10)
 - **Instance unique** (`n8n.srv868991.hstgr.cloud`, 2.6.3), pas de staging : isolement par dossiers, Data Table, credentials et noms « FONDA RECETTE », comme prévu.
-- **Purge des exécutions : réglage par défaut, jamais modifié** (`EXECUTIONS_DATA_PRUNE` non fixé ; en 2.6.3 la purge est active par défaut, de l'ordre de 14 jours, à confirmer en phase 1). **Assumé** : les exécutions s'effacent. Ce n'est pas un blocage : l'exécution absente est déjà traitée (sonde code 2, §21.4, refus de signer).
-- **Fenêtre de signature (contrainte opérationnelle)** : un lot doit être **clôturé et signé avant la purge** de ses exécutions (génération, confirmation, clôture). Au-delà, le signataire refuse (exécution indisponible) : **abandon**, sûr mais le lot est perdu. La phase 1 lit les valeurs exactes (`EXECUTIONS_DATA_PRUNE`, `EXECUTIONS_DATA_MAX_AGE`, `EXECUTIONS_DATA_PRUNE_MAX_COUNT`) et consigne la fenêtre ici. **À reverser en P5** : le CLI avertit quand la fenêtre approche.
+- **Purge des exécutions : DÉSACTIVÉE** (relevé du 2026-11-10, ci-dessous) : `EXECUTIONS_DATA_PRUNE = false`, vérifié à la source dans le conteneur. Les exécutions sont **conservées**. L'hypothèse antérieure « purge par défaut, assumée » est **retirée**.
+- **Fenêtre de signature : sans objet** (`EXECUTIONS_DATA_PRUNE = false`). Le cas « exécution absente » reste traité (sonde code 2, §21.4, refus de signer) pour le cas où ce réglage changerait ; rien à reverser en P5 à ce titre.
+
+### Relevés phase 1 (2026-11-10, VPS, lecture seule, Éric ; rien modifié) — trace §13.5
+| Variable / fait | Valeur relevée | Conséquence |
+|---|---|---|
+| `EXECUTIONS_DATA_PRUNE` | `false` (vérifié à la source, conteneur n8n) | exécutions conservées ; pas de fenêtre de signature |
+| `N8N_BLOCK_ENV_ACCESS_IN_NODE` | non fixé (défaut) | sans effet : G4 reste Crypto v2 Hmac + credential (le motif, éviter un redémarrage du conteneur, est inchangé) |
+| `N8N_PAYLOAD_SIZE_MAX` | non fixé : défaut 16 Mo | borne du test §21.4 « corps trop grand » : > 16 Mo |
+| version n8n | 2.6.3 | — |
 
 ## Phase 1 — constats et préparation (Éric, aucune activation)
-1. **Terminal du VPS, lecture seule** : `docker exec <ID n8n> printenv` filtré sur `N8N_BLOCK_ENV_ACCESS_IN_NODE`, `EXECUTIONS_DATA_PRUNE`, `EXECUTIONS_DATA_MAX_AGE`, `EXECUTIONS_DATA_PRUNE_MAX_COUNT`, `N8N_PAYLOAD_SIZE_MAX` ; version n8n. Consigner (trace §13.5) ; aucune modification.
+1. ~~Terminal du VPS, lecture seule~~ **FAIT le 2026-11-10** : relevés consignés ci-dessus (trace §13.5) ; aucune modification.
 2. **Drive** : dossier `FONDA-RECETTE` avec `lots/`, `relecture/`, `decisions/`.
 3. **Data Table** `fonda_recette_relecteurs`, créée dans le **MÊME PROJET n8n** que les 4 workflows importés (une Data Table est limitée à son projet) ; table **dédiée**, non modifiée pendant une émission. Colonnes **exactes**, type **texte** : `relecteur_attribue`, `adresse`. Deux lignes (décision de l'architecte) : `eric` et `justine`, toutes deux -> **adresse de test d'Éric**. Consigner : projet, colonnes et types, identifiant de la table.
 4. **Credentials** (noms imposés par `profil-recette.json`) : `FONDA RECETTE Drive`, `… Emettre Token`, `… Cloturer Token`, `… Gmail relecture` (plus de credential « API n8n » : la Data Table est lue par le nœud natif), et (P4b) le credential `crypto` du HMAC de recette (secret ≥ 32 caractères, propre à la recette).
