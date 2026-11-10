@@ -334,6 +334,13 @@ fs.readFileSync = function (p, ...r) { if (String(p).endsWith(${JSON.stringify(c
     // Erreur tierce levée PENDANT la construction (registre de la Page, après le chargement) : catch final -> marqueur.
     const d = lancer(pre('moteur-correction-v1.js', "if (new Error().stack.includes('registrePage')) throw new Error('SECRET_SYNTHETIQUE /chemin/prive');"), ['--page']);
     assert.equal(d.status, 1); assert.equal(d.stdout, ''); assert.match(d.stderr, /erreur de construction \(message non affichable\)\nusage/); assert.equal(d.stderr.includes('SECRET'), false);
+    // Inventaire (source de la protection) : export illisible -> message fixe ; export hors schéma ({}) -> refus, jamais ignoré.
+    const e = lancer(pre('box-fonda-generation-ia.json', "throw new Error('SECRET_SYNTHETIQUE');"), ['--page', '--profil', 'recette']);
+    assert.equal(e.status, 1); assert.equal(e.stdout, ''); assert.match(e.stderr, /inventaire de production : export illisible/); assert.equal(e.stderr.includes('SECRET'), false);
+    for (const forme of ["return '{}';", "return '[]';", "return JSON.stringify({ nodes: {} });", "return JSON.stringify({ nodes: [null] });"]) {
+      const g = lancer(pre('box-fonda-generation-ia.json', forme), ['--page', '--profil', 'recette']);
+      assert.equal(g.status, 1, forme); assert.equal(g.stdout, '', forme); assert.match(g.stderr, /inventaire de production : export hors schéma \(nodes\)/, forme);
+    }
     const c = lancer(pre('profil-recette.json', "return JSON.stringify({ profil: 'recette', SECRET_SYNTHETIQUE: 1 });"), ['--page', '--profil', 'recette']);
     assert.equal(c.status, 1); assert.match(c.stderr, /liste fermée CLES_RECETTE/); assert.equal(c.stderr.includes('SECRET'), false);
   });

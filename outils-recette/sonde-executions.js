@@ -55,7 +55,7 @@ const CATEGORIES = Object.freeze([
   [/deux statuts terminaux/, 'statuts terminaux contradictoires'], [/retour d'un statut terminal/, 'retour à un statut non terminal'],
   [/sans startedAt\/stoppedAt/, 'dates manquantes'], [/pagination en boucle/, 'pagination en boucle'], [/liste d'exécutions inexploitable/, 'liste inexploitable'],
 ]);
-const CATEGORIES_OUTIL = Object.freeze({ JSON: 'réponse JSON illisible', TRANSPORT: 'échec du transport', PARAMETRE: 'paramètre de requête hors liste fermée (dont curseur)' });
+const CATEGORIES_OUTIL = Object.freeze({ JSON: 'réponse JSON illisible', TRANSPORT: 'échec du transport', PARAMETRE: 'paramètre de requête hors liste fermée (dont curseur)', REPONSE: 'réponse hors schéma attendu' });
 function categorie(e) {
   if (e instanceof ErreurOutil) return CATEGORIES_OUTIL[e.code] || 'erreur de l\'outil';
   if (e && e.name === 'ErreurAdaptateur' && Number.isInteger(e.statut)) return 'erreur HTTP';
@@ -66,7 +66,15 @@ function categorie(e) {
 
 const idSur = (x) => ((typeof x === 'number' && Number.isSafeInteger(x) && x >= 0) || (typeof x === 'string' && ID_EXECUTION.test(x)) ? String(x) : '<id hors grammaire>');
 const dansListe = (liste, x) => (typeof x === 'string' && liste.includes(x) ? x : '<hors liste>');
-const dateSure = (x) => (x == null ? null : typeof x === 'string' && /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,3})?Z$/.test(x) ? x : '<date hors grammaire>');
+// Date affichable : forme ISO UTC stricte ET date réelle (aller-retour par Date restituant EXACTEMENT la même
+// valeur, millisecondes normalisées) ; une seule fonction pour la liste et le détail.
+function dateSure(x) {
+  if (x == null) return null;
+  if (typeof x !== 'string' || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,3})?Z$/.test(x)) return '<date hors grammaire>';
+  const normale = x.replace(/(\.[0-9]{1,3})?Z$/, (m, f) => `${f ? f.padEnd(4, '0') : '.000'}Z`);
+  const d = new Date(x);
+  return !Number.isNaN(d.getTime()) && d.toISOString() === normale ? x : '<date hors grammaire>';
+}
 
 async function sonder({ workflowId, url = INSTANCE, cle, fetch: f = globalThis.fetch }) {
   if (typeof workflowId !== 'string' || !ID_WORKFLOW.test(workflowId)) throw new ErreurOutil('WORKFLOW_ID');
@@ -117,7 +125,7 @@ async function principal(argv, { fetch: f = globalThis.fetch, env = process.env 
   return { r, code: r.refus_observer === null ? 0 : 1 };
 }
 
-module.exports = { sonder, sonderExecution, principal, nomsDeConfiance, NOEUDS_ATTENTE, EXPORTS_RECETTE, CATEGORIES, STATUTS, MODES, INSTANCE };
+module.exports = { sonder, sonderExecution, principal, dateSure, nomsDeConfiance, NOEUDS_ATTENTE, EXPORTS_RECETTE, CATEGORIES, STATUTS, MODES, INSTANCE };
 
 if (require.main === module) {
   principal(process.argv.slice(2)).then(({ r, code }) => { process.stdout.write(`${JSON.stringify(r, null, 2)}\n`); process.exitCode = code; })

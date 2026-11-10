@@ -131,7 +131,9 @@ const EXPORTS_PRODUCTION_INVENTAIRE = Object.freeze([
 // CONFIG_PRODUCTION) ; « jetons » : tout jeton ≥ 25 caractères des paramètres (identifiants Drive ; code compris,
 // appartenance seulement). Les stricts ne doivent apparaître NULLE PART dans un export de recette (harnais).
 function inventaireExport(wf, stricts, jetonsVus) {
-  if (!wf || typeof wf !== 'object' || !Array.isArray(wf.nodes)) return;
+  // La SOURCE de la protection est validée : un export hors schéma (ex. remplacé par {}) retirerait en silence
+  // ses identifiants de la protection -> refus, message fixe.
+  if (!wf || typeof wf !== 'object' || Array.isArray(wf) || !Array.isArray(wf.nodes) || wf.nodes.some((n) => !n || typeof n !== 'object' || Array.isArray(n))) throw new ErreurConstruction('inventaire de production : export hors schéma (nodes)');
   stricts.add(wf.name); stricts.add(wf.id);
   const jetons = (x) => { if (typeof x === 'string') { for (const j of x.match(/[A-Za-z0-9_-]{25,}/g) || []) jetonsVus.add(j); } else if (x && typeof x === 'object') for (const y of Object.values(x)) jetons(y); };
   for (const n of wf.nodes) {

@@ -163,7 +163,7 @@ describe('sonde : une seule série, sorties en ensembles fermés, codes 0 / 1 / 
       const r = await S.sonder({ workflowId: 'WfA', cle: CLE, fetch: f });
       assert.equal(r.refus_observer, attendu, JSON.stringify(x)); assert.ok(sans(JSON.stringify(r), 'SECRET'));
     }
-    assert.equal((await S.sonder({ workflowId: 'WfA', cle: CLE, fetch: async () => reponse('SECRET') })).refus_observer, 'liste inexploitable');
+    for (const corps of ['SECRET', null, [], 3, { data: 'x' }, { data: {} }]) assert.equal((await S.sonder({ workflowId: 'WfA', cle: CLE, fetch: async () => reponse(corps) })).refus_observer, 'réponse hors schéma attendu', JSON.stringify(corps));
     assert.equal((await S.sonder({ workflowId: 'WfA', cle: CLE, fetch: async () => reponse({}, 503) })).refus_observer, 'erreur HTTP');
     assert.equal((await S.sonder({ workflowId: 'WfA', cle: CLE, fetch: async () => ({ ok: true, status: 200, json: async () => JSON.parse('SECRET{') }) })).refus_observer, 'réponse JSON illisible');
   });
@@ -203,6 +203,22 @@ describe('sonde : une seule série, sorties en ensembles fermés, codes 0 / 1 / 
     const { f } = reseau([], {});
     assert.deepEqual(await S.sonderExecution({ id: '78', cle: CLE, fetch: f }), { r: { schema: 'sonde-execution/v1', id: '78', observation: 'absent' }, code: 2 });
   });
+  test('--execution : HTTP 200 dont le corps est null, tableau, nombre, chaîne -> INOBSERVABLE (code 1), JAMAIS absent (code 2)', async () => {
+    for (const corps of [null, [], [det({})], 3, 'SECRET', true]) {
+      const { r, code } = await S.sonderExecution({ id: '77', cle: CLE, fetch: async () => reponse(corps) });
+      assert.equal(code, 1, JSON.stringify(corps)); assert.equal(r.observation, 'inobservable'); assert.equal(r.cause, 'réponse hors schéma attendu'); assert.ok(sans(JSON.stringify(r), 'SECRET'));
+    }
+  });
+  test('dates : forme ISO UTC ET date réelle (aller-retour) ; impossibles -> marqueur ; même fonction en liste et en détail', async () => {
+    for (const x of ['2026-11-10T10:00:00Z', '2026-11-10T10:00:00.1Z', '2026-11-10T10:00:00.12Z', '2026-11-10T10:00:00.123Z', '2024-02-29T23:59:59.999Z', null]) assert.equal(S.dateSure(x), x, String(x));
+    for (const x of ['2026-99-99T99:99:99Z', '2026-13-01T00:00:00Z', '2026-00-10T00:00:00Z', '2026-04-31T00:00:00Z', '2026-02-29T00:00:00Z', '2026-11-10T24:00:00Z',
+      '2026-11-10T10:60:00Z', '2026-11-10T10:00:60Z', '2026-11-10T10:00:00+01:00', '2026-11-10 10:00:00Z', '2026-11-10T10:00:00.1234Z', 1731232800000, {}])
+      assert.equal(S.dateSure(x), '<date hors grammaire>', String(x));
+    const f = async (url) => reponse({ data: new URL(url).searchParams.get('status') === 'running' ? [{ id: 3, workflowId: 'WfA', status: 'running', startedAt: '2026-02-29T00:00:00Z', stoppedAt: null }] : [], nextCursor: null });
+    assert.equal((await S.sonder({ workflowId: 'WfA', cle: CLE, fetch: f })).brut.running[0].startedAt, '<date hors grammaire>');
+    const { r } = await S.sonderExecution({ id: '77', cle: CLE, fetch: async () => reponse(det({ startedAt: '2026-99-99T99:99:99Z' })) });
+    assert.equal(r.startedAt, '<date hors grammaire>');
+  });
   test('--execution INOBSERVABLE : schéma absent, identité différente, statut hors liste, HTTP 500, JSON illisible -> code 1', async () => {
     for (const corps of [{}, det({ id: 76 }), det({ id: '77x' }), det({ status: 'SECRET' }), det({ data: null }), det({ data: {} }), det({ workflowId: 'W-A' }), []]) {
       const { r, code } = await S.sonderExecution({ id: '77', cle: CLE, fetch: async () => reponse(corps) });
@@ -235,6 +251,14 @@ describe('comparateur : références fermées, états typés, écarts sans conte
     const c = live(); c.settings.executionTimeout = 999; assert.deepEqual(CL.comparer(c, texte).ecarts, ['$.settings.<clé inconnue n°1> : absente du dépôt']);
     const d = live(); d.connections.SECRET_SYNTHETIQUE = {}; assert.deepEqual(CL.comparer(d, texte).ecarts, ['$.connections.<clé inconnue n°1> : absente du dépôt']);
     const e = live(); e.SECRET_SYNTHETIQUE = 1; assert.deepEqual(CL.comparer(e, texte).ecarts, ['live : clé inconnue n°1 (à examiner)']);
+  });
+  test('versionId affiché seulement en grammaire stricte (hexadécimal et tirets), sinon null', async () => {
+    const env = { FONDA_N8N_CLE_RECETTE: CLE };
+    for (const [v, attendu] of [['2881d35a-1b2c-4d3e-8f90-0123456789ab', '2881d35a-1b2c-4d3e-8f90-0123456789ab'], ['SECRET', null], ['v', null], [12, null], ['a'.repeat(65), null], [undefined, null]]) {
+      const x = live(); if (v === undefined) delete x.versionId; else x.versionId = v;
+      const { r } = await CL.principal(['WfA', REF], { fetch: async () => reponse(x), env });
+      assert.equal(r.versionId, attendu, String(v));
+    }
   });
   test('ordre des clés différent -> NON identique', () => {
     const a = live(); a.nodes[0] = Object.fromEntries(Object.entries(a.nodes[0]).reverse());
@@ -318,6 +342,18 @@ M.prototype.require = function (id) { if (process.env.CIBLE && String(id).includ
       const r = spawnSync(process.execPath, ['-r', p, path.join(__dirname, script), 'WfA', CL.REFERENCES[0]], { env: { ...process.env, CIBLE: cible, FONDA_N8N_CLE_RECETTE: CLE }, encoding: 'utf8' });
       assert.equal(r.status, 1, `${script} ${cible}`); assert.equal(r.stdout, ''); assert.equal(r.stderr, `${nom} : erreur (message non affichable)\n`, `${script} ${cible}`);
     }
+  });
+  test('sources de fichiers illisibles ou hors schéma : référence du comparateur, sources de noms de la sonde -> message fixe, code 1', () => {
+    const p = path.join(dir, 'lecture.js');
+    fs.writeFileSync(p, `const fs = require('fs'); const lire = fs.readFileSync;
+fs.readFileSync = function (f, ...r) { if (process.env.CIBLE && String(f).endsWith(process.env.CIBLE)) { if (process.env.FORME === 'vide') return '{}'; throw new Error('SECRET_SYNTHETIQUE'); } return lire.call(this, f, ...r); };\n`);
+    const l = (script, args, cible, forme) => spawnSync(process.execPath, ['-r', pre, '-r', p, path.join(__dirname, script), ...args], { env: { ...process.env, CIBLE: cible, FORME: forme || '', FONDA_N8N_CLE_RECETTE: CLE, MODE: 'present' }, encoding: 'utf8' });
+    for (const forme of ['erreur', 'vide']) {
+      const a = l('sonde-executions.js', ['--execution', '12'], 'box-fonda-page-relecture.recette.json', forme);
+      assert.equal(a.status, 1, forme); assert.equal(a.stderr, `sonde : ${LS.MESSAGES.EXPORT_ILLISIBLE}\n`, forme); assert.ok(sans(a.stdout + a.stderr, 'SECRET'));
+    }
+    const b = l('comparer-live.js', ['WfA', CL.REFERENCES[3]], 'box-fonda-page-relecture.recette.json', 'erreur');
+    assert.equal(b.status, 1); assert.equal(b.stderr, `comparer-live : ${LS.MESSAGES.EXPORT_ILLISIBLE}\n`); assert.ok(sans(b.stdout + b.stderr, 'SECRET'));
   });
   test('clé hors grammaire refusée avant toute requête (message de la liste fermée)', () => {
     const r = lancer('sonde-executions.js', ['WfA'], 'vide', 'courte'); assert.equal(r.status, 1); assert.match(r.stderr, /clé d'API absente ou hors grammaire/);

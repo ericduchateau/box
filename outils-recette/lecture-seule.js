@@ -87,16 +87,22 @@ function verifierEntetes(h) {
   if (cles.join(',') !== 'X-N8N-API-KEY,accept' || typeof h['X-N8N-API-KEY'] !== 'string' || !CLE_API.test(h['X-N8N-API-KEY']) || h.accept !== 'application/json') throw new ErreurOutil('ENTETES');
   return { 'X-N8N-API-KEY': h['X-N8N-API-KEY'], accept: 'application/json' };
 }
-// Réponse réduite à ok, status (entier) et json() ; json() illisible -> message FIXE. Route « liste » : le
-// curseur renvoyé (nextCursor) est TYPÉ ici (absent, nul, ou chaîne de la grammaire CURSEUR), avant que
-// l'adaptateur ne le convertisse en chaîne pour la requête suivante (un tableau ['a'] deviendrait 'a').
+// Réponse réduite à ok, status (entier) et json() ; json() illisible -> message FIXE. Réponse 2xx TYPÉE PAR
+// ROUTE : un objet simple pour les trois routes (un corps JSON null, tableau ou nombre est REPONSE : il ne doit
+// jamais se confondre avec le null qu'un adaptateur renvoie pour un 404) ; route « liste » : data tableau, et
+// curseur renvoyé (nextCursor) absent, nul, ou chaîne de la grammaire CURSEUR, avant que l'adaptateur ne le
+// convertisse en chaîne pour la requête suivante (un tableau ['a'] deviendrait 'a').
 function reponseSure(r, route) {
   const status = r && Number.isInteger(r.status) ? r.status : 0;
   return { ok: status >= 200 && status < 300, status, json: async () => {
     let j;
     try { j = await r.json(); } catch { throw new ErreurOutil('JSON'); }
-    if (route.nom === 'liste-executions' && status >= 200 && status < 300 && j && typeof j === 'object' && !Array.isArray(j)
-      && !(j.nextCursor === undefined || j.nextCursor === null || (typeof j.nextCursor === 'string' && CURSEUR.test(j.nextCursor)))) throw new ErreurOutil('PARAMETRE');
+    if (status < 200 || status >= 300) return j;
+    if (j === null || typeof j !== 'object' || Array.isArray(j)) throw new ErreurOutil('REPONSE');
+    if (route.nom === 'liste-executions') {
+      if (!Array.isArray(j.data)) throw new ErreurOutil('REPONSE');
+      if (!(j.nextCursor === undefined || j.nextCursor === null || (typeof j.nextCursor === 'string' && CURSEUR.test(j.nextCursor)))) throw new ErreurOutil('PARAMETRE');
+    }
     return j;
   } };
 }
