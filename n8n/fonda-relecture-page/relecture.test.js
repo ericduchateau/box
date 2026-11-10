@@ -238,6 +238,34 @@ describe('1 bis. profil de recette (P4a) : exports de production INCHANGÉS, cop
     assert.throws(avec((p) => { p.credentialDrive = { id: B.CONFIG.credentialDrive.id, name: 'FONDA RECETTE Drive' }; }), /identifiant de production/);
     assert.throws(avec((p) => { p.tableRelecteurs = ' x'; }), /invalide/);
   });
+  test('identifiants de production d\'AUTRES workflows du dépôt refusés (génération, sauvegardes BOX) ; valeur jamais citée', () => {
+    const avec = (modif) => { const p = copie(PROFIL_RECETTE); modif(p); return () => B.configRecette(p); };
+    const refus = (modif) => assert.throws(avec(modif), (e) => /identifiant de production|remplacement de PRODUCTION/.test(e.message) && !/GfnXr5hYrYgC5RwA|YnhTnSOc1u7S99Q7|11KWo13pczVB|box-select/.test(e.message));
+    refus((p) => { p.credentialEmettre = { id: 'GfnXr5hYrYgC5RwA', name: 'FONDA RECETTE Emettre Token' }; }); // FONDA Webhook Token (génération)
+    refus((p) => { p.credentialApiN8n = { id: 'YnhTnSOc1u7S99Q7', name: 'FONDA RECETTE API n8n' }; }); // Anthropic FONDA (génération)
+    refus((p) => { p.dossierDecisions = '11KWo13pczVB_eOXw-FHUXWuutfSQqbbT'; }); // dossier BOX-Flashcards (sauvegarde BOX)
+    refus((p) => { p.dossierRelecture = 'A_RENSEIGNER_P4_DOSSIER_RELECTURE'; }); // remplacement de PRODUCTION, refusé dès la construction
+    assert.throws(avec((p) => { p.cheminConfirmer = 'box-select-confirm'; }), /fonda-recette-/);
+  });
+  test('ligne de commande STRICTE : option sans valeur, inconnue, en double, ou constructeur absent -> erreur (jamais la production par défaut)', () => {
+    assert.deepEqual(B.analyserArguments(['--page']), { option: '--page', profil: 'production' });
+    assert.deepEqual(B.analyserArguments(['--profil', 'recette', '--page']), { option: '--page', profil: 'recette' });
+    for (const a of [['--page', '--profil'], ['--page', '--profil', 'recete'], ['--page', '--profil', '--emettre'], ['--page', '--profil', 'recette', '--profil', 'recette'],
+      ['--page', '--emettre'], ['--page', '--recette'], ['--profil', 'recette'], [], ['--page', 'recette']]) assert.throws(() => B.analyserArguments(a), Error, a.join(' '));
+    const r = require('child_process').spawnSync(process.execPath, [path.join(__dirname, 'construire-relecture.js'), '--page', '--profil'], { encoding: 'utf8' });
+    assert.equal(r.status, 1); assert.equal(r.stdout, '');
+  });
+  test('TOUS les uuid (nœuds, webhookId, conditions) disjoints entre les 4 exports de recette et les 4 de production', () => {
+    const tous = (lire) => new Set(Object.keys(EXPORTS).flatMap((k) => lire(k).toString('utf8').match(UUID) || []));
+    const prod = tous(lireExport); const rec = tous(lireRecette);
+    assert.ok(rec.size > 0);
+    for (const u of rec) assert.equal(prod.has(u), false, `uuid partagé avec la production : ${u}`);
+  });
+  test('avecProfil : construction asynchrone refusée, profil restauré', async () => {
+    assert.throws(() => B.avecProfil('recette', async () => B.construirePage()), /asynchrone/);
+    assert.throws(() => B.avecProfil('recette', () => ({ then() {} })), /asynchrone/);
+    assert.ok(lireExport('page').equals(Buffer.from(`${JSON.stringify(B.construirePage(), null, 2)}\n`, 'utf8')));
+  });
   test('profil inconnu -> erreur, profil actif restauré même en cas d\'erreur', () => {
     assert.throws(() => B.avecProfil('prod', () => 1), /profil inconnu/);
     assert.throws(() => B.avecProfil('recette', () => { throw new Error('panne'); }), /panne/);

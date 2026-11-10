@@ -87,3 +87,6 @@
 /fonda/scripts/temoin-saisie-locale.test.js @ericduchateau
 /fonda/scripts/temoin-ancre.test.js        @ericduchateau
 /fonda/scripts/signer-cloture-local.test.js @ericduchateau
+# Recette P4 (outils d'isolement recette/prod, hors chemin de signature et hors périmètre du témoin) :
+# transport GET seulement, sonde d'observation, comparateur dépôt <-> live, et leurs tests.
+/outils-recette/                           @ericduchateau
