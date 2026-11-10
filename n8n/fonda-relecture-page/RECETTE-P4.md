@@ -19,17 +19,17 @@
 ## Énumération des frontières (exhaustivité prouvable)
 Chaque valeur externe, ou qui atteint l'instance, ou qui est affichée, et son contrôle d'**ensemble fermé** (LF = liste fermée ; GS = grammaire stricte ; LC = liste de confiance du dépôt). Toute ligne absente de ce tableau est un défaut.
 
-**Énumération auto-vérifiée** : chaque CLASSE de frontière a un test qui échoue si elle dérive (une frontière nouvelle de la classe fait rougir le test, sans relecture à la main).
+**Énumération auto-vérifiée** : chaque CLASSE de frontière a un test qui échoue si elle dérive (une frontière nouvelle de la classe fait rougir le test, sans relecture à la main). Le sommaire l'est aussi : un test exige que **chaque ligne du détail figure dans une classe** (« sommaire : chaque ligne … »).
 
 | Classe | Test de dérive |
 |---|---|
-| Arguments de ligne de commande (C1, C2, S1, K1) | analyse stricte : option inconnue, valeur absente, doublon, positionnels -> erreur (3 commandes) |
+| Arguments de ligne de commande (C1, C2, S1, S2, K1, K2) | analyse stricte : option inconnue, valeur absente, doublon, positionnels -> erreur (3 commandes) ; identifiants `workflowId` / exécution en grammaire stricte, refusés avant toute requête |
 | Valeurs du profil (C3–C9) | clés = `CLES_RECETTE` exactement ; grammaire fermée par champ ; injections et identifiants de production refusés |
 | Paramètres et exports des fonctions exportées (F1) | exports et signatures comparés à une liste fermée |
 | Modules chargés (X1) | modules tracés à l'exécution comparés à une liste fermée |
 | Routes, paramètres, en-têtes, instance (T1–T6) | toute requête hors liste fermée refusée avant le réseau (aucun appel enregistré) |
-| Champs de réponse réinjectés ou affichés (T7, T10, S4, S5, K4–K6, K9) | réponses hors forme (curseur, corps non objet, dates, identité, états, versionId) -> refus ou marqueur |
-| Fichiers lus (C3, C10, C15, S3, K3, K8) | listes explicites ; lecture, JSON ou schéma en échec -> message fixe ; inventaire = `git ls-files` |
+| Champs de réponse réinjectés ou affichés (T7, T8, T10, S4, S5, K4–K6, K9) | réponses hors forme (curseur, statut non entier, JSON illisible, corps non objet, dates, identité, états, versionId) -> refus ou marqueur |
+| Fichiers lus (C3, C10, C11, C15, S3, K3, K8) | listes explicites ; lecture, JSON ou schéma en échec -> message fixe ; inventaire = `git ls-files` ; registre et fichiers moteur : sha256 = registre, modules embarqués = copie exacte (sections 1 et 12 du harnais) |
 | Références d'instance des exports (C8, C12) | ensemble fermé contrôlé par le harnais, indépendamment du profil ; profil entièrement renseigné testé |
 | Chemins d'erreur, dont le chargement (C13, C14, T9, S7, K7) | erreurs tierces et de chargement injectées -> message fixe, aucun extrait |
 | Sorties et codes de sortie (C13, S6, S8, K6, K9) | formes exactes comparées ; codes 0/1/2 de la sonde distingués |
@@ -80,6 +80,11 @@ Chaque valeur externe, ou qui atteint l'instance, ou qui est affichée, et son c
 | K9 | comparateur | **champs de sortie construits** | comparateur | `schema` : constante ; `workflowId` : argument validé (K2) ; `export` : élément de LF (K3) ; `versionId` : GS hexadécimal/tirets sinon null ; `identique` : booléen dérivé ; `ecarts` : K6 | « versionId affiché seulement en grammaire stricte », « principal » |
 | X1 | tous | **modules chargés (directement ou transitivement)** | dépôt et Node | **tracés** par `Module._load` à l'exécution de chaque commande et comparés à une **liste fermée explicite** (constructeur, 2 profils ; sonde, liste et détail ; comparateur, comparaison complète) ; tout module nouveau fait échouer ; aucun module hors dépôt hors Node | « X1 (constructeur) … TRACÉS », « X1 : modules chargés par la sonde », « … par le comparateur » |
 | F1 | tous | **paramètres et exports des fonctions exportées** (appelant JavaScript) | appelant | exports et signature de chaque fonction en **liste fermée** ; chaque paramètre fermé : `url` -> T1 ; `cle` -> T5/T6 ; `env` -> T6 ; `fetch` -> toujours enveloppé par le transport (T2–T10) ; `argv` -> C1/C2, S1, K1 ; `option`/`profil`/`brutRecette` -> C1–C8 ; `live`/`texteExport` -> K5/K6 ; liste de confiance : **aucun** paramètre (S3) | « F1 (constructeur) », « F1 : exports et paramètres … », « F1 : la liste de confiance n'est remplaçable par AUCUN paramètre » |
+
+## Constats d'Éric (2026-11-10) et contrainte opérationnelle
+- **Instance unique** (`n8n.srv868991.hstgr.cloud`, 2.6.3), pas de staging : isolement par dossiers, Data Table, credentials et noms « FONDA RECETTE », comme prévu.
+- **Purge des exécutions : réglage par défaut, jamais modifié** (`EXECUTIONS_DATA_PRUNE` non fixé ; en 2.6.3 la purge est active par défaut, de l'ordre de 14 jours, à confirmer en phase 1). **Assumé** : les exécutions s'effacent. Ce n'est pas un blocage : l'exécution absente est déjà traitée (sonde code 2, §21.4, refus de signer).
+- **Fenêtre de signature (contrainte opérationnelle)** : un lot doit être **clôturé et signé avant la purge** de ses exécutions (génération, confirmation, clôture). Au-delà, le signataire refuse (exécution indisponible) : **abandon**, sûr mais le lot est perdu. La phase 1 lit les valeurs exactes (`EXECUTIONS_DATA_PRUNE`, `EXECUTIONS_DATA_MAX_AGE`, `EXECUTIONS_DATA_PRUNE_MAX_COUNT`) et consigne la fenêtre ici. **À reverser en P5** : le CLI avertit quand la fenêtre approche.
 
 ## Phase 1 — constats et préparation (Éric, aucune activation)
 1. **Terminal du VPS, lecture seule** : `docker exec <ID n8n> printenv` filtré sur `N8N_BLOCK_ENV_ACCESS_IN_NODE`, `EXECUTIONS_DATA_PRUNE`, `EXECUTIONS_DATA_MAX_AGE`, `EXECUTIONS_DATA_PRUNE_MAX_COUNT`, `N8N_PAYLOAD_SIZE_MAX` ; version n8n. Consigner (trace §13.5) ; aucune modification.

@@ -442,3 +442,19 @@ fs.readFileSync = function (f, ...r) { if (String(f).endsWith('box-fonda-page-re
     }
   });
 });
+
+describe('énumération : le SOMMAIRE est auto-vérifié', () => {
+  test('sommaire : chaque ligne du détail (C*, T*, S*, K*, X*, F*) figure dans au moins une classe de la table « Classe -> test de dérive »', () => {
+    const t = fs.readFileSync(path.join(__dirname, '..', 'n8n', 'fonda-relecture-page', 'RECETTE-P4.md'), 'utf8');
+    const i = t.indexOf('| Classe | Test de dérive |'); assert.ok(i > 0, 'table des classes absente');
+    const classes = t.slice(i, t.indexOf('\n\n', i));
+    const lignes = [...t.matchAll(/^\| ([CTSKXF][0-9]+) \|/gm)].map((m) => m[1]);
+    assert.ok(lignes.length >= 40, 'détail des frontières absent ou tronqué');
+    const couvertes = new Set();
+    for (const [, l, a, b] of classes.matchAll(/([CTSKXF])([0-9]+)(?:[–-]\1?([0-9]+))?/g)) {
+      if (b) for (let k = Number(a); k <= Number(b); k += 1) couvertes.add(`${l}${k}`); else couvertes.add(`${l}${a}`);
+    }
+    assert.deepEqual(lignes.filter((l) => !couvertes.has(l)), [], 'lignes du détail hors de toute classe');
+    assert.equal(new Set(lignes).size, lignes.length, 'identifiant de ligne en double');
+  });
+});
