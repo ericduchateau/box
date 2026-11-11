@@ -39,6 +39,31 @@ const ETATS = Object.freeze(['active', 'isArchived', 'pinData', 'staticData', 'a
 // partout ailleurs (le secret est ramené à la valeur de remplacement dans une COPIE avant la comparaison).
 const SECRET_A_INJECTER = 'A_INJECTER_A_L_IMPORT';
 const SECRETS_INJECTES = Object.freeze({ [REFERENCES[2]]: 'Recalculer jeton', [REFERENCES[3]]: 'Signer jeton' });
+// Réglages AJOUTÉS PAR n8n À LA CRÉATION (constat phase 2, import d'Emettre, 2026-11-11 : présents sur tout workflow
+// créé par l'API en 2.6.3, absents des exports). LISTE FERMÉE, valeurs EXACTES, ordre fixé : seule tolérance de
+// `settings`. Le live PEUT les porter, en FIN de settings (après les clés du dépôt, dans cet ordre, chacune au plus une
+// fois) ; ils sont retirés d'une COPIE avant la comparaison stricte. Toute autre valeur (callerPolicy « any » ouvrirait
+// l'appel par n'importe quel workflow), autre position, autre ordre, clé supplémentaire, ou présence dans le dépôt =
+// écart. (Un doublon de clé n'est pas représentable après JSON.parse : la valeur retenue par le parseur fait foi.)
+const REGLAGES_AJOUTES_PAR_N8N = Object.freeze([Object.freeze(['callerPolicy', 'workflowsFromSameOwner']), Object.freeze(['availableInMCP', false])]);
+const NOMS_REGLAGES_AJOUTES = Object.freeze(REGLAGES_AJOUTES_PAR_N8N.map(([k]) => k));
+const estObjetSimple = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
+// Renvoie { ecart: texte | null } et retire de `sl` (copie) les réglages admis s'ils sont EXACTEMENT conformes.
+function retirerReglagesN8n(sd, sl) {
+  if (!estObjetSimple(sd) || !estObjetSimple(sl)) return { ecart: null };
+  if (NOMS_REGLAGES_AJOUTES.some((k) => Object.prototype.hasOwnProperty.call(sd, k))) return { ecart: 'export du dépôt : réglage réservé à n8n présent (callerPolicy / availableInMCP interdits dans l\'export)' };
+  const kd = Object.keys(sd); const kl = Object.keys(sl);
+  const suffixe = kl.slice(kd.length);
+  const ajoutes = kl.filter((k) => NOMS_REGLAGES_AJOUTES.includes(k));
+  if (!ajoutes.length) return { ecart: null };
+  const attendus = REGLAGES_AJOUTES_PAR_N8N.filter(([k]) => suffixe.includes(k));
+  // Position : le suffixe (clés du live au-delà du NOMBRE de clés du dépôt) ne doit contenir QUE des réglages admis,
+  // dans l'ordre de la liste ; un réglage placé ailleurs y ferait entrer une clé du dépôt -> non conforme.
+  const conforme = suffixe.length === attendus.length && suffixe.every((k, i) => k === attendus[i][0] && sl[k] === attendus[i][1]);
+  if (!conforme) return { ecart: 'live : réglages ajoutés par n8n hors forme admise (valeur, ordre, position ou clé supplémentaire)' };
+  for (const k of suffixe) delete sl[k];
+  return { ecart: null };
+}
 const noeudSecret = (contenu, nom) => {
   const n = Array.isArray(contenu.nodes) ? contenu.nodes.filter((x) => x && x.name === nom) : [];
   return n.length === 1 && n[0].type === 'n8n-nodes-base.crypto' && n[0].parameters && typeof n[0].parameters === 'object' && n[0].parameters.action === 'hmac' ? n[0] : null;
@@ -85,6 +110,8 @@ function comparerDepot(live, depot, reference) {
   if (!vide(live.staticData)) ecarts.push('live : staticData non vide');
   if (!nulOuAbsent(live.activeVersion) || !nulOuAbsent(live.activeVersionId)) ecarts.push('live : version active publiée ou état inconnu (attendu : nulle)');
   const contenu = JSON.parse(JSON.stringify(Object.fromEntries(CLES_CONTENU.map((k) => [k, live[k]])))); // copie (ordre conservé)
+  const rn = retirerReglagesN8n(depot.settings, contenu.settings);
+  if (rn.ecart) ecarts.push(rn.ecart);
   const nomSecret = Object.prototype.hasOwnProperty.call(SECRETS_INJECTES, reference) ? SECRETS_INJECTES[reference] : null;
   if (nomSecret) {
     const d = noeudSecret(depot, nomSecret); const l = noeudSecret(contenu, nomSecret);
@@ -130,7 +157,7 @@ async function principal(argv, { fetch: f = globalThis.fetch, env = process.env 
   return { r: { schema: 'comparaison-live/v1', workflowId, export: reference, versionId: typeof live.versionId === 'string' && /^[0-9a-f-]{1,64}$/.test(live.versionId) ? live.versionId : null, ...r }, code: r.identique ? 0 : 1 };
 }
 
-module.exports = { CLES_CONTENU, METADONNEES, ETATS, REFERENCES, comparer, lireLive, principal };
+module.exports = { CLES_CONTENU, METADONNEES, ETATS, REFERENCES, REGLAGES_AJOUTES_PAR_N8N, comparer, lireLive, principal };
 
 if (require.main === module) {
   principal(process.argv.slice(2)).then(({ r, code }) => { process.stdout.write(`${JSON.stringify(r, null, 2)}\n`); process.exitCode = code; })
