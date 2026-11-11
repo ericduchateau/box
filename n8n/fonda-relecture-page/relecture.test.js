@@ -698,6 +698,25 @@ const SECRET = 'secret-de-test-de-la-page-fonda-non-hexadecimal';
 const nonceAleatoire = () => crypto.randomBytes(16).toString('hex');
 const encoder = (o) => new URLSearchParams(Object.entries(o).flatMap(([k, v]) => (Array.isArray(v) ? v.map((x) => [k, x]) : [[k, String(v)]]))).toString();
 // Copie de test : Respond to Webhook adapté au simulateur (corps texte -> JSON.stringify ; forme vérifiée en 2.).
+// Crypto v1 « hmac » (non simulé) : configuration EXACTE vérifiée AVANT substitution ; le remplacement reproduit
+// n8n 2.6.3 (COPIE de l'item + champ HMAC de $json.message_jeton, clé = secret d'instance) avec node:crypto,
+// indépendant de jetonPage. Secret de test fourni par le harnais (en production : injecté à l'import).
+const SECRET_PUBLIC = 'A_INJECTER_A_L_IMPORT';
+function avecHmac(wf, secret, mode = null) {
+  const w = copie(wf); let vus = 0;
+  for (const [i, n] of w.nodes.entries()) {
+    if (n.type !== 'n8n-nodes-base.crypto' || n.parameters.action !== 'hmac') continue;
+    const champ = n.parameters.dataPropertyName;
+    assert.deepEqual([n.typeVersion, n.parameters], [1, { action: 'hmac', type: 'SHA256', value: '={{ $json.message_jeton }}', dataPropertyName: champ, secret: SECRET_PUBLIC, encoding: 'hex' }], `${n.name} : configuration Crypto`);
+    // mode (contre-épreuves) : sortie Crypto INCOHÉRENTE — jeton hors forme, ou message de l'item modifié.
+    const valeur = mode === 'jeton-hors-forme' ? "'ZZ' + __hmacTest(i.json.message_jeton).slice(2)" : '__hmacTest(i.json.message_jeton)';
+    const suite = mode === 'message-modifie' ? ', message_jeton: i.json.message_jeton + " "' : '';
+    w.nodes[i] = { ...n, type: 'n8n-nodes-base.code', typeVersion: 2, parameters: { jsCode: `return $input.all().map((i) => ({ json: { ...JSON.parse(JSON.stringify(i.json)), ${JSON.stringify(champ)}: ${valeur}${suite} } }));` } };
+    vus += 1;
+  }
+  assert.equal(vus, 1, 'exactement un nœud Crypto hmac');
+  return { wf: w, contexteCode: { __hmacTest: (v) => crypto.createHmac('sha256', secret).update(String(v), 'utf8').digest('hex') } };
+}
 const simulable = (wf) => { const w = copie(wf); for (const n of w.nodes) if (n.type === 'n8n-nodes-base.respondToWebhook') n.parameters.responseBody = '={{ JSON.stringify($json.html) }}'; return w; };
 async function formulaire(d, setId, { k = K, generation, nonce = nonceAleatoire(), ecarter = [], action = 'accepter', expirePage, empreinte, moteur, secret = SECRET } = {}) {
   const cand = candidatDe(d, setId); const rel = cand.relecture;
@@ -706,7 +725,8 @@ async function formulaire(d, setId, { k = K, generation, nonce = nonceAleatoire(
   const mot = moteur || rel.moteur;
   const exp = expirePage || new Date(Math.min(Date.now() + 3600000, Date.parse(rel.expire_le))).toISOString();
   const f = { lot: setId, k, generation: String(gen), empreinte: emp, moteur_version: mot.version, moteur_sha256: mot.sha256, expire_page: exp, nonce };
-  f.jeton = COMMUN.jetonPage(secret, { set_id: setId, generation_cle: gen, cle_sha256: sha(Buffer.from(k, 'utf8')), empreinte: emp, moteur_version: mot.version, moteur_sha256: mot.sha256, expire_page: exp, nonce });
+  // Jeton calculé par node:crypto (indépendant du workflow et de jetonPage) sur la chaîne canonique.
+  f.jeton = crypto.createHmac('sha256', secret).update(COMMUN.messageJeton({ set_id: setId, generation_cle: gen, cle_sha256: sha(Buffer.from(k, 'utf8')), empreinte: emp, moteur_version: mot.version, moteur_sha256: mot.sha256, expire_page: exp, nonce }), 'utf8').digest('hex');
   f.action = action;
   if (action === 'accepter') for (const c of cand.lot.cartes) f[`choix_${c.item_id}`] = ecarter.includes(c.item_id) ? 'ecarter' : 'garder';
   else f.confirmer_rejet = 'oui';
@@ -715,8 +735,9 @@ async function formulaire(d, setId, { k = K, generation, nonce = nonceAleatoire(
 async function poster(d, corps, o = {}) {
   const debut = new Date().toISOString();
   const entetes = o.entetes || { 'content-type': 'application/x-www-form-urlencoded', 'content-length': String(Buffer.byteLength(corps && typeof corps === 'object' && !Array.isArray(corps) ? encoder(corps) : '')) };
-  const r = await executerGraphe(simulable(JSON.parse(lireExport('confirmer'))), {
-    corps, entetes, contexteCode: { $env: { FONDA_PAGE_HMAC: o.secret === undefined ? SECRET : o.secret } },
+  const h = avecHmac(simulable(JSON.parse(lireExport('confirmer'))), o.secret === undefined ? SECRET : o.secret, o.hmac);
+  const r = await executerGraphe(h.wf, {
+    corps, entetes, contexteCode: h.contexteCode,
     reponses: {
       [N_F.chercher]: d.n8nListe, [N_F.lire]: d.n8nMedia, [N_F.chercherDecision]: d.n8nListe, [N_F.lireDecision]: d.n8nMedia, [N_F.relire]: d.n8nMedia, [N_F.ecrire]: d.n8nCreer,
       ...(o.reponses || {}),
@@ -1495,6 +1516,26 @@ describe('10. base commune Page/Confirmer : jeton (§21.6) et hash_formulaire (�
     assert.throws(() => COMMUN.tableauCanonique(['chaine'], ['a', 'b']), /longueur/);
     assert.notEqual(COMMUN.hashFormulaire({ ...F, nonce: 'é' }), COMMUN.hashFormulaire({ ...F, nonce: 'é' }));
   });
+  test('P4b : message du jeton = CHAÎNE canonique (ses octets = tableauCanonique) ; 3 vecteurs jetonPage ↔ node:crypto (clé ASCII, accentuée, emoji)', () => {
+    const msg = COMMUN.messageJeton(J);
+    assert.equal(msg, JSON.stringify(['fonda-select/v7', J.set_id, 1, J.cle_sha256, J.empreinte, 'v1', J.moteur_sha256, J.expire_page, J.nonce]));
+    assert.deepEqual([...COMMUN.octetsUtf8(msg)], [...COMMUN.tableauCanonique(['chaine', 'chaine', 'entier', 'chaine', 'chaine', 'chaine', 'chaine', 'chaine', 'chaine'], ['fonda-select/v7', J.set_id, 1, J.cle_sha256, J.empreinte, 'v1', J.moteur_sha256, J.expire_page, J.nonce])]);
+    for (const cle of ['0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef', 'clé-accentuée-élève-àâäéèêëîïôöùûüç-0123456789', '🔑-secret-emoji-🎓-0123456789abcdefghijklmnop']) {
+      assert.equal(COMMUN.jetonPage(cle, J), crypto.createHmac('sha256', cle).update(msg, 'utf8').digest('hex'), cle);
+    }
+    for (const mut of [{ generation_cle: '1' }, { nonce: null }, { set_id: 3 }]) assert.throws(() => COMMUN.messageJeton({ ...J, ...mut }), /tableau canonique/, JSON.stringify(mut));
+  });
+  test('P4b : Page et Confirmer signent par UN nœud Crypto v1 hmac de forme EXACTE (secret = valeur de remplacement, fragment unique) ; plus AUCUN $env', () => {
+    for (const [k, nom, champ] of [['page', N_P.signerJeton, 'jeton'], ['confirmer', N_F.recalculer, 'jeton_attendu']]) for (const t of [lireExport(k).toString('utf8'), lireRecette(k).toString('utf8')]) {
+      const w = JSON.parse(t); const cr = w.nodes.filter((n) => n.type === 'n8n-nodes-base.crypto' && n.parameters.action === 'hmac');
+      assert.deepEqual(cr.map((n) => [n.name, n.typeVersion, n.parameters]), [[nom, 1, { action: 'hmac', type: 'SHA256', value: '={{ $json.message_jeton }}', dataPropertyName: champ, secret: SECRET_PUBLIC, encoding: 'hex' }]], k);
+      assert.equal(t.split('"secret": "A_INJECTER_A_L_IMPORT"').length - 1, 1, `${k} : fragment de substitution unique`);
+    }
+    for (const k of Object.keys(EXPORTS)) for (const t of [lireExport(k).toString('utf8'), lireRecette(k).toString('utf8')]) {
+      assert.equal(/\$env|FONDA_PAGE_HMAC/.test(t), false, `${k} : aucun $env`);
+      if (k === 'emettre' || k === 'cloturer') assert.equal(t.includes('A_INJECTER_A_L_IMPORT'), false, k);
+    }
+  });
   test('secret absent ou court -> ERREUR (configuration), jamais un jeton faible', () => {
     for (const s of [undefined, null, '', 'court']) assert.throws(() => COMMUN.jetonPage(s, J), /secret HMAC/);
   });
@@ -1533,8 +1574,10 @@ describe('11. Confirmer (VRAI workflow) : contrat gelé ROLES.confirmation, C1�
     assert.equal(cf.dec.hash_formulaire, `sha256:${sha(Buffer.from(JSON.stringify(['fonda-select-form/v1', SET, 1, f.empreinte, f.moteur_version, f.moteur_sha256, f.expire_page, nonce, 'accepter', choix]), 'utf8'))}`);
     assert.deepEqual(cf.dec.coeur.ecartees, ['it02']); assert.deepEqual(cf.dec.lot_relu.cartes.map((c) => [c.item_id, c.choix]), choix);
     assert.deepEqual(rattacher(cf).nature, 'decision');
-    const porteurs = Object.entries(cf.r.runData).filter(([, v]) => JSON.stringify(v).includes(K) || JSON.stringify(v).includes(f.jeton)).map(([n]) => n);
-    assert.deepEqual(porteurs.filter((n) => !AVEC_K_CONF.has(n)), [], `k ou jeton hors du webhook : ${porteurs}`);
+    const porteurs = (x) => Object.entries(cf.r.runData).filter(([, v]) => JSON.stringify(v).includes(x)).map(([n]) => n);
+    assert.deepEqual(porteurs(K).filter((n) => !AVEC_K_CONF.has(n)), [], `k hors du webhook : ${porteurs(K)}`);
+    // P4b : le jeton RECALCULÉ (égal au jeton posté s'il est authentique) figure dans la sortie du nœud Crypto, seul autre porteur.
+    assert.deepEqual(porteurs(f.jeton).filter((n) => !AVEC_K_CONF.has(n) && n !== N_F.recalculer), [], `jeton hors du webhook et du nœud Crypto : ${porteurs(f.jeton)}`);
     await pause();
     assert.deepEqual((await evaluer(d, SET, [await cloturer(d, { set_id: SET })], [cf])).constats, []);
   });
@@ -1657,10 +1700,17 @@ describe('11. Confirmer (VRAI workflow) : contrat gelé ROLES.confirmation, C1�
     await rejete(d, await poster(d, { ...f, k: K2 }), 'C2', false);
     assert.equal(d.appels.length, n);
   });
-  test('C2 : secret de l\'instance ABSENT -> ERREUR d\'exécution (configuration), rien écrit, 500 ; erreur attribuée au lot', async () => {
+  test('C2 (P4b) : sortie Crypto INCOHÉRENTE (jeton hors forme, message modifié) -> ERREUR, rien écrit, jamais un C2 accepté', async () => {
     const { d } = await lotEmis();
-    const cf = await poster(d, await formulaire(d, SET, { generation: 1 }), { secret: null });
-    assert.equal(cf.r.status, 'error'); assert.match(cf.r.erreur, /secret HMAC/); assert.equal(cf.http.code, 500); assert.deepEqual(d.dans(DEC), []);
+    for (const mode of ['jeton-hors-forme', 'message-modifie']) {
+      const cf = await poster(d, await formulaire(d, SET, { generation: 1 }), { hmac: mode });
+      assert.equal(cf.r.status, 'error', mode); assert.equal(cf.r.noeudErreur, N_F.formulaire, mode); assert.match(cf.r.erreur, /jeton recalculé absent ou hors forme/, mode); assert.deepEqual(d.dans(DEC), []);
+    }
+  });
+  test('C2 : secret NON INJECTÉ (valeur de remplacement publique) -> ERREUR d\'exécution (configuration), rien écrit, 500 ; erreur attribuée au lot', async () => {
+    const { d } = await lotEmis();
+    const cf = await poster(d, await formulaire(d, SET, { generation: 1, secret: SECRET_PUBLIC }), { secret: SECRET_PUBLIC });
+    assert.equal(cf.r.status, 'error'); assert.equal(cf.r.noeudErreur, N_F.formulaire); assert.match(cf.r.erreur, /secret HMAC non injecté/); assert.equal(cf.http.code, 500); assert.deepEqual(d.dans(DEC), []);
     assert.deepEqual([rattacher(cf).nature, rattacher(cf).set_id], ['erreur', SET]);
   });
 
@@ -1797,8 +1847,9 @@ function pageSimulable(query, aleas) {
 const lien = (vers) => [{ node: vers, type: 'main', index: 0 }];
 async function afficher(d, query, o = {}) {
   const aleas = o.aleas || { csp: nonceAleatoire(), nonce: nonceAleatoire() };
-  const r = await executerGraphe(pageSimulable(query, aleas), {
-    corps: {}, contexteCode: { $env: { FONDA_PAGE_HMAC: o.secret === undefined ? SECRET : o.secret } },
+  const h = avecHmac(pageSimulable(query, aleas), o.secret === undefined ? SECRET : o.secret, o.hmac);
+  const r = await executerGraphe(h.wf, {
+    corps: {}, contexteCode: h.contexteCode,
     reponses: { [N_P.chercher]: d.n8nListe, [N_P.lire]: d.n8nMedia, ...(o.reponses || {}) },
   });
   const http = r.reponseWebhook && r.reponseWebhook.noeud === N_P.repondre
@@ -1822,10 +1873,10 @@ describe('12. Page (VRAI workflow, §21.6) : C3 au GET, jeton, deux aléas, CSP,
     for (const [nom, champ] of [[N_P.nonceCsp, 'nonce_csp'], [N_P.nonce, 'nonce']]) assert.deepEqual([n(nom).type, n(nom).typeVersion, n(nom).parameters], ['n8n-nodes-base.crypto', 1, { action: 'generate', dataPropertyName: champ, encodingType: 'hex', stringLength: 32 }]);
     assert.deepEqual(wf.connections[N_P.webhook], { main: [lien(N_P.requete)] });
     assert.match(n(N_P.requete).parameters.jsCode, /const w = unItem\(null\);/);
-    const js = n(N_P.construire).parameters.jsCode;
+    const js = n(N_P.construire).parameters.jsCode; const jsp = n(N_P.preparerJeton).parameters.jsCode;
     const src = fs.readFileSync(path.join(RACINE, B.MODULES.catalogue), 'utf8');
-    assert.ok(js.includes(`\n${src}})(M_catalogue`), 'catalogue : copie exacte');
-    assert.ok(js.includes(B.COMMUN_PAGE) && js.includes(B.GABARIT_PAGE));
+    assert.ok(jsp.includes(`\n${src}})(M_catalogue`), 'catalogue : copie exacte (Preparer jeton)');
+    assert.ok(jsp.includes(B.COMMUN_PAGE) && js.includes(B.COMMUN_PAGE) && js.includes(B.GABARIT_PAGE));
     assert.ok(js.includes(`const SCRIPT = ${JSON.stringify(`(${B.appPage.toString()})();`)};`), 'script de page : copie exacte de appPage');
   });
   test('registre de la page : sha256 du fichier = registre ; SRI = sha384 du fichier ; URL exacte (base P4 + nom du fichier)', () => {
@@ -1953,10 +2004,17 @@ describe('12. Page (VRAI workflow, §21.6) : C3 au GET, jeton, deux aléas, CSP,
     const f = d.candidat(SET); const c = JSON.parse(f.contenu); c.relecture.expire_le = new Date(Date.now() + 600000).toISOString(); f.contenu = JSON.stringify(c);
     assert.equal(donneesDe((await afficher(d, { lot: SET, k: K })).http.html).formulaire.champs.expire_page, c.relecture.expire_le);
   });
-  test('secret ABSENT -> erreur (500), jamais une page à jeton faible ; aléas égaux -> erreur', async () => {
+  test('P4b : sortie Crypto INCOHÉRENTE (jeton hors forme, message modifié) -> erreur (500), jamais une page', async () => {
     const { d } = await lotEmis();
-    const p = await afficher(d, { lot: SET, k: K }, { secret: null });
-    assert.equal(p.r.status, 'error'); assert.match(p.r.erreur, /secret HMAC/); assert.equal(p.http.code, 500);
+    for (const mode of ['jeton-hors-forme', 'message-modifie']) {
+      const p = await afficher(d, { lot: SET, k: K }, { hmac: mode });
+      assert.equal(p.r.status, 'error', mode); assert.equal(p.r.noeudErreur, N_P.construire, mode); assert.match(p.r.erreur, /jeton absent ou hors forme \(nœud Crypto\)/, mode); assert.equal(p.http.code, 500);
+    }
+  });
+  test('secret NON INJECTÉ (valeur de remplacement publique) -> erreur (500), jamais une page à jeton forgeable ; aléas égaux -> erreur', async () => {
+    const { d } = await lotEmis();
+    const p = await afficher(d, { lot: SET, k: K }, { secret: SECRET_PUBLIC });
+    assert.equal(p.r.status, 'error'); assert.equal(p.r.noeudErreur, N_P.construire); assert.match(p.r.erreur, /secret HMAC non injecté/); assert.equal(p.http.code, 500);
     const a = nonceAleatoire();
     assert.match((await afficher(d, { lot: SET, k: K }, { aleas: { csp: a, nonce: a } })).r.erreur, /aléas de la page/);
   });
