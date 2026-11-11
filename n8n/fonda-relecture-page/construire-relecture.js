@@ -777,14 +777,19 @@ function construireEmettre() {
 // normalisation, comme canonique.js §1), UTF-8. hash_formulaire = AUDIT RAPPROCHÉ, NON SIGNÉ : dans la décision
 // decision-fonda/v1, couvert par decision_sha256 (R1) AVANT la signature, absent de l'instantané v1 signé ;
 // calculé ici, vérifié par le harnais seul, sans re-dérivation aval — README « Où vit chaque garantie ».
-const COMMUN_PAGE = `function tableauCanonique(schema, valeurs) {
+const COMMUN_PAGE = `// CHAÎNE canonique (JSON.stringify du tableau VALIDÉ) ; ses octets UTF-8 sont tableauCanonique. C'est cette chaîne,
+// et elle seule, que reçoit le nœud Crypto (valeur texte, encodée en UTF-8 par n8n).
+function chaineCanonique(schema, valeurs) {
   if (!Array.isArray(valeurs) || valeurs.length !== schema.length) throw new Error('tableau canonique : longueur ≠ schéma');
   const conforme = (s, v) => (s === 'chaine' ? typeof v === 'string'
     : s === 'entier' ? Number.isSafeInteger(v) && v >= 0
       : s === 'choix' ? Array.isArray(v) && v.every((p) => Array.isArray(p) && p.length === 2 && typeof p[0] === 'string' && p[0] !== '' && (p[1] === 'garder' || p[1] === 'ecarter'))
         : false);
   for (let i = 0; i < schema.length; i += 1) if (!conforme(schema[i], valeurs[i])) throw new Error('tableau canonique : élément ' + i + ' ≠ ' + schema[i]);
-  return octetsUtf8(JSON.stringify(valeurs.map((v, i) => (schema[i] === 'choix' ? v.map((p) => [p[0], p[1]]) : v))));
+  return JSON.stringify(valeurs.map((v, i) => (schema[i] === 'choix' ? v.map((p) => [p[0], p[1]]) : v)));
+}
+function tableauCanonique(schema, valeurs) {
+  return octetsUtf8(chaineCanonique(schema, valeurs));
 }
 const SCHEMA_JETON = ['chaine', 'chaine', 'entier', 'chaine', 'chaine', 'chaine', 'chaine', 'chaine', 'chaine'];
 const SCHEMA_FORMULAIRE = ['chaine', 'chaine', 'entier', 'chaine', 'chaine', 'chaine', 'chaine', 'chaine', 'chaine', 'choix'];
@@ -801,11 +806,15 @@ function hmacSha256Hex(cle, message) {
   return sha256Hex(k.map((x) => x ^ 0x5c).concat(hexVersOctets(interne)));
 }
 // Jeton §21.6 : HMAC-SHA256(secret, canonique(["fonda-select/v7", set_id, generation_cle, cle_sha256,
-// empreinte_affichee, moteur.version, moteur.sha256, expire_page, nonce])). Secret : variable d'environnement
-// de l'instance (jamais dans l'export) ; absent ou court -> ERREUR (configuration), jamais un jeton faible.
+// empreinte_affichee, moteur.version, moteur.sha256, expire_page, nonce])). P4b : le HMAC est calculé par le
+// nœud Crypto v1 (action hmac) sur messageJeton(j) ; le secret est un paramètre de ce nœud (secret d'INSTANCE,
+// injecté à l'import, jamais dans le dépôt). jetonPage reste la RÉFÉRENCE indépendante du harnais (vecteurs).
+function messageJeton(j) {
+  return chaineCanonique(SCHEMA_JETON, ['fonda-select/v7', j.set_id, j.generation_cle, j.cle_sha256, j.empreinte, j.moteur_version, j.moteur_sha256, j.expire_page, j.nonce]);
+}
 function jetonPage(secret, j) {
   if (typeof secret !== 'string' || secret.length < 32) throw new Error('secret HMAC de la page absent ou trop court (configuration de l\\'instance)');
-  return hmacSha256Hex(octetsUtf8(secret), tableauCanonique(SCHEMA_JETON, ['fonda-select/v7', j.set_id, j.generation_cle, j.cle_sha256, j.empreinte, j.moteur_version, j.moteur_sha256, j.expire_page, j.nonce]));
+  return hmacSha256Hex(octetsUtf8(secret), octetsUtf8(messageJeton(j)));
 }
 // hash_formulaire §21.1 : choix = [[item_id, "garder"|"ecarter"], …] dans l'ORDRE DU CANDIDAT ([] pour « tout
 // rejeter ») ; k et jeton EXCLUS (secrets).
@@ -821,8 +830,14 @@ function egalConstant(a, b) {
 // Chargement pour le harnais : MÊME texte que les nœuds, évalué avec OUTILS dans un contexte nu.
 function chargerCommun() {
   // eslint-disable-next-line global-require
-  return require('vm').runInNewContext(`${OUTILS}\n${COMMUN_PAGE}\n({ tableauCanonique, hmacSha256Hex, jetonPage, hashFormulaire, egalConstant, octetsUtf8, sha256Hex })`, {});
+  return require('vm').runInNewContext(`${OUTILS}\n${COMMUN_PAGE}\n({ tableauCanonique, chaineCanonique, messageJeton, hmacSha256Hex, jetonPage, hashFormulaire, egalConstant, octetsUtf8, sha256Hex })`, {});
 }
+// Secret HMAC du jeton (P4b, option E) : paramètre « secret » du nœud Crypto v1 (Crypto v2 + credential absent de
+// n8n 2.6.3). Dans le dépôt : valeur de remplacement FIXE ; le vrai secret d'instance est substitué dans le TEXTE du
+// JSON par l'outil d'import séparé (outils-import/), jamais committé. Le nœud reçoit la chaîne canonique exacte.
+const SECRET_A_INJECTER = 'A_INJECTER_A_L_IMPORT';
+const signatureJeton = (nom, champ) => ({ name: nom, type: 'n8n-nodes-base.crypto', typeVersion: 1,
+  parameters: { action: 'hmac', type: 'SHA256', value: '={{ $json.message_jeton }}', dataPropertyName: champ, secret: SECRET_A_INJECTER, encoding: 'hex' } });
 const CODES_HTTP = Object.freeze({ decision: 200, conflit: 409, C1: 400, C2: 403, C3: 410, C4: 410, C5: 400, C5bis: 410 });
 const CHAMPS_FORMULAIRE = Object.freeze(['lot', 'k', 'generation', 'empreinte', 'moteur_version', 'moteur_sha256', 'expire_page', 'nonce', 'jeton', 'action']);
 const TAILLE_MAX_POST = 65536;
@@ -842,6 +857,9 @@ const TAILLE_MAX_POST = 65536;
 const NOEUDS_CONFIRMER = Object.freeze({
   webhook: 'Webhook confirmation',
   entree: R.ROLES.confirmation.entree, // FONDA Entree confirmation
+  syntaxe: 'Controler syntaxe formulaire',
+  siSyntaxe: 'Syntaxe valide ?',
+  recalculer: 'Recalculer jeton',
   formulaire: 'Verifier formulaire',
   siFormulaire: 'Formulaire valide ?',
   chercher: 'Chercher candidat',
@@ -876,9 +894,9 @@ const champ = (n) => { const v = corps && typeof corps === 'object' && !Array.is
 return [{ json: { lot: champ('lot'), nonce: champ('nonce') } }];`,
   ].join('\n\n');
 }
-function codeVerifierFormulaire() {
-  return [ENTETE('C1 (syntaxe, avant Drive : taille, champs EXACTS, doublons) puis C2 (jeton HMAC recalculé sur les valeurs POSTÉES).'),
-    UN_ITEM(NOEUDS_CONFIRMER.formulaire), SET_ID, DATE_ISO, OUTILS, COMMUN_PAGE,
+function codeControlerSyntaxe() {
+  return [ENTETE('C1 (syntaxe, avant Drive : taille, champs EXACTS, doublons) ; message canonique du jeton (C2 : nœud Crypto puis « Verifier formulaire »).'),
+    UN_ITEM(NOEUDS_CONFIRMER.syntaxe), SET_ID, DATE_ISO, OUTILS, COMMUN_PAGE,
     `const CHAMPS = ${JSON.stringify(CHAMPS_FORMULAIRE)};
 const w = unItem(${JSON.stringify(NOEUDS_CONFIRMER.webhook)});
 const b = w.body; const h = w.headers && typeof w.headers === 'object' ? w.headers : {};
@@ -908,15 +926,33 @@ if (b.action === 'accepter') {
 if (!SET_ID_PATTERN.test(b.lot) || !/^[0-9a-f]{64}$/.test(b.k) || !/^[1-9][0-9]{0,14}$/.test(b.generation) || !/^sha256:[0-9a-f]{64}$/.test(b.empreinte)
   || !/^[A-Za-z0-9._-]{1,64}$/.test(b.moteur_version) || !/^[0-9a-f]{64}$/.test(b.moteur_sha256) || !dateIso(b.expire_page)
   || !/^[0-9a-f]{32}$/.test(b.nonce) || !/^[0-9a-f]{64}$/.test(b.jeton)) return rejet('C1', false);
-// C2 — authenticité du formulaire : jeton recalculé sur les valeurs POSTÉES (cle_sha256 = SHA-256 de k reçue).
-// La FRAÎCHEUR (clé révoquée, génération, expiration) est C3, contre le candidat COURANT (§21.10).
+// Message canonique du jeton sur les valeurs POSTÉES (cle_sha256 = SHA-256 de k reçue) ; le HMAC est recalculé par
+// le nœud Crypto suivant, la comparaison (C2) par « Verifier formulaire ». La FRAÎCHEUR est C3 (§21.10).
 const cleSha = sha256Hex(octetsUtf8(b.k));
 const generation = Number(b.generation);
-const attendu = jetonPage($env.FONDA_PAGE_HMAC, { set_id: b.lot, generation_cle: generation, cle_sha256: cleSha, empreinte: b.empreinte,
+const message_jeton = messageJeton({ set_id: b.lot, generation_cle: generation, cle_sha256: cleSha, empreinte: b.empreinte,
   moteur_version: b.moteur_version, moteur_sha256: b.moteur_sha256, expire_page: b.expire_page, nonce: b.nonce });
-if (!egalConstant(attendu, b.jeton)) return rejet('C2', false);
 return [{ json: { poursuivre: true, resultat: null, lot: b.lot, nonce: b.nonce, generation, empreinte: b.empreinte, moteur_version: b.moteur_version,
-  moteur_sha256: b.moteur_sha256, expire_page: b.expire_page, action: b.action, choix, cle_sha256: cleSha } }];`].join('\n\n');
+  moteur_sha256: b.moteur_sha256, expire_page: b.expire_page, action: b.action, choix, cle_sha256: cleSha, message_jeton } }];`].join('\n\n');
+}
+function codeVerifierFormulaire() {
+  return [ENTETE('C2 (authenticité) : jeton recalculé par le nœud Crypto sur les valeurs POSTÉES, comparé en temps constant.'),
+    UN_ITEM(NOEUDS_CONFIRMER.formulaire), OUTILS, COMMUN_PAGE,
+    `const s = unItem(${JSON.stringify(NOEUDS_CONFIRMER.syntaxe)});
+const f = { lot: null, nonce: null };
+${DEJA_REJET}
+// Rejet C1 : arrive par la branche « faux » de « Syntaxe valide ? », SANS passer par Crypto (une panne de Crypto ne
+// peut pas transformer un rejet en erreur) ; restitué tel quel.
+if (s.poursuivre !== true) return [{ json: { poursuivre: false, resultat: s.resultat } }];
+const x = unItem(null); // sortie du nœud Crypto : COPIE de l'item de syntaxe + jeton_attendu
+if (x.message_jeton !== s.message_jeton || typeof x.jeton_attendu !== 'string' || !/^[0-9a-f]{64}$/.test(x.jeton_attendu)) throw new Error('jeton recalculé absent ou hors forme (nœud Crypto)');
+// Secret NON injecté (valeur de remplacement PUBLIQUE du dépôt) : jeton forgeable par quiconque -> ERREUR, jamais servi.
+const SECRET_PUBLIC = ${JSON.stringify(SECRET_A_INJECTER)};
+if (x.jeton_attendu === hmacSha256Hex(octetsUtf8(SECRET_PUBLIC), octetsUtf8(s.message_jeton))) throw new Error('secret HMAC non injecté (valeur de remplacement publique) : configuration de l\\'instance');
+const b = unItem(${JSON.stringify(NOEUDS_CONFIRMER.webhook)}).body;
+if (!egalConstant(x.jeton_attendu, b.jeton)) return rejet('C2', false);
+const { message_jeton, ...sortie } = s;
+return [{ json: sortie }];`].join('\n\n');
 }
 function codeVerifierRechercheConfirmation() {
   return [ENTETE('candidat : recherche PAGINÉE et COMPLÈTE exigée (sinon erreur) ; 0 ou plusieurs fichiers -> rejet C3 (410).'),
@@ -1087,6 +1123,9 @@ function construireConfirmer() {
     { name: N.webhook, type: 'n8n-nodes-base.webhook', typeVersion: 2, webhookId: uuid('webhook-confirmer'),
       parameters: { httpMethod: 'POST', path: CONFIG.cheminConfirmer, responseMode: 'responseNode', options: {} } },
     code(N.entree, codeEntreeConfirmation()),
+    code(N.syntaxe, codeControlerSyntaxe()),
+    siBooleen(N.siSyntaxe, 'poursuivre', 'si-syntaxe'),
+    signatureJeton(N.recalculer, 'jeton_attendu'),
     code(N.formulaire, codeVerifierFormulaire()),
     siBooleen(N.siFormulaire, 'poursuivre', 'si-formulaire'),
     listing(N.chercher, `={{ "'${CONFIG.dossierRelecture}' in parents and trashed = false and name = '" + ${lotExpr} + ".candidat.json'" }}`, CHAMPS_LISTE, true),
@@ -1117,7 +1156,9 @@ function construireConfirmer() {
       parameters: { respondWith: 'text', responseBody: '={{ $json.html }}', options: { responseCode: '={{ $json.code }}',
         responseHeaders: { entries: [{ name: 'Content-Type', value: 'text/html; charset=utf-8' }, { name: 'Cache-Control', value: 'no-store' }, { name: 'Referrer-Policy', value: 'no-referrer' }] } } } },
   ].map(positionner('confirmer'));
-  const connections = lineaire([N.webhook, N.entree, N.formulaire, N.siFormulaire]);
+  const connections = lineaire([N.webhook, N.entree, N.syntaxe, N.siSyntaxe]);
+  connections[N.siSyntaxe] = { main: [lien(N.recalculer), lien(N.formulaire)] };
+  Object.assign(connections, lineaire([N.recalculer, N.formulaire, N.siFormulaire]));
   connections[N.siFormulaire] = { main: [lien(N.chercher), lien(N.sortie)] };
   Object.assign(connections, lineaire([N.chercher, N.verifierListe, N.siCandidat]));
   connections[N.siCandidat] = { main: [lien(N.lire), lien(N.sortie)] };
@@ -1149,6 +1190,9 @@ const NOEUDS_PAGE = Object.freeze({
   lire: 'Lire candidat',
   nonceCsp: 'Generer nonce CSP',
   nonce: 'Generer nonce formulaire',
+  preparerJeton: 'Preparer jeton',
+  siDisponible: 'Page disponible ?',
+  signerJeton: 'Signer jeton',
   construire: 'Construire page',
   indisponible: 'Page indisponible',
   repondre: 'Repondre page',
@@ -1325,15 +1369,11 @@ function codePageIndisponible() {
     `const x = $input.first().json;
 return [{ json: { code: x.code === 400 ? 400 : 410, html: pageIndisponible(${JSON.stringify(MESSAGE_INDISPONIBLE)}) } }];`].join('\n\n');
 }
-function codeConstruirePage() {
-  return [ENTETE('C3 au GET (candidat courant pour k), puis page carte par carte : jeton, deux aléas, CSP, SRI, données échappées.'),
-    UN_ITEM(NOEUDS_PAGE.construire), DATE_ISO, OUTILS, COMMUN_PAGE, GABARIT_PAGE, REQUIS, blocModule('catalogue'),
+function codePreparerJeton() {
+  return [ENTETE('C3 au GET (candidat courant pour k), aléas, empreinte, expiration de la page ; message canonique du jeton (HMAC : nœud Crypto suivant).'),
+    UN_ITEM(NOEUDS_PAGE.preparerJeton), DATE_ISO, OUTILS, COMMUN_PAGE, REQUIS, blocModule('catalogue'),
     `const { validerLot, calculerEmpreinte } = M_catalogue.exports;
 const REGISTRE = ${JSON.stringify(registrePage())};
-// Explications par VERSION du moteur (celle du candidat est choisie à l'exécution).
-const PROFILS = ${JSON.stringify(Object.fromEntries(registrePage().map((l) => [l.version, profilsPage(l.version)])))};
-const URL_CONFIRMER = ${JSON.stringify(`${CONFIG.urlN8n}/webhook/${CONFIG.cheminConfirmer}`)};
-const SCRIPT = ${JSON.stringify(`(${appPage.toString()})();`)};
 const sha = (t) => sha256Hex(octetsUtf8(t));
 const r = unItem(${JSON.stringify(NOEUDS_PAGE.requete)});
 const c = unItem(${JSON.stringify(NOEUDS_PAGE.lire)});
@@ -1341,7 +1381,8 @@ const nonceCsp = unItem(${JSON.stringify(NOEUDS_PAGE.nonceCsp)}).nonce_csp;
 const nonce = unItem(${JSON.stringify(NOEUDS_PAGE.nonce)}).nonce;
 // Deux aléas DISTINCTS de 128 bits (hex 32), un par affichage.
 if (!/^[0-9a-f]{32}$/.test(nonceCsp) || !/^[0-9a-f]{32}$/.test(nonce) || nonceCsp === nonce) throw new Error('aléas de la page invalides ou égaux');
-const indisponible = () => [{ json: { code: 410, html: pageIndisponible(${JSON.stringify(MESSAGE_INDISPONIBLE)}) } }];
+// Indisponible : branche « faux » de « Page disponible ? », SANS passer par Crypto.
+const indisponible = () => [{ json: { disponible: false } }];
 // C3 (GET) : candidat courant pour la clé reçue, lot conforme, moteur au registre.
 const maintenant = Date.now();
 if (!c || c.schema !== 'candidat-fonda/v1' || !c.lot || !c.relecture || c.lot.set_id !== r.lot) return indisponible();
@@ -1352,8 +1393,33 @@ const moteur = rel.moteur ? REGISTRE.find((l) => l.version === rel.moteur.versio
 if (!moteur || moteur.sha256 !== rel.moteur.sha256) return indisponible(); // moteur absent du registre : jamais chargé
 const empreinte = await calculerEmpreinte(c.lot, sha);
 const expirePage = new Date(Math.min(maintenant + 3600000, Date.parse(rel.expire_le))).toISOString(); // affichage + 60 min, borné par expire_le
-const jeton = jetonPage($env.FONDA_PAGE_HMAC, { set_id: r.lot, generation_cle: rel.generation_cle, cle_sha256: r.cle_sha256, empreinte, moteur_version: moteur.version,
+const message_jeton = messageJeton({ set_id: r.lot, generation_cle: rel.generation_cle, cle_sha256: r.cle_sha256, empreinte, moteur_version: moteur.version,
   moteur_sha256: moteur.sha256, expire_page: expirePage, nonce });
+return [{ json: { disponible: true, generation_cle: rel.generation_cle, empreinte, moteur_version: moteur.version, expire_page: expirePage, message_jeton } }];`].join('\n\n');
+}
+function codeConstruirePage() {
+  return [ENTETE('page carte par carte : jeton (nœud Crypto), deux aléas, CSP, SRI, données échappées ; indisponible si C3 a échoué.'),
+    UN_ITEM(NOEUDS_PAGE.construire), OUTILS, COMMUN_PAGE, GABARIT_PAGE,
+    `const REGISTRE = ${JSON.stringify(registrePage())};
+// Explications par VERSION du moteur (celle du candidat est choisie à l'exécution).
+const PROFILS = ${JSON.stringify(Object.fromEntries(registrePage().map((l) => [l.version, profilsPage(l.version)])))};
+const URL_CONFIRMER = ${JSON.stringify(`${CONFIG.urlN8n}/webhook/${CONFIG.cheminConfirmer}`)};
+const SCRIPT = ${JSON.stringify(`(${appPage.toString()})();`)};
+const r = unItem(${JSON.stringify(NOEUDS_PAGE.requete)});
+const c = unItem(${JSON.stringify(NOEUDS_PAGE.lire)});
+const nonceCsp = unItem(${JSON.stringify(NOEUDS_PAGE.nonceCsp)}).nonce_csp;
+const nonce = unItem(${JSON.stringify(NOEUDS_PAGE.nonce)}).nonce;
+const p = unItem(${JSON.stringify(NOEUDS_PAGE.preparerJeton)});
+const indisponible = () => [{ json: { code: 410, html: pageIndisponible(${JSON.stringify(MESSAGE_INDISPONIBLE)}) } }];
+if (p.disponible !== true) return indisponible(); // branche « faux » de « Page disponible ? » : Crypto contourné
+const x = unItem(null); // sortie du nœud Crypto : COPIE de l'item préparé + jeton
+if (x.message_jeton !== p.message_jeton || typeof x.jeton !== 'string' || !/^[0-9a-f]{64}$/.test(x.jeton)) throw new Error('jeton absent ou hors forme (nœud Crypto)');
+// Secret NON injecté (valeur de remplacement PUBLIQUE du dépôt) : jeton forgeable par quiconque -> ERREUR, jamais servi.
+const SECRET_PUBLIC = ${JSON.stringify(SECRET_A_INJECTER)};
+if (x.jeton === hmacSha256Hex(octetsUtf8(SECRET_PUBLIC), octetsUtf8(p.message_jeton))) throw new Error('secret HMAC non injecté (valeur de remplacement publique) : configuration de l\\'instance');
+const moteur = REGISTRE.find((l) => l.version === p.moteur_version);
+if (!moteur) throw new Error('moteur préparé absent du registre');
+const jeton = x.jeton; const empreinte = p.empreinte; const expirePage = p.expire_page;
 const n = (v) => (v === undefined ? null : v);
 const donnees = {
   moteur: { version: moteur.version },
@@ -1361,7 +1427,7 @@ const donnees = {
   cartes: c.lot.cartes.map((x) => ({ item_id: x.item_id, question: x.question, reponse: n(x.reponse), profil_correction: x.profil_correction, reponses_acceptees: x.reponses_acceptees,
     unite: n(x.unite), arrondi: n(x.arrondi), seconde_chance: n(x.seconde_chance), contexte: n(x.contexte) })),
   // Seul endroit où k figure dans la page : champ du formulaire POSTÉ (C1 l'exige), jamais affichée.
-  formulaire: { action: URL_CONFIRMER, champs: { lot: r.lot, k: r.k, generation: String(rel.generation_cle), empreinte, moteur_version: moteur.version, moteur_sha256: moteur.sha256, expire_page: expirePage, nonce, jeton } },
+  formulaire: { action: URL_CONFIRMER, champs: { lot: r.lot, k: r.k, generation: String(p.generation_cle), empreinte, moteur_version: moteur.version, moteur_sha256: moteur.sha256, expire_page: expirePage, nonce, jeton } },
 };
 return [{ json: { code: 200, html: pageHtml({ titre: 'Relecture FONDA', nonceCsp, moteur, urlConfirmer: URL_CONFIRMER, donnees, script: SCRIPT }) } }];`].join('\n\n');
 }
@@ -1380,6 +1446,9 @@ function construirePage() {
     contenuDrive(N.lire, `$('${N.verifierListe}').first().json.fichier_id`),
     alea(N.nonceCsp, 'nonce_csp'),
     alea(N.nonce, 'nonce'),
+    code(N.preparerJeton, codePreparerJeton()),
+    siBooleen(N.siDisponible, 'disponible', 'si-disponible'),
+    signatureJeton(N.signerJeton, 'jeton'),
     code(N.construire, codeConstruirePage()),
     code(N.indisponible, codePageIndisponible()),
     { name: N.repondre, type: 'n8n-nodes-base.respondToWebhook', typeVersion: 1.1,
@@ -1390,7 +1459,9 @@ function construirePage() {
   connections[N.siRequete] = { main: [lien(N.chercher), lien(N.indisponible)] };
   Object.assign(connections, lineaire([N.chercher, N.verifierListe, N.siCandidat]));
   connections[N.siCandidat] = { main: [lien(N.lire), lien(N.indisponible)] };
-  Object.assign(connections, lineaire([N.lire, N.nonceCsp, N.nonce, N.construire, N.repondre]), lineaire([N.indisponible, N.repondre]));
+  Object.assign(connections, lineaire([N.lire, N.nonceCsp, N.nonce, N.preparerJeton, N.siDisponible]));
+  connections[N.siDisponible] = { main: [lien(N.signerJeton), lien(N.construire)] };
+  Object.assign(connections, lineaire([N.signerJeton, N.construire, N.repondre]), lineaire([N.indisponible, N.repondre]));
   return { name: CONFIG.nomPage, nodes: noeuds, connections, settings: REGLAGES };
 }
 

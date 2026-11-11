@@ -7,14 +7,14 @@
 ## Décisions de cadrage (architecte, 2026-11-10)
 - **Isolation sur l'instance unique** (sous réserve de confirmation d'Éric : pas de staging) : copies « FONDA RECETTE - … », chemins `fonda-recette-*`, dossiers Drive, Data Table et credentials de recette. Construites depuis le dépôt (`construire-relecture.js --profil recette`, exports `*.recette.json`), qui **refuse** tout identifiant de production (construction et harnais §1 bis).
 - **Limites assumées** : credential Drive de recette = même compte Google (isolement au niveau des dossiers) ; clé d'API n8n non restreinte, **révoquée à la fin**.
-- **HMAC** : repli d'emblée, **Crypto v2 Hmac adossé à un credential `crypto`** (décision de conception de PRODUCTION ; PR P4b, cycle normal constructeur + harnais + mutations). `$env` écarté : il imposerait de recréer le conteneur, donc de redémarrer BOX. Import **par l'API seulement** (l'éditeur de l'instance ne reconnaît pas Crypto v2 : ne jamais ouvrir-enregistrer).
+- **HMAC (révisé 2026-11-11, P4b)** : Crypto v2 + credential est **absent de n8n 2.6.3** (sources du tag, confirmé par Codex) et `$env` y est bloqué par défaut. **Option E** : nœud **Crypto v1 hmac**, secret en paramètre, valeur de remplacement dans le dépôt, injecté à l'import par l'outil **séparé** `outils-import/importer-recette.js` (écriture explicite) ; critère de confidentialité **révisé** (CDC §21.6, README). Import **par l'API seulement** (POST du texte substitué ; ni import ni enregistrement depuis l'interface : l'éditeur re-sérialise).
 - **G7** : fail-closed ; si NO-GO, la preuve de quiescence sera conçue en P5 (pas avant).
 - **Règle des outils** : tout ce qui peut atteindre l'instance ou être affiché appartient à un **ensemble fermé de connu-bon** (instance, routes et paramètres par route dont le curseur, en-têtes, références, noms de nœuds, messages reconstruits) ; jamais une denylist ni une grammaire permissive.
 - **Octet-identité des 4 exports de production** contre `origin/design` : **consignée dans chaque PR P4** (SHA-256 + `git diff --stat`), relue par l'architecte (P4a : zéro ; P4b : exactement le diff HMAC de Page et Confirmer, zéro sur Emettre et Cloturer).
 
 ## Phase 0 — dépôt seulement (PR P4a, puis P4b)
 - P4a : profil de recette + exports `*.recette.json` (octet-identité, scan, isolement, équivalence à la production aux identifiants près) ; `outils-recette/` (transport **GET seulement** prouvé par test, `sonde-executions.js`, `comparer-live.js`) ; ce fichier. **Exports de production inchangés octet pour octet.**
-- P4b : jeton par Crypto v2 + credential (Page et Confirmer), secret absent de l'export **et** des données d'exécution.
+- P4b : jeton par Crypto v1 hmac (Page et Confirmer), secret absent du dépôt et de la page ; présent dans la base, l'historique et les instantanés d'exécution (critère révisé).
 
 ## Énumération des frontières (exhaustivité prouvable)
 Chaque valeur externe, ou qui atteint l'instance, ou qui est affichée, et son contrôle d'**ensemble fermé** (LF = liste fermée ; GS = grammaire stricte ; LC = liste de confiance du dépôt). Toute ligne absente de ce tableau est un défaut.
@@ -32,7 +32,7 @@ Chaque valeur externe, ou qui atteint l'instance, ou qui est affichée, et son c
 | Paramètres et exports des fonctions exportées (F1) | exports et signatures comparés à une liste fermée ; `comparer()` n'accepte qu'un élément de `REFERENCES` |
 | Modules chargés (X1) | modules tracés à l'exécution comparés à une liste fermée |
 | Routes, paramètres, en-têtes, instance (T1–T6) | toute requête hors liste fermée refusée avant le réseau (aucun appel enregistré) |
-| Champs de réponse réinjectés ou affichés (T7, T8, T10, S4, S5, K4–K6, K9) | réponses hors forme (curseur, statut non entier, JSON illisible, corps non objet, dates, identité, états, versionId) -> refus ou marqueur |
+| Champs de réponse réinjectés ou affichés (T7, T8, T10, S4, S5, K4–K6, K9, K10) | réponses hors forme (curseur, statut non entier, JSON illisible, corps non objet, dates, identité, états, versionId) -> refus ou marqueur |
 | Fichiers lus (C3, C10, C11, C15, S3, K3, K8) | listes explicites ; lecture, JSON ou schéma en échec -> message fixe ; inventaire = `git ls-files` ; registre et fichiers moteur : sha256 = registre, modules embarqués = copie exacte (sections 1 et 12 du harnais) |
 | Références d'instance des exports (C8, C12) | ensemble fermé contrôlé par le harnais, indépendamment du profil ; profil entièrement renseigné testé |
 | Chemins d'erreur, dont le chargement (C13, C14, T9, S7, K7) | erreurs tierces et de chargement injectées -> message fixe, aucun extrait |
@@ -82,8 +82,22 @@ Chaque valeur externe, ou qui atteint l'instance, ou qui est affichée, et son c
 | K7 | comparateur | stderr, erreur au CHARGEMENT | — | `messageSur` ; gestionnaire précoce | « erreur au CHARGEMENT » |
 | K8 | comparateur | fichier de référence illisible ou non objet | dépôt | `EXPORT_ILLISIBLE`, code 1 : lecture en échec, JSON invalide, ou JSON qui n'est pas un objet simple (`null`, tableau, nombre, chaîne ; même typage que S3) ; objet aux clés ≠ name/nodes/connections/settings -> écart « clés ≠ » | « sources de fichiers illisibles », « K8 : référence dont le JSON n'est pas un objet » |
 | K9 | comparateur | **champs de sortie construits** | comparateur | `schema` : constante ; `workflowId` : argument validé (K2) ; `export` : élément de LF (K3) ; `versionId` : GS hexadécimal/tirets sinon null ; `identique` : booléen dérivé ; `ecarts` : K6 ; **ensemble exact des clés** (`principal()` et `comparer()`) | « versionId affiché seulement en grammaire stricte », « K9 : forme EXACTE de la sortie du comparateur » |
+| K10 | comparateur | **secret HMAC d'instance (P4b)** | réponse n8n | SEULE divergence admise : paramètre `secret` du nœud Crypto hmac nommé (« Signer jeton » Page, « Recalculer jeton » Confirmer), 64 hex, ≠ valeur de remplacement ; ramené à la valeur de remplacement dans une copie, jamais affiché ; aucune exception pour Emettre, Cloturer ni ailleurs | « P4b : secret HMAC — SEULE divergence admise » |
 | X1 | tous | **modules chargés (directement ou transitivement)** | dépôt et Node | **tracés** par `Module._load` à l'exécution de chaque commande et comparés à une **liste fermée explicite** (constructeur, 2 profils ; sonde, liste et détail ; comparateur, comparaison complète jusqu'au code 0 avec un faux live conforme) ; tout module nouveau fait échouer ; aucun module hors dépôt hors Node | « X1 (constructeur) … TRACÉS », « X1 : modules chargés par la sonde », « … par le comparateur » |
 | F1 | tous | **paramètres et exports des fonctions exportées** (appelant JavaScript) | appelant | exports et signature de chaque fonction en **liste fermée** ; chaque paramètre fermé : `url` -> T1 ; `cle` -> T5/T6 ; `env` -> T6 ; `fetch` -> toujours enveloppé par le transport (T2–T10) ; `argv` -> C1/C2, S1, K1 ; `option`/`profil`/`brutRecette` -> C1–C8 ; `live` -> K5/K6 ; `reference` -> K3 (élément de `REFERENCES`, aucun texte ni objet de l'appelant) ; liste de confiance : **aucun** paramètre (S3) | « F1 (constructeur) », « F1 : exports et paramètres … », « F1 : la liste de confiance n'est remplaçable par AUCUN paramètre », « F1 : comparer() n'accepte qu'un ÉLÉMENT de REFERENCES » |
+
+### Outil d'import (ÉCRITURE explicite, P4b) — hors oracle, hors témoin
+`outils-import/importer-recette.js` (CODEOWNERS) : seul outil qui écrit sur l'instance ; l'oracle (`outils-recette/`) reste en lecture seule.
+
+| Frontière | Contrôle (ensemble fermé) | Test (`outils-import/importer-recette.test.js`) |
+|---|---|---|
+| confirmation | `--confirmer-ecriture` exigé, arguments exacts | « principal : confirmation explicite », « ligne de commande » |
+| export | 4 exports de recette (REFERENCES), noms de recette exacts ; jamais la production | « liste fermée » |
+| secret | trousseau macOS, `/usr/bin/security` sans shell, argv exact ; lu UNE fois (import conjoint Page+Confirmer) ; 64 hex minuscules ; relu == envoyé (en mémoire) ; jamais affiché | « appel du trousseau », « secret : forme stricte », « secret RELU ≠ envoyé », « CLI » |
+| substitution | fragment EXACT unique (Page, Confirmer), 0 (Emettre, Cloturer) ; garde du code intacte ; corps POSTÉ = texte substitué | « substitution du SEUL fragment exact », « import nominal » |
+| requêtes | GET liste par nom paginé jusqu'au bout (éléments, curseurs validés ; incomplet ou malformé = refus), POST, GET du créé ; instance fermée ; `redirect: error` | « import CONJOINT nominal », « précontrôle de doublon », « précontrôle fail-closed » |
+| sortie et reprise | `import-recette/v1` (comparer-live) ; POST ou relecture actifs -> erreur ; après création : étape + ids créés (grammaire stricte) | « après création », « CLI » |
+| chargement, surface, modules | erreur au chargement = message fixe ; exports et signatures (F1) et modules tracés (X1) en listes fermées | « erreur au CHARGEMENT », « F1 », « X1 » |
 
 ## Constats d'Éric (2026-11-10)
 - **Instance unique** (`n8n.srv868991.hstgr.cloud`, 2.6.3), pas de staging : isolement par dossiers, Data Table, credentials et noms « FONDA RECETTE », comme prévu.
@@ -94,7 +108,7 @@ Chaque valeur externe, ou qui atteint l'instance, ou qui est affichée, et son c
 | Variable / fait | Valeur relevée | Conséquence |
 |---|---|---|
 | `EXECUTIONS_DATA_PRUNE` | `false` (vérifié à la source, conteneur n8n) | exécutions conservées ; pas de fenêtre de signature |
-| `N8N_BLOCK_ENV_ACCESS_IN_NODE` | non fixé (défaut) | sans effet : G4 reste Crypto v2 Hmac + credential (le motif, éviter un redémarrage du conteneur, est inchangé) |
+| `N8N_BLOCK_ENV_ACCESS_IN_NODE` | non fixé (défaut) | défaut 2.x = **bloqué** (`$env` lève une erreur) : le `$env` de P2 aurait échoué fermé ; P4b le retire (Crypto v1 hmac) |
 | `N8N_PAYLOAD_SIZE_MAX` | non fixé : défaut 16 Mo | borne du test §21.4 « corps trop grand » : > 16 Mo |
 | version n8n | 2.6.3 | — |
 
@@ -107,7 +121,9 @@ Chaque valeur externe, ou qui atteint l'instance, ou qui est affichée, et son c
 6. **Lot de recette** : un `set_id` **réservé au journal d'un commit ANCIEN** (aujourd'hui publié), passé en `journal_commit` ; aucune écriture au journal. Lot source synthétique conforme à `validerLot`, déposé dans `lots/` de recette. Aucune donnée d'élève.
 
 ## Phase 2 — import INACTIF et octet-identité live
-- Import des 4 copies par l'API (go explicite d'Éric), **inactives**.
+- Import des 4 copies (go explicite d'Éric), **inactives**, par l'outil séparé (3 commandes) : `FONDA_N8N_CLE_IMPORT_RECETTE=… node outils-import/importer-recette.js --confirmer-ecriture <cible>` avec `<cible>` = l'export de recette Emettre, celui de Cloturer, puis `page-et-confirmer` (Page ET Confirmer ensemble : secret HMAC de recette lu UNE fois dans le trousseau, service `fonda-recette-page-hmac`, généré par Éric `openssl rand -hex 32`, distinct de la production et des 2 jetons ; même clé pour les deux par construction). Précontrôle de doublon paginé jusqu'au bout (non atomique : discipline « un seul écrivain », le Mac d'Éric) ; POST du texte substitué ; relecture : inactif, identité, secret relu == envoyé, comparer-live. Après une création, toute erreur restitue l'étape et les ids créés (aucune suppression automatique).
+- **Fixture à constater (pas une décision)** : n8n supprime `executionTimeout` égal au défaut de l'instance lors d'une **mise à jour** (`PUT`, `removeDefaultValues`) ; le **POST** public de création utilisé ici suit un autre chemin, où cette suppression n'est pas établie. Si le champ disparaît réellement à l'import, comparer-live rend `$.settings.executionTimeout : absent du live` (code 1) : refus strict maintenu, analyse avant toute décision. Ne jamais corriger par `PUT` ni depuis l'interface.
+- **Secret** : comparer-live admet la SEULE divergence du paramètre `secret` des 2 nœuds Crypto (64 hex, jamais la valeur de remplacement, jamais affiché) ; identité stricte partout ailleurs.
 - `FONDA_N8N_CLE_RECETTE=… node outils-recette/comparer-live.js <id> n8n/fonda-relecture-page/box-fonda-<k>-relecture.recette.json` (référence : un des 4 chemins exacts) : GO = code 0, `identique: true` (métadonnées descriptives ignorées ; états typés exacts : `active === false`, `isArchived === false`, version active nulle ; clé inconnue = échec à examiner). Sinon (code 1) ARRÊT.
 - **Première comparaison réelle = fixture** (expurgée) : si l'ordre des clés ou la présence d'`isArchived` diffèrent de l'hypothèse, NO-GO et analyse avant toute décision.
 
@@ -117,7 +133,7 @@ Chaque valeur externe, ou qui atteint l'instance, ou qui est affichée, et son c
 | G1 version +1 (conditionne P5) | ≥ 6 écritures du candidat (émission, réémission, clôture, deux écritures dans la même seconde) ; versions avant/après lues dans les exécutions | après = avant + 1 à chaque PATCH | contrôle avant écriture conservé, après = informatif, verrou CLI porteur |
 | G2 `name contains` | `decisions/` : conformes + leurres (`…_01`/`…_011`, préfixe, tirets, soulignés) ; C6 et listing de Cloturer | toute décision conforme (`fonda_set_id`) retrouvée ; leurres écartés | requête par propriété seule |
 | G3 Data Table (nœud natif, décision 2026-11-10) | émission réelle ; puis, sur le VRAI nœud (le harnais le remplace par un nœud Code) : table vide, relecteur absent, doublon, adresse hors grammaire, table inexistante ou hors projet | nominal : adresse lue à l'exécution, courriel reçu à l'adresse de test, absente de l'export, import accepté en `typeVersion` 1 (comparer-live) ; chaque cas négatif : exécution en ERREUR au nœud Data Table ou « Valider destinataire », **aucune écriture** du candidat, **aucun courriel** | arbitrage (le repli « API + clé » est écarté : clé non restreinte) |
-| G4 HMAC (Crypto v2 + credential) | GET Page jeton juste/faux ; POST Confirmer | comportements du harnais ; secret absent de l'export et des exécutions | — (mécanisme déjà le repli) : arbitrage |
+| G4 HMAC (Crypto v1, secret injecté) | sur le VRAI nœud, secret réel injecté : (1) bout en bout : GET Page (Page signe) -> POST Confirmer (recalcule) -> C2 passe ; jeton faux ou valeur modifiée -> C2 403 ; (2) IF : rejet C1 -> « Syntaxe valide ? » branche faux, Crypto NON exécuté, réponse 400 ; page indisponible -> « Page disponible ? » branche faux, Crypto NON exécuté, 410 (relevé dans l'exécution, lecture seule) | comportements du harnais ; secret absent des exports COMMITTÉS et de la page ; présence dans les instantanés d'exécution = critère révisé assumé. Portée : le contournement et les gardes couvrent les pannes et incohérences DÉTECTABLES de Crypto ; l'exactitude du HMAC repose sur le nœud Crypto natif (source 2.6.3 vérifiée) et sur l'épreuve G4 en recette | — (mécanisme déjà le repli) : arbitrage |
 | G5 codes, en-têtes, doublons | `curl` : clé/jeton faux, candidat clos, conflit, `content-type` faux, corps trop grand, champ manquant, `lot[]` et `nonce` en double | 403/410/409/400 conformes ; `content-type`/`content-length` présents ; C1 sur la forme RÉELLE des doublons | Raw Body + analyse maison (doublons conservés), taille sur le corps brut |
 | G6 moteurs / SRI | sha384 des octets réels à l'URL publique ; Page en navigateur réel | égalité au registre ; aucune violation CSP ; SRI acceptée ; POST reçu | autre hôte public CORS (jsDelivr) |
 | G7 finding 3 | workflow jetable « FONDA RECETTE - Attente » (nœuds `Webhook attente` -> `Attendre` 60 s -> `Repondre attente`) ; `sonde-executions.js <id>` pendant l'attente | code 0 ; `running`/`waiting` vus pendant, `success` après | preuve de quiescence conçue en P5 |

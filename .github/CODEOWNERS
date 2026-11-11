@@ -91,3 +91,5 @@
 # transport GET seulement, sonde d'observation, comparateur dépôt <-> live, et leurs tests.
 /outils-recette/                           @ericduchateau
 /n8n/fonda-relecture-page/                 @ericduchateau
+# Outil d'import de recette (ÉCRITURE explicite, séparé de l'oracle lecture seule) : P4b.
+/outils-import/                            @ericduchateau

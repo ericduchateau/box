@@ -33,6 +33,16 @@ const CLES_CONTENU = Object.freeze(['name', 'nodes', 'connections', 'settings'])
 const METADONNEES = Object.freeze(['id', 'createdAt', 'updatedAt', 'versionId', 'versionCounter', 'shared', 'tags',
   'meta', 'triggerCount', 'description', 'parentFolder', 'homeProject', 'scopes']);
 const ETATS = Object.freeze(['active', 'isArchived', 'pinData', 'staticData', 'activeVersion', 'activeVersionId']);
+// Secret HMAC d'INSTANCE (P4b, option E) : SEULE divergence admise entre dépôt et live, sur 2 chemins EXACTS (le
+// paramètre « secret » du nœud Crypto hmac nommé, Page et Confirmer). Dépôt : valeur de remplacement fixe ; live :
+// 64 hexadécimaux minuscules, jamais la valeur de remplacement. La valeur n'est JAMAIS affichée ; identité stricte
+// partout ailleurs (le secret est ramené à la valeur de remplacement dans une COPIE avant la comparaison).
+const SECRET_A_INJECTER = 'A_INJECTER_A_L_IMPORT';
+const SECRETS_INJECTES = Object.freeze({ [REFERENCES[2]]: 'Recalculer jeton', [REFERENCES[3]]: 'Signer jeton' });
+const noeudSecret = (contenu, nom) => {
+  const n = Array.isArray(contenu.nodes) ? contenu.nodes.filter((x) => x && x.name === nom) : [];
+  return n.length === 1 && n[0].type === 'n8n-nodes-base.crypto' && n[0].parameters && typeof n[0].parameters === 'object' && n[0].parameters.action === 'hmac' ? n[0] : null;
+};
 // Types EXACTS (connu-bon) : nul ou absent, ou objet simple vide.
 const nulOuAbsent = (x) => x === undefined || x === null;
 const vide = (x) => nulOuAbsent(x) || (typeof x === 'object' && !Array.isArray(x) && Object.getPrototypeOf(x) === Object.prototype && Object.keys(x).length === 0);
@@ -64,7 +74,7 @@ function lireReference(reference) {
   return depot;
 }
 
-function comparerDepot(live, depot) {
+function comparerDepot(live, depot, reference) {
   const ecarts = [];
   if (Object.keys(depot).join(',') !== CLES_CONTENU.join(',')) ecarts.push('export du dépôt : clés ≠ name, nodes, connections, settings');
   if (!live || typeof live !== 'object' || Array.isArray(live)) return { identique: false, ecarts: ['live : objet attendu'] };
@@ -74,14 +84,24 @@ function comparerDepot(live, depot) {
   if (!vide(live.pinData)) ecarts.push('live : données épinglées');
   if (!vide(live.staticData)) ecarts.push('live : staticData non vide');
   if (!nulOuAbsent(live.activeVersion) || !nulOuAbsent(live.activeVersionId)) ecarts.push('live : version active publiée ou état inconnu (attendu : nulle)');
-  const contenu = Object.fromEntries(CLES_CONTENU.map((k) => [k, live[k]]));
+  const contenu = JSON.parse(JSON.stringify(Object.fromEntries(CLES_CONTENU.map((k) => [k, live[k]])))); // copie (ordre conservé)
+  const nomSecret = Object.prototype.hasOwnProperty.call(SECRETS_INJECTES, reference) ? SECRETS_INJECTES[reference] : null;
+  if (nomSecret) {
+    const d = noeudSecret(depot, nomSecret); const l = noeudSecret(contenu, nomSecret);
+    if (!d || d.parameters.secret !== SECRET_A_INJECTER) ecarts.push('export du dépôt : secret ≠ valeur de remplacement');
+    if (l) {
+      if (l.parameters.secret === SECRET_A_INJECTER) ecarts.push('live : secret HMAC NON injecté (valeur de remplacement publique)');
+      else if (typeof l.parameters.secret !== 'string' || !/^[0-9a-f]{64}$/.test(l.parameters.secret)) ecarts.push('live : secret HMAC hors forme (64 hexadécimaux attendus)');
+      l.parameters.secret = SECRET_A_INJECTER; // jamais comparé ni affiché : identité stricte sur tout le reste
+    }
+  }
   const strict = JSON.stringify(contenu, null, 2) === JSON.stringify(depot, null, 2);
   if (!strict) ecarts.push(...ecartsProfonds(depot, contenu));
   if (!strict && !ecarts.length) ecarts.push('sérialisation différente');
   return { identique: ecarts.length === 0, ecarts };
 }
 // Surface exportée : la référence est un ÉLÉMENT de REFERENCES (F1 : réduction de surface, aucun texte libre).
-function comparer(live, reference) { return comparerDepot(live, lireReference(reference)); }
+function comparer(live, reference) { return comparerDepot(live, lireReference(reference), reference); }
 
 async function lireLive({ workflowId, url, cle, fetch: f = globalThis.fetch }) {
   if (typeof workflowId !== 'string' || !ID_WORKFLOW.test(workflowId)) throw new ErreurOutil('WORKFLOW_ID');
@@ -106,7 +126,7 @@ async function principal(argv, { fetch: f = globalThis.fetch, env = process.env 
   // Référence lue et typée AVANT toute requête (même typage que les sources de la sonde, S3).
   const depot = lireReference(reference);
   const live = await lireLive({ workflowId, url: INSTANCES[0], cle, fetch: f });
-  const r = comparerDepot(live, depot);
+  const r = comparerDepot(live, depot, reference);
   return { r: { schema: 'comparaison-live/v1', workflowId, export: reference, versionId: typeof live.versionId === 'string' && /^[0-9a-f-]{1,64}$/.test(live.versionId) ? live.versionId : null, ...r }, code: r.identique ? 0 : 1 };
 }
 

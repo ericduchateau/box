@@ -240,7 +240,10 @@ describe('sonde : une seule série, sorties en ensembles fermés, codes 0 / 1 / 
 describe('comparateur : références fermées, états typés, écarts sans contenu du live', () => {
   const REF = CL.REFERENCES[3];
   const texte = fs.readFileSync(path.join(__dirname, '..', REF), 'utf8');
-  const live = () => ({ updatedAt: 'x', createdAt: 'x', id: 'WfA', ...JSON.parse(texte), active: false, isArchived: false, versionId: 'v', versionCounter: 1, shared: [{ role: 'o', user: { email: 'proprietaire@exemple.test' } }], tags: [], pinData: {}, meta: null, staticData: null, triggerCount: 0 });
+  // Live conforme : secret d'instance INJECTÉ (64 hex synthétiques) dans « Signer jeton » (P4b), seule divergence admise.
+  const SECRET_TEST = 'ab'.repeat(32);
+  const injecte = (w) => { w.nodes.find((n) => n.name === 'Signer jeton').parameters.secret = SECRET_TEST; return w; };
+  const live = () => ({ updatedAt: 'x', createdAt: 'x', id: 'WfA', ...injecte(JSON.parse(texte)), active: false, isArchived: false, versionId: 'v', versionCounter: 1, shared: [{ role: 'o', user: { email: 'proprietaire@exemple.test' } }], tags: [], pinData: {}, meta: null, staticData: null, triggerCount: 0 });
   test('références = liste fermée des 4 exports de recette', () => {
     assert.deepEqual(CL.REFERENCES, ['emettre', 'cloturer', 'confirmer', 'page'].map((k) => `n8n/fonda-relecture-page/box-fonda-${k}-relecture.recette.json`));
   });
@@ -257,6 +260,28 @@ describe('comparateur : références fermées, états typés, écarts sans conte
     for (const x of [libre, JSON.parse(libre), texte, `./${REF}`, path.join(__dirname, '..', REF), 'n8n/fonda-relecture-page/box-fonda-page-relecture.json', null, undefined, 3, [REF]])
       assert.throws(() => CL.comparer(live(), x), (e) => e instanceof LS.ErreurOutil && e.code === 'EXPORT_HORS_LISTE', String(x).slice(0, 40));
     for (const ref of CL.REFERENCES) assert.equal(typeof CL.comparer(live(), ref).identique, 'boolean', ref);
+  });
+  test('P4b : secret HMAC — SEULE divergence admise, sur les 2 chemins EXACTS ; non injecté, hors forme -> écart ; valeur JAMAIS affichée ; tout le reste strict', () => {
+    assert.deepEqual(CL.comparer(live(), REF), { identique: true, ecarts: [] });
+    const nonInjecte = live(); nonInjecte.nodes.find((n) => n.name === 'Signer jeton').parameters.secret = 'A_INJECTER_A_L_IMPORT';
+    assert.deepEqual(CL.comparer(nonInjecte, REF).ecarts, ['live : secret HMAC NON injecté (valeur de remplacement publique)']);
+    for (const s of ['AB'.repeat(32), 'ab'.repeat(31), 'SECRET_SYNTHETIQUE', 12, null, `${'ab'.repeat(32)}\n`]) {
+      const x = live(); x.nodes.find((n) => n.name === 'Signer jeton').parameters.secret = s;
+      const r = CL.comparer(x, REF); assert.deepEqual(r.ecarts, ['live : secret HMAC hors forme (64 hexadécimaux attendus)'], String(s)); assert.ok(sans(JSON.stringify(r), 'SECRET', 'ABAB'));
+    }
+    const autre = live(); autre.nodes.find((n) => n.name === 'Signer jeton').parameters.encoding = 'base64'; // tout autre champ du nœud reste strict
+    assert.equal(CL.comparer(autre, REF).identique, false);
+    const ailleurs = live(); ailleurs.nodes.find((n) => n.name === 'Construire page').parameters.secret = SECRET_TEST; // même clé ailleurs : refusée
+    assert.equal(CL.comparer(ailleurs, REF).identique, false);
+    assert.ok(sans(JSON.stringify(CL.comparer(live(), REF)), SECRET_TEST));
+    // Confirmer : « Recalculer jeton » ; Emettre et Cloturer : AUCUNE exception (un secret quelconque y est un écart).
+    const tc = fs.readFileSync(path.join(__dirname, '..', CL.REFERENCES[2]), 'utf8');
+    const lc = { id: 'WfA', ...JSON.parse(tc), active: false, isArchived: false }; lc.nodes.find((n) => n.name === 'Recalculer jeton').parameters.secret = SECRET_TEST;
+    assert.deepEqual(CL.comparer(lc, CL.REFERENCES[2]), { identique: true, ecarts: [] });
+    const lp = { ...lc }; assert.equal(CL.comparer(lp, CL.REFERENCES[3]).identique, false);
+    const te = fs.readFileSync(path.join(__dirname, '..', CL.REFERENCES[0]), 'utf8');
+    const le = { id: 'WfA', ...JSON.parse(te), active: false, isArchived: false }; le.nodes[0].parameters.secret = SECRET_TEST;
+    assert.equal(CL.comparer(le, CL.REFERENCES[0]).identique, false);
   });
   test('versionId affiché seulement en grammaire stricte (hexadécimal et tirets), sinon null', async () => {
     const env = { FONDA_N8N_CLE_RECETTE: CLE };
@@ -416,7 +441,7 @@ M._load = function (req, parent, isMain) { const r = orig.apply(this, arguments)
 process.on('exit', () => fs.writeFileSync(process.env.TRACE, JSON.stringify([...vus].sort())));\n`);
   fs.writeFileSync(faux, `globalThis.fetch = async (url) => { const u = new URL(url);
   if (u.pathname.startsWith('/api/v1/executions/')) return { ok: true, status: 200, json: async () => ({ id: 12, workflowId: 'WfA', status: 'success', mode: 'webhook', data: { resultData: { runData: {} } } }) };
-  if (u.pathname.startsWith('/api/v1/workflows/')) return { ok: true, status: 200, json: async () => ({ id: 'WfA', ...JSON.parse(require('fs').readFileSync(process.env.REF, 'utf8')), active: false, isArchived: false }) };
+  if (u.pathname.startsWith('/api/v1/workflows/')) return { ok: true, status: 200, json: async () => { const w = { id: 'WfA', ...JSON.parse(require('fs').readFileSync(process.env.REF, 'utf8')), active: false, isArchived: false }; for (const n of w.nodes) if (n.type === 'n8n-nodes-base.crypto' && n.parameters.action === 'hmac') n.parameters.secret = 'cd'.repeat(32); return w; } };
   return { ok: true, status: 200, json: async () => ({ data: [], nextCursor: null }) }; };\n`);
   const RACINE = path.join(__dirname, '..');
   const tracer = (script, args) => {
