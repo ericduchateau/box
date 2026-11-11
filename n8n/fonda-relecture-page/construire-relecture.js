@@ -858,6 +858,7 @@ const NOEUDS_CONFIRMER = Object.freeze({
   webhook: 'Webhook confirmation',
   entree: R.ROLES.confirmation.entree, // FONDA Entree confirmation
   syntaxe: 'Controler syntaxe formulaire',
+  siSyntaxe: 'Syntaxe valide ?',
   recalculer: 'Recalculer jeton',
   formulaire: 'Verifier formulaire',
   siFormulaire: 'Formulaire valide ?',
@@ -901,32 +902,30 @@ const w = unItem(${JSON.stringify(NOEUDS_CONFIRMER.webhook)});
 const b = w.body; const h = w.headers && typeof w.headers === 'object' ? w.headers : {};
 const f = { lot: null, nonce: null };
 ${DEJA_REJET}
-// Rejet C1 : le nœud Crypto suit quand même (graphe linéaire) ; message constant, jamais comparé.
-const rejetC1 = () => [{ json: { ...rejet('C1', false)[0].json, message_jeton: 'rejet-c1' } }];
 const a = (o, c) => Object.prototype.hasOwnProperty.call(o, c);
 // C1 — taille : octets annoncés (content-length) ET somme des champs reçus, chacun ≤ ${TAILLE_MAX_POST}.
 // Encodage IMPOSÉ : formulaire URL-encodé (seul encodage où un doublon reste visible) ; tout autre -> C1.
-if (typeof h['content-type'] !== 'string' || !/^application\\/x-www-form-urlencoded\\s*(;|$)/i.test(h['content-type'])) return rejetC1();
+if (typeof h['content-type'] !== 'string' || !/^application\\/x-www-form-urlencoded\\s*(;|$)/i.test(h['content-type'])) return rejet('C1', false);
 const lg = h['content-length'];
-if (typeof lg !== 'string' || !/^[0-9]{1,7}$/.test(lg) || Number(lg) > ${TAILLE_MAX_POST}) return rejetC1();
-if (!b || typeof b !== 'object' || Array.isArray(b)) return rejetC1();
+if (typeof lg !== 'string' || !/^[0-9]{1,7}$/.test(lg) || Number(lg) > ${TAILLE_MAX_POST}) return rejet('C1', false);
+if (!b || typeof b !== 'object' || Array.isArray(b)) return rejet('C1', false);
 const cles = Object.keys(b);
 // Doublon (même champ deux fois) : n8n le livre en TABLEAU -> non-chaîne -> refus.
-if (!cles.every((c) => typeof b[c] === 'string')) return rejetC1();
-if (cles.reduce((t, c) => t + c.length + b[c].length, 0) > ${TAILLE_MAX_POST}) return rejetC1();
-if (!CHAMPS.every((c) => a(b, c))) return rejetC1();
+if (!cles.every((c) => typeof b[c] === 'string')) return rejet('C1', false);
+if (cles.reduce((t, c) => t + c.length + b[c].length, 0) > ${TAILLE_MAX_POST}) return rejet('C1', false);
+if (!CHAMPS.every((c) => a(b, c))) return rejet('C1', false);
 const autres = cles.filter((c) => !CHAMPS.includes(c));
 let choix;
 if (b.action === 'accepter') {
-  if (!autres.length || !autres.every((c) => /^choix_it[0-9]{2}$/.test(c) && (b[c] === 'garder' || b[c] === 'ecarter'))) return rejetC1();
+  if (!autres.length || !autres.every((c) => /^choix_it[0-9]{2}$/.test(c) && (b[c] === 'garder' || b[c] === 'ecarter'))) return rejet('C1', false);
   choix = autres.map((c) => [c.slice(6), b[c]]);
 } else if (b.action === 'rejeter') {
-  if (autres.length !== 1 || autres[0] !== 'confirmer_rejet' || b.confirmer_rejet !== 'oui') return rejetC1();
+  if (autres.length !== 1 || autres[0] !== 'confirmer_rejet' || b.confirmer_rejet !== 'oui') return rejet('C1', false);
   choix = [];
-} else return rejetC1();
+} else return rejet('C1', false);
 if (!SET_ID_PATTERN.test(b.lot) || !/^[0-9a-f]{64}$/.test(b.k) || !/^[1-9][0-9]{0,14}$/.test(b.generation) || !/^sha256:[0-9a-f]{64}$/.test(b.empreinte)
   || !/^[A-Za-z0-9._-]{1,64}$/.test(b.moteur_version) || !/^[0-9a-f]{64}$/.test(b.moteur_sha256) || !dateIso(b.expire_page)
-  || !/^[0-9a-f]{32}$/.test(b.nonce) || !/^[0-9a-f]{64}$/.test(b.jeton)) return rejetC1();
+  || !/^[0-9a-f]{32}$/.test(b.nonce) || !/^[0-9a-f]{64}$/.test(b.jeton)) return rejet('C1', false);
 // Message canonique du jeton sur les valeurs POSTÉES (cle_sha256 = SHA-256 de k reçue) ; le HMAC est recalculé par
 // le nœud Crypto suivant, la comparaison (C2) par « Verifier formulaire ». La FRAÎCHEUR est C3 (§21.10).
 const cleSha = sha256Hex(octetsUtf8(b.k));
@@ -940,10 +939,12 @@ function codeVerifierFormulaire() {
   return [ENTETE('C2 (authenticité) : jeton recalculé par le nœud Crypto sur les valeurs POSTÉES, comparé en temps constant.'),
     UN_ITEM(NOEUDS_CONFIRMER.formulaire), OUTILS, COMMUN_PAGE,
     `const s = unItem(${JSON.stringify(NOEUDS_CONFIRMER.syntaxe)});
-const x = unItem(null); // sortie du nœud Crypto : COPIE de l'item de syntaxe + jeton_attendu
 const f = { lot: null, nonce: null };
 ${DEJA_REJET}
-if (s.poursuivre !== true) return [{ json: { poursuivre: false, resultat: s.resultat } }]; // rejet C1, tel quel
+// Rejet C1 : arrive par la branche « faux » de « Syntaxe valide ? », SANS passer par Crypto (une panne de Crypto ne
+// peut pas transformer un rejet en erreur) ; restitué tel quel.
+if (s.poursuivre !== true) return [{ json: { poursuivre: false, resultat: s.resultat } }];
+const x = unItem(null); // sortie du nœud Crypto : COPIE de l'item de syntaxe + jeton_attendu
 if (x.message_jeton !== s.message_jeton || typeof x.jeton_attendu !== 'string' || !/^[0-9a-f]{64}$/.test(x.jeton_attendu)) throw new Error('jeton recalculé absent ou hors forme (nœud Crypto)');
 // Secret NON injecté (valeur de remplacement PUBLIQUE du dépôt) : jeton forgeable par quiconque -> ERREUR, jamais servi.
 const SECRET_PUBLIC = ${JSON.stringify(SECRET_A_INJECTER)};
@@ -1123,6 +1124,7 @@ function construireConfirmer() {
       parameters: { httpMethod: 'POST', path: CONFIG.cheminConfirmer, responseMode: 'responseNode', options: {} } },
     code(N.entree, codeEntreeConfirmation()),
     code(N.syntaxe, codeControlerSyntaxe()),
+    siBooleen(N.siSyntaxe, 'poursuivre', 'si-syntaxe'),
     signatureJeton(N.recalculer, 'jeton_attendu'),
     code(N.formulaire, codeVerifierFormulaire()),
     siBooleen(N.siFormulaire, 'poursuivre', 'si-formulaire'),
@@ -1154,7 +1156,9 @@ function construireConfirmer() {
       parameters: { respondWith: 'text', responseBody: '={{ $json.html }}', options: { responseCode: '={{ $json.code }}',
         responseHeaders: { entries: [{ name: 'Content-Type', value: 'text/html; charset=utf-8' }, { name: 'Cache-Control', value: 'no-store' }, { name: 'Referrer-Policy', value: 'no-referrer' }] } } } },
   ].map(positionner('confirmer'));
-  const connections = lineaire([N.webhook, N.entree, N.syntaxe, N.recalculer, N.formulaire, N.siFormulaire]);
+  const connections = lineaire([N.webhook, N.entree, N.syntaxe, N.siSyntaxe]);
+  connections[N.siSyntaxe] = { main: [lien(N.recalculer), lien(N.formulaire)] };
+  Object.assign(connections, lineaire([N.recalculer, N.formulaire, N.siFormulaire]));
   connections[N.siFormulaire] = { main: [lien(N.chercher), lien(N.sortie)] };
   Object.assign(connections, lineaire([N.chercher, N.verifierListe, N.siCandidat]));
   connections[N.siCandidat] = { main: [lien(N.lire), lien(N.sortie)] };
@@ -1187,6 +1191,7 @@ const NOEUDS_PAGE = Object.freeze({
   nonceCsp: 'Generer nonce CSP',
   nonce: 'Generer nonce formulaire',
   preparerJeton: 'Preparer jeton',
+  siDisponible: 'Page disponible ?',
   signerJeton: 'Signer jeton',
   construire: 'Construire page',
   indisponible: 'Page indisponible',
@@ -1376,8 +1381,8 @@ const nonceCsp = unItem(${JSON.stringify(NOEUDS_PAGE.nonceCsp)}).nonce_csp;
 const nonce = unItem(${JSON.stringify(NOEUDS_PAGE.nonce)}).nonce;
 // Deux aléas DISTINCTS de 128 bits (hex 32), un par affichage.
 if (!/^[0-9a-f]{32}$/.test(nonceCsp) || !/^[0-9a-f]{32}$/.test(nonce) || nonceCsp === nonce) throw new Error('aléas de la page invalides ou égaux');
-// Indisponible : le nœud Crypto suit quand même (graphe linéaire) ; message constant, jamais utilisé.
-const indisponible = () => [{ json: { disponible: false, message_jeton: 'indisponible' } }];
+// Indisponible : branche « faux » de « Page disponible ? », SANS passer par Crypto.
+const indisponible = () => [{ json: { disponible: false } }];
 // C3 (GET) : candidat courant pour la clé reçue, lot conforme, moteur au registre.
 const maintenant = Date.now();
 if (!c || c.schema !== 'candidat-fonda/v1' || !c.lot || !c.relecture || c.lot.set_id !== r.lot) return indisponible();
@@ -1405,9 +1410,9 @@ const c = unItem(${JSON.stringify(NOEUDS_PAGE.lire)});
 const nonceCsp = unItem(${JSON.stringify(NOEUDS_PAGE.nonceCsp)}).nonce_csp;
 const nonce = unItem(${JSON.stringify(NOEUDS_PAGE.nonce)}).nonce;
 const p = unItem(${JSON.stringify(NOEUDS_PAGE.preparerJeton)});
-const x = unItem(null); // sortie du nœud Crypto : COPIE de l'item préparé + jeton
 const indisponible = () => [{ json: { code: 410, html: pageIndisponible(${JSON.stringify(MESSAGE_INDISPONIBLE)}) } }];
-if (p.disponible !== true) return indisponible();
+if (p.disponible !== true) return indisponible(); // branche « faux » de « Page disponible ? » : Crypto contourné
+const x = unItem(null); // sortie du nœud Crypto : COPIE de l'item préparé + jeton
 if (x.message_jeton !== p.message_jeton || typeof x.jeton !== 'string' || !/^[0-9a-f]{64}$/.test(x.jeton)) throw new Error('jeton absent ou hors forme (nœud Crypto)');
 // Secret NON injecté (valeur de remplacement PUBLIQUE du dépôt) : jeton forgeable par quiconque -> ERREUR, jamais servi.
 const SECRET_PUBLIC = ${JSON.stringify(SECRET_A_INJECTER)};
@@ -1442,6 +1447,7 @@ function construirePage() {
     alea(N.nonceCsp, 'nonce_csp'),
     alea(N.nonce, 'nonce'),
     code(N.preparerJeton, codePreparerJeton()),
+    siBooleen(N.siDisponible, 'disponible', 'si-disponible'),
     signatureJeton(N.signerJeton, 'jeton'),
     code(N.construire, codeConstruirePage()),
     code(N.indisponible, codePageIndisponible()),
@@ -1453,7 +1459,9 @@ function construirePage() {
   connections[N.siRequete] = { main: [lien(N.chercher), lien(N.indisponible)] };
   Object.assign(connections, lineaire([N.chercher, N.verifierListe, N.siCandidat]));
   connections[N.siCandidat] = { main: [lien(N.lire), lien(N.indisponible)] };
-  Object.assign(connections, lineaire([N.lire, N.nonceCsp, N.nonce, N.preparerJeton, N.signerJeton, N.construire, N.repondre]), lineaire([N.indisponible, N.repondre]));
+  Object.assign(connections, lineaire([N.lire, N.nonceCsp, N.nonce, N.preparerJeton, N.siDisponible]));
+  connections[N.siDisponible] = { main: [lien(N.signerJeton), lien(N.construire)] };
+  Object.assign(connections, lineaire([N.signerJeton, N.construire, N.repondre]), lineaire([N.indisponible, N.repondre]));
   return { name: CONFIG.nomPage, nodes: noeuds, connections, settings: REGLAGES };
 }
 
