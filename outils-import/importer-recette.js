@@ -155,18 +155,25 @@ async function importer({ cible, cle, secret, fetch: f = globalThis.fetch }) {
     if (typeof cree.id !== 'string' || !ID_WORKFLOW.test(cree.id)) throw new ErreurImport('CREATION_NON_CONFIRMEE', { etape: 'creation', crees });
     crees.push(cree.id);
     if (cree.active !== false) throw new ErreurImport('ACTIF', { etape: 'creation', crees });
-    let live;
-    try { live = await appel(`/api/v1/workflows/${cree.id}`); } catch { throw new ErreurImport('VERIFICATION_ECHOUEE', { etape: 'verification', crees }); }
-    if (live.id !== cree.id) throw new ErreurImport('VERIFICATION_ECHOUEE', { etape: 'verification', crees });
-    if (live.active !== false) throw new ErreurImport('ACTIF', { etape: 'verification', crees });
-    const c = comparer(live, l.reference);
-    const ecarts = [...c.ecarts];
-    const porteur = NOEUD_SECRET[l.reference];
-    if (porteur) {
-      const n = Array.isArray(live.nodes) ? live.nodes.filter((x) => x && x.name === porteur) : [];
-      if (n.length !== 1 || !n[0].parameters || n[0].parameters.secret !== secret) ecarts.push('secret relu ≠ secret envoyé'); // comparé en mémoire, jamais affiché
+    // TOUTE la vérification après création (relecture, identité, état, comparaison) : toute exception devient un
+    // diagnostic fermé qui restitue l'étape et les ids créés (jamais un message générique sans reprise possible).
+    let resultat;
+    try {
+      const live = await appel(`/api/v1/workflows/${cree.id}`);
+      if (live.id !== cree.id) throw new ErreurImport('VERIFICATION_ECHOUEE');
+      if (live.active !== false) throw new ErreurImport('ACTIF');
+      const c = comparer(live, l.reference);
+      const ecarts = [...c.ecarts];
+      const porteur = NOEUD_SECRET[l.reference];
+      if (porteur) {
+        const n = Array.isArray(live.nodes) ? live.nodes.filter((x) => x && x.name === porteur) : [];
+        if (n.length !== 1 || !n[0].parameters || n[0].parameters.secret !== secret) ecarts.push('secret relu ≠ secret envoyé'); // comparé en mémoire, jamais affiché
+      }
+      resultat = { export: l.reference, workflowId: cree.id, identique: ecarts.length === 0, ecarts };
+    } catch (e) {
+      throw new ErreurImport(e instanceof ErreurImport && e.code === 'ACTIF' ? 'ACTIF' : 'VERIFICATION_ECHOUEE', { etape: 'verification', crees });
     }
-    imports.push({ export: l.reference, workflowId: cree.id, identique: ecarts.length === 0, ecarts });
+    imports.push(resultat);
   }
   return { schema: 'import-recette/v1', cible, imports };
 }

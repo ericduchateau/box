@@ -128,6 +128,13 @@ describe('import de recette : ÉCRITURE explicite, ensembles fermés, secret jam
     await assert.rejects(run({ panne: (u, init) => (init.method === 'GET' && u.pathname === '/api/v1/workflows/NouveauWf1' ? () => reponse({}, 500) : null) }),
       (e) => e.code === 'VERIFICATION_ECHOUEE' && e.crees.join() === 'NouveauWf1' && I.messageSur(e) === `${I.MESSAGES.VERIFICATION_ECHOUEE} (étape : verification ; workflows créés : NouveauWf1)`);
     await assert.rejects(run({ alterer: (w) => { w.id = 'AutreWf'; } }), (e) => e.code === 'VERIFICATION_ECHOUEE');
+    // Exception PENDANT la comparaison (référence locale illisible à ce moment) : diagnostic de reprise, jamais générique.
+    const lireFs = fs.readFileSync; let armer = false;
+    fs.readFileSync = function (f, ...r) { if (armer && String(f).endsWith('box-fonda-confirmer-relecture.recette.json')) throw new Error(`SECRET ${SECRET}`); return lireFs.call(this, f, ...r); };
+    try {
+      await assert.rejects(run({ panne: (u, init) => { if (init.method === 'GET' && u.pathname === '/api/v1/workflows/NouveauWf1') armer = true; return null; } }),
+        (e) => e.code === 'VERIFICATION_ECHOUEE' && e.etape === 'verification' && e.crees.join() === 'NouveauWf1' && sans(I.messageSur(e), SECRET));
+    } finally { fs.readFileSync = lireFs; }
     let posts = 0;
     const n = instance({ panne: (u, init) => (init.method === 'POST' && (posts += 1) === 2 ? () => { throw new Error(`réseau ${SECRET}`); } : null) });
     await assert.rejects(I.importer({ cible: I.CONJOINT, cle: CLE, secret: SECRET, fetch: n.f }), (e) => e.code === 'CREATION_NON_CONFIRMEE' && e.crees.join() === 'NouveauWf1' && sans(I.messageSur(e), SECRET));
