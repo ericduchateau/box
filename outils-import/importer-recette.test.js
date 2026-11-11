@@ -143,6 +143,13 @@ describe('import de recette : ÉCRITURE explicite, ensembles fermés, secret jam
       await assert.rejects(I.importer({ cible: EMETTRE, cle: CLE, secret: null, fetch: ff }), (e) => ['RECHERCHE_INCOMPLETE'].includes(e.code));
     }
   });
+  test('K11 : réglages ajoutés par n8n à la création (callerPolicy, availableInMCP) -> identique ; autre valeur -> NON identique', async () => {
+    const ajout = (v) => (w) => { w.settings.callerPolicy = v; w.settings.availableInMCP = false; };
+    const ok = await I.importer({ cible: I.CONJOINT, cle: CLE, secret: SECRET, fetch: instance({ alterer: ajout('workflowsFromSameOwner') }).f });
+    assert.deepEqual(ok.imports.map((x) => x.identique), [true, true]);
+    const ko = await I.importer({ cible: EMETTRE, cle: CLE, secret: null, fetch: instance({ alterer: ajout('any') }).f });
+    assert.equal(ko.imports[0].identique, false);
+  });
   test('live altéré ailleurs que sur le secret -> NON identique (code 1) ; Emettre et Cloturer : aucun secret lu', async () => {
     const r = await I.importer({ cible: I.CONJOINT, cle: CLE, secret: SECRET, fetch: instance({ alterer: (w) => { delete w.settings.saveManualExecutions; } }).f });
     assert.deepEqual(r.imports.map((x) => x.ecarts), [['$.settings.saveManualExecutions : absent du live'], ['$.settings.saveManualExecutions : absent du live']]);
