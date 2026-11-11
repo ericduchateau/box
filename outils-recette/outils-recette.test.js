@@ -296,15 +296,32 @@ describe('comparateur : références fermées, états typés, écarts sans conte
     // 3. clé en double : non représentable après JSON.parse ; la valeur retenue par le parseur fait foi
     const dbl = JSON.parse(JSON.stringify(live()).replace(/"settings":\{/, '"settings":{"callerPolicy":"workflowsFromSameOwner",').replace(/("timezone":"[^"]*")/, '$1,"callerPolicy":"any","availableInMCP":false'));
     assert.equal(dbl.settings.callerPolicy, 'any'); assert.equal(CL.comparer(dbl, REF).identique, false);
+    // cas inverse (LIMITE DOCUMENTÉE, K11) : doublon dont la DERNIÈRE valeur est admise -> accepté (la garantie porte sur
+    // l'objet après parsing ; l'API n8n ne renvoie que des objets sérialisés, sans doublon ; pas de détection avant parsing).
+    const inv = JSON.parse(JSON.stringify(live()).replace(/("timezone":"[^"]*")/, '$1,"callerPolicy":"any","callerPolicy":"workflowsFromSameOwner","availableInMCP":false'));
+    assert.equal(inv.settings.callerPolicy, 'workflowsFromSameOwner'); assert.equal(CL.comparer(inv, REF).identique, true);
     // 4. ordre différent -> écart
     assert.ok(CL.comparer(avec([['availableInMCP', false], ['callerPolicy', 'workflowsFromSameOwner']]), REF).ecarts.includes(ECART));
     // 5. une seule des deux : acceptée, valeur exacte exigée
     assert.deepEqual(CL.comparer(avec([['callerPolicy', 'workflowsFromSameOwner']]), REF).ecarts, []);
     assert.deepEqual(CL.comparer(avec([['availableInMCP', false]]), REF).ecarts, []);
     assert.ok(CL.comparer(avec([['callerPolicy', 'any']]), REF).ecarts.includes(ECART));
-    // position : au milieu des clés du dépôt -> écart
-    const milieu = live(); const s = milieu.settings; milieu.settings = Object.fromEntries([['callerPolicy', 'workflowsFromSameOwner'], ...Object.entries(s)]);
-    assert.ok(CL.comparer(milieu, REF).ecarts.includes(ECART));
+    // position : EN TÊTE des clés du dépôt -> écart
+    const tete = live(); const s = tete.settings; tete.settings = Object.fromEntries([['callerPolicy', 'workflowsFromSameOwner'], ...Object.entries(s)]);
+    assert.equal(CL.comparer(tete, REF).identique, false);
+    // position : VRAIMENT au milieu des clés du dépôt -> écart
+    const mi = live(); const e = Object.entries(mi.settings); mi.settings = Object.fromEntries([...e.slice(0, 2), ['callerPolicy', 'workflowsFromSameOwner'], ...e.slice(2)]);
+    assert.equal(CL.comparer(mi, REF).identique, false);
+    // clé du dépôt ABSENTE du live + réglage admis (même nombre de clés) -> écart
+    const ab = live(); const e2 = Object.entries(ab.settings); ab.settings = Object.fromEntries([...e2.slice(0, -1), ['callerPolicy', 'workflowsFromSameOwner']]);
+    assert.equal(CL.comparer(ab, REF).identique, false);
+    // clés numériques (réordonnées en tête par le moteur JS) et __proto__ (clé propre après JSON.parse) -> écart
+    assert.equal(CL.comparer(avec([['callerPolicy', 'workflowsFromSameOwner'], ['availableInMCP', false], ['0', 'x']]), REF).identique, false);
+    const pr = JSON.parse(JSON.stringify(live()).replace(/("timezone":"[^"]*")/, '$1,"__proto__":{"callerPolicy":"workflowsFromSameOwner"}'));
+    assert.ok(Object.prototype.hasOwnProperty.call(pr.settings, '__proto__')); assert.equal(CL.comparer(pr, REF).identique, false);
+    // non-mutation : le live d'origine n'est jamais modifié par la tolérance
+    const nm = avec([['callerPolicy', 'workflowsFromSameOwner'], ['availableInMCP', false]]); const avantNm = JSON.stringify(nm);
+    assert.equal(CL.comparer(nm, REF).identique, true); assert.equal(JSON.stringify(nm), avantNm);
     // 6. clé présente dans le DÉPÔT -> écart (référence modifiée en mémoire : lecture interne interceptée)
     const lire = fs.readFileSync;
     fs.readFileSync = function (f, ...r) { const t = lire.call(this, f, ...r); return String(f).endsWith(REF) ? JSON.stringify({ ...JSON.parse(t), settings: { ...JSON.parse(t).settings, availableInMCP: false } }, null, 2) : t; };
@@ -314,6 +331,18 @@ describe('comparateur : références fermées, états typés, écarts sans conte
     assert.equal(r7.identique, false); assert.ok(r7.ecarts.includes(ECART));
     assert.equal(CL.comparer(avec([['binaryMode', 'separate']]), REF).identique, false);
     assert.ok(sans(JSON.stringify(r7), 'workflowsFromSameOwner', 'separate'), 'aucune valeur du live affichée');
+  });
+  test('K11 EXHAUSTIF : toutes les insertions de 0, 1 ou 2 réglages admis, à toutes les positions, dans les deux ordres -> SEULS les 4 placements légitimes acceptés', () => {
+    const base = live(); const kd = Object.entries(base.settings);
+    const A = [['callerPolicy', 'workflowsFromSameOwner'], ['availableInMCP', false]];
+    const inserer = (arr, items) => { if (!items.length) return [arr]; const out = []; for (let i = 0; i <= arr.length; i += 1) { const c = arr.slice(); c.splice(i, 0, items[0]); out.push(...inserer(c, items.slice(1))); } return out; };
+    let n = 0; const acceptes = new Set();
+    for (const s of [[], [A[0]], [A[1]], [A[0], A[1]], [A[1], A[0]]]) for (const ordre of inserer(kd, s)) {
+      n += 1; const x = live(); x.settings = Object.fromEntries(ordre);
+      if (CL.comparer(x, REF).identique) acceptes.add(JSON.stringify(ordre.map(([k]) => k).slice(kd.length)));
+    }
+    assert.equal(n, 127);
+    assert.deepEqual([...acceptes].sort(), ['["availableInMCP"]', '["callerPolicy","availableInMCP"]', '["callerPolicy"]', '[]'].sort());
   });
   test('versionId affiché seulement en grammaire stricte (hexadécimal et tirets), sinon null', async () => {
     const env = { FONDA_N8N_CLE_RECETTE: CLE };
