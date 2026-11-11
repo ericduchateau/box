@@ -167,4 +167,14 @@ Format par épreuve : `date heure | opérateur | workflow (id) | exécutions (id
 |---|---|---|---|---|
 
 ### Résultats
-_(vide : aucune opération d'instance à ce jour)_
+Phase 2 — import inactif et octet-identité (2026-11-11 ; opérateur : Éric ; heures exactes au journal d'Éric ; aucune activation). Extraits expurgés : jamais `k`, adresse, secret, jeton.
+
+| Date | Opérateur | Épreuve | Workflow (id) | Outil, code | Extrait expurgé | Verdict |
+|---|---|---|---|---|---|---|
+| 2026-11-11 | Éric | Import Emettre (1re tentative) | Emettre `McD7qTGQHeov0nmT` | importer-recette, **code 1** | `identique: false` ; 2 écarts `$.settings` (réglages ajoutés par n8n : `callerPolicy`, `availableInMCP`) ; `name`/`nodes`/`connections` identiques | fixture K11 (caractérisée, tolérée exactement, PR #91) ; workflow CONSERVÉ |
+| 2026-11-11 | Éric | Gate 0 | Emettre `McD7qTGQHeov0nmT` | interface + GET lecture seule | `shared.projectId = oz9pBdYxCmm8UQ4l`, type `personal` | **GO** |
+| 2026-11-11 | Éric | comparer-live (après K11) | Emettre `McD7qTGQHeov0nmT` | comparer-live, **code 0** | `identique: true`, `ecarts: []` | **GO** |
+| 2026-11-11 | Éric | Import Cloturer | Cloturer `WQ2fDu56h6bGJ88B` | importer-recette, **code 0** | `identique: true`, inactif | **GO** |
+| 2026-11-11 | Éric | Import `page-et-confirmer` (secret lu une fois) | Confirmer `Yp1hKYuYdICZ84KM`, Page `RcplBgiyLl5oF26K` | importer-recette, **code 0** | 2 imports `identique: true`, inactifs, secret relu == envoyé | **GO** |
+| 2026-11-11 | Éric | comparer-live ×4 | Emettre, Cloturer, Confirmer, Page (ids ci-dessus) | comparer-live, **code 0** ×4 | `identique: true`, `ecarts: []` ; `executionTimeout: 120` de Confirmer PRÉSERVÉ par le POST (fixture non déclenchée) | **GO** |
+| 2026-11-11 | Éric | G6 hors ligne | — (jsDelivr `@e66fe79…`, `moteur-correction-v1.js`) | curl + shasum + openssl | SHA-256 `ce14c3e4…` = registre ; sha384 `mUn/uhV5…` = attendu | **GO** (volet navigateur : pendant G4) |
