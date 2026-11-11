@@ -283,6 +283,38 @@ describe('comparateur : références fermées, états typés, écarts sans conte
     const le = { id: 'WfA', ...JSON.parse(te), active: false, isArchived: false }; le.nodes[0].parameters.secret = SECRET_TEST;
     assert.equal(CL.comparer(le, CL.REFERENCES[0]).identique, false);
   });
+  test('K11 : réglages ajoutés par n8n à la création — tolérance EXACTEMENT bornée (7 cas)', () => {
+    const avec = (paires) => { const x = live(); for (const [k, v] of paires) x.settings[k] = v; return x; };
+    const ECART = 'live : réglages ajoutés par n8n hors forme admise (valeur, ordre, position ou clé supplémentaire)';
+    // 1. forme admise (les 2, en fin, dans l'ordre, valeurs exactes) -> identique
+    assert.deepEqual(CL.comparer(avec([['callerPolicy', 'workflowsFromSameOwner'], ['availableInMCP', false]]), REF), { identique: true, ecarts: [] });
+    // 2. valeur différente -> écart (callerPolicy « any » surtout)
+    for (const [k, v] of [['callerPolicy', 'any'], ['callerPolicy', 'none'], ['callerPolicy', 'workflowsFromAList'], ['availableInMCP', true], ['availableInMCP', 'false'], ['availableInMCP', null]]) {
+      const paires = [['callerPolicy', 'workflowsFromSameOwner'], ['availableInMCP', false]].map(([a, b]) => [a, a === k ? v : b]);
+      const r = CL.comparer(avec(paires), REF); assert.equal(r.identique, false, `${k}=${v}`); assert.ok(r.ecarts.includes(ECART), `${k}=${v}`);
+    }
+    // 3. clé en double : non représentable après JSON.parse ; la valeur retenue par le parseur fait foi
+    const dbl = JSON.parse(JSON.stringify(live()).replace(/"settings":\{/, '"settings":{"callerPolicy":"workflowsFromSameOwner",').replace(/("timezone":"[^"]*")/, '$1,"callerPolicy":"any","availableInMCP":false'));
+    assert.equal(dbl.settings.callerPolicy, 'any'); assert.equal(CL.comparer(dbl, REF).identique, false);
+    // 4. ordre différent -> écart
+    assert.ok(CL.comparer(avec([['availableInMCP', false], ['callerPolicy', 'workflowsFromSameOwner']]), REF).ecarts.includes(ECART));
+    // 5. une seule des deux : acceptée, valeur exacte exigée
+    assert.deepEqual(CL.comparer(avec([['callerPolicy', 'workflowsFromSameOwner']]), REF).ecarts, []);
+    assert.deepEqual(CL.comparer(avec([['availableInMCP', false]]), REF).ecarts, []);
+    assert.ok(CL.comparer(avec([['callerPolicy', 'any']]), REF).ecarts.includes(ECART));
+    // position : au milieu des clés du dépôt -> écart
+    const milieu = live(); const s = milieu.settings; milieu.settings = Object.fromEntries([['callerPolicy', 'workflowsFromSameOwner'], ...Object.entries(s)]);
+    assert.ok(CL.comparer(milieu, REF).ecarts.includes(ECART));
+    // 6. clé présente dans le DÉPÔT -> écart (référence modifiée en mémoire : lecture interne interceptée)
+    const lire = fs.readFileSync;
+    fs.readFileSync = function (f, ...r) { const t = lire.call(this, f, ...r); return String(f).endsWith(REF) ? JSON.stringify({ ...JSON.parse(t), settings: { ...JSON.parse(t).settings, availableInMCP: false } }, null, 2) : t; };
+    try { assert.ok(CL.comparer(avec([['availableInMCP', false]]), REF).ecarts.includes('export du dépôt : réglage réservé à n8n présent (callerPolicy / availableInMCP interdits dans l\'export)')); } finally { fs.readFileSync = lire; }
+    // 7. 3e clé inconnue -> écart (rien n'est toléré, même les 2 admises)
+    const r7 = CL.comparer(avec([['callerPolicy', 'workflowsFromSameOwner'], ['availableInMCP', false], ['binaryMode', 'separate']]), REF);
+    assert.equal(r7.identique, false); assert.ok(r7.ecarts.includes(ECART));
+    assert.equal(CL.comparer(avec([['binaryMode', 'separate']]), REF).identique, false);
+    assert.ok(sans(JSON.stringify(r7), 'workflowsFromSameOwner', 'separate'), 'aucune valeur du live affichée');
+  });
   test('versionId affiché seulement en grammaire stricte (hexadécimal et tirets), sinon null', async () => {
     const env = { FONDA_N8N_CLE_RECETTE: CLE };
     for (const [v, attendu] of [['2881d35a-1b2c-4d3e-8f90-0123456789ab', '2881d35a-1b2c-4d3e-8f90-0123456789ab'], ['SECRET', null], ['v', null], [12, null], ['a'.repeat(65), null], [undefined, null]]) {
@@ -406,7 +438,7 @@ const SURFACE_OUTILS = Object.freeze({
   './sonde-executions.js': { CATEGORIES: 'object', EXPORTS_RECETTE: 'object', INSTANCE: 'string', MODES: 'object', NOEUDS_ATTENTE: 'object', STATUTS: 'object',
     dateSure: 'x', nomsDeConfiance: '', principal: 'argv, { fetch: f = globalThis.fetch, env = process.env } = {}',
     sonder: '{ workflowId, url = INSTANCE, cle, fetch: f = globalThis.fetch }', sonderExecution: '{ id, url = INSTANCE, cle, fetch: f = globalThis.fetch }' },
-  './comparer-live.js': { CLES_CONTENU: 'object', ETATS: 'object', METADONNEES: 'object', REFERENCES: 'object',
+  './comparer-live.js': { CLES_CONTENU: 'object', ETATS: 'object', METADONNEES: 'object', REFERENCES: 'object', REGLAGES_AJOUTES_PAR_N8N: 'object',
     comparer: 'live, reference', lireLive: '{ workflowId, url, cle, fetch: f = globalThis.fetch }', principal: 'argv, { fetch: f = globalThis.fetch, env = process.env } = {}' },
   './arguments.js': { analyser: 'argv, { options = [], positionnels = 0 }' },
 });
@@ -506,6 +538,8 @@ describe('instantanés de surface : listes fermées recopiées, formes exactes d
     assert.deepEqual(CL.CLES_CONTENU, ['name', 'nodes', 'connections', 'settings']);
     assert.deepEqual(CL.METADONNEES, ['id', 'createdAt', 'updatedAt', 'versionId', 'versionCounter', 'shared', 'tags', 'meta', 'triggerCount', 'description', 'parentFolder', 'homeProject', 'scopes']);
     assert.deepEqual(CL.ETATS, ['active', 'isArchived', 'pinData', 'staticData', 'activeVersion', 'activeVersionId']);
+    assert.deepEqual(CL.REGLAGES_AJOUTES_PAR_N8N, [['callerPolicy', 'workflowsFromSameOwner'], ['availableInMCP', false]]);
+    assert.ok(Object.isFrozen(CL.REGLAGES_AJOUTES_PAR_N8N) && CL.REGLAGES_AJOUTES_PAR_N8N.every(Object.isFrozen));
   });
   test('options de ligne de commande : spécification REÇUE par analyser() (espionnée) = instantané littéral, pour chaque commande', async () => {
     const vues = []; const orig = AR.analyser;
