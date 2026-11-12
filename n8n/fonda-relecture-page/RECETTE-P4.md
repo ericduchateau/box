@@ -165,6 +165,7 @@ Format par épreuve : `date heure | opérateur | workflow (id) | exécutions (id
 ### Journal des activations
 | Fenêtre | Workflow | Activé à | Désactivé à | Annoncée par |
 |---|---|---|---|---|
+| G3 (Data Table, nœud natif) | Emettre `McD7qTGQHeov0nmT` (seul) | heure au journal d'Éric | heure au journal d'Éric | architecte |
 
 ### Résultats
 Phase 2 — import inactif et octet-identité (2026-11-11 ; opérateur : Éric ; heures exactes au journal d'Éric ; aucune activation). Extraits expurgés : jamais `k`, adresse, secret, jeton.
@@ -178,3 +179,23 @@ Phase 2 — import inactif et octet-identité (2026-11-11 ; opérateur : Éric ;
 | 2026-11-11 | Éric | Import `page-et-confirmer` (secret lu une fois) | Confirmer `Yp1hKYuYdICZ84KM`, Page `RcplBgiyLl5oF26K` | importer-recette, **code 0** | 2 imports `identique: true`, inactifs, secret relu == envoyé | **GO** |
 | 2026-11-11 | Éric | comparer-live ×4 | Emettre, Cloturer, Confirmer, Page (ids ci-dessus) | comparer-live, **code 0** ×4 | `identique: true`, `ecarts: []` ; `executionTimeout: 120` de Confirmer PRÉSERVÉ par le POST (fixture non déclenchée) | **GO** |
 | 2026-11-11 | Éric | G6 hors ligne | — (jsDelivr `@e66fe79…`, `moteur-correction-v1.js`) | curl + shasum + openssl | SHA-256 `ce14c3e4…` = registre ; sha384 `mUn/uhV5…` = attendu | **GO** (volet navigateur : pendant G4) |
+
+Phase 3 — porte G3 (Data Table, nœud natif ; fenêtre d'Emettre seul ; opérateur : Éric ; dates 2026-11-11 et 2026-11-12, heures exactes et ids d'exécution au journal d'Éric). Ordre : cas (b) d'abord, (a) en dernier. Extraits expurgés : jamais `k`, adresse, jeton.
+
+| Date | Opérateur | Épreuve | Workflow (id) | Outil, code | Extrait expurgé | Verdict |
+|---|---|---|---|---|---|---|
+| 2026-11-11 | Éric | comparer-live avant la porte | Emettre `McD7qTGQHeov0nmT` | comparer-live, **code 0** | `identique: true` | **GO** |
+| 2026-11-11/12 | Éric | G3 b1 table vide | Emettre | curl + sonde, **code 0** | `status: error` au nœud « Valider destinataire » (lu dans `runData`, voir trou de la sonde) ; rien écrit dans `relecture/` ; aucun courriel | **GO** (rejet avant écriture) |
+| 2026-11-11/12 | Éric | G3 b2 relecteur absent | Emettre | curl + sonde, **code 0** | `status: error`, « Valider destinataire » ; rien écrit ; aucun courriel | **GO** |
+| 2026-11-11/12 | Éric | G3 b3 doublon (redéfini : 2 lignes `eric`, 2 adresses de test différentes) | Emettre | curl + sonde, **code 0** | `status: error`, « Valider destinataire » ; rien écrit ; aucun courriel | **GO** |
+| 2026-11-11/12 | Éric | G3 b4 adresse hors grammaire (valeur synthétique) | Emettre | curl + sonde, **code 0** | `status: error`, « Valider destinataire » ; rien écrit ; courriel jamais tenté | **GO** |
+| 2026-11-12 | Éric | G3 (a) nominal | Emettre | curl + sonde, **code 0** | `status: success` ; candidat `set_fonda_proportionnalite_nI_02.candidat.json` créé ; courriel reçu à l'adresse de test (adresse lue à l'exécution, absente de l'export) | **GO** ; candidat et lien CONSERVÉS pour G4 |
+| 2026-11-12 | Éric | comparer-live après désactivation (relevé de la fixture `activeVersion`) | Emettre `McD7qTGQHeov0nmT` | comparer-live, **code 0** | `identique: true` après activer/désactiver | **GO** ; fixture `activeVersion` NON déclenchée |
+
+Trouvailles de G3 (consignées, aucune valeur sensible) :
+- **Credential Gmail à autoriser** : 1re version de b3 INVALIDE comme cas de test (au plus une ligne valait exactement `eric` : « Valider destinataire » a passé), exécution en échec à « Envoyer lien » (« Unable to sign without access token »), candidat orphelin écrit ; credential « FONDA RECETTE Gmail relecture » autorisé par Éric dans l'interface.
+- **API Gmail activée** dans le projet Google Cloud du client OAuth (`923455870405`) : essai suivant en HTTP 403 `accessNotConfigured` / `SERVICE_DISABLED` ; activation par Éric, puis (a) GO. Aucun changement de dépôt.
+- **Règle « candidat à la corbeille -> refus » GARDÉE** : Emettre refuse d'émettre tant qu'un candidat du même nom est à la corbeille ; suppression DÉFINITIVE exigée avant de rejouer (décision de l'architecte : comportement voulu, inchangé).
+- **Arête « candidat écrit avant envoi confirmé »** : chaque échec d'envoi laisse un candidat orphelin dont la clé est perdue (README : « envoi non confirmé, candidat déjà écrit ») ; comportement par conception. Orphelins de G3 supprimés définitivement par Éric avant le cas (a) final.
+- **Trou de la sonde (`erreur_noeud`)** : `sonde-executions.js` lit `resultData.error.node`, absent pour les erreurs des nœuds Code (task runner) -> `erreur_noeud: null` alors que l'exécution est en erreur. Nœud en erreur établi par `runData` (preuve indépendante). Correctif (lecture dans `runData`, `lastNodeExecuted` en contrôle de cohérence, tests et mutations) : petite PR **avant G5**. Sans effet sur G4 (les rejets de Page et Confirmer sont des exécutions `success`).
+- **Fixture `activeVersion` NON déclenchée** : comparer-live rend code 0 après un cycle activer/désactiver (publication propre à n8n 2.x) ; aucun traitement à ajouter à comparer-live.
