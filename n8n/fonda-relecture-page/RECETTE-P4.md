@@ -166,6 +166,7 @@ Format par épreuve : `date heure | opérateur | workflow (id) | exécutions (id
 | Fenêtre | Workflow | Activé à | Désactivé à | Annoncée par |
 |---|---|---|---|---|
 | G3 (Data Table, nœud natif) | Emettre `McD7qTGQHeov0nmT` (seul) | heure au journal d'Éric | heure au journal d'Éric | architecte |
+| G4 (HMAC, Crypto v1) + G6 navigateur | Page `RcplBgiyLl5oF26K` puis Confirmer `Yp1hKYuYdICZ84KM` (Emettre inactif) | heure au journal d'Éric | heure au journal d'Éric (ordre inverse) | architecte |
 
 ### Résultats
 Phase 2 — import inactif et octet-identité (2026-11-11 ; opérateur : Éric ; heures exactes au journal d'Éric ; aucune activation). Extraits expurgés : jamais `k`, adresse, secret, jeton.
@@ -199,3 +200,39 @@ Trouvailles de G3 (consignées, aucune valeur sensible) :
 - **Arête « candidat écrit avant envoi confirmé »** : chaque échec d'envoi laisse un candidat orphelin dont la clé est perdue (README : « envoi non confirmé, candidat déjà écrit ») ; comportement par conception. Orphelins de G3 supprimés définitivement par Éric avant le cas (a) final.
 - **Trou de la sonde (`erreur_noeud`)** : `sonde-executions.js` lit `resultData.error.node`, absent pour les erreurs des nœuds Code (task runner) -> `erreur_noeud: null` alors que l'exécution est en erreur. Nœud en erreur établi par `runData` (preuve indépendante). Correctif (lecture dans `runData`, `lastNodeExecuted` en contrôle de cohérence, tests et mutations) : petite PR **avant G5**. Sans effet sur G4 (les rejets de Page et Confirmer sont des exécutions `success`).
 - **Fixture `activeVersion` NON déclenchée** : comparer-live rend code 0 après un cycle activer/désactiver (publication propre à n8n 2.x) ; aucun traitement à ajouter à comparer-live.
+
+Phase 3 — porte G4 (HMAC, vrai nœud Crypto v1, secret injecté) et volet navigateur de G6 (fenêtre Page + Confirmer ; Emettre inactif ; opérateur : Éric ; 2026-11-12 ; heures exactes et ids d'exécution au journal d'Éric, sauf 280695). Ordre : 2a, 2a′, 2b, 1b, puis 1a + G6. Extraits expurgés : jamais `k`, lien, adresse, jeton, contenu du lot.
+
+| Date | Opérateur | Épreuve | Workflow (id) | Outil, code | Extrait expurgé | Verdict |
+|---|---|---|---|---|---|---|
+| 2026-11-12 | Éric | G4 2a Page, `k` fausse (aléatoire) : branche fausse de « Page disponible ? » | Page (exécution 280695) | curl + sonde, **code 0** | `http=410` ; `success` ; « Preparer jeton » -> « Page disponible ? » -> « Construire page » -> « Repondre page » ; **« Signer jeton » absent** (aucun jeton calculé) ; corps = page indisponible FIXE, **586 octets, SHA-256 `9dd20bd1…`** = valeur attendue (calculée depuis l'export, comparée par Éric sans affichage) : aucune donnée du lot | **GO** (Crypto contourné, aucune fuite) |
+| 2026-11-12 | Éric | G4 2a′ Page, requête mal formée (`k` absente) : branche fausse de « Requete valide ? » | Page | curl + sonde, **code 0** | `http=400` ; « Page indisponible » ; ni « Chercher candidat » ni « Signer jeton » | **GO** |
+| 2026-11-12 | Éric | G4 2b Confirmer, C1 (`content-type` JSON) : branche fausse de « Syntaxe valide ? » | Confirmer | curl + sonde, **code 0** | `http=400` ; « Controler syntaxe formulaire » ; **« Recalculer jeton » absent** | **GO** (Crypto contourné) |
+| 2026-11-12 | Éric | G4 1b C2 : jeton faux ; valeur modifiée (vrai jeton, empreinte changée) | Page + Confirmer | script 1b (ci-dessous) + sonde, **code 0** | `jeton faux http=403`, `valeur modifiée http=403` ; « Recalculer jeton » et « Verifier formulaire » présents, **« Chercher candidat » absent** ; rien dans `decisions/` | **GO** |
+| 2026-11-12 | Éric | G4 1a bout en bout + G6 navigateur | Page + Confirmer | Chrome (Console, Réseau) + sonde, **code 0** | page 200, cartes affichées, moteur chargé depuis jsDelivr, **SRI acceptée** ; **aucune violation CSP ni SRI** de la page ; soumission : C2 accepte -> « FONDA Ecrire decision » -> décision écrite dans `decisions/` | **GO** (G4 et G6 navigateur) |
+| 2026-11-12 | Éric | comparer-live après désactivation | Page, Confirmer | comparer-live, **code 0** ×2 | `identique: true` (fixture `activeVersion` non déclenchée) | **GO** |
+
+**Correction du graphe de la Page (feuille G4) :** le rejet APRÈS lecture du candidat (C3 au GET, dont une `k` fausse) ne passe PAS par le nœud « Page indisponible ». La branche fausse de « Page disponible ? » mène directement à « Construire page », dont la garde initiale (`if (p.disponible !== true) return indisponible();`) renvoie `{ code: 410, html: <page fixe> }` avant tout usage du candidat, des nonces ou de `k`. Le nœud « Page indisponible » ne sert qu'aux rejets AMONT (« Requete valide ? » faux -> 400 ; « Candidat trouve ? » faux -> 410). Les deux nœuds produisent la même page fixe (même gabarit, message constant, CSP `default-src 'none'`, aucun script ni formulaire). Les instantanés d'exécution de « Lire candidat » et des nonces contiennent le candidat côté n8n seulement (critère révisé assumé), jamais la réponse HTTP.
+
+**État laissé pour la suite** : une décision dans `decisions/` ; candidat `set_fonda_proportionnalite_nI_02` toujours `en_attente` (entrées de G5 — soumission différente -> 409 — et de G2). Rejouer 1a exigera une réémission (G1).
+
+**Script 1b** (usage unique, NON versionné, consigné verbatim sur décision de l'architecte ; sûr par construction : `action=accepter` avec un seul choix `choix_it99`, carte inexistante, si bien que si C2 cédait à tort, C5 rejetterait en 400 SANS rien écrire ; le lien passe par le presse-papiers sur l'entrée standard, jamais en argument ni à l'écran ; seuls les codes HTTP sont affichés) :
+```sh
+pbpaste | node -e '
+const u = new URL(require("fs").readFileSync(0, "utf8").trim());
+if (u.origin !== "https://n8n.srv868991.hstgr.cloud" || u.pathname !== "/webhook/fonda-recette-select") { console.log("lien inattendu"); process.exit(1); }
+(async () => {
+  const p = await fetch(u, { redirect: "error" }); const html = await p.text();
+  const m = html.match(/<script type="application\/json" id="donnees">([\s\S]*?)<\/script>/);
+  if (p.status !== 200 || !m) { console.log("page http=" + p.status); process.exit(1); }
+  const ch = JSON.parse(m[1]).formulaire.champs;
+  const bascule = (h) => h.slice(0, -1) + (h.endsWith("0") ? "1" : "0");
+  const cas = { "jeton faux": { ...ch, jeton: bascule(ch.jeton) }, "valeur modifiée": { ...ch, empreinte: bascule(ch.empreinte) } };
+  for (const [nom, c] of Object.entries(cas)) {
+    const r = await fetch(u.origin + "/webhook/fonda-recette-select-confirm", { method: "POST", redirect: "error",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ ...c, action: "accepter", choix_it99: "garder" }) });
+    console.log(nom + " http=" + r.status);
+  }
+})();'; pbcopy < /dev/null
+```
