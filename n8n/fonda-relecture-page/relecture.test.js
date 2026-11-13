@@ -1078,6 +1078,12 @@ describe('5 bis. filtre EXACT des décisions (G2) : nom exact OU properties.fond
     const memeLongueur = `${SET.replace('_nI_', '_nF_')}-${HEX}.json`;
     assert.equal(memeLongueur.length, nT().length);
     assert.deepEqual(f([{ name: memeLongueur }], SET), []);
+    // Nonce CONFORME : chaque contrainte isolée (critique Codex, mineur 1).
+    for (const nom of [
+      `${SET}_${HEX}.json`, // séparateur « - » absent : tue « startsWith(setId) »
+      `${SET.toUpperCase()}-${HEX}.json`, // préfixe en majuscules : tue « casse insensible »
+      `${SET}-${HEX}.json\n.bak`, // saut de ligne + suffixe : tue « drapeau m »
+    ]) assert.deepEqual(f([{ name: nom }], SET), [], JSON.stringify(nom));
   });
   test('Emettre : leurres G2 + formes voisines + propriété d\'un autre lot, tous RENDUS par Drive -> NON comptés : émission réussie, un courriel', async () => {
     const d = mondeAvecLot(); deposerLeurres(d);
@@ -1118,6 +1124,18 @@ describe('5 bis. filtre EXACT des décisions (G2) : nom exact OU properties.fond
     d2.crochets.avantCreer = async () => { deposerLeurres(d2); d2.ajouter(DEC, nT(), '{}'); };
     const e2 = await emettre(d2);
     assert.equal(e2.status, 'error'); assert.equal(e2.noeudErreur, N_E.verifier); assert.match(e2.erreur, /1 décision\(s\) apparue\(s\)/); assert.equal(d2.envois.length, 0);
+  });
+  test('Emettre, Relister SEUL incomplet ou au plafond, LEURRES SEULS -> erreur à « Verifier ecriture », aucun courriel', async () => {
+    const d = mondeAvecLot();
+    d.crochets.avantCreer = async () => { deposerLeurres(d); d.o.incomplet = (q) => q.includes(`'${DEC}'`); };
+    const e = await emettre(d);
+    assert.equal(e.status, 'error'); assert.equal(e.noeudErreur, N_E.verifier); assert.match(e.erreur, /listing non prouvé complet/);
+    assert.ok(d.candidat(SET), 'écriture faite : seule la reliste est en cause'); assert.equal(d.envois.length, 0);
+    const d2 = mondeAvecLot({ taillePage: 1 });
+    d2.crochets.avantCreer = async () => { for (let i = 0; i <= B.CONFIG.maxPagesDrive; i += 1) d2.ajouter(DEC, `x-${SET}-leurre-${i}.json`, '{}'); };
+    const e2 = await emettre(d2);
+    assert.equal(e2.status, 'error'); assert.equal(e2.noeudErreur, N_E.verifier); assert.match(e2.erreur, /listing non prouvé complet/);
+    assert.equal(d2.envois.length, 0);
   });
   test('Cloturer : nb_decisions_listees = fichiers RETENUS seulement (T+ et propriété seule comptés, leurres non)', async () => {
     const { d } = await lotEmis();
