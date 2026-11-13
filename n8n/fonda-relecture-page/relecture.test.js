@@ -432,6 +432,13 @@ process.on('exit', () => fs.writeFileSync(process.env.TRACE, JSON.stringify([...
 });
 
 // ── 3. Faux Drive : requête q INTERPRÉTÉE, champs projetés, pagination par jeton ──
+const motsDrive = (x) => (String(x).toLowerCase().match(/[a-z]+|[0-9]+/g) || []);
+function contientMots(nom, requete) {
+  const n = motsDrive(nom); const r = motsDrive(requete);
+  if (!r.length) return false;
+  for (let i = 0; i + r.length <= n.length; i += 1) if (r.every((m, j) => n[i + j] === m)) return true;
+  return false;
+}
 function analyserQ(q) {
   const jetons = []; let i = 0;
   while (i < q.length) {
@@ -461,8 +468,10 @@ function analyserQ(q) {
       p += 1; const op = voir(); p += 1; const v = prendre('chaine').v;
       if (op.t === '=') return (f) => f.name === v;
       if (op.t === '!=') return (f) => f.name !== v;
-      // Drive : « contains » sur name = correspondance par PRÉFIXE (modèle prudent : préfixe du nom entier).
-      if (op.t === 'mot' && op.v === 'contains') return (f) => f.name.startsWith(v);
+      // Drive : « contains » sur name = modèle OBSERVÉ en recette G2 (RECETTE-P4, 2026-11-13) : suite de MOTS cherchée
+      // n'importe où dans le nom ; mots = découpage aux non-alphanumériques ET aux frontières chiffre/lettre ; casse
+      // ignorée ; chaque mot entier (`02` ne prend pas `021`). Sur-correspondances (préfixe, `_`/`-`, majuscules) RÉELLES.
+      if (op.t === 'mot' && op.v === 'contains') return (f) => contientMots(f.name, v);
       throw new Error(`q : opérateur name non simulé (${q})`);
     }
     if (estMot('trashed')) {
@@ -519,7 +528,9 @@ function fauxDrive(o = {}) {
       }
       const champs = projeter(fields);
       const omis = o.omettre ? seq.pages[iPage].filter((f) => o.omettre(seq.q, f)) : [];
-      const corps = { files: seq.pages[iPage].filter((f) => !omis.includes(f)).map((f) => Object.fromEntries(champs.map((c) => [c, f[c]]))) };
+      // Drive OMET « properties » d'un fichier qui n'en a aucune.
+      const vide = (f, c) => c === 'properties' && (!f.properties || !Object.keys(f.properties).length);
+      const corps = { files: seq.pages[iPage].filter((f) => !omis.includes(f)).map((f) => Object.fromEntries(champs.filter((c) => !vide(f, c)).map((c) => [c, f[c]]))) };
       if (o.incomplet && o.incomplet(seq.q, iPage)) corps.incompleteSearch = true; else corps.incompleteSearch = false;
       if (iPage + 1 < seq.pages.length) { const j = `jeton-${++nj}`; sequences.set(j, { seq, iPage: iPage + 1 }); corps.nextPageToken = j; }
       return corps;
@@ -597,7 +608,17 @@ describe('3. faux Drive : interpréteur de q (une clause = un test)', () => {
   const ids = (q) => d.lister({ q, fields: 'nextPageToken,incompleteSearch,files(id)' }).files.map((f) => f.id).sort();
   test('parents', () => { assert.deepEqual(ids(`'dossier-autre' in parents`), [c]); });
   test('name = (exact) et name != ', () => { assert.deepEqual(ids(`name = 'autre.json'`), [b]); assert.deepEqual(ids(`'${DEC}' in parents and name != 'autre.json'`), [a, t].sort()); });
-  test('name contains (préfixe)', () => { assert.deepEqual(ids(`name contains 'set_x_nI_01-'`), [a, c, t].sort()); assert.deepEqual(ids(`name contains 'nI_01-n1'`), []); });
+  test('name contains (modèle G2 : suite de mots n\'importe où, casse et séparateurs ignorés, mot entier)', () => {
+    assert.deepEqual(ids(`name contains 'set_x_nI_01-'`), [a, c, t].sort());
+    assert.deepEqual(ids(`name contains 'nI_01-n1'`), [a]);
+    assert.deepEqual(ids(`name contains 'set_x_nI_0'`), []);
+  });
+  test('name contains : les 9 cas de la recette G2 reproduits (S = set_fonda_proportionnalite_nI_02)', () => {
+    const S = 'set_fonda_proportionnalite_nI_02';
+    const cas = { [`${S}-${'f'.repeat(32)}.json`]: true, [`${S}1-leurre.json`]: false, [`x-${S}-leurre.json`]: true, [`${S}_leurre.json`]: true,
+      [`${S}leurre.json`]: true, [S.replace(/_/g, '-') + '-leurre.json']: true, [`${S.replace('nI', 'nF')}-leurre.json`]: false, [`${S.toUpperCase()}-leurre.json`]: true };
+    for (const [nom, attendu] of Object.entries(cas)) assert.equal(contientMots(nom, `${S}-`), attendu, nom);
+  });
   test('properties has (clé ET valeur)', () => { assert.deepEqual(ids(`properties has { key='fonda_set_id' and value='S' }`), [a, b].sort()); assert.deepEqual(ids(`properties has { key='fonda_set_id' and value='T' }`), []); });
   test('trashed = false / true', () => { assert.deepEqual(ids(`'${DEC}' in parents and trashed = false`), [a, b].sort()); assert.deepEqual(ids('trashed = true'), [t]); });
   test('and / or / parenthèses (and prioritaire)', () => {
@@ -1012,6 +1033,105 @@ describe('5. Cloturer sur le faux Drive (finding 1) : chaque clause traversée p
     assert.equal(c.r.status, 'error'); assert.match(c.r.erreur, /plafond/); assert.equal(c.r.runData[N_C.sortie], undefined);
     assert.equal(P.rattacherPage(c.detail, { role: 'cloture', workflowId: 'wfClot', observation: c.obs }).nature, 'erreur');
     assert.ok(issues(await evaluer(d, SET, [c]), 'abandon').some((x) => /blocage dur/.test(x.raison)));
+  });
+});
+
+// ── 5 bis. Filtre EXACT après la requête large (recette G2, 2026-11-13 ; décision de l'architecte) ──
+// La requête Drive `qDecisions` reste large (candidats) ; seuls COMPTENT les fichiers au nom EXACT
+// `<set_id>-<32 hex>.json` OU portant properties.fonda_set_id === set_id. plafond / incompleteSearch : pages BRUTES.
+const HEX = 'a1b2c3d4'.repeat(4);
+const LEURRES_G2 = (s) => [
+  `${s}1-leurre.json`, `x-${s}-leurre.json`, `${s}_leurre.json`, `${s}leurre.json`, `${s.replace(/_/g, '-')}-leurre.json`,
+  `${s.replace('_nI_', '_nF_')}-leurre.json`, `${s.toUpperCase()}-leurre.json`,
+  // Formes voisines du nom exact (le filtre est EXACT : longueur, minuscules hexadécimales, extension, préfixe) :
+  `${s}-${HEX.slice(1)}.json`, `${s}-${HEX}0.json`, `${s}-${HEX.toUpperCase()}.json`, `${s}-${HEX}.json.bak`, `${s}-${HEX.replace('a', 'g')}.json`,
+  `x${s}-${HEX}.json`, `${s}-${HEX}.JSON`, `${s}-${HEX}xjson`,
+];
+function deposerLeurres(d, s = SET) {
+  for (const nom of LEURRES_G2(s)) d.ajouter(DEC, nom, '{}');
+  d.ajouter(DEC, `${s}-autre-lot.json`, '{}', { fonda_set_id: AUTRE }); // propriété d'un AUTRE lot, nom sur-correspondant
+}
+const brutsListes = (r, noeud) => r.sorties[noeud].reduce((n, it) => n + it.json.files.length, 0);
+const nT = (s = SET) => `${s}-${'f'.repeat(32)}.json`; // T+ : nom exact, AUCUNE propriété
+
+describe('5 bis. filtre EXACT des décisions (G2) : nom exact OU properties.fonda_set_id ; requête large inchangée', () => {
+  test('statique : CHAMPS_DECISIONS (id,name,properties) sur les 3 nœuds qDecisions SEULEMENT ; requête large inchangée', () => {
+    const champs = (wf, nom) => wf.nodes.find((n) => n.name === nom).parameters.queryParameters.parameters.find((x) => x.name === 'fields').value;
+    const em = JSON.parse(lireExport('emettre')); const cl = JSON.parse(lireExport('cloturer'));
+    for (const [wf, nom] of [[em, N_E.decisions], [em, N_E.relister], [cl, N_C.decisions]]) {
+      assert.equal(champs(wf, nom), 'nextPageToken,incompleteSearch,files(id,name,properties)', nom);
+      const q = wf.nodes.find((n) => n.name === nom).parameters.queryParameters.parameters.find((x) => x.name === 'q').value;
+      assert.match(q, /name contains '" \+ .+ \+ "-' or properties has \{ key='fonda_set_id'/, nom);
+    }
+    for (const [wf, nom] of [[em, N_E.chercherLot], [em, N_E.existant], [cl, N_C.chercher]]) assert.doesNotMatch(champs(wf, nom), /properties/, nom);
+  });
+  test('decisionsDuLot (extraite TELLE QUELLE des 3 nœuds, identique partout) : set_id invalide -> erreur ; nom exact / propriété', () => {
+    const src = (wf, nom) => /function decisionsDuLot\(fichiers, setId\) \{[\s\S]*?\n\}/.exec(wf.nodes.find((n) => n.name === nom).parameters.jsCode)[0];
+    const em = JSON.parse(lireExport('emettre')); const cl = JSON.parse(lireExport('cloturer'));
+    const sources = [src(em, N_E.analyser), src(em, N_E.verifier), src(cl, N_C.sortie)];
+    assert.equal(new Set(sources).size, 1);
+    const f = new Function(`${sources[0]}\nreturn decisionsDuLot;`)();
+    for (const s of [undefined, null, '', 42]) assert.throws(() => f([], s), /set_id invalide/, String(s));
+    const fic = [{ name: nT() }, { name: 'x.json', properties: { fonda_set_id: SET } }, { name: 'y.json', properties: null }, null, ...LEURRES_G2(SET).map((name) => ({ name }))];
+    assert.deepEqual(f(fic, SET).map((x) => x.name), [nT(), 'x.json']);
+  });
+  test('Emettre : leurres G2 + formes voisines + propriété d\'un autre lot, tous RENDUS par Drive -> NON comptés : émission réussie, un courriel', async () => {
+    const d = mondeAvecLot(); deposerLeurres(d);
+    const e = await emettre(d);
+    assert.equal(e.status, 'success', e.erreur);
+    assert.ok(brutsListes(e, N_E.decisions) >= 6, 'la requête large rend bien des sur-correspondances (le test exerce le filtre)');
+    assert.ok(brutsListes(e, N_E.relister) >= 6, 'Relister aussi');
+    assert.equal(d.envois.length, 1); assert.ok(d.candidat(SET));
+  });
+  test('Emettre : T+ (nom exact, sans propriété) -> COMPTÉ : refus avant écriture', async () => {
+    const d = mondeAvecLot(); deposerLeurres(d); d.ajouter(DEC, nT(), '{}');
+    const e = await emettre(d);
+    assert.equal(e.status, 'error'); assert.equal(e.noeudErreur, N_E.analyser); assert.match(e.erreur, /decisions\/ : 1 décision\(s\) du lot/);
+    assert.equal(d.candidat(SET), undefined); assert.equal(d.envois.length, 0);
+  });
+  test('Emettre : fichier retenu par sa SEULE propriété (nom quelconque) -> COMPTÉ ; T+ en plus -> 2', async () => {
+    const d = mondeAvecLot(); deposerLeurres(d); d.ajouter(DEC, 'renomme.json', '{}', { fonda_set_id: SET });
+    assert.match((await emettre(d)).erreur, /decisions\/ : 1 décision\(s\) du lot/);
+    d.ajouter(DEC, nT(), '{}', {}, { trashed: true });
+    const e = await emettre(d);
+    assert.match(e.erreur, /decisions\/ : 2 décision\(s\) du lot/); assert.equal(d.envois.length, 0);
+  });
+  test('Emettre : incompleteSearch ou plafond avec des LEURRES SEULS -> refus (pages brutes, jamais le compte filtré)', async () => {
+    const d = mondeAvecLot({ incomplet: (q) => q.includes(`'${DEC}'`) }); deposerLeurres(d);
+    const e = await emettre(d);
+    assert.equal(e.status, 'error'); assert.match(e.erreur, /incompleteSearch/); assert.equal(d.envois.length, 0);
+    const d2 = mondeAvecLot({ taillePage: 1 });
+    for (let i = 0; i <= B.CONFIG.maxPagesDrive; i += 1) d2.ajouter(DEC, `x-${SET}-leurre-${i}.json`, '{}');
+    const e2 = await emettre(d2);
+    assert.equal(e2.status, 'error'); assert.match(e2.erreur, /plafond/); assert.equal(d2.envois.length, 0);
+  });
+  test('Emettre, Relister : leurres apparus PENDANT l\'écriture -> ignorés (courriel) ; T+ apparu -> détecté (aucun courriel)', async () => {
+    const d = mondeAvecLot();
+    d.crochets.avantCreer = async () => deposerLeurres(d);
+    const e = await emettre(d);
+    assert.equal(e.status, 'success', e.erreur); assert.equal(d.envois.length, 1);
+    const d2 = mondeAvecLot();
+    d2.crochets.avantCreer = async () => { deposerLeurres(d2); d2.ajouter(DEC, nT(), '{}'); };
+    const e2 = await emettre(d2);
+    assert.equal(e2.status, 'error'); assert.equal(e2.noeudErreur, N_E.verifier); assert.match(e2.erreur, /1 décision\(s\) apparue\(s\)/); assert.equal(d2.envois.length, 0);
+  });
+  test('Cloturer : nb_decisions_listees = fichiers RETENUS seulement (T+ et propriété seule comptés, leurres non)', async () => {
+    const { d } = await lotEmis();
+    deposerLeurres(d); d.ajouter(DEC, nT(), '{}'); d.ajouter(DEC, 'renomme.json', '{}', { fonda_set_id: SET });
+    const c = await cloturer(d, { set_id: SET });
+    assert.equal(c.r.status, 'success', c.r.erreur);
+    assert.ok(brutsListes(c.r, N_C.decisions) >= 8, 'sur-correspondances rendues par la requête large');
+    assert.deepEqual([sortieDe(c.r, N_C.sortie).nb_decisions_listees, sortieDe(c.r, N_C.sortie).incomplete_search], [2, false]);
+  });
+  test('Cloturer : LEURRES SEULS -> 0 ; incompleteSearch conservé ; plafond -> erreur (pages brutes)', async () => {
+    const { d } = await lotEmis();
+    deposerLeurres(d); d.o.incomplet = (q) => q.includes(`'${DEC}'`); // après l'émission : seule la liste de clôture est incomplète
+    const s = sortieDe((await cloturer(d, { set_id: SET })).r, N_C.sortie);
+    assert.deepEqual([s.nb_decisions_listees, s.incomplete_search], [0, true]);
+    const { d: d2 } = await lotEmis({ taillePage: 1 });
+    for (let i = 0; i <= B.CONFIG.maxPagesDrive; i += 1) d2.ajouter(DEC, `x-${SET}-leurre-${i}.json`, '{}');
+    const c2 = await cloturer(d2, { set_id: SET });
+    assert.equal(c2.r.status, 'error'); assert.match(c2.r.erreur, /plafond/);
   });
 });
 
