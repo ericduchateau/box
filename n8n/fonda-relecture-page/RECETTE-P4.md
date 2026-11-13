@@ -168,6 +168,7 @@ Format par épreuve : `date heure | opérateur | workflow (id) | exécutions (id
 | G3 (Data Table, nœud natif) | Emettre `McD7qTGQHeov0nmT` (seul) | heure au journal d'Éric | heure au journal d'Éric | architecte |
 | G4 (HMAC, Crypto v1) + G6 navigateur | Page `RcplBgiyLl5oF26K` puis Confirmer `Yp1hKYuYdICZ84KM` (Emettre inactif) | heure au journal d'Éric | heure au journal d'Éric (ordre inverse) | architecte |
 | G5 (codes, en-têtes, doublons) | Page, Confirmer, Emettre, Cloturer | heure au journal d'Éric | heure au journal d'Éric (ordre inverse) | architecte |
+| G2 (`name contains`, leurres) | Emettre `McD7qTGQHeov0nmT` (seul) | heure au journal d'Éric (1er appel 2026-11-13 13:32 Paris) | heure au journal d'Éric (après le contrôle final de 15:23 ; inactif constaté par GET) | architecte |
 
 ### Résultats
 Phase 2 — import inactif et octet-identité (2026-11-11 ; opérateur : Éric ; heures exactes au journal d'Éric ; aucune activation). Extraits expurgés : jamais `k`, adresse, secret, jeton.
@@ -314,3 +315,54 @@ const post = async (nom, body, ct = 'application/x-www-form-urlencoded') => {
   await post('P3 rejeu exact de P1', p1);
 })();
 ```
+
+Phase 3 — porte G2 (`name contains` : conformes + leurres ; fenêtre d'Emettre SEUL ; opérateur : Éric ; 2026-11-13 ; heures exactes au journal d'Éric). **Banc** : Emettre appelé avec le corps et le jeton valides ; avec ≥ 1 décision du lot, « Analyser emission » lève `decisions/ : N décision(s) du lot : ni émission ni réémission` AVANT la Data Table, toute écriture et tout courriel : **N = nombre de fichiers rendus par la requête `qDecisions`** (« Lister decisions »), lu dans `error.description` (le `message` n8n est tronqué après les deux-points). Leurres : fichiers `{}` sans propriété, déposés par Éric dans `FONDA-RECETTE/decisions/` **un par un, cumulativement**, ~2 min d'attente avant chaque appel. Extraits expurgés : jamais `k`, jeton, adresse.
+
+**Pré-vol** : jeton d'en-tête d'Emettre **remplacé** (aucune entrée de trousseau n'avait été prévue en phase 1) : nouvelle valeur générée par Éric directement au trousseau (service `fonda-recette-emettre-token`, `openssl rand -hex 32`), collée dans le credential « FONDA RECETTE Emettre Token » (nom d'en-tête inchangé) ; workflow non ouvert. Cloturer : jeton non remplacé (plus tard si besoin). Exécution manuelle avec données épinglées **écartée** (édition du workflow et « Execute » interdits). Référence sonde : dernier id 280666.
+
+**Couverture de Cloturer** : les 3 nœuds `qDecisions` (Emettre « Lister decisions » et « Relister decisions », Cloturer « Lister decisions ») ont des paramètres identiques **au nom du nœud source du `set_id` près** (`$('FONDA Entree emission')` / `$('Valider cloture')`) : même `httpRequest` v4.2, même requête, mêmes options (corbeille, pagination, champs). Emettre×2 identiques à l'octet (SHA-256 des paramètres `2625c790…`) ; Cloturer `00d1ac74…`, une seule ligne diffère. Prouver le gabarit sur Emettre couvre Cloturer pour un même `set_id` validé. C6 de Confirmer (`name = '<lot>-<nonce>.json'`, nom exact) : hors sujet de sur-correspondance, 0 et 1 fichier déjà prouvés en G5.
+
+| Étape | Fichier ajouté (cumulatif) | Exécution | N | Nouveau nom compté (lecture des noms) | Verdict |
+|---|---|---|---|---|---|
+| 0 | aucun (G4 + P1) | 280798 | **2** | — | **GO** (référence) |
+| T+ | `S-ffffffffffffffffffffffffffffffff.json` (nom conforme, sans propriété) | 280799, 280800 | **3** | T+ | **GO** (témoin positif ; déjà compté à 280799) |
+| T🗑 | T+ mis à la corbeille | 280801 | **3** | — | **GO** (corbeille comprise, voulu §9/§21.1) |
+| L1 | `set_fonda_proportionnalite_nI_021-leurre.json` | 280802 | 3 | — (absent aussi à 280803–280810) | **GO** |
+| L2 | `x-set_fonda_proportionnalite_nI_02-leurre.json` | 280803 | **4** | L2 | **NO-GO** (sur-correspondance) |
+| L3 | `set_fonda_proportionnalite_nI_02_leurre.json` | 280804 | **5** | L3 | **NO-GO** |
+| L4 | `set_fonda_proportionnalite_nI_02leurre.json` | 280806 | **6** | L4 | **NO-GO** |
+| L5 | `set-fonda-proportionnalite-nI-02-leurre.json` | 280807 | **7** | L5 | **NO-GO** |
+| L6 | `set_fonda_proportionnalite_nF_02-leurre.json` (autre palier) | 280808 | 7 | — | **GO** (pas de collision entre `set_id`) |
+| L7 | `SET_FONDA_PROPORTIONNALITE_NI_02-leurre.json` | 280809 | **8** | L7 | **NO-GO** (casse ignorée) |
+| Contrôle final | T+ puis L1–L7 **supprimés définitivement** par Éric | 280810 | **2** | noms : G4 `…-39948493….json`, P1 `…-570041aa….json` seulement | **GO** (état de départ rétabli, corbeille comprise) |
+| Clôture | Emettre désactivé | — | — | — | comparer-live **code 0** (`identique: true`, versionId `372ff051` inchangé) ; `active=false` ; `en_vol: []`, dernier id 280810 |
+
+(S = `set_fonda_proportionnalite_nI_02`. 280805 n'est pas une exécution d'Emettre : ids communs à l'instance.)
+
+**Toutes les exécutions** (12 : 280798–280804, 280806–280810) : sonde `--execution` **code 0**, `status: error`, `mode: webhook`, **`erreur_noeud: « Analyser emission »`** (correctif #92 confirmé en conditions réelles, forme task-runner), 11 nœuds exécutés (Webhook emission … Lister decisions, Analyser emission) ; **jamais** « Relister decisions », « Lire adresse relecteur », « Generer cle », écriture ni « Envoyer lien » ; aucun courriel. Un appel de L7 n'a produit aucune exécution (relancé ensuite : 280809). Recoupement : `upstreamContext` (mode `error`, 0 échantillon) donne `files._length` = N à chaque fois.
+
+**Modèle observé de `name contains` dans Drive** (interprétation des 9 cas, non documentée par Google) :
+- les séparateurs `_` et `-`, et la frontière chiffre↔lettre (`02leurre`), sont **équivalents** : découpage en mots, ponctuation de la requête ignorée ;
+- la suite de mots de `<set_id>-` est cherchée **n'importe où** dans le nom (préfixe `x-` compté) ;
+- **casse ignorée** ;
+- le **dernier mot doit être entier** (`02` ne prend pas `021`) ; **aucune collision entre `set_id` distincts** observée (L1, L6 au vert).
+
+**Sens des sur-correspondances (aucun filtrage par nom exact dans n8n après la requête)** : Emettre -> **faux refus** avant toute écriture (lot bloqué, sens sûr) ; Cloturer -> `nb_decisions_listees` gonflé, diagnostic seulement (§21.2) ; signataire -> filtre sur le `set_id` du contenu puis nom exact et propriétés : fichier non conforme = incident, abandon (sens sûr). Défaut caractérisé : **NO-GO de G2 sur le critère « leurres écartés »** ; correctif décidé par l'architecte : filtre exact (PR séparée), puis réimport de recette et G2 rejouée.
+
+**Limite** : un leurre NON compté ne prouve rien que s'il était indexé au moment de l'appel. Délai d'indexation calibré sur T+ (compté ≤ ~2 min après dépôt) ; L1 reste absent à 280803–280809 (jusqu'à > 1 h après dépôt), L6 seulement à 280808–280809 (~30 min).
+
+**Lectures de Claude Code** : GET seuls. Message d'erreur en mode `error`, 0 échantillon, sans chemin ni pile complète ; sonde. **Noms de « Lister decisions »** (autorisation de l'architecte, d'abord pour 280803 puis permanente pour G2) : exécution complète téléchargée par GET, filtrée EN LOCAL, seul le champ `name` affiché (280803 par une commande ponctuelle de même logique, ensuite par `g2-noms.sh` ci-dessous). Les exécutions d'Emettre arrêtées à « Analyser emission » ne contiennent ni `k` (« Generer cle » non exécuté), ni adresse (« Lire adresse relecteur » non exécuté).
+
+**Script `g2-noms.sh`** (usage unique, NON versionné, consigné verbatim ; SHA-256 `0a1d22e92c58def94af1b7d858aabc26fe352bdd45872a02489c4cc125cfaeea`, 802 octets ; usage : `bash g2-noms.sh <id d'exécution>`) :
+```bash
+# G2 : affiche UNIQUEMENT les champs name de la sortie de « Lister decisions » (Emettre). GET seul.
+id="$1"
+curl -sS -H "X-N8N-API-KEY: $(security find-generic-password -s fonda-recette-n8n-lecture -w)" "https://n8n.srv868991.hstgr.cloud/api/v1/executions/$id?includeData=true" | node -e '
+const d=JSON.parse(require("fs").readFileSync(0,"utf8"));
+if (d.workflowId!=="McD7qTGQHeov0nmT") { console.log("workflow inattendu"); process.exit(1); }
+const r=d.data.resultData.runData["Lister decisions"]||[];
+const noms=[]; for (const t of r) for (const br of (t.data&&t.data.main)||[]) for (const it of br||[]) for (const f of (it.json.files||[])) noms.push(f.name);
+console.log("exécution '"$id"' : nœud exécuté "+r.length+" fois, "+noms.length+" noms"); noms.sort().forEach(n=>console.log("  "+n));'
+```
+
+**État laissé pour G1** : `decisions/` = 2 fichiers (G4, P1), corbeille vide pour le lot ; candidat `set_fonda_proportionnalite_nI_02` toujours `en_attente` ; Emettre refusera toujours ce lot (décisions présentes) : G1 exigera un nouveau `set_id`.

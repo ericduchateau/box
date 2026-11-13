@@ -5,7 +5,7 @@
 ## Objectif
 Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correction par profil, mesure par groupe, fiches générées puis relues par un humain), sans casser BOX. Dépôt AAP CARDIE-SEPIA, échéance **21/10/2026**. Source de vérité : `docs/PRD-Box-FONDA.md` ; règles : `AGENTS.md`.
 
-## État actuel (2026-11-13, design = `5dd03da`)
+## État actuel (2026-11-13, design = `d64d41f`)
 - **BOX prod** : 9 workflows n8n actifs, front `https://ericduchateau.github.io/box/` (`main`).
 - **FONDA, chaîne signée en saisie locale** opérationnelle (orchestrateur #59, intérim). Génération `vrqgtS5kQMvP9Ok5` et portier `MkYrdhgTo52nA3av` INACTIFS hors fenêtre.
 - **Publiés c4-milieu P2** (calendrier à jour) : maths `proportionnalite_nI_02`, `resolution-problemes_nI_02` ; français `phrase-orthographe_nI_01`, `lexique_nI_02`, `inference-implicite_nI_02`, `sens-mot-inconnu_nI_02`.
@@ -21,7 +21,7 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - **Doctrine (README « Où vit chaque garantie », §21.5)** : pilier 1 = signataire ; pilier 2 = verrou « un seul écrivain CLI » (P5), contrôle d'intégrité porteur. Les contrôles de version détectent, n'excluent pas. Une exécution observée ne contient que le travail essentiel (son statut porte l'intégrité). `hash_formulaire` = audit rapproché (R1 avant signature), non signé.
 
 ## Prochaines étapes
-1. **P4 recette, phase 3 (portes) en cours** sur copies INACTIVES hors fenêtre (Emettre `McD7…`, Cloturer `WQ2f…`, Confirmer `Yp1h…`, Page `Rcpl…`) : phases 1–2 closes (profil #89, P4b HMAC Crypto v1 #90, K11 #91, octet-identité live), correctif sonde `erreur_noeud` #92. Portes **GO** : G6 (hors ligne + navigateur), G3 (Data Table native), G4 (HMAC), **G5** (codes, en-têtes, doublons = tableaux, 409/idempotence). Restent **G2, G1, G7** (fenêtres annoncées par l'architecte), puis phase 5 (désactivation, révocations). Preuves : `RECETTE-P4.md` (PR `docs/preuves-g3/g4/g5` empilées, à fusionner).
+1. **P4 recette, phase 3 (portes) en cours** sur copies INACTIVES hors fenêtre (Emettre `McD7…`, Cloturer `WQ2f…`, Confirmer `Yp1h…`, Page `Rcpl…`) : phases 1–2 closes (profil #89, P4b HMAC Crypto v1 #90, K11 #91, octet-identité live), correctif sonde `erreur_noeud` #92. Portes **GO** : G6 (hors ligne + navigateur), G3 (Data Table native), G4 (HMAC), G5 (codes, en-têtes, doublons = tableaux, 409/idempotence). **G2 jouée : défaut `name contains` caractérisé** (Drive : `_`/`-`/chiffre↔lettre équivalents, casse ignorée, préfixe compté ; sens sûr) -> **correctif « filtre exact » à venir** (PR séparée, réimport, G2 rejouée). Restent **G1** (nouveau `set_id`), **G7**, puis phase 5. Jeton d'Emettre de recette au trousseau `fonda-recette-emettre-token`. Preuves : `RECETTE-P4.md` (PR `docs/preuves-g2`).
 2. **P5** (`cloturer-page.js`, cadrage avant) : **critère de livraison** = verrou CLI mono-écrivain (verrou local + refus si exécution Emettre/Cloturer en cours) + hypothèse « CLI lancé depuis le seul Mac d'Éric », relu au niveau du signataire ; notification (ex-C7) côté CLI ou workflow séparé non observé.
 3. Prochain run FONDA : preuve empirique du correctif #76 (`sonde-executions.js vrqgtS5kQMvP9Ok5` pendant la génération, lecture seule) ; PR calendrier après chaque publication.
 4. Champ `bande` dans la métadonnée des lots ; bilans de période (P3 avant le 4 janvier).
