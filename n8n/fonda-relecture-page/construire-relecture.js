@@ -313,6 +313,16 @@ const AGREGER = `function agregerPages(nom) {
   const plafond = Boolean(pages[pages.length - 1].nextPageToken);
   return { fichiers, incompleteSearch, plafond, complet: !incompleteSearch && !plafond };
 }`;
+// Filtre EXACT des décisions d'un lot (recette G2, 2026-11-13) : `name contains` de Drive cherche une SUITE DE MOTS
+// (séparateurs et casse ignorés, préfixe compté) et rend des fichiers d'autres noms. Seuls comptent les fichiers au
+// nom EXACT <set_id>-<32 hex minuscules>.json OU portant properties.fonda_set_id === set_id (les deux filets).
+// À appliquer APRÈS agregerPages : plafond et incompleteSearch restent jugés sur les pages BRUTES.
+const DECISIONS_DU_LOT = `function decisionsDuLot(fichiers, setId) {
+  if (typeof setId !== 'string' || !setId) throw new Error('decisionsDuLot : set_id invalide');
+  const nomExact = (n) => typeof n === 'string' && n.startsWith(setId + '-') && /^[0-9a-f]{32}\\.json$/.test(n.slice(setId.length + 1));
+  const proprieteDuLot = (p) => p !== null && typeof p === 'object' && p.fonda_set_id === setId;
+  return fichiers.filter((f) => f && (nomExact(f.name) || proprieteDuLot(f.properties)));
+}`;
 
 // Copie EXACTE d'un module UMD (même schéma que fonda-generation-ia : `self` neutre, require restreint).
 const lireSource = (rel) => fs.readFileSync(path.join(RACINE, rel), 'utf8');
@@ -379,6 +389,8 @@ const metaVersion = (nom, expressionId) => drive(nom, {
 // TOUT le lot dans decisions/ : nom <set_id>-… OU propriété fonda_set_id, corbeille COMPRISE (§9, §21.1).
 const qDecisions = (setIdExpr) => `={{ "'${CONFIG.dossierDecisions}' in parents and (name contains '" + ${setIdExpr} + "-' or properties has { key='fonda_set_id' and value='" + ${setIdExpr} + "' })" }}`;
 const CHAMPS_LISTE = 'nextPageToken,incompleteSearch,files(id,name)';
+// decisions/ : `properties` en plus, pour le filtre EXACT (DECISIONS_DU_LOT) appliqué après la requête large.
+const CHAMPS_DECISIONS = 'nextPageToken,incompleteSearch,files(id,name,properties)';
 const webhook = (nom, chemin, credential, graine) => ({
   name: nom, type: 'n8n-nodes-base.webhook', typeVersion: 2, webhookId: uuid(graine),
   credentials: { httpHeaderAuth: credential },
@@ -468,7 +480,7 @@ return [{ json: { fichier_id: p.fichier_id, contenu: p.contenu } }];`].join('\n\
 }
 function codeSortieCloture() {
   return [ENTETE('sortie OBSERVÉE cloture-fonda/v1 (forme exacte du consommateur gelé, §21.1).'),
-    UN_ITEM(NOEUDS_CLOTURER.sortie), DATE_ISO, AGREGER, VERSION,
+    UN_ITEM(NOEUDS_CLOTURER.sortie), DATE_ISO, AGREGER, DECISIONS_DU_LOT, VERSION,
     `const p = unItem(${JSON.stringify(NOEUDS_CLOTURER.preparer)});
 if (!p.deja_clos) {
   // Détection AU MIEUX d'une écriture glissée entre le contrôle de version et la nôtre (version après ≠ avant + 1).
@@ -483,7 +495,7 @@ const d = agregerPages(${JSON.stringify(NOEUDS_CLOTURER.decisions)});
 // Plafond atteint = pagination NON terminée : aucune sortie (§21.1 exige une pagination complète) -> exécution en erreur.
 if (d.plafond) throw new Error('decisions/ : pagination interrompue au plafond de ${CONFIG.maxPagesDrive} pages : clôture impossible');
 return [{ json: { schema: 'cloture-fonda/v1', set_id: p.set_id, clos_le: relu.relecture.clos_le, deja_clos: p.deja_clos,
-  candidat_fichier_id: p.fichier_id, nb_decisions_listees: d.fichiers.length, incomplete_search: d.incompleteSearch } }];`].join('\n\n');
+  candidat_fichier_id: p.fichier_id, nb_decisions_listees: decisionsDuLot(d.fichiers, p.set_id).length, incomplete_search: d.incompleteSearch } }];`].join('\n\n');
 }
 function construireCloturer() {
   const N = NOEUDS_CLOTURER;
@@ -501,7 +513,7 @@ function construireCloturer() {
     code(N.verifierVersion, codeVerifierVersionCloture()),
     reecritureDrive(N.ecrire, '$json.fichier_id', '$json.contenu'),
     contenuDrive(N.relire, `$('${N.preparer}').first().json.fichier_id`),
-    listing(N.decisions, qDecisions(setIdExpr), CHAMPS_LISTE, true),
+    listing(N.decisions, qDecisions(setIdExpr), CHAMPS_DECISIONS, true),
     code(N.sortie, codeSortieCloture()),
   ].map(positionner('cloturer'));
   const connections = lineaire([N.webhook, N.entree, N.valider, N.chercher, N.verifierListe, N.lire, N.preparer, N.siDejaClos]);
@@ -529,7 +541,7 @@ return [{ json: { set_id: b.set_id, journal_commit: b.journal_commit, referentie
 }
 function codeAnalyserEmission() {
   return [ENTETE('pré-conditions §21.5 : référentiel, moteur, réservation au journal, lot source complet ; candidat existant et decisions/ PROUVÉ vide.'),
-    UN_ITEM(NOEUDS_EMETTRE.analyser), OUTILS, REQUIS, blocModule('catalogue'), blocModule('journal'), AGREGER,
+    UN_ITEM(NOEUDS_EMETTRE.analyser), OUTILS, REQUIS, blocModule('catalogue'), blocModule('journal'), AGREGER, DECISIONS_DU_LOT,
     `const { validerLot, decomposerSetId, slugDeNotion } = M_catalogue.exports;
 const Journal = M_journal.exports;
 const e = unItem(${JSON.stringify(NOEUDS_EMETTRE.entree)});
@@ -566,7 +578,8 @@ if (ex.files.length === 1 && ex.files[0].trashed !== false) throw new Error('can
 const d = agregerPages(${JSON.stringify(NOEUDS_EMETTRE.decisions)});
 if (d.plafond) throw new Error('decisions/ : pagination interrompue au plafond de ${CONFIG.maxPagesDrive} pages : absence de décision NON prouvée, refus');
 if (d.incompleteSearch) throw new Error('decisions/ : recherche Drive incomplète (incompleteSearch) : absence de décision NON prouvée, refus');
-if (d.fichiers.length) throw new Error('decisions/ : ' + d.fichiers.length + ' décision(s) du lot : ni émission ni réémission (abandon et nouveau set_id, §21.5)');
+const duLot = decisionsDuLot(d.fichiers, e.set_id);
+if (duLot.length) throw new Error('decisions/ : ' + duLot.length + ' décision(s) du lot : ni émission ni réémission (abandon et nouveau set_id, §21.5)');
 const reemission = ex.files.length === 1;
 if (reemission && (typeof ex.files[0].version !== 'string' || !/^[0-9]+$/.test(ex.files[0].version))) throw new Error('candidat existant : version Drive illisible');
 return [{ json: { set_id: e.set_id, relecteur, reemission, fichier_id: reemission ? ex.files[0].id : null, version: reemission ? ex.files[0].version : null } }];`].join('\n\n');
@@ -641,7 +654,7 @@ return [{ json: { fichier_id: p.fichier_id } }];`].join('\n\n');
 }
 function codeVerifierEcriture() {
   return [ENTETE('écriture constatée (création : nom attendu ; réémission : même fichier) ; decisions/ RELISTÉ après écriture : toujours prouvé vide.'),
-    UN_ITEM(NOEUDS_EMETTRE.verifier), AGREGER, VERSION,
+    UN_ITEM(NOEUDS_EMETTRE.verifier), AGREGER, DECISIONS_DU_LOT, VERSION,
     `const p = unItem(${JSON.stringify(NOEUDS_EMETTRE.preparer)});
 const r = unItem(p.reemission ? ${JSON.stringify(NOEUDS_EMETTRE.reecrire)} : ${JSON.stringify(NOEUDS_EMETTRE.ecrire)});
 if (!r || typeof r.id !== 'string' || !r.id || r.name !== p.depot.nom) throw new Error('candidat non écrit');
@@ -649,7 +662,8 @@ if (p.reemission && r.id !== p.fichier_id) throw new Error('réémission : fichi
 // D2 : détection AU MIEUX d'une écriture glissée entre le contrôle de version et la nôtre (version après ≠ avant + 1).
 if (p.reemission && r.version !== versionSuivante(p.version)) throw new Error('réémission : écriture concurrente détectée (version ' + r.version + ' ≠ ' + versionSuivante(p.version) + ') : aucun courriel');
 const d = agregerPages(${JSON.stringify(NOEUDS_EMETTRE.relister)});
-if (!d.complet || d.fichiers.length) throw new Error('decisions/ après écriture : ' + (d.complet ? d.fichiers.length + ' décision(s) apparue(s)' : 'listing non prouvé complet') + ' (course détectée) : aucun courriel ; abandon et nouveau set_id si une décision existe');
+const duLot = d.complet ? decisionsDuLot(d.fichiers, p.set_id) : [];
+if (!d.complet || duLot.length) throw new Error('decisions/ après écriture : ' + (d.complet ? duLot.length + ' décision(s) apparue(s)' : 'listing non prouvé complet') + ' (course détectée) : aucun courriel ; abandon et nouveau set_id si une décision existe');
 return [{ json: { candidat_fichier_id: r.id } }];`].join('\n\n');
 }
 // Destinataire (§21.5) : EXACTEMENT une ligne de la Data Table pour relecteur_attribue, adresse d'UNE seule boîte en
@@ -723,7 +737,7 @@ function construireEmettre() {
     contenuDrive(N.lireLot, `$('${N.verifierLot}').first().json.fichier_id`),
     // Corbeille COMPRISE : un candidat à la corbeille bloque (refus), jamais ignoré.
     listing(N.existant, `={{ "'${CONFIG.dossierRelecture}' in parents and name = '" + ${setIdExpr} + ".candidat.json'" }}`, 'nextPageToken,incompleteSearch,files(id,name,trashed,version)', true),
-    listing(N.decisions, qDecisions(setIdExpr), CHAMPS_LISTE, true),
+    listing(N.decisions, qDecisions(setIdExpr), CHAMPS_DECISIONS, true),
     code(N.analyser, codeAnalyserEmission()),
     {
       // Lecture par le NŒUD NATIF (décision de l'architecte, 2026-11-10) : aucune clé d'API n8n, aucun credential,
@@ -747,7 +761,7 @@ function construireEmettre() {
       options: { timeout: 60000 },
     }),
     reecritureDrive(N.reecrire, `$('${N.preparer}').first().json.fichier_id`, `$('${N.preparer}').first().json.depot.contenu`),
-    listing(N.relister, qDecisions(setIdExpr), CHAMPS_LISTE, true),
+    listing(N.relister, qDecisions(setIdExpr), CHAMPS_DECISIONS, true),
     code(N.verifier, codeVerifierEcriture()),
     code(N.courriel, codeCourriel()),
     {
