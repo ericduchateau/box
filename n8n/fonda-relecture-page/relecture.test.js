@@ -1074,6 +1074,10 @@ describe('5 bis. filtre EXACT des décisions (G2) : nom exact OU properties.fond
     for (const s of [undefined, null, '', 42]) assert.throws(() => f([], s), /set_id invalide/, String(s));
     const fic = [{ name: nT() }, { name: 'x.json', properties: { fonda_set_id: SET } }, { name: 'y.json', properties: null }, null, ...LEURRES_G2(SET).map((name) => ({ name }))];
     assert.deepEqual(f(fic, SET).map((x) => x.name), [nT(), 'x.json']);
+    // Préfixe de MÊME LONGUEUR mais autre set_id, suivi d'un nonce conforme : seul startsWith l'exclut.
+    const memeLongueur = `${SET.replace('_nI_', '_nF_')}-${HEX}.json`;
+    assert.equal(memeLongueur.length, nT().length);
+    assert.deepEqual(f([{ name: memeLongueur }], SET), []);
   });
   test('Emettre : leurres G2 + formes voisines + propriété d\'un autre lot, tous RENDUS par Drive -> NON comptés : émission réussie, un courriel', async () => {
     const d = mondeAvecLot(); deposerLeurres(d);
