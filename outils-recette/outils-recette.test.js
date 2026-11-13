@@ -189,7 +189,7 @@ describe('sonde : une seule série, sorties en ensembles fermés, codes 0 / 1 / 
     try { assert.doesNotThrow(() => S.nomsDeConfiance()); } finally { fs.readdirSync = lister; }
   });
   const det = (x) => ({ id: 77, workflowId: 'WfA', status: 'error', mode: 'webhook', startedAt: '2026-11-10T10:00:00.000Z', stoppedAt: '2026-11-10T10:00:01.000Z',
-    data: { resultData: { runData: { 'FONDA Entree confirmation': [{ data: { main: [[{ json: { k: 'SECRET_K', adresse: 'relecteur@exemple.test' } }]] } }], Webhook: [], 'SECRET_NOEUD deadbeef': [] }, error: { node: { name: 'Verifier formulaire' }, message: 'SECRET_MSG' } } }, ...x });
+    data: { resultData: { runData: { 'FONDA Entree confirmation': [{ data: { main: [[{ json: { k: 'SECRET_K', adresse: 'relecteur@exemple.test' } }]] } }], Webhook: [], 'SECRET_NOEUD deadbeef': [] }, error: { node: { name: 'Verifier formulaire' }, message: 'SECRET_MSG' }, lastNodeExecuted: 'Verifier formulaire' } }, ...x });
   test('--execution PRÉSENTE (code 0) : schéma et identité vérifiés ; noms hors liste de confiance -> marqueurs ; aucune donnée', async () => {
     const { f, appels } = reseau([], { 77: det({}) });
     const { r, code } = await S.sonderExecution({ id: '77', cle: CLE, fetch: f });
@@ -198,6 +198,58 @@ describe('sonde : une seule série, sorties en ensembles fermés, codes 0 / 1 / 
     assert.equal(r.erreur_noeud, 'Verifier formulaire');
     assert.ok(sans(JSON.stringify(r), 'SECRET', 'relecteur@', 'deadbeef'));
     assert.deepEqual(appels.map((a) => [a.init.method, new URL(a.url).pathname + new URL(a.url).search]), [['GET', '/api/v1/executions/77?includeData=true']]);
+  });
+  // erreur_noeud : source 1 error.node.name, source 2 l'UNIQUE nœud en erreur de runData, cohérence lastNodeExecuted.
+  const execErreur = (resultData) => ({ id: 77, workflowId: 'WfA', status: 'error', mode: 'webhook', startedAt: '2026-11-10T10:00:00.000Z', stoppedAt: '2026-11-10T10:00:01.000Z', data: { resultData } });
+  const ok = (n) => [{ executionStatus: 'success', data: { main: [[{ json: { k: 'SECRET_K' } }]] } }];
+  const ko = (forme) => [forme === 'statut' ? { executionStatus: 'error' } : { executionStatus: 'error', error: { message: 'SECRET_MSG relecteur@exemple.test', stack: 'SECRET_STACK' } }];
+  const erreurDe = async (resultData) => (await S.sonderExecution({ id: '77', cle: CLE, fetch: async () => reponse(execErreur(resultData)) })).r.erreur_noeud;
+  test('erreur_noeud, forme TASK-RUNNER (error sans node) : l\'unique nœud en erreur de runData, cohérent avec lastNodeExecuted', async () => {
+    const runData = { 'Webhook emission': ok(), 'Lire adresse relecteur': ok(), 'Valider destinataire': ko() };
+    assert.equal(await erreurDe({ runData, error: { message: 'SECRET_MSG' }, lastNodeExecuted: 'Valider destinataire' }), 'Valider destinataire');
+    assert.equal(await erreurDe({ runData: { ...runData, 'Valider destinataire': ko('statut') }, error: { message: 'SECRET_MSG' }, lastNodeExecuted: 'Valider destinataire' }), 'Valider destinataire');
+    assert.equal(await erreurDe({ runData, lastNodeExecuted: 'Valider destinataire' }), 'Valider destinataire'); // error absent
+    assert.equal(await erreurDe({ runData: { ...runData, 'Valider destinataire': [{ error: { message: 'SECRET_MSG' } }] }, lastNodeExecuted: 'Valider destinataire' }), 'Valider destinataire'); // objet error seul
+  });
+  test('erreur_noeud, forme CLASSIQUE : error.node.name prioritaire ; runData ignoré', async () => {
+    const runData = { 'Webhook emission': ok(), 'Lire adresse relecteur': ko() };
+    assert.equal(await erreurDe({ runData, error: { node: { name: 'Lire adresse relecteur' }, message: 'SECRET_MSG' }, lastNodeExecuted: 'Lire adresse relecteur' }), 'Lire adresse relecteur');
+    assert.equal(await erreurDe({ runData: { 'Webhook emission': ok() }, error: { node: { name: 'Lire adresse relecteur' } }, lastNodeExecuted: 'Lire adresse relecteur' }), 'Lire adresse relecteur');
+    assert.equal(await erreurDe({ runData: { 'Lire adresse relecteur': ko() }, error: { node: { name: 'Valider destinataire' } }, lastNodeExecuted: 'Valider destinataire' }), 'Valider destinataire'); // source 1 l'emporte
+  });
+  test('erreur_noeud : aucun ou PLUSIEURS nœuds en erreur sans source 1 -> null ; runData absent -> null', async () => {
+    assert.equal(await erreurDe({ runData: { 'Webhook emission': ok(), 'Valider destinataire': ok() }, lastNodeExecuted: 'Valider destinataire' }), null);
+    assert.equal(await erreurDe({ runData: { 'Lire adresse relecteur': ko(), 'Valider destinataire': ko('statut') }, error: { message: 'x' }, lastNodeExecuted: 'Valider destinataire' }), null);
+    assert.equal(await erreurDe({ error: { message: 'SECRET_MSG' }, lastNodeExecuted: 'Valider destinataire' }), null);
+    // Formes non reconnues d'une exécution de nœud : jamais comptées comme erreur.
+    assert.equal(await erreurDe({ runData: { 'Valider destinataire': [null, 'error', ['error'], { error: 'chaine' }, { error: null }, { executionStatus: 'ERROR' }], X: 'error' }, lastNodeExecuted: 'Valider destinataire' }), null);
+  });
+  test('erreur_noeud : nom HORS liste de confiance (deux sources) ou non chaîne -> marqueur fixe, jamais la valeur', async () => {
+    for (const rd of [{ error: { node: { name: 'SECRET_NOEUD relecteur@exemple.test' } }, lastNodeExecuted: 'SECRET_NOEUD relecteur@exemple.test' },
+      { runData: { 'SECRET_NOEUD deadbeef': ko() }, lastNodeExecuted: 'SECRET_NOEUD deadbeef' },
+      { error: { node: { name: 42 } }, lastNodeExecuted: 42 }, { error: { node: { name: { k: 'SECRET_K' } } } }, { error: { node: {} }, lastNodeExecuted: 'Valider destinataire' }]) {
+      const v = await erreurDe(rd); assert.equal(v, '<erreur_noeud hors liste>', JSON.stringify(rd));
+    }
+  });
+  test('erreur_noeud : INCOHÉRENCE avec lastNodeExecuted (différent, absent, non chaîne) -> marqueur fixe', async () => {
+    for (const dernier of ['Lire adresse relecteur', undefined, null, 7, 'SECRET_NOEUD deadbeef', ['Valider destinataire']]) {
+      assert.equal(await erreurDe({ runData: { 'Lire adresse relecteur': ok(), 'Valider destinataire': ko() }, lastNodeExecuted: dernier }), '<erreur_noeud incohérent>', String(dernier));
+      assert.equal(await erreurDe({ error: { node: { name: 'Valider destinataire' } }, lastNodeExecuted: dernier }), '<erreur_noeud incohérent>', String(dernier));
+    }
+  });
+  test('ANTI-FUITE : erreur_noeud ∈ { nom de la liste de confiance, marqueur fixe, null }, jamais une valeur de la réponse', async () => {
+    const noms = S.nomsDeConfiance(); const permis = (v) => v === null || noms.has(v) || ['<erreur_noeud hors liste>', '<erreur_noeud incohérent>'].includes(v);
+    const poison = ['SECRET_K', 'relecteur@exemple.test', 'SECRET_NOEUD', 'deadbeef'];
+    const noeuds = ['Valider destinataire', 'Lire adresse relecteur', 'SECRET_NOEUD deadbeef', 'relecteur@exemple.test', 42, null, undefined];
+    let n = 0;
+    for (const a of noeuds) for (const b of noeuds) for (const dernier of noeuds) for (const source1 of [true, false]) {
+      const runData = {}; if (typeof a === 'string') runData[a] = ko(); if (typeof b === 'string' && b !== a) runData[b] = ko(); runData['Webhook emission'] = ok();
+      const rd = { runData, lastNodeExecuted: dernier, ...(source1 ? { error: { node: { name: a }, message: 'SECRET_K' } } : { error: { message: 'SECRET_K' } }) };
+      const { r, code } = await S.sonderExecution({ id: '77', cle: CLE, fetch: async () => reponse(execErreur(rd)) });
+      assert.equal(code, 0); assert.ok(permis(r.erreur_noeud), JSON.stringify(r.erreur_noeud));
+      assert.ok(sans(JSON.stringify(r.erreur_noeud), ...poison)); n += 1;
+    }
+    assert.equal(n, 7 * 7 * 7 * 2);
   });
   test('--execution ABSENTE (HTTP 404) : code 2, jamais confondu avec 1', async () => {
     const { f } = reseau([], {});

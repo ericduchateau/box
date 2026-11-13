@@ -92,6 +92,28 @@ async function sonder({ workflowId, url = INSTANCE, cle, fetch: f = globalThis.f
   return { schema: 'sonde-executions/v1', workflowId, observe_le: new Date().toISOString(), brut, fusion, en_vol: enVol, refus_observer: refus };
 }
 
+// erreur_noeud : nom du nœud en erreur, TOUJOURS filtré par la liste de confiance ; sortie dans un ensemble fermé
+// { nom de la liste de confiance, ERREUR_HORS_LISTE, ERREUR_INCOHERENTE, null } (jamais une valeur de la réponse).
+// Source 1 : resultData.error.node.name (forme classique). Source 2, seulement sans source 1 (nœuds Code du task
+// runner : resultData.error sans `node`) : l'UNIQUE nœud de runData dont une exécution porte une erreur (objet
+// `error` ou executionStatus 'error') ; aucun ou plusieurs -> null. Cohérence : le nom retenu doit être EXACTEMENT
+// resultData.lastNodeExecuted, sinon ERREUR_INCOHERENTE (lastNodeExecuted absent ou non chaîne compris : fail-closed).
+const ERREUR_HORS_LISTE = '<erreur_noeud hors liste>';
+const ERREUR_INCOHERENTE = '<erreur_noeud incohérent>';
+const objet = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
+function erreurNoeud(res, runData, noms) {
+  let nom;
+  if (objet(res.error) && objet(res.error.node)) nom = res.error.node.name;
+  else if (runData) {
+    const enErreur = Object.keys(runData).filter((n) => Array.isArray(runData[n])
+      && runData[n].some((t) => objet(t) && (objet(t.error) || t.executionStatus === 'error')));
+    if (enErreur.length !== 1) return null;
+    nom = enErreur[0];
+  } else return null;
+  if (!noms.has(nom)) return ERREUR_HORS_LISTE; // non-chaîne comprise (la liste ne contient que des chaînes)
+  return nom === res.lastNodeExecuted ? nom : ERREUR_INCOHERENTE;
+}
+
 // Détail d'une exécution : { r, code } (0 présent ; 1 inobservable ; 2 absent).
 async function sonderExecution({ id, url = INSTANCE, cle, fetch: f = globalThis.fetch }) {
   if (typeof id !== 'string' || !ID_EXECUTION.test(id)) throw new ErreurOutil('EXECUTION_ID');
@@ -101,7 +123,6 @@ async function sonderExecution({ id, url = INSTANCE, cle, fetch: f = globalThis.
   try { e = await api.lireExecution(id); } catch (x) { return { r: { schema: 'sonde-execution/v1', id, observation: 'inobservable', cause: categorie(x) }, code: 1 }; }
   if (e === null) return { r: { schema: 'sonde-execution/v1', id, observation: 'absent' }, code: 2 };
   // Schéma (includeData) et identité : sinon INOBSERVABLE (jamais « présent » sur une réponse douteuse).
-  const objet = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
   if (!objet(e) || !objet(e.data) || !objet(e.data.resultData) || !STATUTS.includes(e.status) || typeof e.workflowId !== 'string' || !ID_WORKFLOW.test(e.workflowId))
     return { r: { schema: 'sonde-execution/v1', id, observation: 'inobservable', cause: 'réponse hors schéma attendu' }, code: 1 };
   if (idSur(e.id) !== id) return { r: { schema: 'sonde-execution/v1', id, observation: 'inobservable', cause: 'identifiant renvoyé ≠ identifiant demandé' }, code: 1 };
@@ -114,7 +135,7 @@ async function sonderExecution({ id, url = INSTANCE, cle, fetch: f = globalThis.
     status: e.status, mode: dansListe(MODES, e.mode), startedAt: dateSure(e.startedAt), stoppedAt: dateSure(e.stoppedAt),
     runData_present: runData !== null,
     noeuds_executes: runData ? Object.keys(runData).sort().map(nomSur) : [],
-    erreur_noeud: objet(res.error) && objet(res.error.node) ? nomSur(res.error.node.name) : null }, code: 0 };
+    erreur_noeud: erreurNoeud(res, runData, noms) }, code: 0 };
 }
 
 async function principal(argv, { fetch: f = globalThis.fetch, env = process.env } = {}) {
