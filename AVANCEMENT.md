@@ -5,7 +5,7 @@
 ## Objectif
 Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correction par profil, mesure par groupe, fiches générées puis relues par un humain), sans casser BOX. Dépôt AAP CARDIE-SEPIA, échéance **21/10/2026**. Source de vérité : `docs/PRD-Box-FONDA.md` ; règles : `AGENTS.md`.
 
-## État actuel (2026-11-10, design = `e66fe79`)
+## État actuel (2026-11-13, design = `5dd03da`)
 - **BOX prod** : 9 workflows n8n actifs, front `https://ericduchateau.github.io/box/` (`main`).
 - **FONDA, chaîne signée en saisie locale** opérationnelle (orchestrateur #59, intérim). Génération `vrqgtS5kQMvP9Ok5` et portier `MkYrdhgTo52nA3av` INACTIFS hors fenêtre.
 - **Publiés c4-milieu P2** (calendrier à jour) : maths `proportionnalite_nI_02`, `resolution-problemes_nI_02` ; français `phrase-orthographe_nI_01`, `lexique_nI_02`, `inference-implicite_nI_02`, `sens-mot-inconnu_nI_02`.
@@ -21,7 +21,7 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - **Doctrine (README « Où vit chaque garantie », §21.5)** : pilier 1 = signataire ; pilier 2 = verrou « un seul écrivain CLI » (P5), contrôle d'intégrité porteur. Les contrôles de version détectent, n'excluent pas. Une exécution observée ne contient que le travail essentiel (son statut porte l'intégrité). `hash_formulaire` = audit rapproché (R1 avant signature), non signé.
 
 ## Prochaines étapes
-1. **P4 recette, phase 1 en cours** : créés par Éric (interface) les dossiers Drive `FONDA-RECETTE/{lots,relecture,decisions}` et la Data Table `fonda_recette_relecteurs` (projet Personal ; 2 lignes `eric`/`justine` -> adresse de test) ; identifiants hors dépôt. Restent 4 credentials (Drive, Emettre Token, Cloturer Token, Gmail) -> UNE PR `profil-recette.json` + exports recette, `urlMoteurs` = jsDelivr épinglé au HEAD de design (SHA dans la PR). Puis P4b (Crypto v2 Hmac + credential `crypto`, Page et Confirmer), phase 2 (import inactif, `comparer-live`), portes G1–G7 (`RECETTE-P4.md`).
+1. **P4 recette, phase 3 (portes) en cours** sur copies INACTIVES hors fenêtre (Emettre `McD7…`, Cloturer `WQ2f…`, Confirmer `Yp1h…`, Page `Rcpl…`) : phases 1–2 closes (profil #89, P4b HMAC Crypto v1 #90, K11 #91, octet-identité live), correctif sonde `erreur_noeud` #92. Portes **GO** : G6 (hors ligne + navigateur), G3 (Data Table native), G4 (HMAC), **G5** (codes, en-têtes, doublons = tableaux, 409/idempotence). Restent **G2, G1, G7** (fenêtres annoncées par l'architecte), puis phase 5 (désactivation, révocations). Preuves : `RECETTE-P4.md` (PR `docs/preuves-g3/g4/g5` empilées, à fusionner).
 2. **P5** (`cloturer-page.js`, cadrage avant) : **critère de livraison** = verrou CLI mono-écrivain (verrou local + refus si exécution Emettre/Cloturer en cours) + hypothèse « CLI lancé depuis le seul Mac d'Éric », relu au niveau du signataire ; notification (ex-C7) côté CLI ou workflow séparé non observé.
 3. Prochain run FONDA : preuve empirique du correctif #76 (`sonde-executions.js vrqgtS5kQMvP9Ok5` pendant la génération, lecture seule) ; PR calendrier après chaque publication.
 4. Champ `bande` dans la métadonnée des lots ; bilans de période (P3 avant le 4 janvier).
@@ -57,4 +57,4 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - Le classificateur auto-mode bloque les commandes contenant la clé API : Éric lance lui-même les générations.
 - Branches (AGENTS.md) : PR toujours vers `design` (liens `compare/design...<branche>`), fusion en merge commit ; jamais de fast-forward de `design` (casse la chaîne du premier parent).
 
-_Dernière mise à jour : 2026-11-10 — Claude Code (Opus 5.5)._
+_Dernière mise à jour : 2026-11-13 — Claude Code (Opus 5.5)._

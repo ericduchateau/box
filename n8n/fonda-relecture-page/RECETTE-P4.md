@@ -167,6 +167,7 @@ Format par épreuve : `date heure | opérateur | workflow (id) | exécutions (id
 |---|---|---|---|---|
 | G3 (Data Table, nœud natif) | Emettre `McD7qTGQHeov0nmT` (seul) | heure au journal d'Éric | heure au journal d'Éric | architecte |
 | G4 (HMAC, Crypto v1) + G6 navigateur | Page `RcplBgiyLl5oF26K` puis Confirmer `Yp1hKYuYdICZ84KM` (Emettre inactif) | heure au journal d'Éric | heure au journal d'Éric (ordre inverse) | architecte |
+| G5 (codes, en-têtes, doublons) | Page, Confirmer, Emettre, Cloturer | heure au journal d'Éric | heure au journal d'Éric (ordre inverse) | architecte |
 
 ### Résultats
 Phase 2 — import inactif et octet-identité (2026-11-11 ; opérateur : Éric ; heures exactes au journal d'Éric ; aucune activation). Extraits expurgés : jamais `k`, adresse, secret, jeton.
@@ -235,4 +236,81 @@ if (u.origin !== "https://n8n.srv868991.hstgr.cloud" || u.pathname !== "/webhook
     console.log(nom + " http=" + r.status);
   }
 })();'; pbcopy < /dev/null
+```
+
+Phase 3 — porte G5 (codes, en-têtes, doublons, conflit/idempotence ; fenêtre Page + Confirmer + Emettre + Cloturer ; opérateur : Éric ; 2026-11-13 ; heures exactes au journal d'Éric). Ordre : A1, A2, B, C. **Octet-identité des 4 tenue AVANT (pré-vol) et APRÈS (clôture)** : comparer-live **code 0** ×4, versionIds inchangés (Emettre `372ff051`, Cloturer `aede6651`, Page `ed6ef116`, Confirmer `ecc77684`). Extraits expurgés : jamais `k`, lien, adresse, jeton ; nonces tronqués.
+
+| Date | Opérateur | Épreuve | Workflow (id) | Outil, code | Extrait expurgé | Verdict |
+|---|---|---|---|---|---|---|
+| 2026-11-13 | Éric | comparer-live pré-vol et clôture | les 4 | comparer-live, **code 0** ×4 (avant) et ×4 (après) | `identique: true` ; versionIds inchangés | **GO** |
+| 2026-11-13 | Éric | G5 A1 Emettre, jeton d'en-tête faux (aléatoire), corps `{}` | Emettre `McD7qTGQHeov0nmT` | curl + sonde, **code 0** | `http=403`, corps « Authorization data is wrong! » (authentification du webhook n8n), `www-authenticate: Basic realm="Webhook"`, `x-content-type-options`/`x-xss-protection` présents ; **AUCUNE exécution** (dernier id 280666 inchangé, `en_vol: []`) | **GO** |
+| 2026-11-13 | Éric | G5 A2 Cloturer, jeton d'en-tête faux, corps `{}` | Cloturer `WQ2fDu56h6bGJ88B` | curl + sonde, **code 0** | `http=403` « Authorization data is wrong! » ; Cloturer toujours **sans aucune exécution** (liste `[]`) | **GO** |
+| 2026-11-13 | Éric | G5 B Confirmer, C1 avant Crypto (6 cas, tous avec `choix_it99`) : content-type faux, champ manquant (`empreinte`), `lot` en double, `nonce` en double, corps > 64 Kio | Confirmer (exécutions 280762–280766) | script G5 `MODE=c1` + sonde, **code 0** | 5 × `http=400`, `content-type` et `content-length` présents ; 5 exécutions `success`, 9/9 nœuds, `erreur_noeud: null` ; « Recalculer jeton » (Crypto) et « Controler candidat » (C5) **jamais exécutés** | **GO** |
+| 2026-11-13 | Éric | G5 B cas 6 : corps > 16 Mo | Confirmer | script G5 `MODE=c1` | `http=500` à l'entrée de n8n ; **AUCUNE exécution** (pas de 6e id) : le corps démesuré n'atteint jamais le workflow, aucune écriture | **GO** (500 au lieu de 413 : comportement d'entrée de l'instance, sans incidence) |
+| 2026-11-13 | Éric | G5 C conflit / idempotence : nonce frais (`570041aa…`), CHOIX = choix exacts de G4 (`it01=garder,it02=garder,it03=ecarter`) | Confirmer (exécutions 280768, 280769, 280770) | script G5 `MODE=409` + sonde, **code 0** | P1 `http=200` « créée » ; P2 (un choix inversé, même nonce) `http=409` ; P3 (rejeu de P1) `http=200` « existante » ; `content-type` et `content-length` présents partout ; 3 exécutions `success`, `erreur_noeud: null` | **GO** |
+
+Détail de G5 (lectures en `preview` seulement : structure et types, aucune valeur lue) :
+- **A1, A2** : le rejet d'authentification est produit par n8n hors de tout nœud de réponse (chaîne brute) : **pas** de `content-type`/`content-length`, attendu (cadre n8n). Le critère « `content-type` et `content-length` présents » vaut pour B et C, pas pour A1/A2. 401 ou 403 valaient GO (décision de l'architecte).
+- **B, parcours des 5 rejets** : Webhook confirmation -> FONDA Entree confirmation -> Controler syntaxe formulaire -> Syntaxe valide ? (faux) -> Verifier formulaire -> Formulaire valide ? (faux) -> FONDA Sortie confirmation -> Preparer reponse (C1 -> 400) -> Repondre confirmation. Rejet purement C1 ; `choix_it99` jamais sollicité.
+- **Doublons = TABLEAUX, constaté sur l'instance 2.6.3** : `body.lot` (280764) et `body.nonce` (280765) livrés en tableau ; l'entrée les ramène à `null` ; rejet C1. **Repli « Raw Body » inutile.** 280762 : `body` livré en chaîne (non analysé, content-type faux) ; 280763 : `body` sans `empreinte`.
+- **C, tronc commun (14 nœuds)** : C1 puis C2 (« Recalculer jeton », « Verifier formulaire ») ; Chercher candidat, Verifier recherche candidat, Candidat trouve ? (vrai), Lire candidat, Controler candidat (C3–C5) ; Decision construite ? (vrai), Chercher decision, Analyser decision existante, Decision existante ?. Divergence à « Decision existante ? » :
+  - **P1** (24 nœuds, branche fausse) : Relire candidat, Verifier relecture candidat, Relecture conforme ? (C5bis), **FONDA Ecrire decision**, **Verifier ecriture decision** -> 1 écriture ; le 200 « créée » vient de « Verifier ecriture decision » (constate identifiant, nom, dossier `decisions/`, propriétés `fonda_set_id`/`fonda_nonce`).
+  - **P2** (21 nœuds, branche vraie) : Lire decision existante, **Comparer decision** -> conflit (cœur différent, comparaison canonique octet par octet), résultat SANS clé `ecriture` (`ecriture: null` en sortie) -> 409. **Aucune écriture** (ni « FONDA Ecrire decision » ni « Relire candidat »).
+  - **P3** (21 nœuds, branche vraie) : Lire decision existante, **Comparer decision** -> même lot, nonce, génération et cœur -> `ecriture: 'existante'` (`decision_sha256` du fichier RELU, jamais reconstruit) -> 200. **Aucune réécriture.**
+  - Les deux 200 se distinguent par le nœud producteur : « Verifier ecriture decision » (créée) vs « Comparer decision » (existante) ; « FONDA Ecrire decision » n'apparaît que dans P1. Sortie commune : FONDA Sortie confirmation -> Preparer reponse (`CODES[type]`) -> Repondre confirmation.
+
+**État laissé pour G2 et G1** : 2 fichiers dans `decisions/` (G4, nonce `39948493…` ; P1, nonce `570041aa…`), **même cœur** (accepter / gardées `[it01, it02]` / écartée `[it03]`) -> `L.unicite` tenue ; `hash_formulaire` diffère (dépend du nonce, hors cœur). Candidat `set_fonda_proportionnalite_nI_02` toujours `en_attente`.
+
+**Confinement** : lien (`k`), jeton, adresse jamais transmis à une IA ; le script lit le lien sur l'entrée standard et n'affiche que nom du cas, code HTTP et présence des en-têtes ; Claude Code n'a fait que des GET en `preview` (structure et types). Les instantanés d'exécution contiennent le corps posté (`k`, nonce, jeton), le candidat et la décision, côté n8n seulement (critère révisé déjà assumé).
+
+**Script G5** (`g5-confirmer.js`, usage unique, NON versionné, consigné verbatim sur décision de l'architecte ; SHA-256 `43fcdf45496c7c3e6f546a6ecfa4c5ceb2d21ea8d1d67d390cea22d92aaa2849`, 4024 octets ; usage : `pbpaste | MODE=c1 node g5-confirmer.js; pbcopy < /dev/null`, puis `pbpaste | MODE=409 CHOIX='itNN=…,…' node g5-confirmer.js; pbcopy < /dev/null`) :
+```js
+// G5 — usage unique, NON versionné. Lien de relecture lu sur l'ENTRÉE STANDARD (presse-papiers), jamais en argument ni à l'écran.
+// MODE=c1  : rejets avant Crypto (content-type faux, champ manquant, lot/nonce en double, corps > 64 Kio, corps > 16 Mo).
+// MODE=409 : CHOIX='it01=garder,it02=ecarter,…' (choix EXACTS de la décision G4) : P1 -> 200 créée ; P2 (un choix inversé) -> 409 ; P3 = P1 -> 200 existante.
+// Affiche seulement : nom du cas, code HTTP, présence (oui/NON) de content-type et content-length.
+const ORIG = 'https://n8n.srv868991.hstgr.cloud';
+const u = new URL(require('fs').readFileSync(0, 'utf8').trim());
+if (u.origin !== ORIG || u.pathname !== '/webhook/fonda-recette-select') { console.log('lien inattendu'); process.exit(1); }
+const CONF = ORIG + '/webhook/fonda-recette-select-confirm';
+const MODE = process.env.MODE;
+if (MODE !== 'c1' && MODE !== '409') { console.log('MODE = c1 ou 409'); process.exit(1); }
+const corps = (champs, extra = []) => { const p = new URLSearchParams(); for (const [k, v] of Object.entries(champs)) p.append(k, v); for (const [k, v] of extra) p.append(k, v); return p.toString(); };
+const post = async (nom, body, ct = 'application/x-www-form-urlencoded') => {
+  let r;
+  try { r = await fetch(CONF, { method: 'POST', redirect: 'error', headers: { 'content-type': ct }, body }); await r.arrayBuffer(); }
+  catch { console.log(`${nom} : connexion interrompue par le serveur (aucun code HTTP)`); return null; }
+  console.log(`${nom} http=${r.status} content-type=${r.headers.has('content-type') ? 'oui' : 'NON'} content-length=${r.headers.has('content-length') ? 'oui' : 'NON'}`);
+  return r.status;
+};
+(async () => {
+  const p = await fetch(u, { redirect: 'error' }); const html = await p.text();
+  const m = html.match(/<script type="application\/json" id="donnees">([\s\S]*?)<\/script>/);
+  if (p.status !== 200 || !m) { console.log('page http=' + p.status); process.exit(1); }
+  const d = JSON.parse(m[1]); const ch = d.formulaire.champs; const ids = d.cartes.map((c) => c.item_id);
+  if (MODE === 'c1') {
+    // choix_it99 (carte inexistante) : si un cas passait C1 à tort, C5 rejetterait en 400 SANS écrire ; la sonde départage (« Recalculer jeton » absent attendu).
+    const base = { ...ch, action: 'accepter', choix_it99: 'garder' };
+    const { empreinte, ...sansEmpreinte } = base;
+    await post('content-type faux', corps(base), 'text/plain');
+    await post('champ manquant', corps(sansEmpreinte));
+    await post('lot en double', corps(base, [['lot', ch.lot]]));
+    await post('nonce en double', corps(base, [['nonce', ch.nonce]]));
+    await post('corps > 64 Kio', corps(base, [['bourrage', 'a'.repeat(70000)]]));
+    await post('corps > 16 Mo', corps(base, [['bourrage', 'a'.repeat(17 * 1024 * 1024)]]));
+    return;
+  }
+  const choix = (process.env.CHOIX || '').split(',').filter(Boolean).map((x) => x.split('='));
+  if (choix.length !== ids.length || new Set(choix.map((c) => c[0])).size !== ids.length || !choix.every(([i, v]) => ids.includes(i) && (v === 'garder' || v === 'ecarter')) || !choix.some((c) => c[1] === 'garder')) {
+    console.log('CHOIX invalide ; item_id attendus : ' + ids.join(',')); process.exit(1);
+  }
+  const champsChoix = (cx) => Object.fromEntries(cx.map(([i, v]) => ['choix_' + i, v]));
+  const k = choix.findIndex((c) => c[1] === 'ecarter'); const j = k >= 0 ? k : 0; // inverse un « ecarter » (sinon le 1er « garder ») : au moins une carte gardée
+  const autre = choix.map(([i, v], n) => [i, n === j ? (v === 'garder' ? 'ecarter' : 'garder') : v]);
+  if (!autre.some((c) => c[1] === 'garder')) { console.log('inversion impossible'); process.exit(1); }
+  const p1 = corps({ ...ch, action: 'accepter', ...champsChoix(choix) });
+  if (await post('P1 mêmes choix que G4', p1) !== 200) { console.log('ARRÊT : P1 ≠ 200'); process.exit(1); }
+  await post('P2 même nonce, choix différents', corps({ ...ch, action: 'accepter', ...champsChoix(autre) }));
+  await post('P3 rejeu exact de P1', p1);
+})();
 ```
