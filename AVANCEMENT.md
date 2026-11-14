@@ -5,7 +5,7 @@
 ## Objectif
 Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correction par profil, mesure par groupe, fiches générées puis relues par un humain), sans casser BOX. Dépôt AAP CARDIE-SEPIA, échéance **21/10/2026**. Source de vérité : `docs/PRD-Box-FONDA.md` ; règles : `AGENTS.md`.
 
-## État actuel (2026-11-15, design = `a4ba170`)
+## État actuel (2026-11-15, design = `7d7a182`)
 - **BOX prod** : 9 workflows n8n actifs, front `https://ericduchateau.github.io/box/` (`main`).
 - **FONDA, chaîne signée en saisie locale** opérationnelle (orchestrateur #59, intérim). Génération `vrqgtS5kQMvP9Ok5` et portier `MkYrdhgTo52nA3av` INACTIFS hors fenêtre.
 - **Publiés c4-milieu P2** (calendrier à jour) : maths `proportionnalite_nI_02`, `resolution-problemes_nI_02` ; français `phrase-orthographe_nI_01`, `lexique_nI_02`, `inference-implicite_nI_02`, `sens-mot-inconnu_nI_02`.
@@ -22,10 +22,10 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 
 ## Prochaines étapes
 1. **P4 recette du parcours page : CLOSE** (phases 1–5). Portes **GO** : G6, G3, G4, G5, G2 (filtre exact #95, rejeu), G1 (+1 prouvé, concurrence détectée), G7 (`running` vu en vol ; angle mort `waiting` de l'API n8n 2.6.3 -> garde-fou liste fermée des nœuds #99 ; workflows créés par API/import, jamais par l'éditeur). **Phase 5** : recette démontée (6 workflows, exécutions, Data Table, 4 credentials, Drive `FONDA-RECETTE/`, 2 clés API -> 401, trousseau) ; production prouvée intacte (51/51 workflows identiques, 9 BOX actifs). Google non touché (client OAuth peut-être partagé). Restent : **P5** (ci-dessous) ; arbitrage G1 « contrôler le statut avant Generer cle ». Preuves : `RECETTE-P4.md` (PR `docs/phase5`).
+1 bis. **Déploiement PRODUCTION de la relecture (plan validé 2026-11-15)** : **phase A** (à la reprise) = prérequis par Éric (dossiers `relecture/` et `decisions/` dans FONDA-Lots, partagés en lecture avec le compte de service du signataire ; Data Table 2 lignes `eric`/`justine` -> pour l'instant TOUTES DEUX l'adresse Gmail d'Éric ; credential Gmail expéditeur = Gmail d'Éric ; jetons et HMAC `openssl` -> trousseau `fonda-prod-*` ; clés API prod import (courte) et lecture (expirante, réutilisée par P5)) ; Éric transmet les SEULS ids -> **PR1** profil de production (tests d'abord, garde inverse « plus de valeur provisoire sauf A_INJECTER »), **PR2** outillage (importer-recette + comparer-live étendus, liste fermée, Codex) -> import INACTIF par l'API + comparer-live code 0 + photo BOX inchangée. Drive : `cukxQDNw…` réutilisé. **Phase B APRÈS P5** (aucune activation avant) : activation Page/Confirmer -> Cloturer -> Emettre ; bout en bout `resolution-problemes_nI_02` @ `ae1ae90` (eric -> Gmail d'Éric) puis suppression définitive ; politique de purge des exécutions (k, adresses) à fixer (penchant : purge).
 2. **P5** (`cloturer-page.js`, cadrage avant) : **critère de livraison** = verrou CLI mono-écrivain (verrou local + refus si exécution Emettre/Cloturer en cours) + hypothèse « CLI lancé depuis le seul Mac d'Éric », relu au niveau du signataire ; notification (ex-C7) côté CLI ou workflow séparé non observé.
-3. Prochain run FONDA : preuve empirique du correctif #76 (`sonde-executions.js vrqgtS5kQMvP9Ok5` pendant la génération, lecture seule) ; PR calendrier après chaque publication.
-4. Champ `bande` dans la métadonnée des lots ; bilans de période (P3 avant le 4 janvier).
-5. Réglages à confirmer (Éric) : « Allow rebase merging » décoché ; « Do not allow bypassing » ; CODEOWNERS sur `main`. Bloc 3 (prod) : orpheline `box_7e7tcooh`, `feat/box-delete-hardening`, Moteur A + dette `defi_id`, collecte `/box-fonda-events`.
+3. Prochain run FONDA : preuve empirique du correctif #76 (`sonde-executions.js vrqgtS5kQMvP9Ok5` pendant la génération, lecture seule) ; PR calendrier après chaque publication. — Champ `bande` dans la métadonnée des lots ; bilans de période (P3 avant le 4 janvier).
+4. Réglages à confirmer (Éric) : « Allow rebase merging » décoché ; « Do not allow bypassing » ; CODEOWNERS sur `main`. Bloc 3 (prod) : orpheline `box_7e7tcooh`, `feat/box-delete-hardening`, Moteur A + dette `defi_id`, collecte `/box-fonda-events`.
 
 ## 🔖 Check-list AVANT PUBLICATION / usage élève réel
 1. **Régénérer la clé API Anthropic** (a circulé en clair) : scripts locaux + nœud `Claude API` (HTTP, header en clair) de `BOX - Generation Flashcards` ; idéalement passer par un credential n8n.
@@ -57,4 +57,4 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - Le classificateur auto-mode bloque les commandes contenant la clé API : Éric lance lui-même les générations.
 - Branches (AGENTS.md) : PR toujours vers `design` (liens `compare/design...<branche>`), fusion en merge commit ; jamais de fast-forward de `design` (casse la chaîne du premier parent).
 
-_Dernière mise à jour : 2026-11-14 — Claude Code (Opus 5.5)._
+_Dernière mise à jour : 2026-11-15 — Claude Code (Opus 5.5)._
