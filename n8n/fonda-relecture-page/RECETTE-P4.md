@@ -170,6 +170,7 @@ Format par épreuve : `date heure | opérateur | workflow (id) | exécutions (id
 | G5 (codes, en-têtes, doublons) | Page, Confirmer, Emettre, Cloturer | heure au journal d'Éric | heure au journal d'Éric (ordre inverse) | architecte |
 | G2 (`name contains`, leurres) | Emettre `McD7qTGQHeov0nmT` (seul) | heure au journal d'Éric (1er appel 2026-11-13 13:32 Paris) | heure au journal d'Éric (après le contrôle final de 15:23 ; inactif constaté par GET) | architecte |
 | G2 rejeu (filtre exact, #95) | Emettre `Goe8Tt63lNI99meP` (seul, réimporté) | heure au journal d'Éric (1er appel 2026-11-14 17:56 Paris) | heure au journal d'Éric (avant le contrôle final de 18:24 ; inactif constaté par GET) | architecte |
+| G1 (version +1, cycle émission/réémission/refus/clôture) | Emettre `Goe8Tt63lNI99meP` (E1–E6, E9), Cloturer `E2tWxiMuX8St1H0B` (E7–E9) ; Page et Confirmer inactifs | heure au journal d'Éric (E1 2026-11-14 19:37 Paris) | heure au journal d'Éric (après E9 de 20:26 ; ordre inverse ; inactifs constatés par GET) | architecte |
 
 ### Résultats
 Phase 2 — import inactif et octet-identité (2026-11-11 ; opérateur : Éric ; heures exactes au journal d'Éric ; aucune activation). Extraits expurgés : jamais `k`, adresse, secret, jeton.
@@ -403,3 +404,65 @@ FONDA_N8N_CLE_RECETTE="$(security find-generic-password -s fonda-recette-n8n-lec
 **Chaîne de validation du correctif** : architecte (décision « filtre exact », 2026-11-13) ; Claude Code (tests du filtre et du faux Drive aligné sur le modèle G2 ; mutations du filtre : 19 jouées, **18 tuées**, la survivante `includes` au lieu de `startsWith` étant équivalente ; harnais 225/225, suite 6134/6135 dont 1 ignoré) ; **Codex** (critique croisée en lecture seule, effort élevé, 2026-11-13 : **favorable**, 2 réserves mineures de tests, traitées en `7a1396a`) ; **rejeu sur l'instance** (2026-11-14, ci-dessus). G2 : **GO**.
 
 **État laissé pour G1** : inchangé (`decisions/` = G4 + P1 ; candidat `en_attente`) : G1 exigera un nouveau `set_id`.
+
+Phase 3 — **porte G1** (version Drive +1 à chaque réécriture ; cycle émission / réémission / refus / clôture ; 2026-11-14 ; opérateur : Éric ; heures exactes au journal d'Éric). Extraits expurgés : jamais `k`, lien, adresse, jeton.
+
+**Banc** :
+- **`set_id` de test** : `set_fonda_resolution-problemes_nI_02` (maths, relecteur `eric` -> adresse de test), **`journal_commit` = `ae1ae903a3ec2d49b01d495ad28d9ebedcc56059`** (« réservation set_fonda_resolution-problemes_nI_02 » : dernière transition `reserve` à ce commit, publication à `ce6b615`) ; même schéma que G3. Aucune écriture au journal. `proportionnalite_nI_02` (2 décisions) reste refusé par Emettre.
+- **Corps d'appel** `corps-emettre-g1.json` (308 octets, SHA-256 `f398ac7cc90e18e09757ef790abf0bbe6234f32ba04fdd777c484d1223af5ced`) : `{ set_id, journal_commit, referentiel_version: sha256:c7db61c6…97b4, moteur: { v1, ce14c3e4…1753 } }`. **Lot source** `set_fonda_resolution-problemes_nI_02.lot.json` (3272 octets, SHA-256 `f3d254d23ed75534673923419a9f5d0f13a6c7eddb7c439a09f0e585800f5ddc`) = copie à l'octet du lot publié du dépôt (`lot-fonda/v1`, 5 cartes, contenu public), déposé par Éric dans `FONDA-RECETTE/lots/`. Préparés hors dépôt par Claude Code ; contrôles 0–5 d'« Analyser emission » rejoués en local au commit consigné (corps, référentiel, moteur au registre, réservation, `validerLot` + cohérence set_id/notion/palier, relecteur `eric`) : tous verts.
+- **Jeton de Cloturer remplacé** avant la fenêtre (même procédure qu'Emettre) : trousseau `fonda-recette-cloturer-token`, collé dans le credential « FONDA RECETTE Cloturer Token » ; workflow non ouvert. En-tête passé à curl par `-H @<(printf 'X-FONDA-Token: %s\n' "$(security find-generic-password -s <service> -w)")` (absent de la liste des processus).
+- **Pré-vol** (GET) : comparer-live **code 0** ×2 ; sonde code 0 ×2, `en_vol: []` ; dernières exécutions 280855 (Emettre), aucune (Cloturer) ; les 6 copies inactives. Un premier appel E1 n'a créé **aucune** exécution (sonde : rien en vol, rien listé ; cause côté appel, non consignée) ; l'appel suivant a donné 280858.
+
+| Cas | Action | Exécution | Statut, nœud | `generation_cle` / `reemission` / `deja_clos` | Version avant -> relue -> après | Courriel |
+|---|---|---|---|---|---|---|
+| E1 | émission | 280858 | **success** | 1 / `false` | création (le POST ne demande pas `version`) | **oui (1)** |
+| E2 | réémission | 280859 | **success** | 2 / `true` | 2 -> 2 -> **3** | **oui (2)** |
+| E3 | réémission | 280860 | **success** | 3 / `true` | 4 -> 4 -> **5** | **oui (3)** |
+| E4a | paire simultanée (`curl & curl`) | 280862 | **success** (PATCH à 18:50:49.001 UTC) | 4 / `true` | 6 -> 6 -> **7** | **oui (4)** |
+| E4b | paire simultanée | 280861 | **error** à « Verifier ecriture » : « écriture concurrente détectée (version **9 ≠ 7**) : aucun courriel » | — (visait aussi la génération 4) | 6 -> 6 -> **9** ; « FONDA Reecrire candidat » **success** à 18:50:49.074 (écriture ABOUTIE) | **non** |
+| E5 | candidat **à la corbeille** (Éric) | 280863 | **error** à « Analyser emission » : « candidat existant à la corbeille : refus » | — | 11 (lue) ; aucune écriture | non |
+| E6 | **restauration** (Éric) puis réémission | 280864 | **success** | 5 / `true` | **12** -> 12 -> **13** | **oui (5)** |
+| E7 | **Cloturer** | 280865 (Cloturer) | **success**, `cloture-fonda/v1` (7 clés) | `deja_clos: false` ; statut relu **`clos`** | 14 -> 14 -> **15** (+1 vérifié par la sortie) | — (aucun nœud de courriel) |
+| E8 | Cloturer à nouveau | 280866 (Cloturer) | **success**, `cloture-fonda/v1` | **`deja_clos: true`** | 16 (lue) ; « Relire version cloture », « Verifier version cloture », « FONDA Ecrire candidat clos » **absents** | — |
+| E9 | Emettre après clôture | 280867 | **error** à « **Preparer candidat** » : « réémission refusée : statut « clos » (seul en_attente, clos_le null) » | — | 16 (lue) ; aucune écriture | non |
+
+(280856, 280857 : autres workflows ; ids communs à l'instance. Emettre : 8 exécutions G1 ; Cloturer : 2.)
+
+**Verdict** : **GO**.
+- **+1 avec un seul écrivain** : E2, E3, E4a, E6 (Emettre) et E7 (Cloturer) en `success` ; « Verifier ecriture » / la sortie de Cloturer lèvent au moindre écart, donc chaque `success` PROUVE après = relue + 1 ; valeurs lues concordantes.
+- **Concurrence détectée** (E4) : les deux exécutions passent le contrôle avant écriture (6 = 6), écrivent à 73 ms d'intervalle ; la seconde voit **+3** (9 ≠ 7) et s'arrête sans courriel. Son écriture a **abouti** : le contrôle après écriture **détecte**, il n'annule rien (D2/E1, README « Où vit chaque garantie ») ; le candidat portait alors une `k` envoyée à personne (lien de E4a mort), rétablie par E6. Prévention : verrou CLI mono-écrivain (P5).
+- **Refus avant écriture** : corbeille (E5), candidat clos (E9) ; **clôture** (E7) et **idempotence** (E8, aucune réécriture).
+- 9 écritures du candidat au total (création, 6 PATCH dont la concurrente, corbeille et restauration par Éric) ; **5 courriels**, tous reçus à l'adresse de test, supprimés par Éric.
+
+**Trouvaille 1 — révision tardive de Drive** (constat ; mécanisme exact non documenté par Google) : chaque écriture par un workflow (création ou PATCH) fait avancer la version de **+2** : la réponse de l'écriture rend avant + 1, puis une révision supplémentaire suit **en moins de 73 ms** (E4 : 7 rendu par 280862, 9 rendu par 280861 73 ms plus tard). Mise à la corbeille et restauration par Éric : **+1** chacune (9 -> [10] -> 11 -> 12). Création : E2 relit 2. **Conséquence** : avec un seul écrivain, la révision supplémentaire a eu lieu avant l'appel suivant (secondes plus tard) et le contrôle interne (relue juste avant écriture, après = relue + 1) est **exact** ; avec deux écrivains, l'écart est amplifié (+3 au lieu de +1), donc détecté. Risque résiduel : fausse alarme si une écriture suivait la précédente de moins de ~0,1 s (seulement avec deux écrivains, déjà exclus par P5). Aucun changement de code.
+
+**Trouvaille 2 — contrôle de statut tardif (E9)** : « Analyser emission » n'examine pas le statut du candidat existant (unique, hors corbeille, `decisions/` vide -> branche réémission) ; c'est « Preparer candidat » qui refuse un candidat non `en_attente`. Avant ce refus, l'exécution a fait tourner « Lire adresse relecteur », « Valider destinataire » et **« Generer cle »** : une `k` a été **générée** (jamais écrite ni envoyée) et l'adresse de test lue, **dans les données de l'exécution** (instantané côté n8n, comme toute émission ; critère révisé assumé). Sans effet sur l'intégrité (rien d'écrit, `k` inutilisable). **Piste** (décision de l'architecte) : contrôler le statut (`en_attente`, `clos_le` null) **avant** « Generer cle » (par exemple dans une étape dédiée après « Lire candidat existant »), pour qu'un refus prévisible n'ait aucune `k` dans ses données.
+
+**Confinement** : `k`, liens, adresse et jetons jamais communiqués à l'IA ; Éric a géré les courriels sans coller de lien. Lectures de Claude Code : **GET seuls** (clé de lecture), exécution complète téléchargée puis **filtrée en local** ; affichés seulement : statut, nœud en erreur et message, présence/horaire/statut des nœuds, et les champs **`version`** (« Chercher candidat existant », « Relire version candidat », « FONDA Reecrire candidat » ; Cloturer : « Chercher candidat », « Relire version cloture », « FONDA Ecrire candidat clos »), **`generation_cle`**, **`reemission`** (sortie d'Emettre), **`deja_clos`**, `schema` (sortie de Cloturer), **`statut`** (seul champ lu dans « Relire candidat », E7) ; autorisations de l'architecte, étendues en cours de porte. Jamais le contenu de « Generer cle », « Envoyer lien », « Lire adresse relecteur ».
+
+**Script `g1-paire.js`** (usage pendant G1, NON versionné, consigné verbatim ; SHA-256 `e045844dc2cfb97bb8c8f75fc3c5372157369de43bea407556bea577854b6189`, 2070 octets ; usage : `FONDA_N8N_CLE_RECETTE="$(security find-generic-password -s fonda-recette-n8n-lecture -w)" node g1-paire.js <id>…` ; E4–E6, E9). E3 : `g1-lire.js` (SHA-256 `891622b8feb1a677bbff3e6d15ca306fa56f8456c76dd72fe26dd4872c0dcff2`, même filtrage, sélection de la dernière exécution) ; E1, E2, E7, E8 : commandes ponctuelles de même logique (Cloturer : mêmes champs, nœuds de Cloturer).
+```js
+// G1 E4 : GET seul ; statut, présence et horaires des nœuds, champs version / generation_cle / reemission, message d'erreur.
+(async () => {
+  const h = { headers: { 'X-N8N-API-KEY': process.env.FONDA_N8N_CLE_RECETTE, accept: 'application/json' }, redirect: 'error' };
+  for (const id of process.argv.slice(2)) {
+    const j = await (await fetch('https://n8n.srv868991.hstgr.cloud/api/v1/executions/' + id + '?includeData=true', h)).json();
+    if (j.workflowId !== 'Goe8Tt63lNI99meP') { console.log(id, 'workflow inattendu'); continue; }
+    const rd = j.data.resultData;
+    console.log('\n== exec', id, j.status, j.mode, j.startedAt, '->', j.stoppedAt, 'lastNode=' + rd.lastNodeExecuted);
+    if (rd.error) console.log('erreur : description=' + JSON.stringify(rd.error.description) + ' message=' + JSON.stringify(rd.error.message));
+    const items = (n) => (rd.runData[n] || []).flatMap((r) => (r.data && r.data.main && r.data.main[0]) || []);
+    const t = (n) => rd.runData[n] ? new Date(rd.runData[n][0].startTime).toISOString().slice(11, 23) + ' ' + rd.runData[n].map((r) => r.executionStatus).join(',') : 'ABSENT';
+    for (const n of ['Chercher candidat existant', 'Analyser emission', 'Relire version candidat', 'Verifier version candidat', 'FONDA Ecrire candidat', 'FONDA Reecrire candidat', 'Relister decisions', 'Verifier ecriture', 'Envoyer lien', 'FONDA Sortie emission']) console.log('  ' + n.padEnd(28) + t(n));
+    console.log('  version avant (Chercher) :', JSON.stringify(items('Chercher candidat existant').flatMap((it) => (it.json.files || []).map((f) => f.version))),
+      '| relue (Relire version candidat) :', JSON.stringify(items('Relire version candidat').map((it) => it.json.version)),
+      '| après (Reecrire) :', JSON.stringify(items('FONDA Reecrire candidat').map((it) => it.json.version)));
+    const s = items('FONDA Sortie emission')[0];
+    if (s) console.log('  Sortie : generation_cle=' + s.json.generation_cle, 'reemission=' + s.json.reemission);
+  }
+})().catch((e) => { console.log('ERREUR', String(e)); process.exit(1); });
+```
+
+**Clôture** : Cloturer puis Emettre désactivés ; candidat et lot de test **supprimés définitivement** par Éric, 5 courriels supprimés. GET : comparer-live **code 0** ×2 (`identique: true`, versionId `51ddd073…` et `ab3bae07…` inchangés) ; sonde code 0 ×2, `en_vol: []` (dernières : 280867 Emettre, 280866 Cloturer) ; les 6 copies `active=false`.
+
+**État laissé pour G7** : `decisions/` = G4 + P1 (lot `proportionnalite_nI_02`, inchangé) ; `relecture/` sans candidat `resolution-problemes_nI_02` ; aucun workflow actif.
