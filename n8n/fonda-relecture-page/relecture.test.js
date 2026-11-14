@@ -2400,3 +2400,62 @@ describe('13. script de la page EXÉCUTÉ (DOM minimal) -> soumission SIMULÉE (
     assert.deepEqual(n.boutons(), []); assert.equal(n.rejet.hidden, true);
   });
 });
+
+// ── 14. Aucun nœud capable d'ATTENDRE : LISTE FERMÉE des nœuds (recette G7, 2026-11-14) ──
+// L'API publique de n8n 2.6.3 exclut de status=waiting ET de la liste complète toute exécution encore dans
+// ActiveExecutions ; une exécution « waiting » y reste (sources n8n@2.6.3 : public-api executions.handler.ts,
+// active-executions.ts). observer() (sonde, signataire) ne la voit donc JAMAIS : la quiescence de P5 ne vaut
+// que pour des workflows qui ne peuvent pas entrer en « waiting ». CONNU-BON (critique Codex : une liste noire
+// accepte tout type inconnu) : seuls les couples type@typeVersion AUDITÉS (aucun n'attend) sont admis, avec,
+// pour ceux qui en ont, la seule ressource / opération / action utilisée aujourd'hui. Tout autre type, toute
+// autre version, toute autre opération -> refus. Ajouter un nœud = mettre à jour cette liste EXPLICITEMENT.
+const NOEUDS_AUDITES = Object.freeze({
+  'n8n-nodes-base.webhook@2': {},
+  'n8n-nodes-base.code@2': {},
+  'n8n-nodes-base.httpRequest@4.2': {},
+  'n8n-nodes-base.if@2.2': {},
+  'n8n-nodes-base.crypto@1': { action: ['generate', 'hmac'] },
+  'n8n-nodes-base.dataTable@1': { resource: ['row'], operation: ['get'] },
+  'n8n-nodes-base.respondToWebhook@1.1': {},
+});
+const SELECTEURS = Object.freeze(['resource', 'operation', 'action']); // clés de PREMIER niveau qui choisissent le comportement
+function refusNoeud(n) {
+  if (!n || typeof n !== 'object' || typeof n.type !== 'string') return 'nœud illisible';
+  const cle = `${n.type}@${n.typeVersion}`;
+  if (!Object.prototype.hasOwnProperty.call(NOEUDS_AUDITES, cle)) return `type ou version non audité : ${cle}`;
+  const regle = NOEUDS_AUDITES[cle]; const p = n.parameters || {};
+  for (const sel of SELECTEURS) {
+    if (regle[sel] ? !regle[sel].includes(p[sel]) : p[sel] !== undefined) return `${cle} : ${sel} = ${JSON.stringify(p[sel])} non audité`;
+  }
+  return null;
+}
+describe('14. liste FERMÉE des nœuds des 4 workflows (production et recette) : aucun nœud capable d\'attendre (« waiting » invisible à observer())', () => {
+  test('8 exports : chaque nœud est un couple type@typeVersion AUDITÉ, ressource / opération / action comprises', () => {
+    const exports = Object.keys(EXPORTS).flatMap((k) => [[EXPORTS[k], lireExport(k)], [EXPORTS_RECETTE[k], lireRecette(k)]]);
+    assert.equal(new Set(exports.map(([nom]) => nom)).size, 8);
+    for (const [nom, octets] of exports) {
+      const w = JSON.parse(octets);
+      assert.ok(Array.isArray(w.nodes) && w.nodes.length > 0, nom);
+      for (const n of w.nodes) assert.equal(refusNoeud(n), null, `${nom} : « ${n.name} »`);
+    }
+  });
+  test('contre-tests : nœuds capables d\'attendre ou non audités REFUSÉS ; HTTP Request portant « sendAndWait » dans son corps ACCEPTÉ', () => {
+    const refuses = {
+      'Wait': { type: 'n8n-nodes-base.wait', typeVersion: 1.1, parameters: { amount: 120, unit: 'seconds' } },
+      'Form': { type: 'n8n-nodes-base.form', typeVersion: 1, parameters: {} },
+      'Form Trigger': { type: 'n8n-nodes-base.formTrigger', typeVersion: 2.2, parameters: {} },
+      'chat (waitUserReply)': { type: '@n8n/n8n-nodes-langchain.chat', typeVersion: 1, parameters: { message: 'x', waitUserReply: true } },
+      'toolWorkflow (Wait embarqué)': { type: '@n8n/n8n-nodes-langchain.toolWorkflow', typeVersion: 2, parameters: { source: 'parameter', workflowJson: JSON.stringify({ nodes: [{ type: 'n8n-nodes-base.wait', typeVersion: 1.1 }] }) } },
+      'executeWorkflow': { type: 'n8n-nodes-base.executeWorkflow', typeVersion: 1.2, parameters: { workflowId: 'x' } },
+      'Gmail sendAndWait': { type: 'n8n-nodes-base.gmail', typeVersion: 2.1, parameters: { resource: 'message', operation: 'sendAndWait' } },
+      'type communautaire': { type: 'n8n-nodes-communaute.attente', typeVersion: 1, parameters: {} },
+      'version inconnue d\'un type audité': { type: 'n8n-nodes-base.httpRequest', typeVersion: 4.3, parameters: {} },
+      'opération non auditée (dataTable insert)': { type: 'n8n-nodes-base.dataTable', typeVersion: 1, parameters: { resource: 'row', operation: 'insert' } },
+      'action non auditée (crypto sign)': { type: 'n8n-nodes-base.crypto', typeVersion: 1, parameters: { action: 'sign' } },
+      'sélecteur inattendu (httpRequest operation)': { type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, parameters: { operation: 'sendAndWait' } },
+    };
+    for (const [cas, n] of Object.entries(refuses)) assert.notEqual(refusNoeud({ name: cas, ...n }), null, cas);
+    const http = { name: 'HTTP', type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, parameters: { method: 'POST', sendBody: true, specifyBody: 'json', jsonBody: '{"operation":"sendAndWait"}', bodyParameters: { parameters: [{ name: 'operation', value: 'sendAndWait' }] }, options: {} } };
+    assert.equal(refusNoeud(http), null, 'corps transporté ≠ configuration du nœud');
+  });
+});
