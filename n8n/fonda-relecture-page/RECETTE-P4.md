@@ -169,6 +169,7 @@ Format par épreuve : `date heure | opérateur | workflow (id) | exécutions (id
 | G4 (HMAC, Crypto v1) + G6 navigateur | Page `RcplBgiyLl5oF26K` puis Confirmer `Yp1hKYuYdICZ84KM` (Emettre inactif) | heure au journal d'Éric | heure au journal d'Éric (ordre inverse) | architecte |
 | G5 (codes, en-têtes, doublons) | Page, Confirmer, Emettre, Cloturer | heure au journal d'Éric | heure au journal d'Éric (ordre inverse) | architecte |
 | G2 (`name contains`, leurres) | Emettre `McD7qTGQHeov0nmT` (seul) | heure au journal d'Éric (1er appel 2026-11-13 13:32 Paris) | heure au journal d'Éric (après le contrôle final de 15:23 ; inactif constaté par GET) | architecte |
+| G2 rejeu (filtre exact, #95) | Emettre `Goe8Tt63lNI99meP` (seul, réimporté) | heure au journal d'Éric (1er appel 2026-11-14 17:56 Paris) | heure au journal d'Éric (avant le contrôle final de 18:24 ; inactif constaté par GET) | architecte |
 
 ### Résultats
 Phase 2 — import inactif et octet-identité (2026-11-11 ; opérateur : Éric ; heures exactes au journal d'Éric ; aucune activation). Extraits expurgés : jamais `k`, adresse, secret, jeton.
@@ -366,3 +367,39 @@ console.log("exécution '"$id"' : nœud exécuté "+r.length+" fois, "+noms.leng
 ```
 
 **État laissé pour G1** : `decisions/` = 2 fichiers (G4, P1), corbeille vide pour le lot ; candidat `set_fonda_proportionnalite_nI_02` toujours `en_attente` ; Emettre refusera toujours ce lot (décisions présentes) : G1 exigera un nouveau `set_id`.
+
+Phase 3 — **rejeu de G2 après le correctif « filtre exact »** (#95 ; 2026-11-14 ; opérateur : Éric ; heures exactes au journal d'Éric). **Correctif** : la requête Drive large (`qDecisions`) est inchangée ; seuls COMPTENT les fichiers au nom EXACT `<set_id>-[0-9a-f]{32}.json` OU portant `properties.fonda_set_id === set_id` (`decisionsDuLot`, identique dans Emettre « Analyser emission », « Verifier ecriture » et la sortie de Cloturer) ; plafond et `incompleteSearch` restent calculés sur les pages BRUTES (refus par défaut).
+
+**Réimport** (option « renommer + réimporter », décision de l'architecte) : copies d'avant correctif renommées par Éric dans l'interface, **inactives, conservées** : Emettre `McD7qTGQHeov0nmT` et Cloturer `WQ2fDu56h6bGJ88B` -> « … (avant G2) ». Exports recette corrigés importés par `importer-recette.js --confirmer-ecriture` (aucun secret HMAC : 0 fragment dans ces 2 exports ; aucun jeton d'en-tête requis : seule la définition est postée ; les credentials existants sont référencés par id). Les anciennes et nouvelles copies partagent chemin de webhook et `webhookId` : **ne jamais activer une copie « (avant G2) »**.
+
+| Date | Opérateur | Épreuve | Workflow (id) | Outil, code | Extrait expurgé | Verdict |
+|---|---|---|---|---|---|---|
+| 2026-11-14 | Éric | Import Emettre corrigé | Emettre `Goe8Tt63lNI99meP` | importer-recette ; puis comparer-live (Claude Code), **code 0** | `identique: true`, `ecarts: []`, versionId `51ddd073…` ; inactif | **GO** |
+| 2026-11-14 | Éric | Import Cloturer corrigé | Cloturer `E2tWxiMuX8St1H0B` | importer-recette ; puis comparer-live (Claude Code), **code 0** | `identique: true`, `ecarts: []`, versionId `ab3bae07…` ; inactif | **GO** |
+| 2026-11-14 | Claude Code | Gate 0 + homonymes | les 4 copies Emettre/Cloturer | GET (liste, 57 workflows, 1 page ; détail) | un SEUL homonyme exact par nom (les nouvelles) ; anciennes renommées « (avant G2) » ; les 4 `active=false`, `activeVersionId=null`, `shared.projectId = oz9pBdYxCmm8UQ4l` (`personal`, owner) ; Page et Confirmer inchangés | **GO** |
+
+**Copies de recette en vigueur** (remplacent `McD7…` et `WQ2f…` dans toutes les commandes) : Emettre `Goe8Tt63lNI99meP`, Cloturer `E2tWxiMuX8St1H0B`, Confirmer `Yp1hKYuYdICZ84KM`, Page `RcplBgiyLl5oF26K`.
+```sh
+FONDA_N8N_CLE_RECETTE="$(security find-generic-password -s fonda-recette-n8n-lecture -w)" node outils-recette/sonde-executions.js Goe8Tt63lNI99meP
+FONDA_N8N_CLE_RECETTE="$(security find-generic-password -s fonda-recette-n8n-lecture -w)" node outils-recette/comparer-live.js Goe8Tt63lNI99meP n8n/fonda-relecture-page/box-fonda-emettre-relecture.recette.json
+FONDA_N8N_CLE_RECETTE="$(security find-generic-password -s fonda-recette-n8n-lecture -w)" node outils-recette/comparer-live.js E2tWxiMuX8St1H0B n8n/fonda-relecture-page/box-fonda-cloturer-relecture.recette.json
+```
+(`g2-noms.sh` ci-dessus reste consigné verbatim pour la G2 d'origine : il refuse tout autre workflow que `McD7…`.)
+
+| Étape | Fichiers de test présents (en plus de G4 + P1) | Exécution | Noms bruts rendus par « Lister decisions » | N (filtré) | Verdict |
+|---|---|---|---|---|---|
+| R0 | aucun | 280850 | 2 : G4 `…-39948493….json`, P1 `…-570041aa….json` | **2** | **GO** (référence) |
+| R1 | T+ `S-ffffffffffffffffffffffffffffffff.json` (nom exact, sans propriété) | 280852 | 3 : T+, P1, G4 | **3** | **GO** (T+ RETENU par son nom exact) |
+| R2 | T+ + L2 `x-S-leurre.json`, L3 `S_leurre.json`, L5 `set-fonda-proportionnalite-nI-02-leurre.json`, L7 `SET_FONDA_PROPORTIONNALITE_NI_02-leurre.json` | 280853 | **7** : L3, L7, L2, L5, T+, P1, G4 | **3** | **GO** : Drive sur-correspond toujours (7 bruts), le filtre écarte les 4 leurres |
+| Contrôle final | les 5 fichiers de test **supprimés définitivement** par Éric | 280854, 280855 (même curl envoyé deux fois, 4 s d'écart) | 2 : P1, G4 | **2** | **GO** (état de départ rétabli) |
+| Clôture | Emettre désactivé | — | — | — | comparer-live **code 0** (`identique: true`, versionId `51ddd073…`) ; `active=false`, `activeVersionId=null` |
+
+(S = `set_fonda_proportionnalite_nI_02`. 280851 n'est pas une exécution d'Emettre : ids communs à l'instance.)
+
+**Toutes les exécutions** (5 : 280850, 280852–280855) : `status: error`, `mode: webhook`, dernier nœud = nœud en erreur = **« Analyser emission »**, message `decisions/ : N décision(s) du lot : ni émission ni réémission` ; une page, `incompleteSearch=false`, sans `nextPageToken`. **Preuve réelle** : en R2, la requête large rend 7 fichiers et N filtré reste 3 : `decisionsDuLot` contient la sur-correspondance de `name contains` caractérisée en G2 ; le témoin positif T+ (nom exact, sans propriété) reste compté.
+
+**Lectures de Claude Code** : GET seuls ; 280850 en mode `error`, 0 échantillon ; noms (autorisation permanente de l'architecte) : exécution complète téléchargée par GET avec la clé de lecture et filtrée EN LOCAL, seuls les champs `name` de « Lister decisions » affichés (jamais `properties` ni autre donnée de nœud).
+
+**Chaîne de validation du correctif** : architecte (décision « filtre exact », 2026-11-13) ; Claude Code (tests du filtre et du faux Drive aligné sur le modèle G2 ; mutations du filtre : 19 jouées, **18 tuées**, la survivante `includes` au lieu de `startsWith` étant équivalente ; harnais 225/225, suite 6134/6135 dont 1 ignoré) ; **Codex** (critique croisée en lecture seule, effort élevé, 2026-11-13 : **favorable**, 2 réserves mineures de tests, traitées en `7a1396a`) ; **rejeu sur l'instance** (2026-11-14, ci-dessus). G2 : **GO**.
+
+**État laissé pour G1** : inchangé (`decisions/` = G4 + P1 ; candidat `en_attente`) : G1 exigera un nouveau `set_id`.
