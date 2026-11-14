@@ -2400,3 +2400,24 @@ describe('13. script de la page EXÉCUTÉ (DOM minimal) -> soumission SIMULÉE (
     assert.deepEqual(n.boutons(), []); assert.equal(n.rejet.hidden, true);
   });
 });
+
+// ── 14. Aucun nœud capable d'ATTENDRE (recette G7, 2026-11-14) ──
+// L'API publique de n8n 2.6.3 exclut de status=waiting ET de la liste complète toute exécution encore dans
+// ActiveExecutions ; une exécution « waiting » y reste (sources n8n@2.6.3 : public-api executions.handler.ts,
+// active-executions.ts). observer() (sonde, signataire) ne la voit donc JAMAIS : la quiescence de P5 ne vaut
+// que pour des workflows qui ne peuvent pas entrer en « waiting ». Garde-fou statique sur les 8 exports.
+const TYPES_ATTENTE = Object.freeze(['n8n-nodes-base.wait', 'n8n-nodes-base.form', 'n8n-nodes-base.formTrigger', 'n8n-nodes-base.executeWorkflow']);
+describe('14. aucun nœud d\'attente dans les 4 workflows (production et recette) : jamais de statut « waiting » invisible à observer()', () => {
+  const exports = Object.keys(EXPORTS).flatMap((k) => [[EXPORTS[k], lireExport(k)], [EXPORTS_RECETTE[k], lireRecette(k)]]);
+  test('8 exports : aucun Wait / Form / sous-workflow, aucune opération sendAndWait', () => {
+    assert.equal(exports.length, 8);
+    for (const [nom, octets] of exports) {
+      const w = JSON.parse(octets);
+      assert.ok(Array.isArray(w.nodes) && w.nodes.length > 0, nom);
+      for (const n of w.nodes) {
+        assert.ok(!TYPES_ATTENTE.includes(n.type) && !/\.(wait|form|formTrigger|executeWorkflow)$/i.test(n.type), `${nom} : nœud d'attente « ${n.name} » (${n.type})`);
+        assert.doesNotMatch(JSON.stringify(n.parameters || {}), /"operation":"sendAndWait"/, `${nom} : « ${n.name} » en sendAndWait`);
+      }
+    }
+  });
+});
