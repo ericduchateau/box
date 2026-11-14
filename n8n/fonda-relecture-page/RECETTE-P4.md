@@ -171,6 +171,7 @@ Format par épreuve : `date heure | opérateur | workflow (id) | exécutions (id
 | G2 (`name contains`, leurres) | Emettre `McD7qTGQHeov0nmT` (seul) | heure au journal d'Éric (1er appel 2026-11-13 13:32 Paris) | heure au journal d'Éric (après le contrôle final de 15:23 ; inactif constaté par GET) | architecte |
 | G2 rejeu (filtre exact, #95) | Emettre `Goe8Tt63lNI99meP` (seul, réimporté) | heure au journal d'Éric (1er appel 2026-11-14 17:56 Paris) | heure au journal d'Éric (avant le contrôle final de 18:24 ; inactif constaté par GET) | architecte |
 | G1 (version +1, cycle émission/réémission/refus/clôture) | Emettre `Goe8Tt63lNI99meP` (E1–E6, E9), Cloturer `E2tWxiMuX8St1H0B` (E7–E9) ; Page et Confirmer inactifs | heure au journal d'Éric (E1 2026-11-14 19:37 Paris) | heure au journal d'Éric (après E9 de 20:26 ; ordre inverse ; inactifs constatés par GET) | architecte |
+| G7 (sonde, exécutions en vol) | jetable « FONDA RECETTE - Attente » `cQl2Z7xQKVSMgcyG` (seul) ; les 6 copies inactives | heure au journal d'Éric (2026-11-14) | heure au journal d'Éric ; jetable puis supprimé (404 constaté par GET) | architecte |
 
 ### Résultats
 Phase 2 — import inactif et octet-identité (2026-11-11 ; opérateur : Éric ; heures exactes au journal d'Éric ; aucune activation). Extraits expurgés : jamais `k`, adresse, secret, jeton.
@@ -466,3 +467,32 @@ Phase 3 — **porte G1** (version Drive +1 à chaque réécriture ; cycle émiss
 **Clôture** : Cloturer puis Emettre désactivés ; candidat et lot de test **supprimés définitivement** par Éric, 5 courriels supprimés. GET : comparer-live **code 0** ×2 (`identique: true`, versionId `51ddd073…` et `ab3bae07…` inchangés) ; sonde code 0 ×2, `en_vol: []` (dernières : 280867 Emettre, 280866 Cloturer) ; les 6 copies `active=false`.
 
 **État laissé pour G7** : `decisions/` = G4 + P1 (lot `proportionnalite_nI_02`, inchangé) ; `relecture/` sans candidat `resolution-problemes_nI_02` ; aucun workflow actif.
+
+Phase 3 — **porte G7** (« finding 3 » : la sonde voit-elle une exécution EN VOL ? ; 2026-11-14 ; opérateur : Éric ; heures exactes au journal d'Éric). Extraits expurgés ; aucune donnée réelle (jetable synthétique, réponse fixe « fin »).
+
+**Banc** : workflow jetable « FONDA RECETTE - Attente », 3 nœuds aux noms EXACTS de la liste de confiance de la sonde (`Webhook attente` -> `Attendre` -> `Repondre attente`) ; webhook POST `fonda-recette-attente`, `headerAuth` sur le credential « FONDA RECETTE Emettre Token » (jeton au trousseau, en-tête passé par `-H @<(…)`), `responseMode: responseNode` ; Wait v1.1 de `{{ $json.query.duree === '120' ? 120 : 60 }}` s ; réponse texte fixe, 200. Définition préparée par Claude Code (JSON hors dépôt, 2101 octets, SHA-256 `1dd537e70f8ce8789e3191dfd142fb2b6b69c64846c2ff0044598f94ce0c2e84`, validateur n8n-mcp : 0 erreur) ; hors régime d'octet-identité (vérification GET : nom, nœuds, chemin, credential, inactif, Personal). Appels : `curl --max-time 180 … ?duree=60|120 &`.
+
+**Trouvaille 1 — ids non alphanumériques inobservables** : la 1re création, par **l'éditeur** (« Import from file »), a donné l'id `1fS2ptvPcfmpcCaTL-ioV` (21 caractères, avec `-`) ; la sonde l'a refusé (`workflowId invalide`, **code 1**) : `sonde-executions.js` et `comparer-live.js` valident les ids par `ID_WORKFLOW = /^[A-Za-z0-9]{1,40}$/` (`outils-recette/lecture-seule.js`). Le jetable a été **recréé par l'API** (POST `/api/v1/workflows`, clé d'import, même fichier) : `cQl2Z7xQKVSMgcyG` (16 alphanumériques), accepté (code 0) ; la copie de l'éditeur, archivée, n'a jamais été activée. **Discipline** : les workflows FONDA (recette et production) sont créés par l'API ou l'outil d'import, **jamais par l'éditeur** ; un id hors grammaire rend le workflow inobservable (sonde et comparer-live refusent : sens sûr, fail-closed). Outils inchangés.
+
+| Cas | Action | Exécution | Observé (sondes horodatées) | Verdict |
+|---|---|---|---|---|
+| Pré-vol | W inactif | — | sonde code 0, tout vide ; comparer-live des 4 copies en vigueur **code 0** | GO |
+| G7-T0 témoin | W actif, aucun appel | — | sonde **code 0**, `running: []`, `waiting: []`, `liste: []`, `en_vol: []` | **GO** (témoin négatif) |
+| G7-T1 | `?duree=60` | 280869 | **pendant** l'attente : id dans `brut.running`, **`en_vol: [280869]`**, code 0 ; **après** : `success`, `en_vol: []` | **GO** (critère principal) |
+| G7-T2 | `?duree=120` | 280870 (startedAt 20:26:11, stoppedAt 20:28:11, 120 s, `success`) | **invisible** aux sondes de +30 s et +90 s : ni `running`, ni `waiting`, ni `liste` ; `en_vol: []` | constat (repli validé : pas un NO-GO) |
+
+(Relevés de la fenêtre transmis par l'architecte. Les exécutions ont disparu avec le jetable : 280869 et 280870 rendent **404** après suppression, comme les 2 workflows.)
+
+**Trouvaille 2 — angle mort `waiting` (cause établie dans les sources de n8n `2.6.3`, tag `n8n@2.6.3`, lecture publique)** :
+- `packages/cli/src/public-api/v1/handlers/executions/executions.handler.ts` (`getExecutions`, l. 117–132) : les ids présents en mémoire dans `ActiveExecutions` sont **exclus** du résultat (`excludedExecutionsIds`) **sauf** pour `status=running` (« for backward compatibility `running` executions are always excluded unless the user explicitly filters by `running` status ») ;
+- `packages/cli/src/active-executions.ts` (l. 134–148) : une exécution passée en `waiting` **reste** dans `ActiveExecutions` (seule une exécution non `waiting` en est retirée), pour sa reprise ;
+- donc une attente ≥ 65 s (déchargée en base, statut `waiting`) est exclue de `status=waiting` ET de la liste complète, et absente de `status=running` (filtre sur le statut en base) : **invisible aux trois requêtes d'`observer()`**. Une attente < 65 s reste `running` et est vue (T1). Le statut `waiting` de 280870 pendant l'attente est **déduit** (sources + seuil), non observé.
+- `GET /executions/{id}` (`getExecution`) n'exclut rien : `sonde --execution <id>` verrait `waiting`, mais l'id n'est **pas découvrable** par la liste. Aucune requête de l'API publique ne ferme l'angle mort (contournements écartés : sondage des ids séquentiels communs à l'instance ; API interne `/rest` à session).
+
+**Portée P5** : `observer()` (partagé par la sonde et le signataire) ne voit pas une exécution `waiting` encore en mémoire ; la preuve de quiescence ne vaut que pour des workflows **sans nœud capable d'attendre**. Les 4 workflows FONDA (Emettre 27 nœuds, Cloturer 14, Page 15, Confirmer 26 ; exports de production et de recette) n'ont **aucun** nœud `wait`, `form` ni opération `sendAndWait` (vérifié ; `respondToWebhook` de Page et Confirmer répond sans attente) : ils ne peuvent pas entrer en `waiting`, en vol = `new`/`running`, vus par `status=running`. Garde-fou statique proposé dans une PR de tests séparée (aucun nœud d'attente dans les 4 exports).
+
+**Verdict G7** : **GO** selon le repli validé par l'architecte (T0 vide ; T1 vu en vol puis `success` ; `waiting` jamais vu = constat, cause établie, portée P5 bornée).
+
+**Clôture** : W désactivé puis `cQl2Z7xQKVSMgcyG` et `1fS2ptvPcfmpcCaTL-ioV` **supprimés par l'API** (Éric). GET (Claude Code) : les 2 workflows et les exécutions 280869, 280870 rendent **404** ; comparer-live **code 0** ×4 (Emettre `Goe8…`, Cloturer `E2tW…`, Confirmer `Yp1h…`, Page `Rcpl…`), `active=false` ×4 ; sonde code 0 ×4, `en_vol: []`.
+
+**Phase 3 terminée** : G6, G3, G4, G5, G2 (rejeu), G1, G7 au vert. Suite : phase 5 (désactivation constatée, révocation des credentials et clés de recette, sort des copies et des dossiers décidé par Éric).
