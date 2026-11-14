@@ -496,3 +496,28 @@ Phase 3 — **porte G7** (« finding 3 » : la sonde voit-elle une exécution EN
 **Clôture** : W désactivé puis `cQl2Z7xQKVSMgcyG` et `1fS2ptvPcfmpcCaTL-ioV` **supprimés par l'API** (Éric). GET (Claude Code) : les 2 workflows et les exécutions 280869, 280870 rendent **404** ; comparer-live **code 0** ×4 (Emettre `Goe8…`, Cloturer `E2tW…`, Confirmer `Yp1h…`, Page `Rcpl…`), `active=false` ×4 ; sonde code 0 ×4, `en_vol: []`.
 
 **Phase 3 terminée** : G6, G3, G4, G5, G2 (rejeu), G1, G7 au vert. Suite : phase 5 (désactivation constatée, révocation des credentials et clés de recette, sort des copies et des dossiers décidé par Éric).
+
+Phase 5 — **démontage de l'environnement de recette** (2026-11-14/15 ; écritures : Éric ; lectures GET : Claude Code ; feuille validée par l'architecte). Aucune valeur de clé, jeton, secret ni adresse communiquée à l'IA ; aucun contenu Drive lu.
+
+**Inventaire et partage** (preuve : recensement GET des credentials et Data Tables référencés par les 57 workflows de l'instance ; lecture des 4 exports de production du dépôt) — tout était **propre à la recette** :
+- workflows : Emettre `Goe8Tt63lNI99meP`, Cloturer `E2tWxiMuX8St1H0B`, Confirmer `Yp1hKYuYdICZ84KM`, Page `RcplBgiyLl5oF26K`, et les copies « (avant G2) » `McD7qTGQHeov0nmT`, `WQ2fDu56h6bGJ88B` (jetables G7 déjà supprimés) ;
+- credentials : `oNP2I7TyfU1uDIyo` (Emettre Token), `AzsWdsfTUbhhUENY` (Cloturer Token), `rIQA9xF9tYcrhEb1` (Drive), `I8NVi8hVrF6TRNIn` (Gmail) : référencés par les seules copies de recette ; **la production est distincte** (exports de production : Drive `cukxQDNwWIqOAK02`, jetons, Gmail et Data Table encore `A_RENSEIGNER_P4_…`, secret HMAC `A_INJECTER_A_L_IMPORT`) ; les workflows de relecture de production n'existent pas sur l'instance ;
+- Data Table `hh5uTRuoKi5FwEiM` (`fonda_recette_relecteurs`, adresse de test) : copies Emettre seules ;
+- clés d'API « FONDA RECETTE import » et « FONDA RECETTE lecture » ; trousseau : `fonda-recette-n8n-import`, `-n8n-lecture`, `-emettre-token`, `-cloturer-token`, `-page-hmac` ;
+- Drive `FONDA-RECETTE/` (`lots/`, `relecture/` avec le candidat `proportionnalite_nI_02`, `decisions/` avec G4 et P1).
+Hors recette, intouchés : Génération IA `vrqgtS5kQMvP9Ok5` et portier `MkYrdhgTo52nA3av` (inactifs, credentials propres), les 9 workflows BOX.
+
+| Étape | Opérateur | Action | Preuve (GET, Claude Code) |
+|---|---|---|---|
+| 1 | Claude Code | **photo avant** : 57 workflows (`id`, `name`, `active`, `isArchived`, `updatedAt`, `versionId`, `activeVersionId`), hors dépôt | `photo-avant.json`, SHA-256 `b2d6e08d5ec5575bbaa414d6cccf7126afffef4e37df2eab46afa600d5510dbb` ; 20 actifs dont les 9 BOX |
+| 2 | Éric | suppression des 6 workflows de recette (API) | **404** ×6 ; exécutions **purgées** avec eux : 404 sur 280858, 280865, 280867, 280850 (`Goe8`/`E2tW`), 280798, 280810 (`McD7`), 280695 (`Rcpl`) ; 51 workflows restants |
+| 3–4 | Éric | suppression de la Data Table et des 4 credentials (interface) | recensement des 51 workflows : **aucune** référence aux 4 credentials ni à la Data Table. Absence dans les listes : **constat visuel d'Éric** (l'API publique 2.6.3 n'expose ni la liste des credentials, HTTP 405, ni les Data Tables) |
+| 5 | Éric | suppression définitive de `FONDA-RECETTE/` (lots, relecture, decisions G4 + P1), archive zip gardée **hors dépôt** | — (aucun contenu Drive lu) |
+| 8 | Claude Code | **photo après** et comparaison, AVANT révocation | `photo-apres.json`, SHA-256 `78ee308de9fc1b2acb6e2b29269566aef6d75e912c6ba786e9a6409721ee0c1d` : **51 / 51 identiques** à la photo avant, aucun nouveau, **9 BOX actifs**, **6 recette 404** |
+| 9 | Éric | révocation des 2 clés d'API (import, puis lecture) | GET avec chaque ancienne clé : **401** ×2 |
+| 10 | Éric | suppression des 5 entrées `fonda-recette-*` du trousseau ; nettoyage de `~/g1-recette/`, `~/g7-recette/` | trousseau : **0** service `fonda-recette-*` (noms seuls) |
+| 11 | Claude Code | élagage des worktrees `wt-g4`, `wt-p2`, `wt-p3` (dossiers déjà absents : `git worktree prune`) | `git worktree list` : dépôt principal seul |
+
+**Arbitrages de l'architecte** : `FONDA-RECETTE/` supprimé en totalité (décisions G4, P1 comprises) ; exécutions purgées par la suppression des workflows (elles contenaient `k`, liens, adresse de test) ; **autorisations Google non touchées** (client OAuth `923455870405` potentiellement partagé avec la production : un retrait côté Google vaudrait pour tout le client) ; API Gmail laissée activée ; fichiers de recette du dépôt **gardés** (`profil-recette.json`, `*.recette.json` : le harnais §1 bis en dépend) — leurs identifiants (workflows, credentials, dossiers, Data Table) sont désormais **sans objet**.
+
+**Phase 5 terminée. Recette P4 du parcours page close** : phases 1 à 5, portes G6, G3, G4, G5, G2 (rejeu après #95), G1, G7 **GO** ; correctifs issus de la recette : #92 (sonde `erreur_noeud`), #95 (filtre exact des décisions), #99 (garde-fou « liste fermée des nœuds ») ; restent hors P4 : P5 (CLI, verrou mono-écrivain, quiescence bornée aux workflows sans nœud d'attente) et l'arbitrage G1 « statut contrôlé avant Generer cle ».
