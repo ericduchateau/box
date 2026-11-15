@@ -14,17 +14,20 @@ if (require.main === module) {
 // ignorée). Le workflow doit être INACTIF et sans données épinglées. Le contenu du live n'est jamais
 // affiché (shared contient l'adresse du propriétaire) : seuls les chemins des écarts le sont.
 //
-// Références : LISTE FERMÉE des 4 exports de recette (chemin relatif au dépôt, exactement) ; instance : liste
-// fermée du transport. Erreurs affichées reconstruites (messageSur). Code 0 = identique ; 1 = écart ou erreur.
+// Références : LISTE FERMÉE des 4 exports de recette PUIS des 4 exports de production (déploiement phase A ; chemin
+// relatif au dépôt, exactement) ; instance : liste fermée du transport. Erreurs affichées reconstruites (messageSur). Code 0 = identique ; 1 = écart ou erreur.
 //
-// Usage : FONDA_N8N_CLE_RECETTE=… node outils-recette/comparer-live.js <workflowId> n8n/fonda-relecture-page/box-fonda-<k>-relecture.recette.json
+// Usage : FONDA_N8N_CLE_RECETTE=… node outils-recette/comparer-live.js <workflowId> n8n/fonda-relecture-page/box-fonda-<k>-relecture[.recette].json
+// (la variable porte la clé de LECTURE de l'environnement visé : trousseau fonda-prod-n8n-lecture pour la production).
 
 const fs = require('fs');
 const path = require('path');
 const { INSTANCES, ErreurOutil, ID_WORKFLOW, fetchLectureSeule, cleDEnvironnement, origineInstance, messageSur } = require('./lecture-seule.js');
 
 const RACINE = path.join(__dirname, '..');
-const REFERENCES = Object.freeze(['emettre', 'cloturer', 'confirmer', 'page'].map((k) => `n8n/fonda-relecture-page/box-fonda-${k}-relecture.recette.json`));
+const K4 = Object.freeze(['emettre', 'cloturer', 'confirmer', 'page']);
+const REFERENCES = Object.freeze([...K4.map((k) => `n8n/fonda-relecture-page/box-fonda-${k}-relecture.recette.json`),
+  ...K4.map((k) => `n8n/fonda-relecture-page/box-fonda-${k}-relecture.json`)]);
 const { analyser } = require('./arguments.js');
 
 const CLES_CONTENU = Object.freeze(['name', 'nodes', 'connections', 'settings']);
@@ -33,12 +36,12 @@ const CLES_CONTENU = Object.freeze(['name', 'nodes', 'connections', 'settings'])
 const METADONNEES = Object.freeze(['id', 'createdAt', 'updatedAt', 'versionId', 'versionCounter', 'shared', 'tags',
   'meta', 'triggerCount', 'description', 'parentFolder', 'homeProject', 'scopes']);
 const ETATS = Object.freeze(['active', 'isArchived', 'pinData', 'staticData', 'activeVersion', 'activeVersionId']);
-// Secret HMAC d'INSTANCE (P4b, option E) : SEULE divergence admise entre dépôt et live, sur 2 chemins EXACTS (le
-// paramètre « secret » du nœud Crypto hmac nommé, Page et Confirmer). Dépôt : valeur de remplacement fixe ; live :
+// Secret HMAC d'INSTANCE (P4b, option E) : SEULE divergence admise entre dépôt et live, sur 2 chemins EXACTS par
+// environnement (le paramètre « secret » du nœud Crypto hmac nommé, Page et Confirmer, recette ET production). Dépôt : valeur de remplacement fixe ; live :
 // 64 hexadécimaux minuscules, jamais la valeur de remplacement. La valeur n'est JAMAIS affichée ; identité stricte
 // partout ailleurs (le secret est ramené à la valeur de remplacement dans une COPIE avant la comparaison).
 const SECRET_A_INJECTER = 'A_INJECTER_A_L_IMPORT';
-const SECRETS_INJECTES = Object.freeze({ [REFERENCES[2]]: 'Recalculer jeton', [REFERENCES[3]]: 'Signer jeton' });
+const SECRETS_INJECTES = Object.freeze({ [REFERENCES[2]]: 'Recalculer jeton', [REFERENCES[3]]: 'Signer jeton', [REFERENCES[6]]: 'Recalculer jeton', [REFERENCES[7]]: 'Signer jeton' });
 // Réglages AJOUTÉS PAR n8n À LA CRÉATION (constat phase 2, import d'Emettre, 2026-11-11 : présents sur tout workflow
 // créé par l'API en 2.6.3, absents des exports). LISTE FERMÉE, valeurs EXACTES, ordre fixé : seule tolérance de
 // `settings`. Le live PEUT les porter, en FIN de settings (après les clés du dépôt, dans cet ordre, chacune au plus une
