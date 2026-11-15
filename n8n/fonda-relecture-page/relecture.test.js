@@ -199,7 +199,7 @@ describe('1 ter. profil de PRODUCTION renseigné : aucune valeur de remplacement
   // Ensemble EXACT des clés de CONFIG (décision de l'architecte, 2026-11-15) : toute clé nouvelle, retirée ou
   // reclassée fait échouer ce test -> décision EXPLICITE (partagée par conception ou isolée par environnement).
   // Le secret HMAC n'est PAS une clé de CONFIG : valeur publique de substitution dans le dépôt, secret réel hors
-  // dépôt (trousseau, injecté à l'import ; service distinct par environnement, vérifié par l'outil d'import).
+  // dépôt (trousseau, injecté à l'import ; service distinct par environnement : à vérifier par l'outil d'import étendu (PR2)).
   const CLES_PARTAGEES_CONCEPTION = ['depot', 'urlN8n', 'dureeCleJours', 'maxPagesDrive', 'urlMoteurs'];
   const CLES_ISOLEES = ['nomEmettre', 'nomCloturer', 'nomConfirmer', 'nomPage', 'cheminEmettre', 'cheminCloturer', 'cheminPage', 'cheminConfirmer',
     'dossierCandidats', 'dossierRelecture', 'dossierDecisions', 'tableRelecteurs', 'urlPage',
