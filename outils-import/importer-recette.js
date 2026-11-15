@@ -57,6 +57,13 @@ const NOEUD_SECRET = Object.freeze({ [REFERENCES[0]]: null, [REFERENCES[1]]: nul
   [REFERENCES[4]]: null, [REFERENCES[5]]: null, [REFERENCES[6]]: 'Recalculer jeton', [REFERENCES[7]]: 'Signer jeton' });
 const NOMS = Object.freeze(['FONDA RECETTE - Emettre relecture', 'FONDA RECETTE - Cloturer relecture', 'FONDA RECETTE - Confirmer relecture', 'FONDA RECETTE - Page relecture']);
 const NOMS_PRODUCTION = Object.freeze(['FONDA - Emettre relecture', 'FONDA - Cloturer relecture', 'FONDA - Confirmer relecture', 'FONDA - Page relecture']);
+// Projet n8n ATTENDU par environnement (Gate 0 AUTOMATIQUE, décision de l'architecte 2026-11-15) : relu après CHAQUE
+// création ; seul `projectId` du propriétaire est lu, jamais affiché ni le tableau `shared` (adresse du propriétaire).
+// Même instance, même propriétaire : valeur identique pour les deux environnements (hors CONFIG des workflows).
+const PROJET_ATTENDU = Object.freeze({ recette: 'oz9pBdYxCmm8UQ4l', production: 'oz9pBdYxCmm8UQ4l' });
+// Nom EXACT attendu PAR RÉFÉRENCE (pas seulement par environnement).
+const NOM_ATTENDU = Object.freeze({ [REFERENCES[0]]: NOMS[0], [REFERENCES[1]]: NOMS[1], [REFERENCES[2]]: NOMS[2], [REFERENCES[3]]: NOMS[3],
+  [REFERENCES[4]]: NOMS_PRODUCTION[0], [REFERENCES[5]]: NOMS_PRODUCTION[1], [REFERENCES[6]]: NOMS_PRODUCTION[2], [REFERENCES[7]]: NOMS_PRODUCTION[3] });
 // Environnements ÉTANCHES (liste fermée) : préfixe de service, service HMAC, variable de la clé d'import, noms, schéma.
 const ENVIRONNEMENTS = Object.freeze({
   recette: Object.freeze({ prefixe: 'fonda-recette-', service: SERVICE_TROUSSEAU, varCle: 'FONDA_N8N_CLE_IMPORT_RECETTE', noms: NOMS, schema: 'import-recette/v1' }),
@@ -68,7 +75,6 @@ const CIBLES = Object.freeze({
   [REFERENCES[4]]: { environnement: 'production', references: [REFERENCES[4]] }, [REFERENCES[5]]: { environnement: 'production', references: [REFERENCES[5]] },
   [CONJOINT_PRODUCTION]: { environnement: 'production', references: [REFERENCES[6], REFERENCES[7]] },
 });
-const ENVIRONNEMENT_DE_REFERENCE = Object.freeze(Object.fromEntries(Object.values(CIBLES).flatMap((c) => c.references.map((r) => [r, c.environnement]))));
 const ETAPES = Object.freeze(['precontrole', 'creation', 'verification']);
 
 const MESSAGES = Object.freeze({
@@ -90,20 +96,24 @@ const MESSAGES = Object.freeze({
   ACTIF: 'workflow créé ACTIF : à désactiver immédiatement (anomalie)',
   SERVICE_CROISE: 'service de trousseau d\'un autre environnement ou hors liste : refus (environnements étanches)',
   CLE_ENVIRONNEMENT: 'clé d\'import de l\'AUTRE environnement aussi présente : refus (une seule variable de clé à la fois)',
+  PROJET: 'workflow créé HORS du projet attendu (Gate 0) : arrêt, aucune autre création ; vérifier l\'instance avant toute relance',
+  ECART: 'import conjoint arrêté au premier écart (aucune autre création) : workflow créé NON identique au dépôt',
 });
 class ErreurImport extends Error {
-  constructor(code, { etape = null, crees = [] } = {}) {
+  constructor(code, { etape = null, crees = [], ecarts = [] } = {}) {
     if (!Object.prototype.hasOwnProperty.call(MESSAGES, code)) throw new TypeError('code d\'erreur hors liste fermée');
     super(MESSAGES[code]);
     this.code = code;
     this.etape = ETAPES.includes(etape) ? etape : null;
     this.crees = Array.isArray(crees) ? crees.filter((x) => typeof x === 'string' && ID_WORKFLOW.test(x)) : [];
+    // Écarts de comparer-live : chemins de CLÉS DU DÉPÔT et textes fixes seulement (jamais une valeur du live).
+    this.ecarts = Array.isArray(ecarts) ? ecarts.filter((x) => typeof x === 'string' && x.length <= 300).slice(0, 50) : [];
   }
 }
 // Texte affichable : reconstruit (code, étape de la liste fermée, identifiants en grammaire stricte), sinon marqueur.
 function messageSur(e) {
   if (!(e instanceof ErreurImport)) return 'erreur (message non affichable)';
-  const suite = [e.etape ? `étape : ${e.etape}` : null, e.crees.length ? `workflows créés : ${e.crees.join(', ')}` : null].filter(Boolean);
+  const suite = [e.etape ? `étape : ${e.etape}` : null, e.crees.length ? `workflows créés : ${e.crees.join(', ')}` : null, e.ecarts.length ? `écarts : ${e.ecarts.join(' | ')}` : null].filter(Boolean);
   return suite.length ? `${MESSAGES[e.code]} (${suite.join(' ; ')})` : MESSAGES[e.code];
 }
 
@@ -138,7 +148,7 @@ function preparer(reference, secret) {
   }
   let w;
   try { w = JSON.parse(texte); } catch { throw new ErreurImport('EXPORT_ILLISIBLE'); }
-  if (!w || typeof w !== 'object' || Array.isArray(w) || Object.keys(w).join(',') !== 'name,nodes,connections,settings' || !ENVIRONNEMENTS[ENVIRONNEMENT_DE_REFERENCE[reference]].noms.includes(w.name) || !Array.isArray(w.nodes)) throw new ErreurImport('EXPORT_ILLISIBLE');
+  if (!w || typeof w !== 'object' || Array.isArray(w) || Object.keys(w).join(',') !== 'name,nodes,connections,settings' || w.name !== NOM_ATTENDU[reference] || !Array.isArray(w.nodes)) throw new ErreurImport('EXPORT_ILLISIBLE');
   const hmac = w.nodes.filter((x) => x && x.type === 'n8n-nodes-base.crypto' && x.parameters && x.parameters.action === 'hmac');
   if (hmac.length !== (porteur ? 1 : 0) || (porteur && (hmac[0].name !== porteur || hmac[0].parameters.secret !== secret))) throw new ErreurImport('FRAGMENT');
   return { texte, nom: w.name };
@@ -195,6 +205,10 @@ async function importer({ cible, cle, secret, fetch: f = globalThis.fetch }) {
       const live = await appel(`/api/v1/workflows/${cree.id}`);
       if (live.id !== cree.id) throw new ErreurImport('VERIFICATION_ECHOUEE');
       if (live.active !== false) throw new ErreurImport('ACTIF');
+      // Gate 0 : UN SEUL propriétaire, dans le projet attendu de l'environnement (seul projectId est lu).
+      const proprietaires = Array.isArray(live.shared) ? live.shared.filter((x) => x && typeof x === 'object' && x.role === 'workflow:owner') : [];
+      if (proprietaires.length !== 1 || typeof proprietaires[0].projectId !== 'string' || !ID_WORKFLOW.test(proprietaires[0].projectId)
+        || proprietaires[0].projectId !== PROJET_ATTENDU[CIBLES[cible].environnement]) throw new ErreurImport('PROJET');
       const c = comparer(live, l.reference);
       const ecarts = [...c.ecarts];
       const porteur = NOEUD_SECRET[l.reference];
@@ -204,8 +218,10 @@ async function importer({ cible, cle, secret, fetch: f = globalThis.fetch }) {
       }
       resultat = { export: l.reference, workflowId: cree.id, identique: ecarts.length === 0, ecarts };
     } catch (e) {
-      throw new ErreurImport(e instanceof ErreurImport && e.code === 'ACTIF' ? 'ACTIF' : 'VERIFICATION_ECHOUEE', { etape: 'verification', crees });
+      throw new ErreurImport(e instanceof ErreurImport && ['ACTIF', 'PROJET'].includes(e.code) ? e.code : 'VERIFICATION_ECHOUEE', { etape: 'verification', crees });
     }
+    // Import conjoint : arrêt au PREMIER écart (aucune autre création), écarts conservés dans le diagnostic.
+    if (lots.length > 1 && !resultat.identique) throw new ErreurImport('ECART', { etape: 'verification', crees, ecarts: resultat.ecarts });
     imports.push(resultat);
   }
   return { schema: ENVIRONNEMENTS[CIBLES[cible].environnement].schema, cible, imports };
@@ -219,16 +235,16 @@ async function principal(argv, { env = process.env, fetch: f = globalThis.fetch,
   const cible = argv.find((a) => a !== '--confirmer-ecriture');
   if (!Object.prototype.hasOwnProperty.call(CIBLES, cible)) throw new ErreurImport('CIBLE_HORS_LISTE');
   const environnement = CIBLES[cible].environnement; const E = ENVIRONNEMENTS[environnement];
+  // Étanchéité D'ABORD : la variable de clé de l'AUTRE environnement ne doit pas être présente, même vide.
+  if (Object.entries(ENVIRONNEMENTS).some(([k, x]) => k !== environnement && env[x.varCle] !== undefined)) throw new ErreurImport('CLE_ENVIRONNEMENT');
   const cle = env[E.varCle];
   if (typeof cle !== 'string' || !CLE_API.test(cle)) throw new ErreurImport('CLE');
-  // Étanchéité : la variable de clé de l'AUTRE environnement ne doit pas être présente (aucune ambiguïté possible).
-  if (Object.entries(ENVIRONNEMENTS).some(([k, x]) => k !== environnement && env[x.varCle] !== undefined)) throw new ErreurImport('CLE_ENVIRONNEMENT');
   const secret = cible === CONJOINT || cible === CONJOINT_PRODUCTION ? trousseau(environnement) : null; // lu UNE fois, pour Page ET Confirmer
   const r = await importer({ cible, cle, secret, fetch: f });
   return { r, code: r.imports.every((x) => x.identique) ? 0 : 1 };
 }
 
-module.exports = { SECRET_A_INJECTER, FRAGMENT, SERVICE_TROUSSEAU, SERVICE_TROUSSEAU_PRODUCTION, CONJOINT, CONJOINT_PRODUCTION, NOMS, NOMS_PRODUCTION, MESSAGES, ErreurImport, messageSur, verifierService, lireTrousseau, preparer, importer, principal };
+module.exports = { SECRET_A_INJECTER, FRAGMENT, SERVICE_TROUSSEAU, SERVICE_TROUSSEAU_PRODUCTION, CONJOINT, CONJOINT_PRODUCTION, NOMS, NOMS_PRODUCTION, PROJET_ATTENDU, MESSAGES, ErreurImport, messageSur, verifierService, lireTrousseau, preparer, importer, principal };
 
 if (require.main === module) {
   principal(process.argv.slice(2)).then(({ r, code }) => { process.stdout.write(`${JSON.stringify(r, null, 2)}\n`); process.exitCode = code; })

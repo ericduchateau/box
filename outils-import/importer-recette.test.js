@@ -23,11 +23,13 @@ const lire = (r) => fs.readFileSync(path.join(RACINE, r), 'utf8');
 const reponse = (corps, status = 200) => ({ status, json: async () => corps });
 const sans = (t, ...x) => x.every((s) => !t.includes(s));
 // Faux n8n : enregistre chaque appel ; liste par nom paginée ; POST -> id créé ; GET de l'id -> ce qui a été posté.
-function instance({ pages = [[]], postActif = false, getActif = false, alterer = null, panne = null } = {}) {
+const PROJET = 'oz9pBdYxCmm8UQ4l';
+function instance({ pages = [[]], postActif = false, getActif = false, alterer = null, panne = null, shared = [{ projectId: PROJET, role: 'workflow:owner', project: { type: 'personal' }, user: { email: 'proprietaire@exemple.test' } }] } = {}) {
   const appels = []; const postes = {}; let n = 0;
   const f = async (url, init) => {
     appels.push({ url, init });
     const u = new URL(url);
+    if (init.headers['X-N8N-API-KEY'] !== CLE) return reponse({ message: 'unauthorized' }, 401); // le faux serveur EXIGE la clé
     if (panne && panne(u, init, appels.length)) return panne(u, init, appels.length)();
     if (init.method === 'GET' && u.pathname === '/api/v1/workflows') {
       const i = Number(u.searchParams.get('cursor') || 0);
@@ -36,7 +38,7 @@ function instance({ pages = [[]], postActif = false, getActif = false, alterer =
     if (init.method === 'POST' && u.pathname === '/api/v1/workflows') { n += 1; const id = `NouveauWf${n}`; postes[id] = init.body; return reponse({ id, ...JSON.parse(init.body), active: postActif }); }
     const m = u.pathname.match(/^\/api\/v1\/workflows\/(NouveauWf[0-9])$/);
     if (init.method === 'GET' && m && postes[m[1]]) {
-      const w = { id: m[1], createdAt: 'x', updatedAt: 'x', versionId: 'v', ...JSON.parse(postes[m[1]]), active: getActif, isArchived: false };
+      const w = { id: m[1], createdAt: 'x', updatedAt: 'x', versionId: 'v', ...JSON.parse(postes[m[1]]), active: getActif, isArchived: false, ...(shared === 'ABSENT' ? {} : { shared }) };
       if (alterer) alterer(w);
       return reponse(w);
     }
@@ -90,9 +92,11 @@ describe('import de recette : ÉCRITURE explicite, ensembles fermés, secret jam
   test('secret RELU ≠ secret envoyé (instance qui en conserve un autre) -> NON identique, écart fixe, valeur jamais affichée', async () => {
     const autre = 'cd'.repeat(32);
     const n = instance({ alterer: (w) => { for (const x of w.nodes) if (x.type === 'n8n-nodes-base.crypto' && x.parameters.action === 'hmac') x.parameters.secret = autre; } });
-    const r = await I.importer({ cible: I.CONJOINT, cle: CLE, secret: SECRET, fetch: n.f });
-    for (const x of r.imports) { assert.equal(x.identique, false); assert.deepEqual(x.ecarts, ['secret relu ≠ secret envoyé']); }
-    assert.ok(sans(JSON.stringify(r), SECRET, autre));
+    // Import conjoint : ARRÊT au premier écart, AUCUN second POST, écarts et ids créés conservés dans le diagnostic.
+    await assert.rejects(I.importer({ cible: I.CONJOINT, cle: CLE, secret: SECRET, fetch: n.f }),
+      (e) => e.code === 'ECART' && e.etape === 'verification' && e.crees.join() === 'NouveauWf1' && e.ecarts.join() === 'secret relu ≠ secret envoyé'
+        && I.messageSur(e) === `${I.MESSAGES.ECART} (étape : verification ; workflows créés : NouveauWf1 ; écarts : secret relu ≠ secret envoyé)` && sans(I.messageSur(e), SECRET, autre));
+    assert.equal(n.appels.filter((a) => a.init.method === 'POST').length, 1);
   });
   test('précontrôle de doublon : homonyme EXACT en page 2 -> refus ; noms voisins (sous-chaîne) tolérés ; aucun POST', async () => {
     const voisin = { id: 'Voisin1', name: 'FONDA RECETTE - Page relecture (copie)' };
@@ -151,8 +155,11 @@ describe('import de recette : ÉCRITURE explicite, ensembles fermés, secret jam
     assert.equal(ko.imports[0].identique, false);
   });
   test('live altéré ailleurs que sur le secret -> NON identique (code 1) ; Emettre et Cloturer : aucun secret lu', async () => {
-    const r = await I.importer({ cible: I.CONJOINT, cle: CLE, secret: SECRET, fetch: instance({ alterer: (w) => { delete w.settings.saveManualExecutions; } }).f });
-    assert.deepEqual(r.imports.map((x) => x.ecarts), [['$.settings.saveManualExecutions : absent du live'], ['$.settings.saveManualExecutions : absent du live']]);
+    const ia = instance({ alterer: (w) => { delete w.settings.saveManualExecutions; } });
+    await assert.rejects(I.importer({ cible: I.CONJOINT, cle: CLE, secret: SECRET, fetch: ia.f }), (e) => e.code === 'ECART' && e.ecarts.join() === '$.settings.saveManualExecutions : absent du live' && e.crees.join() === 'NouveauWf1');
+    assert.equal(ia.appels.filter((a) => a.init.method === 'POST').length, 1);
+    const r = await I.importer({ cible: EMETTRE, cle: CLE, secret: null, fetch: instance({ alterer: (w) => { delete w.settings.saveManualExecutions; } }).f });
+    assert.deepEqual(r.imports.map((x) => x.ecarts), [['$.settings.saveManualExecutions : absent du live']], 'cible simple : résultat non identique rendu (code 1)');
     for (const c of [EMETTRE, CLOTURER]) assert.equal((await I.importer({ cible: c, cle: CLE, secret: null, fetch: instance().f })).imports[0].identique, true);
   });
   test('principal : confirmation explicite, arguments exacts, cible fermée (Page ou Confirmer SEULS refusés), clé dédiée ; trousseau lu UNE fois, seulement en conjoint', async () => {
@@ -203,6 +210,38 @@ describe('import de PRODUCTION (déploiement phase A) : cibles, noms, secret et 
     await assert.rejects(I.importer({ cible: PE, cle: CLE, secret: null, fetch: doublon.f }), (e) => e.code === 'NOM_EXISTANT');
     assert.equal(doublon.appels.filter((a) => a.init.method === 'POST').length, 0);
   });
+  test('Gate 0 AUTOMATIQUE : projet relu après chaque création ; projet faux, absent, ambigu ou sans propriétaire -> ARRÊT immédiat (aucune autre création), ids créés restitués, jamais shared ni adresse', async () => {
+    const autre = [{ projectId: 'AutreProjet00001', role: 'workflow:owner' }];
+    for (const [nom, shared] of [['autre projet', autre], ['absent', 'ABSENT'], ['vide', []], ['non tableau', 'x'], ['deux propriétaires', [{ projectId: PROJET, role: 'workflow:owner' }, { projectId: 'AutreProjet00001', role: 'workflow:owner' }]],
+      ['aucun propriétaire', [{ projectId: PROJET, role: 'workflow:editor' }]], ['projectId hors grammaire', [{ projectId: 'a/b', role: 'workflow:owner' }]]]) {
+      for (const cible of [PE, I.CONJOINT_PRODUCTION, CL.REFERENCES[0], I.CONJOINT]) {
+        const n = instance({ shared });
+        await assert.rejects(I.importer({ cible, cle: CLE, secret: SECRET, fetch: n.f }),
+          (e) => e.code === 'PROJET' && e.etape === 'verification' && e.crees.join() === 'NouveauWf1' && sans(I.messageSur(e), 'proprietaire@exemple.test', 'AutreProjet', 'workflow:'), `${nom} / ${cible}`);
+        assert.equal(n.appels.filter((a) => a.init.method === 'POST').length, 1, `${nom} / ${cible} : arrêt avant toute autre création`);
+      }
+    }
+    const ok = await I.importer({ cible: I.CONJOINT_PRODUCTION, cle: CLE, secret: SECRET, fetch: instance().f });
+    assert.ok(sans(JSON.stringify(ok), 'proprietaire@exemple.test', 'shared'), 'jamais shared ni adresse dans la sortie');
+    assert.equal(I.PROJET_ATTENDU.production, PROJET); assert.equal(I.PROJET_ATTENDU.recette, PROJET);
+  });
+  test('nom EXACT par référence (pas seulement par environnement) : export renommé en nom d\'un autre workflow ou de l\'autre environnement -> refus AVANT le réseau', () => {
+    const lireFs = fs.readFileSync;
+    const renommer = (cible, nom) => { fs.readFileSync = function (f, ...r) { const t = lireFs.call(this, f, ...r); return String(f).endsWith(cible) ? t.replace(/"name": "[^"]+",\n  "nodes"/, `"name": ${JSON.stringify(nom)},\n  "nodes"`) : t; }; };
+    try {
+      for (const [ref, nom] of [[PE, 'FONDA - Cloturer relecture'], [PE, 'FONDA RECETTE - Emettre relecture'], [CL.REFERENCES[0], 'FONDA - Emettre relecture'], [PP, 'FONDA - Confirmer relecture']]) {
+        renommer(ref, nom);
+        assert.throws(() => I.preparer(ref, ref === PP ? SECRET : null), (e) => e.code === 'EXPORT_ILLISIBLE', `${ref} <- ${nom}`);
+      }
+    } finally { fs.readFileSync = lireFs; }
+    for (const [ref, i] of [[PE, 0], [PC, 1], [PF, 2], [PP, 3]]) assert.equal(I.preparer(ref, i >= 2 ? SECRET : null).nom, I.NOMS_PRODUCTION[i]);
+  });
+  test('clé d\'API : le faux serveur EXIGE la bonne clé ; une autre clé -> refus au précontrôle, aucun POST', async () => {
+    const n = instance();
+    await assert.rejects(I.importer({ cible: PE, cle: 'autre-cle-synthetique-0123456789', secret: null, fetch: n.f }), (e) => e.code === 'RECHERCHE_INCOMPLETE');
+    assert.equal(n.appels.filter((a) => a.init.method === 'POST').length, 0);
+    assert.ok(n.appels.every((a) => a.init.headers['X-N8N-API-KEY'] === 'autre-cle-synthetique-0123456789'));
+  });
   test('principal : cible de production -> clé FONDA_N8N_CLE_IMPORT_PRODUCTION SEULE et secret lu dans fonda-prod-page-hmac ; clé de l\'autre environnement présente ou absente -> refus, aucun réseau', async () => {
     const lus = []; const trousseau = (e) => { lus.push(e); return SECRET; };
     assert.equal((await I.principal(['--confirmer-ecriture', I.CONJOINT_PRODUCTION], { env, fetch: instance().f, trousseau })).code, 0);
@@ -210,9 +249,11 @@ describe('import de PRODUCTION (déploiement phase A) : cibles, noms, secret et 
     assert.equal((await I.principal(['--confirmer-ecriture', I.CONJOINT], { env: { FONDA_N8N_CLE_IMPORT_RECETTE: CLE }, fetch: instance().f, trousseau })).code, 0);
     assert.deepEqual(lus, ['production', 'recette']);
     const cas = [
-      [[I.CONJOINT_PRODUCTION], { FONDA_N8N_CLE_IMPORT_RECETTE: CLE }, 'CLE'],
-      [[PE], { FONDA_N8N_CLE_IMPORT_RECETTE: CLE }, 'CLE'],
-      [[CL.REFERENCES[0]], env, 'CLE'],
+      [[I.CONJOINT_PRODUCTION], { FONDA_N8N_CLE_IMPORT_RECETTE: CLE }, 'CLE_ENVIRONNEMENT'], // l'autre environnement PRIME sur la clé absente
+      [[PE], { FONDA_N8N_CLE_IMPORT_RECETTE: CLE }, 'CLE_ENVIRONNEMENT'],
+      [[CL.REFERENCES[0]], env, 'CLE_ENVIRONNEMENT'],
+      [[PE], { ...env, FONDA_N8N_CLE_IMPORT_RECETTE: '' }, 'CLE_ENVIRONNEMENT'], // variable de l'autre environnement VIDE : refusée aussi
+      [[PE], {}, 'CLE'], [[PE], { FONDA_N8N_CLE_IMPORT_PRODUCTION: '' }, 'CLE'],
       [[I.CONJOINT_PRODUCTION], { ...env, FONDA_N8N_CLE_IMPORT_RECETTE: 'autre-cle-synthetique-0123456789' }, 'CLE_ENVIRONNEMENT'],
       [[I.CONJOINT], { ...env, FONDA_N8N_CLE_IMPORT_RECETTE: CLE }, 'CLE_ENVIRONNEMENT'],
       [['--confirmer-ecriture', PF].slice(1), env, 'CIBLE_HORS_LISTE'], [[PP], env, 'CIBLE_HORS_LISTE'],
@@ -236,7 +277,7 @@ globalThis.fetch = async (url, init) => { const u = new URL(url); const r = (c, 
   if (process.env.MODE === 'panne-get' && init.method === 'GET' && u.pathname !== '/api/v1/workflows') return r({}, 500);
   if (init.method === 'GET' && u.pathname === '/api/v1/workflows') return r({ data: [], nextCursor: null });
   if (init.method === 'POST') { n += 1; postes['Wf' + n] = init.body; return r({ id: 'Wf' + n, ...JSON.parse(init.body), active: false }); }
-  const id = u.pathname.split('/').pop(); return r({ id, ...JSON.parse(postes[id]), active: false, isArchived: false }); };\n`);
+  const id = u.pathname.split('/').pop(); return r({ id, ...JSON.parse(postes[id]), active: false, isArchived: false, shared: [{ projectId: 'oz9pBdYxCmm8UQ4l', role: 'workflow:owner' }] }); };\n`);
   const lancer = (args, env = {}) => spawnSync(process.execPath, ['-r', pre, path.join(__dirname, 'importer-recette.js'), ...args], { env: { ...process.env, FONDA_N8N_CLE_IMPORT_RECETTE: CLE, SECRET_TEST: SECRET, ...env }, encoding: 'utf8' });
   test('CLI : conjoint nominal -> code 0, sortie sans secret ; panne de relecture -> code 1, diagnostic avec ids ; trousseau en panne -> message fixe ; jamais le secret', () => {
     const ok = lancer(['--confirmer-ecriture', I.CONJOINT]);
@@ -273,14 +314,14 @@ M.prototype.require = function (id) { if (String(id).includes(process.env.CIBLE)
   const signature = (f) => { const t = f.toString(); if (/^class\b/.test(t)) return '<classe>'; const i = t.indexOf('('); let d = 0; let j = i;
     for (; j < t.length; j += 1) { if (t[j] === '(') d += 1; else if (t[j] === ')') { d -= 1; if (!d) break; } } return t.slice(i + 1, j).replace(/\s+/g, ' ').trim(); };
   test('F1 : exports et signatures = LISTE FERMÉE', () => {
-    const attendu = { CONJOINT: 'string', CONJOINT_PRODUCTION: 'string', ErreurImport: '<classe>', FRAGMENT: 'string', MESSAGES: 'object', NOMS: 'object', NOMS_PRODUCTION: 'object',
+    const attendu = { CONJOINT: 'string', CONJOINT_PRODUCTION: 'string', ErreurImport: '<classe>', FRAGMENT: 'string', MESSAGES: 'object', NOMS: 'object', NOMS_PRODUCTION: 'object', PROJET_ATTENDU: 'object',
       SECRET_A_INJECTER: 'string', SERVICE_TROUSSEAU: 'string', SERVICE_TROUSSEAU_PRODUCTION: 'string', verifierService: 'environnement, service',
       importer: '{ cible, cle, secret, fetch: f = globalThis.fetch }', lireTrousseau: "exec = execFileSync, environnement = 'recette'", messageSur: 'e', preparer: 'reference, secret',
       principal: 'argv, { env = process.env, fetch: f = globalThis.fetch, trousseau = trousseauDe } = {}' };
     assert.deepEqual(Object.keys(I).sort(), Object.keys(attendu).sort());
     for (const [k, v] of Object.entries(I)) assert.equal(typeof v === 'function' ? signature(v) : typeof v, attendu[k], k);
     assert.deepEqual(Object.keys(I.MESSAGES), ['CONFIRMATION', 'ARGUMENTS', 'CIBLE_HORS_LISTE', 'EXPORT_ILLISIBLE', 'FRAGMENT', 'CLE', 'TROUSSEAU', 'SECRET_FORME', 'NOM_EXISTANT',
-      'RECHERCHE_INCOMPLETE', 'TRANSPORT', 'HTTP', 'REPONSE', 'CREATION_NON_CONFIRMEE', 'VERIFICATION_ECHOUEE', 'ACTIF', 'SERVICE_CROISE', 'CLE_ENVIRONNEMENT']);
+      'RECHERCHE_INCOMPLETE', 'TRANSPORT', 'HTTP', 'REPONSE', 'CREATION_NON_CONFIRMEE', 'VERIFICATION_ECHOUEE', 'ACTIF', 'SERVICE_CROISE', 'CLE_ENVIRONNEMENT', 'PROJET', 'ECART']);
   });
   test('X1 : modules chargés par l\'import conjoint, TRACÉS (Module._load) = LISTE FERMÉE', () => {
     const trace = path.join(dir, 'trace.js'); const sortie = path.join(dir, 'modules.json');
