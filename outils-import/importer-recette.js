@@ -99,6 +99,9 @@ const MESSAGES = Object.freeze({
   PROJET: 'workflow créé HORS du projet attendu (Gate 0) : arrêt, aucune autre création ; vérifier l\'instance avant toute relance',
   ECART: 'import conjoint arrêté au premier écart (aucune autre création) : workflow créé NON identique au dépôt',
 });
+// Écarts de comparer-live : chemins de CLÉS DU DÉPÔT et textes fixes seulement (jamais une valeur du live) ; PLAFOND de
+// volume (50 chaînes de 300 caractères au plus), le même pour le diagnostic d'erreur et le résultat d'une cible simple.
+const bornerEcarts = (x) => (Array.isArray(x) ? x.filter((e) => typeof e === 'string' && e.length <= 300).slice(0, 50) : []);
 class ErreurImport extends Error {
   constructor(code, { etape = null, crees = [], ecarts = [] } = {}) {
     if (!Object.prototype.hasOwnProperty.call(MESSAGES, code)) throw new TypeError('code d\'erreur hors liste fermée');
@@ -106,8 +109,7 @@ class ErreurImport extends Error {
     this.code = code;
     this.etape = ETAPES.includes(etape) ? etape : null;
     this.crees = Array.isArray(crees) ? crees.filter((x) => typeof x === 'string' && ID_WORKFLOW.test(x)) : [];
-    // Écarts de comparer-live : chemins de CLÉS DU DÉPÔT et textes fixes seulement (jamais une valeur du live).
-    this.ecarts = Array.isArray(ecarts) ? ecarts.filter((x) => typeof x === 'string' && x.length <= 300).slice(0, 50) : [];
+    this.ecarts = bornerEcarts(ecarts);
   }
 }
 // Texte affichable : reconstruit (code, étape de la liste fermée, identifiants en grammaire stricte), sinon marqueur.
@@ -216,7 +218,7 @@ async function importer({ cible, cle, secret, fetch: f = globalThis.fetch }) {
         const n = Array.isArray(live.nodes) ? live.nodes.filter((x) => x && x.name === porteur) : [];
         if (n.length !== 1 || !n[0].parameters || n[0].parameters.secret !== secret) ecarts.push('secret relu ≠ secret envoyé'); // comparé en mémoire, jamais affiché
       }
-      resultat = { export: l.reference, workflowId: cree.id, identique: ecarts.length === 0, ecarts };
+      resultat = { export: l.reference, workflowId: cree.id, identique: ecarts.length === 0, ecarts: bornerEcarts(ecarts) }; // identique : sur TOUS les écarts
     } catch (e) {
       throw new ErreurImport(e instanceof ErreurImport && ['ACTIF', 'PROJET'].includes(e.code) ? e.code : 'VERIFICATION_ECHOUEE', { etape: 'verification', crees });
     }

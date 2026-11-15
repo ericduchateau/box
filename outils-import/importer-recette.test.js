@@ -38,7 +38,8 @@ function instance({ pages = [[]], postActif = false, getActif = false, alterer =
     if (init.method === 'POST' && u.pathname === '/api/v1/workflows') { n += 1; const id = `NouveauWf${n}`; postes[id] = init.body; return reponse({ id, ...JSON.parse(init.body), active: postActif }); }
     const m = u.pathname.match(/^\/api\/v1\/workflows\/(NouveauWf[0-9])$/);
     if (init.method === 'GET' && m && postes[m[1]]) {
-      const w = { id: m[1], createdAt: 'x', updatedAt: 'x', versionId: 'v', ...JSON.parse(postes[m[1]]), active: getActif, isArchived: false, ...(shared === 'ABSENT' ? {} : { shared }) };
+      const sh = typeof shared === 'function' ? shared(m[1]) : shared; // par workflow créé (Gate 0 sur CHAQUE création)
+      const w = { id: m[1], createdAt: 'x', updatedAt: 'x', versionId: 'v', ...JSON.parse(postes[m[1]]), active: getActif, isArchived: false, ...(sh === 'ABSENT' ? {} : { shared: sh }) };
       if (alterer) alterer(w);
       return reponse(w);
     }
@@ -159,7 +160,11 @@ describe('import de recette : ÉCRITURE explicite, ensembles fermés, secret jam
     await assert.rejects(I.importer({ cible: I.CONJOINT, cle: CLE, secret: SECRET, fetch: ia.f }), (e) => e.code === 'ECART' && e.ecarts.join() === '$.settings.saveManualExecutions : absent du live' && e.crees.join() === 'NouveauWf1');
     assert.equal(ia.appels.filter((a) => a.init.method === 'POST').length, 1);
     const r = await I.importer({ cible: EMETTRE, cle: CLE, secret: null, fetch: instance({ alterer: (w) => { delete w.settings.saveManualExecutions; } }).f });
-    assert.deepEqual(r.imports.map((x) => x.ecarts), [['$.settings.saveManualExecutions : absent du live']], 'cible simple : résultat non identique rendu (code 1)');
+    assert.deepEqual(r.imports.map((x) => x.ecarts), [['$.settings.saveManualExecutions : absent du live']], 'cible simple : résultat non identique rendu');
+    // Code de sortie RÉEL (principal) : cible simple non identique -> code 1 ; identique -> code 0.
+    const p1 = await I.principal(['--confirmer-ecriture', EMETTRE], { env: { FONDA_N8N_CLE_IMPORT_RECETTE: CLE }, fetch: instance({ alterer: (w) => { delete w.settings.saveManualExecutions; } }).f, trousseau: () => SECRET });
+    assert.equal(p1.code, 1); assert.equal(p1.r.imports[0].identique, false);
+    assert.equal((await I.principal(['--confirmer-ecriture', EMETTRE], { env: { FONDA_N8N_CLE_IMPORT_RECETTE: CLE }, fetch: instance().f, trousseau: () => SECRET })).code, 0);
     for (const c of [EMETTRE, CLOTURER]) assert.equal((await I.importer({ cible: c, cle: CLE, secret: null, fetch: instance().f })).imports[0].identique, true);
   });
   test('principal : confirmation explicite, arguments exacts, cible fermée (Page ou Confirmer SEULS refusés), clé dédiée ; trousseau lu UNE fois, seulement en conjoint', async () => {
@@ -214,11 +219,21 @@ describe('import de PRODUCTION (déploiement phase A) : cibles, noms, secret et 
     const autre = [{ projectId: 'AutreProjet00001', role: 'workflow:owner' }];
     for (const [nom, shared] of [['autre projet', autre], ['absent', 'ABSENT'], ['vide', []], ['non tableau', 'x'], ['deux propriétaires', [{ projectId: PROJET, role: 'workflow:owner' }, { projectId: 'AutreProjet00001', role: 'workflow:owner' }]],
       ['aucun propriétaire', [{ projectId: PROJET, role: 'workflow:editor' }]], ['projectId hors grammaire', [{ projectId: 'a/b', role: 'workflow:owner' }]]]) {
-      for (const cible of [PE, I.CONJOINT_PRODUCTION, CL.REFERENCES[0], I.CONJOINT]) {
+      for (const cible of [PE, PC, I.CONJOINT_PRODUCTION, CL.REFERENCES[0], CL.REFERENCES[1], I.CONJOINT]) {
         const n = instance({ shared });
         await assert.rejects(I.importer({ cible, cle: CLE, secret: SECRET, fetch: n.f }),
           (e) => e.code === 'PROJET' && e.etape === 'verification' && e.crees.join() === 'NouveauWf1' && sans(I.messageSur(e), 'proprietaire@exemple.test', 'AutreProjet', 'workflow:'), `${nom} / ${cible}`);
         assert.equal(n.appels.filter((a) => a.init.method === 'POST').length, 1, `${nom} / ${cible} : arrêt avant toute autre création`);
+      }
+    }
+    // SECOND workflow d'un import conjoint hors projet (le premier conforme) : refus, les DEUX ids restitués.
+    const formesFautives = [autre, 'ABSENT', [], 'x', [{ projectId: PROJET, role: 'workflow:owner' }, { projectId: 'AutreProjet00001', role: 'workflow:owner' }],
+      [{ projectId: PROJET, role: 'workflow:editor' }], [{ projectId: 'a/b', role: 'workflow:owner' }]];
+    for (const fautive of formesFautives) {
+      for (const cible of [I.CONJOINT_PRODUCTION, I.CONJOINT]) {
+        const n = instance({ shared: (id) => (id === 'NouveauWf1' ? [{ projectId: PROJET, role: 'workflow:owner' }] : fautive) });
+        await assert.rejects(I.importer({ cible, cle: CLE, secret: SECRET, fetch: n.f }), (e) => e.code === 'PROJET' && e.etape === 'verification' && e.crees.join() === 'NouveauWf1,NouveauWf2', `${JSON.stringify(fautive)} / ${cible}`);
+        assert.equal(n.appels.filter((a) => a.init.method === 'POST').length, 2, cible);
       }
     }
     const ok = await I.importer({ cible: I.CONJOINT_PRODUCTION, cle: CLE, secret: SECRET, fetch: instance().f });
@@ -235,6 +250,15 @@ describe('import de PRODUCTION (déploiement phase A) : cibles, noms, secret et 
       }
     } finally { fs.readFileSync = lireFs; }
     for (const [ref, i] of [[PE, 0], [PC, 1], [PF, 2], [PP, 3]]) assert.equal(I.preparer(ref, i >= 2 ? SECRET : null).nom, I.NOMS_PRODUCTION[i]);
+  });
+  test('écarts BORNÉS (50 chaînes de 300 caractères au plus) : diagnostic ErreurImport ET résultat d\'une cible simple ; comparer-live inchangé', async () => {
+    const e = new I.ErreurImport('ECART', { ecarts: [...Array.from({ length: 70 }, (_, i) => `e${i}`), 'x'.repeat(301), 12, null] });
+    assert.equal(e.ecarts.length, 50); assert.ok(e.ecarts.every((x) => typeof x === 'string' && x.length <= 300)); assert.equal(e.ecarts[0], 'e0');
+    const casser = (w) => { for (let i = 0; i < 120; i += 1) w.settings[`inconnu${i}`] = i; }; // 120 clés propres au live : 120 écarts (une boucle du comparateur)
+    const brut = { id: 'WfA', ...JSON.parse(lire(PE)), active: false, isArchived: false }; casser(brut);
+    assert.ok(CL.comparer(brut, PE).ecarts.length > 50, 'le comparateur produit bien plus de 50 écarts (le test exerce la borne)');
+    const r = await I.importer({ cible: PE, cle: CLE, secret: null, fetch: instance({ alterer: casser }).f });
+    assert.equal(r.imports[0].identique, false); assert.equal(r.imports[0].ecarts.length, 50); assert.ok(r.imports[0].ecarts.every((x) => x.length <= 300));
   });
   test('clé d\'API : le faux serveur EXIGE la bonne clé ; une autre clé -> refus au précontrôle, aucun POST', async () => {
     const n = instance();
