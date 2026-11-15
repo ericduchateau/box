@@ -165,8 +165,11 @@ describe('1. octet-identité interne et 2. contrôles statiques', () => {
 // recette conservée, la base des moteurs (jsDelivr épinglé : publique, immuable) étant la SEULE valeur partagée.
 const valeursConfig = (c) => Object.entries(c).flatMap(([k, v]) => (v && typeof v === 'object' ? [[`${k}.id`, v.id], [`${k}.name`, v.name]] : [[k, v]]));
 describe('1 ter. profil de PRODUCTION renseigné : aucune valeur de remplacement hors secret HMAC', () => {
-  test('CONFIG de production : aucune valeur « A_RENSEIGNER_ »', () => {
-    for (const [k, v] of valeursConfig(B.CONFIG)) assert.equal(typeof v === 'string' && v.startsWith('A_RENSEIGNER_'), false, k);
+  test('CONFIG de production : aucune valeur « A_RENSEIGNER_ », même imbriquée ou en milieu de chaîne', () => {
+    assert.equal(JSON.stringify(B.CONFIG).includes('A_RENSEIGNER_'), false, JSON.stringify(valeursConfig(B.CONFIG).filter(([, v]) => String(v).includes('A_RENSEIGNER_')).map(([k]) => k)));
+  });
+  test('urlMoteurs de production FIGÉE sur le commit vérifié en G6 (moteur v1 sha256 ce14c3e4…) : changer de commit = modifier ce test ET refaire une vérification de type G6', () => {
+    assert.equal(B.CONFIG.urlMoteurs, 'https://cdn.jsdelivr.net/gh/ericduchateau/box@e66fe79818caec87e47ee964c52a4efef2e386f8/fonda/engine');
   });
   for (const k of Object.keys(EXPORTS)) {
     test(`${EXPORTS[k]} : aucune « A_RENSEIGNER_ » ; secret HMAC = valeur publique de substitution (Page, Confirmer) seulement`, () => {
