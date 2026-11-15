@@ -254,11 +254,18 @@ describe('import de PRODUCTION (déploiement phase A) : cibles, noms, secret et 
   test('écarts BORNÉS (50 chaînes de 300 caractères au plus) : diagnostic ErreurImport ET résultat d\'une cible simple ; comparer-live inchangé', async () => {
     const e = new I.ErreurImport('ECART', { ecarts: [...Array.from({ length: 70 }, (_, i) => `e${i}`), 'x'.repeat(301), 12, null] });
     assert.equal(e.ecarts.length, 50); assert.ok(e.ecarts.every((x) => typeof x === 'string' && x.length <= 300)); assert.equal(e.ecarts[0], 'e0');
+    assert.equal(e.ecarts[49], '(22 écarts omis)', '71 chaînes : 49 rendues + marqueur fixe');
+    // UN SEUL écart de plus de 300 caractères : TRONQUÉ (jamais écarté) -> le diagnostic n'est jamais vide.
+    const long = new I.ErreurImport('ECART', { crees: ['NouveauWf1'], ecarts: [`$.nodes.${'k'.repeat(400)} : valeur`] });
+    assert.equal(long.ecarts.length, 1); assert.equal(long.ecarts[0].length, 300); assert.ok(long.ecarts[0].endsWith('…'));
+    assert.match(I.messageSur(long), /écarts : \$\.nodes\.k+… \)$|écarts : \$\.nodes\.k+…\)$/);
+    assert.deepEqual(new I.ErreurImport('ECART', { ecarts: Array.from({ length: 50 }, (_, i) => `e${i}`) }).ecarts.length, 50, '50 exactement : aucun marqueur');
     const casser = (w) => { for (let i = 0; i < 120; i += 1) w.settings[`inconnu${i}`] = i; }; // 120 clés propres au live : 120 écarts (une boucle du comparateur)
     const brut = { id: 'WfA', ...JSON.parse(lire(PE)), active: false, isArchived: false }; casser(brut);
     assert.ok(CL.comparer(brut, PE).ecarts.length > 50, 'le comparateur produit bien plus de 50 écarts (le test exerce la borne)');
     const r = await I.importer({ cible: PE, cle: CLE, secret: null, fetch: instance({ alterer: casser }).f });
     assert.equal(r.imports[0].identique, false); assert.equal(r.imports[0].ecarts.length, 50); assert.ok(r.imports[0].ecarts.every((x) => x.length <= 300));
+    assert.equal(r.imports[0].ecarts[49], '(71 écarts omis)', '120 écarts : 49 rendus + marqueur');
   });
   test('clé d\'API : le faux serveur EXIGE la bonne clé ; une autre clé -> refus au précontrôle, aucun POST', async () => {
     const n = instance();

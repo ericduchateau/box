@@ -100,8 +100,14 @@ const MESSAGES = Object.freeze({
   ECART: 'import conjoint arrêté au premier écart (aucune autre création) : workflow créé NON identique au dépôt',
 });
 // Écarts de comparer-live : chemins de CLÉS DU DÉPÔT et textes fixes seulement (jamais une valeur du live) ; PLAFOND de
-// volume (50 chaînes de 300 caractères au plus), le même pour le diagnostic d'erreur et le résultat d'une cible simple.
-const bornerEcarts = (x) => (Array.isArray(x) ? x.filter((e) => typeof e === 'string' && e.length <= 300).slice(0, 50) : []);
+// volume, le même pour le diagnostic d'erreur et le résultat d'une cible simple : chaque écart TRONQUÉ à 300 caractères
+// (jamais écarté), au plus 50 entrées dont, au-delà, un marqueur fixe « (N écarts omis) ». Une liste non vide reste non
+// vide : un résultat non identique porte toujours au moins une indication.
+const MAX_ECARTS = 50; const MAX_CAR = 300;
+function bornerEcarts(x) {
+  const t = (Array.isArray(x) ? x.filter((e) => typeof e === 'string') : []).map((e) => (e.length > MAX_CAR ? `${e.slice(0, MAX_CAR - 1)}…` : e));
+  return t.length > MAX_ECARTS ? [...t.slice(0, MAX_ECARTS - 1), `(${t.length - (MAX_ECARTS - 1)} écarts omis)`] : t;
+}
 class ErreurImport extends Error {
   constructor(code, { etape = null, crees = [], ecarts = [] } = {}) {
     if (!Object.prototype.hasOwnProperty.call(MESSAGES, code)) throw new TypeError('code d\'erreur hors liste fermée');
