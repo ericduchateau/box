@@ -196,6 +196,31 @@ describe('1 ter. profil de PRODUCTION renseigné : aucune valeur de remplacement
     assert.deepEqual([C.credentialEmettre.name, C.credentialCloturer.name, C.credentialGmail.name], ['FONDA Emettre Token', 'FONDA Cloturer Token', 'FONDA Gmail relecture']);
     assert.match(C.urlMoteurs, /^https:\/\/cdn\.jsdelivr\.net\/gh\/ericduchateau\/box@[0-9a-f]{40}\/fonda\/engine$/); // épinglé (immuable)
   });
+  // Ensemble EXACT des clés de CONFIG (décision de l'architecte, 2026-11-15) : toute clé nouvelle, retirée ou
+  // reclassée fait échouer ce test -> décision EXPLICITE (partagée par conception ou isolée par environnement).
+  // Le secret HMAC n'est PAS une clé de CONFIG : valeur publique de substitution dans le dépôt, secret réel hors
+  // dépôt (trousseau, injecté à l'import ; service distinct par environnement, vérifié par l'outil d'import).
+  const CLES_PARTAGEES_CONCEPTION = ['depot', 'urlN8n', 'dureeCleJours', 'maxPagesDrive', 'urlMoteurs'];
+  const CLES_ISOLEES = ['nomEmettre', 'nomCloturer', 'nomConfirmer', 'nomPage', 'cheminEmettre', 'cheminCloturer', 'cheminPage', 'cheminConfirmer',
+    'dossierCandidats', 'dossierRelecture', 'dossierDecisions', 'tableRelecteurs', 'urlPage',
+    'credentialDrive', 'credentialEmettre', 'credentialCloturer', 'credentialGmail'];
+  test('CONFIG : ensemble EXACT des clés, chacune classée « partagée par conception » ou « isolée par environnement »', () => {
+    const tri = (x) => [...x].sort();
+    assert.deepEqual(tri(Object.keys(B.CONFIG)), tri([...CLES_PARTAGEES_CONCEPTION, ...CLES_ISOLEES]));
+    assert.deepEqual(tri(Object.keys(B.configRecette())), tri(Object.keys(B.CONFIG)));
+    assert.equal(new Set([...CLES_PARTAGEES_CONCEPTION, ...CLES_ISOLEES]).size, CLES_PARTAGEES_CONCEPTION.length + CLES_ISOLEES.length);
+    // Cohérence avec le constructeur : les clés du profil de recette = les isolées (hors urlPage, dérivée) + la base des moteurs.
+    assert.deepEqual(tri([...B.CLES_RECETTE, 'urlPage']), tri([...CLES_ISOLEES, ...B.PARTAGES_RECETTE]));
+  });
+  test('CONFIG : clés partagées ÉGALES entre recette et production ; clés isolées DISTINCTES (credentials : id ET nom ; urlPage comprise)', () => {
+    const R = B.configRecette();
+    for (const k of CLES_PARTAGEES_CONCEPTION) assert.deepEqual(R[k], B.CONFIG[k], `${k} : partagée par conception`);
+    for (const k of CLES_ISOLEES) {
+      const r = R[k]; const p = B.CONFIG[k];
+      if (p && typeof p === 'object') { assert.notEqual(r.id, p.id, `${k}.id`); assert.notEqual(r.name, p.name, `${k}.name`); } else assert.notEqual(r, p, k);
+    }
+    assert.match(R.urlPage, /\/webhook\/fonda-recette-select$/); assert.match(B.CONFIG.urlPage, /\/webhook\/fonda-select$/);
+  });
   test('isolation recette / production : seule la base des moteurs est partagée (publique, immuable)', () => {
     const R = B.configRecette();
     const partages = B.CLES_RECETTE.filter((c) => JSON.stringify(R[c]) === JSON.stringify(B.CONFIG[c]) || (B.CONFIG[c] && typeof B.CONFIG[c] === 'object' && (R[c].id === B.CONFIG[c].id || R[c].name === B.CONFIG[c].name)));
