@@ -158,6 +158,50 @@ describe('1. octet-identité interne et 2. contrôles statiques', () => {
   });
 });
 
+// ── 1 ter. Profil de PRODUCTION renseigné (déploiement phase A, 2026-11-15) : garde INVERSE ──
+// Plus AUCUNE valeur de remplacement « A_RENSEIGNER_… » en production ; seul le secret HMAC reste la valeur
+// publique « A_INJECTER_A_L_IMPORT » (substituée à l'import depuis le trousseau, jamais dans le dépôt).
+// Identifiants seulement (dossiers, Data Table, credentials, chemins) ; grammaires fermées ; isolation de la
+// recette conservée, la base des moteurs (jsDelivr épinglé : publique, immuable) étant la SEULE valeur partagée.
+const valeursConfig = (c) => Object.entries(c).flatMap(([k, v]) => (v && typeof v === 'object' ? [[`${k}.id`, v.id], [`${k}.name`, v.name]] : [[k, v]]));
+describe('1 ter. profil de PRODUCTION renseigné : aucune valeur de remplacement hors secret HMAC', () => {
+  test('CONFIG de production : aucune valeur « A_RENSEIGNER_ »', () => {
+    for (const [k, v] of valeursConfig(B.CONFIG)) assert.equal(typeof v === 'string' && v.startsWith('A_RENSEIGNER_'), false, k);
+  });
+  for (const k of Object.keys(EXPORTS)) {
+    test(`${EXPORTS[k]} : aucune « A_RENSEIGNER_ » ; secret HMAC = valeur publique de substitution (Page, Confirmer) seulement`, () => {
+      const t = lireExport(k).toString('utf8');
+      assert.equal(t.includes('A_RENSEIGNER_'), false, `${k} : valeur de remplacement restante`);
+      assert.equal(t.split('A_INJECTER_A_L_IMPORT').length - 1 > 0, k === 'page' || k === 'confirmer', k);
+    });
+  }
+  test('identifiants de production : grammaires fermées, chemins distincts hors /box-… et hors recette, urlPage dérivée', () => {
+    const C = B.CONFIG;
+    const chemins = [C.cheminEmettre, C.cheminCloturer, C.cheminPage, C.cheminConfirmer];
+    for (const c of chemins) assert.match(c, /^fonda-[a-z]{1,20}(-[a-z]{1,20}){0,3}$/);
+    for (const c of chemins) assert.doesNotMatch(c, /^(fonda-recette-|box-)/);
+    assert.equal(new Set(chemins).size, 4);
+    assert.deepEqual([C.cheminPage, C.cheminConfirmer], ['fonda-select', 'fonda-select-confirm']); // §21.0, figés depuis P2
+    assert.equal(C.urlPage, `${C.urlN8n}/webhook/${C.cheminPage}`);
+    const dossiers = [C.dossierCandidats, C.dossierRelecture, C.dossierDecisions];
+    for (const d of dossiers) assert.match(d, /^[A-Za-z0-9_-]{10,80}$/);
+    assert.equal(new Set(dossiers).size, 3);
+    assert.match(C.tableRelecteurs, /^[A-Za-z0-9]{8,32}$/);
+    const creds = [C.credentialDrive, C.credentialEmettre, C.credentialCloturer, C.credentialGmail];
+    for (const c of creds) assert.match(c.id, /^[A-Za-z0-9]{8,32}$/);
+    assert.equal(new Set(creds.map((c) => c.id)).size, 4);
+    assert.deepEqual([C.credentialEmettre.name, C.credentialCloturer.name, C.credentialGmail.name], ['FONDA Emettre Token', 'FONDA Cloturer Token', 'FONDA Gmail relecture']);
+    assert.match(C.urlMoteurs, /^https:\/\/cdn\.jsdelivr\.net\/gh\/ericduchateau\/box@[0-9a-f]{40}\/fonda\/engine$/); // épinglé (immuable)
+  });
+  test('isolation recette / production : seule la base des moteurs est partagée (publique, immuable)', () => {
+    const R = B.configRecette();
+    const partages = B.CLES_RECETTE.filter((c) => JSON.stringify(R[c]) === JSON.stringify(B.CONFIG[c]) || (B.CONFIG[c] && typeof B.CONFIG[c] === 'object' && (R[c].id === B.CONFIG[c].id || R[c].name === B.CONFIG[c].name)));
+    assert.deepEqual(partages, ['urlMoteurs']);
+    assert.deepEqual(B.PARTAGES_RECETTE, ['urlMoteurs']);
+    assert.notEqual(R.urlPage, B.CONFIG.urlPage);
+  });
+});
+
 // ── 1 bis. Profil de RECETTE (P4a) : copie de test isolée, construite depuis le dépôt ──
 const EXPORTS_RECETTE = Object.fromEntries(Object.entries(EXPORTS).map(([k, f]) => [k, f.replace(/\.json$/, '.recette.json')]));
 const lireRecette = (k) => fs.readFileSync(path.join(__dirname, EXPORTS_RECETTE[k]));
@@ -165,7 +209,7 @@ const PROFIL_RECETTE = JSON.parse(fs.readFileSync(path.join(__dirname, 'profil-r
 // Identifiants de production à ne JAMAIS retrouver dans une copie de recette (hors valeurs de remplacement P4).
 const IDS_PROD = (() => {
   const v = [];
-  for (const c of [...B.CLES_RECETTE, 'urlPage']) { const x = B.CONFIG[c]; if (x && typeof x === 'object') v.push(x.id, x.name); else v.push(x); }
+  for (const c of [...B.CLES_RECETTE, 'urlPage'].filter((c) => !B.PARTAGES_RECETTE.includes(c))) { const x = B.CONFIG[c]; if (x && typeof x === 'object') v.push(x.id, x.name); else v.push(x); }
   return v.filter((x) => typeof x === 'string' && !x.startsWith('A_RENSEIGNER_P4_'));
 })();
 // Recette -> production : identifiants du profil remplacés par ceux de la production ; uuid (ids de nœuds,
@@ -353,7 +397,7 @@ fs.readFileSync = function (p, ...r) { if (String(p).endsWith(${JSON.stringify(c
       for (; j < t.length; j += 1) { if (t[j] === '(') d += 1; else if (t[j] === ')') { d -= 1; if (!d) break; } } return t.slice(i + 1, j).replace(/\s+/g, ' ').trim(); };
     const attendu = { CHAMPS_FORMULAIRE: 'object', CLES_RECETTE: 'object', CODES_HTTP: 'object', COMMUN_PAGE: 'string', CONFIG: 'object', EXPORTS_PRODUCTION_INVENTAIRE: 'object',
       ErreurConstruction: '<classe>', GABARIT_PAGE: 'string', GRAMMAIRES_RECETTE: 'object', MODULES: 'object', NOEUDS_CLOTURER: 'object', NOEUDS_CONFIRMER: 'object', NOEUDS_EMETTRE: 'object',
-      NOEUDS_PAGE: 'object', PROFILS_MOTEUR: 'object', analyserArguments: 'argv', appPage: '', chargerCommun: '', configRecette: 'brut = lireProfilRecette()', construireCloturer: '',
+      NOEUDS_PAGE: 'object', PARTAGES_RECETTE: 'object', PROFILS_MOTEUR: 'object', analyserArguments: 'argv', appPage: '', chargerCommun: '', configRecette: 'brut = lireProfilRecette()', construireCloturer: '',
       construireConfirmer: '', construireEmettre: '', construireExport: "option, profil = 'production', brutRecette = undefined", construirePage: '', inventaireProduction: '', registrePage: '' };
     assert.deepEqual(Object.keys(B).sort(), Object.keys(attendu).sort());
     for (const [k, v] of Object.entries(B)) assert.equal(typeof v === 'function' ? signature(v) : typeof v, attendu[k], k);
