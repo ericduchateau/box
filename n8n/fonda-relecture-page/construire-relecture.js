@@ -51,25 +51,25 @@ const CONFIG_PRODUCTION = Object.freeze({
   nomCloturer: 'FONDA - Cloturer relecture',
   nomConfirmer: 'FONDA - Confirmer relecture',
   nomPage: 'FONDA - Page relecture',
-  cheminEmettre: P4('CHEMIN_EMETTRE'),
-  cheminCloturer: P4('CHEMIN_CLOTURER'),
+  cheminEmettre: 'fonda-emettre', // CLI d'Éric, en-tête d'authentification (déploiement phase A, 2026-11-15)
+  cheminCloturer: 'fonda-cloturer',
   cheminPage: 'fonda-select', // §21.0 : GET public (lien du courriel), aucune écriture
   cheminConfirmer: 'fonda-select-confirm', // §21.0 : POST public (relecteur), protégé par k + jeton, jamais une route BOX
   depot: 'ericduchateau/box',
   dossierCandidats: '1Ir-iJGZoSk5_FmJ9dnf_PM-NEBZWyn8d', // lot source immuable (génération, §20.4)
-  dossierRelecture: P4('DOSSIER_RELECTURE'), // relecture/<set_id>.candidat.json (enveloppe mutable)
-  dossierDecisions: P4('DOSSIER_DECISIONS'), // decisions/ (écrit par Confirmer, P2)
+  dossierRelecture: '1mg7zEZTL6QAnPP--P85lLLihxw-06zDn', // relecture/<set_id>.candidat.json (enveloppe mutable)
+  dossierDecisions: '1lh1szMhSjHOyJT_8x11MWR64jvW_VwpT', // decisions/ (écrit par Confirmer, P2)
   urlN8n: 'https://n8n.srv868991.hstgr.cloud',
-  tableRelecteurs: P4('ID_DATA_TABLE_RELECTEURS'), // Data Table : relecteur_attribue -> adresse (jamais dans le dépôt), lue par le NŒUD NATIF (aucune clé d'API)
-  urlPage: P4('URL_PAGE_RELECTURE'), // …/webhook/<chemin> de « FONDA - Page relecture » (P2)
-  urlMoteurs: P4('URL_BASE_MOTEURS'), // base publique des fichiers moteur (URL EXACTE en CSP, SRI sha384 calculée à la construction)
+  tableRelecteurs: 'gv0fISOeK11ra4Pt', // Data Table : relecteur_attribue -> adresse (jamais dans le dépôt), lue par le NŒUD NATIF (aucune clé d'API)
+  urlPage: 'https://n8n.srv868991.hstgr.cloud/webhook/fonda-select', // …/webhook/<chemin> de « FONDA - Page relecture » (P2)
+  urlMoteurs: 'https://cdn.jsdelivr.net/gh/ericduchateau/box@e66fe79818caec87e47ee964c52a4efef2e386f8/fonda/engine', // base publique des fichiers moteur (URL EXACTE en CSP, SRI sha384 calculée à la construction)
   dureeCleJours: 14,
   maxPagesDrive: 50, // plafond de pagination : atteint = ERREUR d'exécution (jamais « complet ») ; pageSize est un MAXIMUM, Drive peut rendre moins
   // Credentials : RÉFÉRENCES (id, nom) seulement ; aucune valeur dans le dépôt.
   credentialDrive: { id: 'cukxQDNwWIqOAK02', name: 'Google Drive la bonne!' },
-  credentialEmettre: { id: P4('CREDENTIAL_EMETTRE'), name: 'FONDA Emettre Token' },
-  credentialCloturer: { id: P4('CREDENTIAL_CLOTURER'), name: 'FONDA Cloturer Token' },
-  credentialGmail: { id: P4('CREDENTIAL_GMAIL'), name: 'FONDA Gmail relecture' },
+  credentialEmettre: { id: 'KyK6EImkoOHA2DQM', name: 'FONDA Emettre Token' },
+  credentialCloturer: { id: 'apmlvipahDlRLGfD', name: 'FONDA Cloturer Token' },
+  credentialGmail: { id: 'XbxKMkx6RK1kfUhO', name: 'FONDA Gmail relecture' },
 });
 
 // --- Profil de recette (P4a) : copie de test isolée sur l'instance -----------------------------
@@ -142,10 +142,13 @@ function inventaireExport(wf, stricts, jetonsVus) {
     if (n && n.parameters) jetons(n.parameters);
   }
 }
+// SEULE valeur volontairement PARTAGÉE recette / production : la base des moteurs (jsDelivr épinglé sur un commit :
+// publique, immuable, vérifiée en G6). Ce n'est pas un identifiant d'instance ; elle n'entre pas dans l'inventaire.
+const PARTAGES_RECETTE = Object.freeze(['urlMoteurs']);
 function inventaireProduction() {
   const stricts = new Set(); const jetons = new Set();
   for (const [cle, val] of Object.entries(CONFIG_PRODUCTION)) {
-    if (!CLES_RECETTE.includes(cle) && cle !== 'urlPage') continue;
+    if ((!CLES_RECETTE.includes(cle) && cle !== 'urlPage') || PARTAGES_RECETTE.includes(cle)) continue;
     if (val && typeof val === 'object') { stricts.add(val.id); stricts.add(val.name); } else stricts.add(val);
   }
   for (const f of EXPORTS_PRODUCTION_INVENTAIRE) {
@@ -1479,7 +1482,7 @@ function construirePage() {
   return { name: CONFIG.nomPage, nodes: noeuds, connections, settings: REGLAGES };
 }
 
-module.exports = { CONFIG: CONFIG_PRODUCTION, CLES_RECETTE, GRAMMAIRES_RECETTE, EXPORTS_PRODUCTION_INVENTAIRE, ErreurConstruction, configRecette, inventaireProduction, MODULES, NOEUDS_CLOTURER, NOEUDS_EMETTRE, NOEUDS_CONFIRMER, NOEUDS_PAGE, CODES_HTTP, CHAMPS_FORMULAIRE, COMMUN_PAGE, GABARIT_PAGE,
+module.exports = { CONFIG: CONFIG_PRODUCTION, CLES_RECETTE, PARTAGES_RECETTE, GRAMMAIRES_RECETTE, EXPORTS_PRODUCTION_INVENTAIRE, ErreurConstruction, configRecette, inventaireProduction, MODULES, NOEUDS_CLOTURER, NOEUDS_EMETTRE, NOEUDS_CONFIRMER, NOEUDS_PAGE, CODES_HTTP, CHAMPS_FORMULAIRE, COMMUN_PAGE, GABARIT_PAGE,
   PROFILS_MOTEUR, chargerCommun, registrePage, appPage, construireCloturer, construireEmettre, construireConfirmer, construirePage };
 
 const CONSTRUCTEURS = Object.freeze(Object.assign(Object.create(null), { '--emettre': construireEmettre, '--cloturer': construireCloturer, '--confirmer': construireConfirmer, '--page': construirePage }));
