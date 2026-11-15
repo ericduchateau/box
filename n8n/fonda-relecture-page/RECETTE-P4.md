@@ -75,7 +75,7 @@ Chaque valeur externe, ou qui atteint l'instance, ou qui est affichée, et son c
 | S8 | sonde | **champs de sortie construits** | sonde | `schema` : constante ; `workflowId`/`id` : argument validé (S2) ; `observe_le` : horloge locale ; clés de `brut` : LF {running, waiting, liste} ; `fusion`/`en_vol` : dérivés de valeurs déjà filtrées (S4) ; `refus_observer`/`cause` : LF de catégories ou constantes ; `observation` : LF {present, absent, inobservable} ; `runData_present` : booléen dérivé ; `<nom hors liste n°k>` : compteur local ; **ensemble exact des clés** de chaque sortie (liste observée, liste refusée, présent, absent, inobservable) | « S8 : forme EXACTE de chaque sortie de la sonde » (variable d'environnement en trop sans effet) |
 | K1 | comparateur | arguments | argv | `analyser` : aucune option, 2 positionnels exacts | « arguments stricts » |
 | K2 | comparateur | `workflowId` | argv | GS `ID_WORKFLOW` | « lecture du live » |
-| K3 | comparateur | fichier lu : référence | argv, appelant JavaScript | LF `REFERENCES` (4 chemins exacts, relatifs au dépôt), pour la ligne de commande ET pour `comparer()` (lu en interne) ; nom affiché depuis la liste | « principal : référence hors liste fermée » |
+| K3 | comparateur | fichier lu : référence | argv, appelant JavaScript | LF `REFERENCES` (8 chemins exacts, relatifs au dépôt : 4 de recette puis 4 de production, déploiement phase A ; secret admis sur les 2 nœuds Crypto de chaque environnement), pour la ligne de commande ET pour `comparer()` (lu en interne) ; nom affiché depuis la liste | « principal : référence hors liste fermée » |
 | K4 | comparateur | **champ de réponse : `id`** | réponse n8n | **identité** `live.id === workflowId` (GS), sinon `IDENTITE`, code 1 | « lecture du live » (test négatif) |
 | K5 | comparateur | clés et états du live | réponse n8n | contenu = 4 clés ; métadonnées LF ; états typés exacts ; clé inconnue -> marqueur | « états typés EXACTS », « écarts localisés » |
 | K6 | comparateur | sortie | — | écarts = chemins de clés du DÉPÔT + marqueurs ; `versionId` GS ; aucune valeur du live ; code 0/1 | idem |
@@ -93,11 +93,12 @@ Chaque valeur externe, ou qui atteint l'instance, ou qui est affichée, et son c
 | Frontière | Contrôle (ensemble fermé) | Test (`outils-import/importer-recette.test.js`) |
 |---|---|---|
 | confirmation | `--confirmer-ecriture` exigé, arguments exacts | « principal : confirmation explicite », « ligne de commande » |
-| export | 4 exports de recette (REFERENCES), noms de recette exacts ; jamais la production | « liste fermée » |
+| export | par environnement (déploiement phase A) : 4 exports de recette ou 4 de production (REFERENCES), noms EXACTS de l'environnement de la cible ; cibles conjointes `page-et-confirmer` / `page-et-confirmer-production` | « liste fermée », « listes fermées de production », « import CONJOINT de production » |
+| étanchéité des environnements | clé d'import : variable de l'environnement de la cible SEULE (`FONDA_N8N_CLE_IMPORT_RECETTE` / `_PRODUCTION` ; celle de l'autre présente = refus `CLE_ENVIRONNEMENT`) ; trousseau : service HMAC de l'environnement SEUL (`fonda-recette-page-hmac` / `fonda-prod-page-hmac` ; service croisé ou hors liste = refus `SERVICE_CROISE`) | « trousseau : un environnement ne lit QUE ses services », « principal : cible de production », « CLI PRODUCTION » |
 | secret | trousseau macOS, `/usr/bin/security` sans shell, argv exact ; lu UNE fois (import conjoint Page+Confirmer) ; 64 hex minuscules ; relu == envoyé (en mémoire) ; jamais affiché | « appel du trousseau », « secret : forme stricte », « secret RELU ≠ envoyé », « CLI » |
 | substitution | fragment EXACT unique (Page, Confirmer), 0 (Emettre, Cloturer) ; garde du code intacte ; corps POSTÉ = texte substitué | « substitution du SEUL fragment exact », « import nominal » |
 | requêtes | GET liste par nom paginé jusqu'au bout (éléments, curseurs validés ; incomplet ou malformé = refus), POST, GET du créé ; instance fermée ; `redirect: error` | « import CONJOINT nominal », « précontrôle de doublon », « précontrôle fail-closed » |
-| sortie et reprise | `import-recette/v1` (comparer-live) ; POST ou relecture actifs -> erreur ; après création : étape + ids créés (grammaire stricte) | « après création », « CLI » |
+| sortie et reprise | `import-recette/v1` ou `import-production/v1` (comparer-live) ; POST ou relecture actifs -> erreur ; après création : étape + ids créés (grammaire stricte) | « après création », « CLI » |
 | chargement, surface, modules | erreur au chargement = message fixe ; exports et signatures (F1) et modules tracés (X1) en listes fermées | « erreur au CHARGEMENT », « F1 », « X1 » |
 
 ## Constats d'Éric (2026-11-10)

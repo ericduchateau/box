@@ -48,10 +48,10 @@ const vue = (appels) => appels.map((a) => [a.init.method, new URL(a.url).pathnam
 const nomQ = (nom) => `/api/v1/workflows?name=${encodeURIComponent(nom)}&limit=100`;
 
 describe('import de recette : ÉCRITURE explicite, ensembles fermés, secret jamais affiché', () => {
-  test('listes fermées : noms, fragment, service du trousseau, cible conjointe ; jamais un export de production', () => {
+  test('listes fermées : noms, fragment, service du trousseau, cible conjointe ; jamais un export hors liste', () => {
     assert.deepEqual(I.NOMS, ['FONDA RECETTE - Emettre relecture', 'FONDA RECETTE - Cloturer relecture', 'FONDA RECETTE - Confirmer relecture', 'FONDA RECETTE - Page relecture']);
     assert.equal(I.FRAGMENT, '"secret": "A_INJECTER_A_L_IMPORT"'); assert.equal(I.SERVICE_TROUSSEAU, 'fonda-recette-page-hmac'); assert.equal(I.CONJOINT, 'page-et-confirmer');
-    for (const r of ['n8n/fonda-relecture-page/box-fonda-page-relecture.json', `./${PAGE}`, path.join(RACINE, PAGE), 'x.json', null])
+    for (const r of ['n8n/fonda-generation-ia/box-fonda-generation-ia.json', `./${PAGE}`, path.join(RACINE, PAGE), 'x.json', null])
       assert.throws(() => I.preparer(r, SECRET), (e) => e.code === 'CIBLE_HORS_LISTE', String(r));
   });
   test('appel du trousseau : /usr/bin/security, argv EXACT, sans shell ; saut de ligne final retiré ; échec ou sortie non texte -> TROUSSEAU', () => {
@@ -170,6 +170,62 @@ describe('import de recette : ÉCRITURE explicite, ensembles fermés, secret jam
   });
 });
 
+describe('import de PRODUCTION (déploiement phase A) : cibles, noms, secret et clé PROPRES à la production ; services de trousseau jamais croisés', () => {
+  const [, , , , PE, PC, PF, PP] = CL.REFERENCES;
+  const env = { FONDA_N8N_CLE_IMPORT_PRODUCTION: CLE };
+  test('listes fermées de production : noms, service du trousseau, cible conjointe ; distinctes de la recette', () => {
+    assert.deepEqual(I.NOMS_PRODUCTION, ['FONDA - Emettre relecture', 'FONDA - Cloturer relecture', 'FONDA - Confirmer relecture', 'FONDA - Page relecture']);
+    assert.equal(I.SERVICE_TROUSSEAU_PRODUCTION, 'fonda-prod-page-hmac'); assert.equal(I.CONJOINT_PRODUCTION, 'page-et-confirmer-production');
+    assert.notEqual(I.SERVICE_TROUSSEAU_PRODUCTION, I.SERVICE_TROUSSEAU); assert.notEqual(I.CONJOINT_PRODUCTION, I.CONJOINT);
+    for (const n of I.NOMS_PRODUCTION) assert.equal(I.NOMS.includes(n), false);
+  });
+  test('trousseau : un environnement ne lit QUE ses services (fonda-prod-* / fonda-recette-*) ; service croisé ou hors liste -> refus AVANT tout appel', () => {
+    const vus = []; const exec = (cmd, args) => { vus.push(args[2]); return `${SECRET}\n`; };
+    assert.equal(I.lireTrousseau(exec, 'production'), SECRET); assert.equal(I.lireTrousseau(exec, 'recette'), SECRET);
+    assert.deepEqual(vus, ['fonda-prod-page-hmac', 'fonda-recette-page-hmac']);
+    assert.equal(I.lireTrousseau(exec), SECRET); assert.equal(vus[2], 'fonda-recette-page-hmac', 'défaut inchangé : recette');
+    for (const e of ['prod', 'PRODUCTION', '', null, 'fonda-prod-page-hmac']) assert.throws(() => I.lireTrousseau(exec, e), (x) => x.code === 'TROUSSEAU', String(e));
+    assert.equal(vus.length, 3, 'aucun appel sur environnement inconnu');
+    for (const [envi, service] of [['production', 'fonda-recette-page-hmac'], ['recette', 'fonda-prod-page-hmac'], ['production', 'fonda-prod-emettre-token'], ['recette', 'autre']])
+      assert.throws(() => I.verifierService(envi, service), (x) => x.code === 'SERVICE_CROISE', `${envi} <- ${service}`);
+    assert.doesNotThrow(() => I.verifierService('production', 'fonda-prod-page-hmac')); assert.doesNotThrow(() => I.verifierService('recette', 'fonda-recette-page-hmac'));
+  });
+  test('import CONJOINT de production nominal : précontrôle des noms de PRODUCTION, corps = texte substitué, inactifs, identiques ; schéma import-production/v1', async () => {
+    const n = instance();
+    const r = await I.importer({ cible: I.CONJOINT_PRODUCTION, cle: CLE, secret: SECRET, fetch: n.f });
+    assert.deepEqual(r, { schema: 'import-production/v1', cible: I.CONJOINT_PRODUCTION, imports: [
+      { export: PF, workflowId: 'NouveauWf1', identique: true, ecarts: [] }, { export: PP, workflowId: 'NouveauWf2', identique: true, ecarts: [] }] });
+    assert.deepEqual(vue(n.appels).slice(0, 2), [['GET', nomQ('FONDA - Confirmer relecture')], ['GET', nomQ('FONDA - Page relecture')]]);
+    assert.equal(n.postes.NouveauWf1, lire(PF).replace(I.FRAGMENT, `"secret": "${SECRET}"`)); assert.equal(n.postes.NouveauWf2, lire(PP).replace(I.FRAGMENT, `"secret": "${SECRET}"`));
+    assert.ok(sans(JSON.stringify(r), SECRET));
+    for (const c of [PE, PC]) assert.deepEqual((await I.importer({ cible: c, cle: CLE, secret: null, fetch: instance().f })).imports.map((x) => [x.export, x.identique]), [[c, true]]);
+    const doublon = instance({ pages: [[{ id: 'Ancien1', name: 'FONDA - Emettre relecture' }]] });
+    await assert.rejects(I.importer({ cible: PE, cle: CLE, secret: null, fetch: doublon.f }), (e) => e.code === 'NOM_EXISTANT');
+    assert.equal(doublon.appels.filter((a) => a.init.method === 'POST').length, 0);
+  });
+  test('principal : cible de production -> clé FONDA_N8N_CLE_IMPORT_PRODUCTION SEULE et secret lu dans fonda-prod-page-hmac ; clé de l\'autre environnement présente ou absente -> refus, aucun réseau', async () => {
+    const lus = []; const trousseau = (e) => { lus.push(e); return SECRET; };
+    assert.equal((await I.principal(['--confirmer-ecriture', I.CONJOINT_PRODUCTION], { env, fetch: instance().f, trousseau })).code, 0);
+    assert.deepEqual(lus, ['production']);
+    assert.equal((await I.principal(['--confirmer-ecriture', I.CONJOINT], { env: { FONDA_N8N_CLE_IMPORT_RECETTE: CLE }, fetch: instance().f, trousseau })).code, 0);
+    assert.deepEqual(lus, ['production', 'recette']);
+    const cas = [
+      [[I.CONJOINT_PRODUCTION], { FONDA_N8N_CLE_IMPORT_RECETTE: CLE }, 'CLE'],
+      [[PE], { FONDA_N8N_CLE_IMPORT_RECETTE: CLE }, 'CLE'],
+      [[CL.REFERENCES[0]], env, 'CLE'],
+      [[I.CONJOINT_PRODUCTION], { ...env, FONDA_N8N_CLE_IMPORT_RECETTE: 'autre-cle-synthetique-0123456789' }, 'CLE_ENVIRONNEMENT'],
+      [[I.CONJOINT], { ...env, FONDA_N8N_CLE_IMPORT_RECETTE: CLE }, 'CLE_ENVIRONNEMENT'],
+      [['--confirmer-ecriture', PF].slice(1), env, 'CIBLE_HORS_LISTE'], [[PP], env, 'CIBLE_HORS_LISTE'],
+    ];
+    for (const [cible, e, code] of cas) {
+      const n = instance();
+      await assert.rejects(I.principal(['--confirmer-ecriture', ...cible], { env: e, fetch: n.f, trousseau }), (x) => x.code === code, `${cible} ${Object.keys(e)}`);
+      assert.equal(n.appels.length, 0);
+    }
+    assert.deepEqual(lus, ['production', 'recette'], 'trousseau jamais lu sur refus');
+  });
+});
+
 describe('import de recette : ligne de commande, chargement, surface (F1) et modules (X1)', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'import-recette-'));
   const pre = path.join(dir, 'faux.js');
@@ -191,6 +247,20 @@ globalThis.fetch = async (url, init) => { const u = new URL(url); const r = (c, 
     assert.equal(tr.status, 1); assert.equal(tr.stderr, `importer-recette : ${I.MESSAGES.TROUSSEAU}\n`); assert.ok(sans(tr.stdout + tr.stderr, 'SECRET_SYNTHETIQUE', SECRET));
     const sc = lancer([PAGE]); assert.equal(sc.status, 1); assert.equal(sc.stdout, ''); assert.equal(sc.stderr, `importer-recette : ${I.MESSAGES.CONFIRMATION}\n`);
   });
+  test('CLI PRODUCTION : conjoint -> security appelé sur fonda-prod-page-hmac SEUL, noms de production, code 0, aucun secret ; clé de recette aussi présente -> refus, aucun appel', () => {
+    const journal = path.join(dir, 'security-prod.log');
+    const pp = path.join(dir, 'faux-prod.js');
+    fs.writeFileSync(pp, fs.readFileSync(pre, 'utf8').replace("cp.execFileSync = (cmd, args) => {", "cp.execFileSync = (cmd, args) => { require('fs').appendFileSync(process.env.JOURNAL, cmd + ' ' + args.join(' ') + '\\n');"));
+    const envBase = { ...process.env, SECRET_TEST: SECRET, JOURNAL: journal }; delete envBase.FONDA_N8N_CLE_IMPORT_RECETTE;
+    const ok = spawnSync(process.execPath, ['-r', pp, path.join(__dirname, 'importer-recette.js'), '--confirmer-ecriture', I.CONJOINT_PRODUCTION], { env: { ...envBase, FONDA_N8N_CLE_IMPORT_PRODUCTION: CLE }, encoding: 'utf8' });
+    assert.equal(ok.status, 0, ok.stderr);
+    const r = JSON.parse(ok.stdout); assert.equal(r.schema, 'import-production/v1'); assert.deepEqual(r.imports.map((x) => [x.export, x.identique]), [[CL.REFERENCES[6], true], [CL.REFERENCES[7], true]]);
+    assert.equal(fs.readFileSync(journal, 'utf8'), '/usr/bin/security find-generic-password -s fonda-prod-page-hmac -w\n');
+    assert.ok(sans(ok.stdout + ok.stderr, SECRET));
+    fs.rmSync(journal);
+    const ko = spawnSync(process.execPath, ['-r', pp, path.join(__dirname, 'importer-recette.js'), '--confirmer-ecriture', I.CONJOINT_PRODUCTION], { env: { ...envBase, FONDA_N8N_CLE_IMPORT_PRODUCTION: CLE, FONDA_N8N_CLE_IMPORT_RECETTE: CLE }, encoding: 'utf8' });
+    assert.equal(ko.status, 1); assert.equal(ko.stderr, `importer-recette : ${I.MESSAGES.CLE_ENVIRONNEMENT}\n`); assert.equal(fs.existsSync(journal), false, 'trousseau jamais lu');
+  });
   test('erreur au CHARGEMENT d\'une dépendance : message fixe, code 1, aucun extrait', () => {
     const p = path.join(dir, 'chargement.js');
     fs.writeFileSync(p, `const M = require('module'); const req = M.prototype.require;
@@ -203,13 +273,14 @@ M.prototype.require = function (id) { if (String(id).includes(process.env.CIBLE)
   const signature = (f) => { const t = f.toString(); if (/^class\b/.test(t)) return '<classe>'; const i = t.indexOf('('); let d = 0; let j = i;
     for (; j < t.length; j += 1) { if (t[j] === '(') d += 1; else if (t[j] === ')') { d -= 1; if (!d) break; } } return t.slice(i + 1, j).replace(/\s+/g, ' ').trim(); };
   test('F1 : exports et signatures = LISTE FERMÉE', () => {
-    const attendu = { CONJOINT: 'string', ErreurImport: '<classe>', FRAGMENT: 'string', MESSAGES: 'object', NOMS: 'object', SECRET_A_INJECTER: 'string', SERVICE_TROUSSEAU: 'string',
-      importer: '{ cible, cle, secret, fetch: f = globalThis.fetch }', lireTrousseau: 'exec = execFileSync', messageSur: 'e', preparer: 'reference, secret',
-      principal: 'argv, { env = process.env, fetch: f = globalThis.fetch, trousseau = lireTrousseau } = {}' };
+    const attendu = { CONJOINT: 'string', CONJOINT_PRODUCTION: 'string', ErreurImport: '<classe>', FRAGMENT: 'string', MESSAGES: 'object', NOMS: 'object', NOMS_PRODUCTION: 'object',
+      SECRET_A_INJECTER: 'string', SERVICE_TROUSSEAU: 'string', SERVICE_TROUSSEAU_PRODUCTION: 'string', verifierService: 'environnement, service',
+      importer: '{ cible, cle, secret, fetch: f = globalThis.fetch }', lireTrousseau: "exec = execFileSync, environnement = 'recette'", messageSur: 'e', preparer: 'reference, secret',
+      principal: 'argv, { env = process.env, fetch: f = globalThis.fetch, trousseau = trousseauDe } = {}' };
     assert.deepEqual(Object.keys(I).sort(), Object.keys(attendu).sort());
     for (const [k, v] of Object.entries(I)) assert.equal(typeof v === 'function' ? signature(v) : typeof v, attendu[k], k);
     assert.deepEqual(Object.keys(I.MESSAGES), ['CONFIRMATION', 'ARGUMENTS', 'CIBLE_HORS_LISTE', 'EXPORT_ILLISIBLE', 'FRAGMENT', 'CLE', 'TROUSSEAU', 'SECRET_FORME', 'NOM_EXISTANT',
-      'RECHERCHE_INCOMPLETE', 'TRANSPORT', 'HTTP', 'REPONSE', 'CREATION_NON_CONFIRMEE', 'VERIFICATION_ECHOUEE', 'ACTIF']);
+      'RECHERCHE_INCOMPLETE', 'TRANSPORT', 'HTTP', 'REPONSE', 'CREATION_NON_CONFIRMEE', 'VERIFICATION_ECHOUEE', 'ACTIF', 'SERVICE_CROISE', 'CLE_ENVIRONNEMENT']);
   });
   test('X1 : modules chargés par l\'import conjoint, TRACÉS (Module._load) = LISTE FERMÉE', () => {
     const trace = path.join(dir, 'trace.js'); const sortie = path.join(dir, 'modules.json');

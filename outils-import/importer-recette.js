@@ -6,14 +6,18 @@ if (require.main === module) {
   const arret = () => { process.stderr.write('importer-recette : erreur (message non affichable)\n'); process.exit(1); };
   process.on('uncaughtException', arret); process.on('unhandledRejection', arret);
 }
-// OUTIL D'IMPORT DE RECETTE — ÉCRITURE EXPLICITE (P4b, option E). SÉPARÉ de l'oracle (outils-recette/, lecture
-// seule) : il CRÉE des workflows sur l'instance, INACTIFS. Cibles (liste fermée) :
-//   - l'export de recette Emettre, ou celui de Cloturer (aucun secret) ;
-//   - « page-et-confirmer » : Page ET Confirmer en UNE commande, avec UN secret HMAC lu UNE fois dans le trousseau :
-//     la même clé signe (Page) et recalcule (Confirmer), par construction.
+// OUTIL D'IMPORT (recette, puis production : déploiement phase A) — ÉCRITURE EXPLICITE (P4b, option E). SÉPARÉ de
+// l'oracle (outils-recette/, lecture seule) : il CRÉE des workflows sur l'instance, INACTIFS. Cibles (liste fermée),
+// PAR ENVIRONNEMENT :
+//   - l'export Emettre, ou celui de Cloturer (aucun secret) ;
+//   - « page-et-confirmer » (recette) / « page-et-confirmer-production » : Page ET Confirmer en UNE commande, avec UN
+//     secret HMAC lu UNE fois dans le trousseau : la même clé signe (Page) et recalcule (Confirmer), par construction.
+// ENVIRONNEMENTS ÉTANCHES : une cible ne lit QUE la clé d'import de son environnement (variable dédiée ; celle de
+// l'autre environnement présente = refus) et QUE le service de trousseau de son environnement (fonda-recette-* /
+// fonda-prod-* ; un service croisé = refus) ; noms de workflows de son environnement seulement.
 //
 // ENSEMBLES FERMÉS (connu-bon) :
-//   - secret : trousseau macOS, service fixe SERVICE_TROUSSEAU, `/usr/bin/security` sans shell, argv fixe ; jamais
+//   - secret : trousseau macOS, service FIXE par environnement, `/usr/bin/security` sans shell, argv fixe ; jamais
 //     en argument, jamais affiché ni écrit ; forme : 64 hexadécimaux minuscules (≠ valeur de remplacement). Sa
 //     qualité (aléatoire) tient à sa génération : `openssl rand -hex 32` sur le Mac d'Éric ;
 //   - substitution : le fragment EXACT `"secret": "A_INJECTER_A_L_IMPORT"`, présent exactement 1 fois (Page,
@@ -31,6 +35,8 @@ if (require.main === module) {
 // Usage (Mac d'Éric) :
 //   FONDA_N8N_CLE_IMPORT_RECETTE=… node outils-import/importer-recette.js --confirmer-ecriture page-et-confirmer
 //   FONDA_N8N_CLE_IMPORT_RECETTE=… node outils-import/importer-recette.js --confirmer-ecriture n8n/fonda-relecture-page/box-fonda-emettre-relecture.recette.json
+//   FONDA_N8N_CLE_IMPORT_PRODUCTION=… node outils-import/importer-recette.js --confirmer-ecriture n8n/fonda-relecture-page/box-fonda-emettre-relecture.json
+//   FONDA_N8N_CLE_IMPORT_PRODUCTION=… node outils-import/importer-recette.js --confirmer-ecriture page-et-confirmer-production
 
 const fs = require('fs');
 const path = require('path');
@@ -42,22 +48,37 @@ const RACINE = path.join(__dirname, '..');
 const SECRET_A_INJECTER = 'A_INJECTER_A_L_IMPORT';
 const FRAGMENT = `"secret": "${SECRET_A_INJECTER}"`;
 const SERVICE_TROUSSEAU = 'fonda-recette-page-hmac';
+const SERVICE_TROUSSEAU_PRODUCTION = 'fonda-prod-page-hmac';
 const CONJOINT = 'page-et-confirmer';
+const CONJOINT_PRODUCTION = 'page-et-confirmer-production';
 const MAX_PAGES = 20;
 // Nœud porteur du secret, par export (null : aucun secret).
-const NOEUD_SECRET = Object.freeze({ [REFERENCES[0]]: null, [REFERENCES[1]]: null, [REFERENCES[2]]: 'Recalculer jeton', [REFERENCES[3]]: 'Signer jeton' });
+const NOEUD_SECRET = Object.freeze({ [REFERENCES[0]]: null, [REFERENCES[1]]: null, [REFERENCES[2]]: 'Recalculer jeton', [REFERENCES[3]]: 'Signer jeton',
+  [REFERENCES[4]]: null, [REFERENCES[5]]: null, [REFERENCES[6]]: 'Recalculer jeton', [REFERENCES[7]]: 'Signer jeton' });
 const NOMS = Object.freeze(['FONDA RECETTE - Emettre relecture', 'FONDA RECETTE - Cloturer relecture', 'FONDA RECETTE - Confirmer relecture', 'FONDA RECETTE - Page relecture']);
-const CIBLES = Object.freeze({ [REFERENCES[0]]: [REFERENCES[0]], [REFERENCES[1]]: [REFERENCES[1]], [CONJOINT]: [REFERENCES[2], REFERENCES[3]] });
+const NOMS_PRODUCTION = Object.freeze(['FONDA - Emettre relecture', 'FONDA - Cloturer relecture', 'FONDA - Confirmer relecture', 'FONDA - Page relecture']);
+// Environnements ÉTANCHES (liste fermée) : préfixe de service, service HMAC, variable de la clé d'import, noms, schéma.
+const ENVIRONNEMENTS = Object.freeze({
+  recette: Object.freeze({ prefixe: 'fonda-recette-', service: SERVICE_TROUSSEAU, varCle: 'FONDA_N8N_CLE_IMPORT_RECETTE', noms: NOMS, schema: 'import-recette/v1' }),
+  production: Object.freeze({ prefixe: 'fonda-prod-', service: SERVICE_TROUSSEAU_PRODUCTION, varCle: 'FONDA_N8N_CLE_IMPORT_PRODUCTION', noms: NOMS_PRODUCTION, schema: 'import-production/v1' }),
+});
+const CIBLES = Object.freeze({
+  [REFERENCES[0]]: { environnement: 'recette', references: [REFERENCES[0]] }, [REFERENCES[1]]: { environnement: 'recette', references: [REFERENCES[1]] },
+  [CONJOINT]: { environnement: 'recette', references: [REFERENCES[2], REFERENCES[3]] },
+  [REFERENCES[4]]: { environnement: 'production', references: [REFERENCES[4]] }, [REFERENCES[5]]: { environnement: 'production', references: [REFERENCES[5]] },
+  [CONJOINT_PRODUCTION]: { environnement: 'production', references: [REFERENCES[6], REFERENCES[7]] },
+});
+const ENVIRONNEMENT_DE_REFERENCE = Object.freeze(Object.fromEntries(Object.values(CIBLES).flatMap((c) => c.references.map((r) => [r, c.environnement]))));
 const ETAPES = Object.freeze(['precontrole', 'creation', 'verification']);
 
 const MESSAGES = Object.freeze({
   CONFIRMATION: 'écriture non confirmée : --confirmer-ecriture exigé',
   ARGUMENTS: 'arguments : --confirmer-ecriture <cible> attendus, rien d\'autre',
-  CIBLE_HORS_LISTE: 'cible hors liste fermée (export Emettre, export Cloturer, ou page-et-confirmer)',
+  CIBLE_HORS_LISTE: 'cible hors liste fermée (export Emettre, export Cloturer, page-et-confirmer ou page-et-confirmer-production)',
   EXPORT_ILLISIBLE: 'export illisible ou hors schéma',
   FRAGMENT: 'fragment de substitution du secret : nombre d\'occurrences inattendu',
-  CLE: 'clé d\'API absente ou hors grammaire (variable FONDA_N8N_CLE_IMPORT_RECETTE)',
-  TROUSSEAU: 'secret introuvable dans le trousseau (service fonda-recette-page-hmac)',
+  CLE: 'clé d\'API absente ou hors grammaire (variable FONDA_N8N_CLE_IMPORT_RECETTE ou FONDA_N8N_CLE_IMPORT_PRODUCTION, selon la cible)',
+  TROUSSEAU: 'secret introuvable dans le trousseau (service HMAC de l\'environnement de la cible)',
   SECRET_FORME: 'secret hors forme (64 hexadécimaux minuscules attendus, jamais la valeur de remplacement)',
   NOM_EXISTANT: 'un workflow de ce nom existe déjà sur l\'instance : import refusé (aucun doublon)',
   RECHERCHE_INCOMPLETE: 'précontrôle de doublon incomplet ou malformé : import refusé',
@@ -67,6 +88,8 @@ const MESSAGES = Object.freeze({
   CREATION_NON_CONFIRMEE: 'création NON CONFIRMÉE (réponse du POST absente ou hors schéma) : vérifier l\'instance avant toute relance',
   VERIFICATION_ECHOUEE: 'workflow CRÉÉ mais vérification impossible (relecture en échec ou identité différente)',
   ACTIF: 'workflow créé ACTIF : à désactiver immédiatement (anomalie)',
+  SERVICE_CROISE: 'service de trousseau d\'un autre environnement ou hors liste : refus (environnements étanches)',
+  CLE_ENVIRONNEMENT: 'clé d\'import de l\'AUTRE environnement aussi présente : refus (une seule variable de clé à la fois)',
 });
 class ErreurImport extends Error {
   constructor(code, { etape = null, crees = [] } = {}) {
@@ -84,10 +107,20 @@ function messageSur(e) {
   return suite.length ? `${MESSAGES[e.code]} (${suite.join(' ; ')})` : MESSAGES[e.code];
 }
 
+// Étanchéité : un environnement ne lit QUE son propre service (préfixe de l'environnement, jamais celui d'un autre,
+// et seulement le service HMAC de la liste fermée).
+function verifierService(environnement, service) {
+  const e = Object.prototype.hasOwnProperty.call(ENVIRONNEMENTS, environnement) ? ENVIRONNEMENTS[environnement] : null;
+  const autres = Object.entries(ENVIRONNEMENTS).filter(([k]) => k !== environnement).map(([, x]) => x.prefixe);
+  if (!e || typeof service !== 'string' || service !== e.service || !service.startsWith(e.prefixe) || autres.some((p) => service.startsWith(p))) throw new ErreurImport('SERVICE_CROISE');
+}
 // Secret : trousseau macOS, SANS shell (argv fixe) ; sortie : la valeur et un saut de ligne final retiré.
-function lireTrousseau(exec = execFileSync) {
+function lireTrousseau(exec = execFileSync, environnement = 'recette') {
+  if (typeof environnement !== 'string' || !Object.prototype.hasOwnProperty.call(ENVIRONNEMENTS, environnement)) throw new ErreurImport('TROUSSEAU');
+  const service = ENVIRONNEMENTS[environnement].service;
+  verifierService(environnement, service);
   let v;
-  try { v = exec('/usr/bin/security', ['find-generic-password', '-s', SERVICE_TROUSSEAU, '-w'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }); } catch { throw new ErreurImport('TROUSSEAU'); }
+  try { v = exec('/usr/bin/security', ['find-generic-password', '-s', service, '-w'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }); } catch { throw new ErreurImport('TROUSSEAU'); }
   if (typeof v !== 'string') throw new ErreurImport('TROUSSEAU');
   return v.replace(/\n$/, '');
 }
@@ -105,7 +138,7 @@ function preparer(reference, secret) {
   }
   let w;
   try { w = JSON.parse(texte); } catch { throw new ErreurImport('EXPORT_ILLISIBLE'); }
-  if (!w || typeof w !== 'object' || Array.isArray(w) || Object.keys(w).join(',') !== 'name,nodes,connections,settings' || !NOMS.includes(w.name) || !Array.isArray(w.nodes)) throw new ErreurImport('EXPORT_ILLISIBLE');
+  if (!w || typeof w !== 'object' || Array.isArray(w) || Object.keys(w).join(',') !== 'name,nodes,connections,settings' || !ENVIRONNEMENTS[ENVIRONNEMENT_DE_REFERENCE[reference]].noms.includes(w.name) || !Array.isArray(w.nodes)) throw new ErreurImport('EXPORT_ILLISIBLE');
   const hmac = w.nodes.filter((x) => x && x.type === 'n8n-nodes-base.crypto' && x.parameters && x.parameters.action === 'hmac');
   if (hmac.length !== (porteur ? 1 : 0) || (porteur && (hmac[0].name !== porteur || hmac[0].parameters.secret !== secret))) throw new ErreurImport('FRAGMENT');
   return { texte, nom: w.name };
@@ -145,7 +178,7 @@ async function nomAbsent(appel, nom) {
 async function importer({ cible, cle, secret, fetch: f = globalThis.fetch }) {
   if (typeof cle !== 'string' || !CLE_API.test(cle)) throw new ErreurImport('CLE');
   if (typeof cible !== 'string' || !Object.prototype.hasOwnProperty.call(CIBLES, cible)) throw new ErreurImport('CIBLE_HORS_LISTE');
-  const lots = CIBLES[cible].map((reference) => ({ reference, ...preparer(reference, secret) })); // tout est vérifié AVANT le réseau
+  const lots = CIBLES[cible].references.map((reference) => ({ reference, ...preparer(reference, secret) })); // tout est vérifié AVANT le réseau
   const appel = client({ cle, fetch: f });
   for (const l of lots) await nomAbsent(appel, l.nom);
   const crees = []; const imports = [];
@@ -175,22 +208,27 @@ async function importer({ cible, cle, secret, fetch: f = globalThis.fetch }) {
     }
     imports.push(resultat);
   }
-  return { schema: 'import-recette/v1', cible, imports };
+  return { schema: ENVIRONNEMENTS[CIBLES[cible].environnement].schema, cible, imports };
 }
 
-async function principal(argv, { env = process.env, fetch: f = globalThis.fetch, trousseau = lireTrousseau } = {}) {
+// Lecture du trousseau PAR ENVIRONNEMENT, exécutable fixe (jamais l'environnement passé à la place de l'exécutable).
+const trousseauDe = (environnement) => lireTrousseau(execFileSync, environnement);
+async function principal(argv, { env = process.env, fetch: f = globalThis.fetch, trousseau = trousseauDe } = {}) {
   if (!Array.isArray(argv) || !argv.includes('--confirmer-ecriture')) throw new ErreurImport('CONFIRMATION');
   if (argv.length !== 2 || argv.filter((a) => a === '--confirmer-ecriture').length !== 1) throw new ErreurImport('ARGUMENTS');
   const cible = argv.find((a) => a !== '--confirmer-ecriture');
   if (!Object.prototype.hasOwnProperty.call(CIBLES, cible)) throw new ErreurImport('CIBLE_HORS_LISTE');
-  const cle = env.FONDA_N8N_CLE_IMPORT_RECETTE;
+  const environnement = CIBLES[cible].environnement; const E = ENVIRONNEMENTS[environnement];
+  const cle = env[E.varCle];
   if (typeof cle !== 'string' || !CLE_API.test(cle)) throw new ErreurImport('CLE');
-  const secret = cible === CONJOINT ? trousseau() : null; // lu UNE fois, pour Page ET Confirmer
+  // Étanchéité : la variable de clé de l'AUTRE environnement ne doit pas être présente (aucune ambiguïté possible).
+  if (Object.entries(ENVIRONNEMENTS).some(([k, x]) => k !== environnement && env[x.varCle] !== undefined)) throw new ErreurImport('CLE_ENVIRONNEMENT');
+  const secret = cible === CONJOINT || cible === CONJOINT_PRODUCTION ? trousseau(environnement) : null; // lu UNE fois, pour Page ET Confirmer
   const r = await importer({ cible, cle, secret, fetch: f });
   return { r, code: r.imports.every((x) => x.identique) ? 0 : 1 };
 }
 
-module.exports = { SECRET_A_INJECTER, FRAGMENT, SERVICE_TROUSSEAU, CONJOINT, NOMS, MESSAGES, ErreurImport, messageSur, lireTrousseau, preparer, importer, principal };
+module.exports = { SECRET_A_INJECTER, FRAGMENT, SERVICE_TROUSSEAU, SERVICE_TROUSSEAU_PRODUCTION, CONJOINT, CONJOINT_PRODUCTION, NOMS, NOMS_PRODUCTION, MESSAGES, ErreurImport, messageSur, verifierService, lireTrousseau, preparer, importer, principal };
 
 if (require.main === module) {
   principal(process.argv.slice(2)).then(({ r, code }) => { process.stdout.write(`${JSON.stringify(r, null, 2)}\n`); process.exitCode = code; })

@@ -296,8 +296,29 @@ describe('comparateur : références fermées, états typés, écarts sans conte
   const SECRET_TEST = 'ab'.repeat(32);
   const injecte = (w) => { w.nodes.find((n) => n.name === 'Signer jeton').parameters.secret = SECRET_TEST; return w; };
   const live = () => ({ updatedAt: 'x', createdAt: 'x', id: 'WfA', ...injecte(JSON.parse(texte)), active: false, isArchived: false, versionId: 'v', versionCounter: 1, shared: [{ role: 'o', user: { email: 'proprietaire@exemple.test' } }], tags: [], pinData: {}, meta: null, staticData: null, triggerCount: 0 });
-  test('références = liste fermée des 4 exports de recette', () => {
-    assert.deepEqual(CL.REFERENCES, ['emettre', 'cloturer', 'confirmer', 'page'].map((k) => `n8n/fonda-relecture-page/box-fonda-${k}-relecture.recette.json`));
+  test('références = liste fermée : les 4 exports de recette PUIS les 4 exports de production (déploiement phase A)', () => {
+    const k4 = ['emettre', 'cloturer', 'confirmer', 'page'];
+    assert.deepEqual(CL.REFERENCES, [...k4.map((k) => `n8n/fonda-relecture-page/box-fonda-${k}-relecture.recette.json`), ...k4.map((k) => `n8n/fonda-relecture-page/box-fonda-${k}-relecture.json`)]);
+  });
+  test('production : secret HMAC injecté (Page « Signer jeton », Confirmer « Recalculer jeton ») et réglages K11 -> identique ; non injecté ou hors forme -> écart ; Emettre / Cloturer sans exception de secret', () => {
+    const [, , , , PE, PC, PF, PP] = CL.REFERENCES;
+    const charger = (r) => ({ id: 'WfA', ...JSON.parse(fs.readFileSync(path.join(__dirname, '..', r), 'utf8')), active: false, isArchived: false });
+    const k11 = (w) => { w.settings.callerPolicy = 'workflowsFromSameOwner'; w.settings.availableInMCP = false; return w; };
+    for (const [r, noeud] of [[PP, 'Signer jeton'], [PF, 'Recalculer jeton']]) {
+      const w = k11(charger(r)); w.nodes.find((n) => n.name === noeud).parameters.secret = SECRET_TEST;
+      assert.deepEqual(CL.comparer(w, r), { identique: true, ecarts: [] }, r);
+      const ni = charger(r); assert.deepEqual(CL.comparer(ni, r).ecarts, ['live : secret HMAC NON injecté (valeur de remplacement publique)'], r);
+      const hf = charger(r); hf.nodes.find((n) => n.name === noeud).parameters.secret = 'AB'.repeat(32);
+      assert.deepEqual(CL.comparer(hf, r).ecarts, ['live : secret HMAC hors forme (64 hexadécimaux attendus)'], r);
+      assert.ok(sans(JSON.stringify(CL.comparer(w, r)), SECRET_TEST));
+    }
+    for (const r of [PE, PC]) {
+      assert.deepEqual(CL.comparer(k11(charger(r)), r), { identique: true, ecarts: [] }, r);
+      const w = charger(r); w.nodes[0].parameters.secret = SECRET_TEST; assert.equal(CL.comparer(w, r).identique, false, r);
+    }
+    // Croisement d'environnement : un live de production comparé à la référence de recette (et inversement) -> écart.
+    assert.equal(CL.comparer(k11(charger(PE)), CL.REFERENCES[0]).identique, false);
+    assert.equal(CL.comparer(k11(charger(CL.REFERENCES[0])), PE).identique, false);
   });
   test('import fidèle -> identique', () => { assert.deepEqual(CL.comparer(live(), REF), { identique: true, ecarts: [] }); });
   test('écarts localisés par les seules clés du dépôt ; clé du live -> marqueur', () => {
@@ -309,7 +330,7 @@ describe('comparateur : références fermées, états typés, écarts sans conte
   });
   test('F1 : comparer() n\'accepte qu\'un ÉLÉMENT de REFERENCES (aucun texte ni objet de l\'appelant)', () => {
     const libre = JSON.stringify({ name: 'x', nodes: [{ SECRET_APPELANT: 1 }], connections: {}, settings: {} });
-    for (const x of [libre, JSON.parse(libre), texte, `./${REF}`, path.join(__dirname, '..', REF), 'n8n/fonda-relecture-page/box-fonda-page-relecture.json', null, undefined, 3, [REF]])
+    for (const x of [libre, JSON.parse(libre), texte, `./${REF}`, path.join(__dirname, '..', REF), 'n8n/fonda-generation-ia/box-fonda-generation-ia.json', null, undefined, 3, [REF]])
       assert.throws(() => CL.comparer(live(), x), (e) => e instanceof LS.ErreurOutil && e.code === 'EXPORT_HORS_LISTE', String(x).slice(0, 40));
     for (const ref of CL.REFERENCES) assert.equal(typeof CL.comparer(live(), ref).identique, 'boolean', ref);
   });
@@ -430,7 +451,7 @@ describe('comparateur : références fermées, états typés, écarts sans conte
   test('principal : référence hors liste fermée refusée AVANT toute lecture ou requête ; nom affiché depuis la liste', async () => {
     const appels = []; const f = async (url) => { appels.push(url); return reponse(live()); };
     const env = { FONDA_N8N_CLE_RECETTE: CLE };
-    for (const x of ['SECRET_SYNTHETIQUE.json', path.join(__dirname, '..', REF), `./${REF}`, 'n8n/fonda-relecture-page/box-fonda-page-relecture.json', `${REF}/`])
+    for (const x of ['SECRET_SYNTHETIQUE.json', path.join(__dirname, '..', REF), `./${REF}`, 'n8n/fonda-generation-ia/box-fonda-generation-ia.json', `${REF}/`])
       await assert.rejects(CL.principal(['WfA', x], { fetch: f, env }), (e) => e.code === 'EXPORT_HORS_LISTE', x);
     assert.equal(appels.length, 0);
     const { r, code } = await CL.principal(['WfA', REF], { fetch: f, env });
