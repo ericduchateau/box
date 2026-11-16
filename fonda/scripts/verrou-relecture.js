@@ -21,15 +21,18 @@
 // contre l'ACCIDENT seulement (pas une preuve, supprimable à la main) : `initialiser` refuse si le
 // témoin `relecture.journal.cree` ou une copie `relecture.journal.original-*` existe.
 //
-// MACHINE À ÉTATS PROPRE À P5 (pas celle de verrou-generation.js) — par TENTATIVE :
-//   envoi -> accepte | refuse_sans_effet            (terminaux)
-//   envoi -> indetermine                            (non terminal)
-//   envoi | indetermine -> resolution(effet_conforme | sans_effet | anomalie)   (diagnostic seul)
-// Un `envoi` sans issue enregistrée (mort du CLI) vaut `indetermine`. Par LOT : `libre`, `ouverte`
-// (refus temporaire), `bloque` (anomalie ou portion perdue : définitif, sortie = abandon logique).
-// QUALIFICATION UNIQUE : la conformité d'un `accepte` et l'issue d'une `resolution` sont calculées par
-// les MÊMES fonctions à l'écriture et à la RELECTURE ; une ligne dont l'issue ne se recalcule pas
-// depuis ses preuves (avant / attendu / réponse ou exécution / après) rend le journal corrompu.
+// MACHINE À ÉTATS PROPRE À P5 (pas celle de verrou-generation.js) — par TENTATIVE (arbitrage (A)) :
+//   envoi -> refuse_sans_effet          (403 authentification / 404 workflow inactif : AUCUNE exécution)
+//   envoi -> indetermine                (délai, transport, autre code)
+//   envoi | indetermine -> resolution(effet_conforme | sans_effet | anomalie)   (diagnostic SEUL)
+// Les webhooks Emettre et Cloturer répondent en mode `onReceived` : un 200 veut dire « reçu », jamais
+// « exécuté ». La tentative reste donc en `envoi` (ouverte) et n'est conclue QUE par le diagnostic, qui
+// lit l'exécution rattachée, la SORTIE de son nœud « FONDA Sortie emission » / « FONDA Sortie cloture »
+// et le candidat relu. Un `envoi` sans issue (mort du CLI) vaut `indetermine`. Par LOT : `libre`,
+// `ouverte` (refus temporaire), `bloque` (anomalie ou portion perdue : définitif, abandon logique).
+// QUALIFICATION UNIQUE : l'issue d'une `resolution` est calculée par la MÊME fonction à l'écriture et à
+// la RELECTURE ; une ligne dont l'issue ne se recalcule pas depuis ses preuves (avant / attendu /
+// statut et sortie de l'exécution / après) rend le journal corrompu.
 //
 // RATTACHEMENT SANS HORLOGE (§21.12.4) : l'`envoi` consigne l'ensemble des exécutions PRÉEXISTANTES du
 // workflow visé pour ce set_id (listing complet, sous le verrou) ; le diagnostic exige EXACTEMENT UNE
@@ -70,14 +73,22 @@ const RE = Object.freeze({
   fichier: /^[A-Za-z0-9_-]{10,128}$/,
   formeCle: /^[0-9a-fA-F]{64}$/,
   version: /^[0-9]{1,20}$/,
-  execution: /^[0-9]{1,20}$/,
+  execution: /^(0|[1-9][0-9]{0,19})$/, // forme décimale CANONIQUE (« 040 » refusé : 040 ≡ 40)
   sha: /^[0-9a-f]{64}$/,
 });
 const COMMANDES = Object.freeze({ emission: 'emettre', reemission: 'emettre', cloture_technique: 'cloturer' });
 const STATUTS_CANDIDAT = ['en_attente', 'clos', 'abandonne'];
 const STATUTS_TERMINAUX = ['success', 'error', 'crashed', 'canceled'];
-const MOTIFS_INDETERMINE = ['delai', 'transport', 'reponse_illisible', 'reponse_non_conforme', 'erreur_serveur', 'erreur_apres_ecriture', 'ecart_version'];
-const MOTIFS_REFUS = ['version_avant', 'precondition', 'entree_invalide', 'non_autorise'];
+const MOTIFS_INDETERMINE = ['delai', 'transport', 'reponse_illisible', 'erreur_serveur'];
+// Refus établis AVANT toute exécution (n8n refuse sans démarrer le workflow) : code HTTP -> motif.
+const REFUS_SANS_EXECUTION = Object.freeze({ 403: 'non_autorise', 404: 'workflow_inactif' });
+// Sorties RÉELLES des workflows (verbatim : box-fonda-emettre-relecture.json « FONDA Sortie emission »,
+// box-fonda-cloturer-relecture.json « FONDA Sortie cloture »). Clés exigées PRÉSENTES ; seules les
+// clés persistées sont conservées (relecteur_attribue, nb_decisions_listees, incomplete_search : non).
+const SORTIES = Object.freeze({
+  emettre: { schema: 'emission-fonda/v1', presentes: ['schema', 'set_id', 'candidat_fichier_id', 'relecteur_attribue', 'generation_cle', 'reemission'], persistees: ['schema', 'set_id', 'candidat_fichier_id', 'generation_cle', 'reemission'] },
+  cloturer: { schema: 'cloture-fonda/v1', presentes: ['schema', 'set_id', 'clos_le', 'deja_clos', 'candidat_fichier_id', 'nb_decisions_listees', 'incomplete_search'], persistees: ['schema', 'set_id', 'candidat_fichier_id', 'clos_le', 'deja_clos'] },
+});
 const ISSUES_RESOLUTION = ['effet_conforme', 'sans_effet', 'anomalie'];
 
 // --- Schéma fermé -----------------------------------------------------------------------------
@@ -97,6 +108,15 @@ const estCandidat = (v) => exactes(v, ['fichier_id', 'version', 'generation_cle'
   && estFichier(v.fichier_id) && typeof v.version === 'string' && RE.version.test(v.version)
   && Number.isSafeInteger(v.generation_cle) && v.generation_cle >= 1 && STATUTS_CANDIDAT.includes(v.statut)
   && (v.statut === 'clos' ? estDate(v.clos_le) : v.statut === 'en_attente' ? v.clos_le === null : (v.clos_le === null || estDate(v.clos_le)));
+// Sortie persistée (forme exacte, selon le schéma).
+const estSortie = (v) => {
+  if (!v || typeof v !== 'object') return false;
+  if (v.schema === SORTIES.emettre.schema) return exactes(v, SORTIES.emettre.persistees) && RE.setId.test(v.set_id) && estFichier(v.candidat_fichier_id)
+    && Number.isSafeInteger(v.generation_cle) && v.generation_cle >= 1 && typeof v.reemission === 'boolean';
+  if (v.schema === SORTIES.cloturer.schema) return exactes(v, SORTIES.cloturer.persistees) && RE.setId.test(v.set_id) && estFichier(v.candidat_fichier_id)
+    && estDate(v.clos_le) && typeof v.deja_clos === 'boolean';
+  return false;
+};
 const T = {
   date: estDate,
   setId: (v) => typeof v === 'string' && RE.setId.test(v),
@@ -112,14 +132,10 @@ const T = {
     && (v.clos_le === null || estDate(v.clos_le)),
   ids: (v) => Array.isArray(v) && v.every((x) => typeof x === 'string' && RE.execution.test(x))
     && v.every((x, i) => i === 0 || BigInt(v[i - 1]) < BigInt(x)), // triés, uniques
-  reponse: (v) => exactes(v, ['generation_cle', 'statut', 'version', 'deja_clos'])
-    && (v.generation_cle === null || (Number.isSafeInteger(v.generation_cle) && v.generation_cle >= 1))
-    && (v.statut === null || STATUTS_CANDIDAT.includes(v.statut))
-    && (v.version === null || (typeof v.version === 'string' && RE.version.test(v.version)))
-    && (v.deja_clos === null || typeof v.deja_clos === 'boolean'),
-  http4xx: (v) => Number.isInteger(v) && v >= 400 && v <= 499,
+  sortieOuNul: (v) => v === null || estSortie(v),
+  httpRefus: (v) => Object.prototype.hasOwnProperty.call(REFUS_SANS_EXECUTION, v),
   motif: (v) => MOTIFS_INDETERMINE.includes(v),
-  motifRefus: (v) => MOTIFS_REFUS.includes(v),
+  motifRefus: (v) => Object.values(REFUS_SANS_EXECUTION).includes(v),
   issue: (v) => ISSUES_RESOLUTION.includes(v),
   ligne: (v) => Number.isInteger(v) && v >= 0,
   sha: (v) => typeof v === 'string' && RE.sha.test(v),
@@ -130,10 +146,9 @@ const T = {
 const SCHEMAS = Object.freeze({
   init: { le: 'date', schema: 'schema' },
   envoi: { le: 'date', set_id: 'setId', tentative_id: 'tentative', commande: 'commande', workflow: 'workflow', avant: 'candidatOuNul', preexistantes: 'ids', attendu: 'attendu' },
-  accepte: { le: 'date', set_id: 'setId', tentative_id: 'tentative', reponse: 'reponse' },
-  refuse_sans_effet: { le: 'date', set_id: 'setId', tentative_id: 'tentative', http: 'http4xx', motif_refus: 'motifRefus' },
+  refuse_sans_effet: { le: 'date', set_id: 'setId', tentative_id: 'tentative', http: 'httpRefus', motif_refus: 'motifRefus' },
   indetermine: { le: 'date', set_id: 'setId', tentative_id: 'tentative', motif: 'motif' },
-  resolution: { le: 'date', set_id: 'setId', tentative_id: 'tentative', issue: 'issue', execution_id: 'execution', execution_statut: 'statutExecution', apres: 'candidatOuNul' },
+  resolution: { le: 'date', set_id: 'setId', tentative_id: 'tentative', issue: 'issue', execution_id: 'execution', execution_statut: 'statutExecution', sortie: 'sortieOuNul', apres: 'candidatOuNul' },
   reparation: { le: 'date', ligne: 'ligne', sha256: 'sha', set_ids: 'setIdsOuNul' },
   attribution: { le: 'date', ligne: 'ligne', sha256: 'sha', set_ids: 'setIds' },
 });
@@ -141,6 +156,7 @@ function ligneValide(o) {
   if (!o || typeof o !== 'object' || Array.isArray(o) || o.v !== 1 || typeof o.type !== 'string' || !Object.prototype.hasOwnProperty.call(SCHEMAS, o.type)) return false;
   const s = SCHEMAS[o.type];
   if (!exactes(o, ['v', 'type', ...Object.keys(s)])) return false;
+  if (o.type === 'refuse_sans_effet' && REFUS_SANS_EXECUTION[o.http] !== o.motif_refus) return false;
   return Object.entries(s).every(([c, t]) => T[t](o[c]));
 }
 
@@ -164,19 +180,24 @@ function attenduCoherent(commande, workflow, avant, attendu) {
   if (COMMANDES[commande] !== workflow) return false;
   try { return JSON.stringify(attenduPour(commande, avant)) === JSON.stringify(attendu); } catch { return false; }
 }
-// Réponse du webhook conforme à l'issue attendue : champs NON NULS exigés selon la commande.
-function reponseConforme(commande, attendu, r) {
-  if (commande === 'emission') return r.generation_cle === 1 && r.statut === 'en_attente' && r.deja_clos === null;
-  if (commande === 'reemission') return r.generation_cle === attendu.generation_cle && (r.statut === null || r.statut === 'en_attente') && r.deja_clos === null;
-  return r.statut === 'clos' && typeof r.deja_clos === 'boolean' && r.deja_clos === (attendu.clos_le !== null)
-    && (r.generation_cle === null || r.generation_cle === attendu.generation_cle);
+// Sortie de l'exécution conforme à l'issue attendue (arbitrage : à la lettre).
+function sortieConforme(t, s) {
+  const A = t.attendu;
+  if (s === null || s.set_id !== t.set_id) return false;
+  if (t.commande === 'emission') return s.schema === SORTIES.emettre.schema && s.generation_cle === 1 && s.reemission === false;
+  if (t.commande === 'reemission') return s.schema === SORTIES.emettre.schema && s.generation_cle === A.generation_cle && s.reemission === true && s.candidat_fichier_id === A.fichier_id;
+  return s.schema === SORTIES.cloturer.schema && s.candidat_fichier_id === A.fichier_id && s.deja_clos === (A.clos_le !== null)
+    && (A.clos_le === null || s.clos_le === A.clos_le);
 }
-// Issue d'un diagnostic, recalculée à l'identique à la relecture.
-function qualifier(t, executionStatut, apres) {
+// Issue d'un diagnostic, recalculée à l'identique à la relecture. Concordance exécution (success) +
+// sortie + candidat relu -> effet_conforme ; exécution non-success + candidat inchangé -> sans_effet ;
+// tout autre cas -> anomalie. Identité physique vérifiée deux fois (sortie ET candidat relu).
+function qualifier(t, executionStatut, sortie, apres) {
   const A = t.attendu; const V = t.avant;
-  const conforme = apres !== null && apres.statut === A.statut && apres.generation_cle === A.generation_cle
+  const conforme = executionStatut === 'success' && sortieConforme(t, sortie) && apres !== null
+    && apres.statut === A.statut && apres.generation_cle === A.generation_cle && apres.fichier_id === sortie.candidat_fichier_id
     && (A.fichier_id === null || apres.fichier_id === A.fichier_id)
-    && (A.statut !== 'clos' || (apres.clos_le !== null && (A.clos_le === null || apres.clos_le === A.clos_le)));
+    && (A.statut !== 'clos' || apres.clos_le === sortie.clos_le);
   if (conforme) return 'effet_conforme';
   const inchange = V === null ? apres === null
     : apres !== null && apres.fichier_id === V.fichier_id && apres.generation_cle === V.generation_cle && apres.statut === V.statut && apres.clos_le === V.clos_le;
@@ -213,7 +234,7 @@ function analyser(octets) {
   const corrompre = (raison) => { if (!res.corrompu) res.raison = raison; res.corrompu = true; };
   // Désignations : chaque référence administrative est VÉRIFIÉE (ligne antérieure, illisible, même
   // SHA-256, set_id recalculés depuis le fragment, une seule désignation) ; sinon journal corrompu.
-  const pertes = new Map(); // index -> { setIds, tids }
+  const pertes = new Map(); // index -> { setIds, tids, attribuee }
   for (const l of lues) {
     if (!l.o || (l.o.type !== 'reparation' && l.o.type !== 'attribution')) continue;
     const cible = l.o.ligne < l.i ? lues[l.o.ligne] : null;
@@ -229,8 +250,10 @@ function analyser(octets) {
     }
   }
   const lot = (s) => (res.lots[s] ||= { etat: 'libre', ouverte: null, blocage: null, tentatives: 0 });
-  const bloquer = (s, motif) => { const L = lot(s); L.etat = 'bloque'; L.blocage = L.blocage || motif; L.ouverte = null; };
-  const vues = new Set(); // tentatives orphelines déjà rattachées à une perte
+  const TRANS = { refuse_sans_effet: ['envoi'], indetermine: ['envoi'], resolution: ['envoi', 'indetermine'] };
+  const orphelines = {}; // tentative_id -> { set_id, etat } (envoi perdu : transitions encore vérifiées)
+  // 1) Reconstitution CHRONOLOGIQUE des tentatives ; le blocage dû aux pertes est appliqué À LA FIN
+  //    (une opération historique postérieure à la perte reste valide).
   lues.forEach((l) => {
     if (!l.o) {
       if (!pertes.has(l.i)) { res.illisibles.push(l.i); corrompre(`ligne ${l.i + 1} illisible ou hors schéma, non réparée`); }
@@ -243,7 +266,7 @@ function analyser(octets) {
     const t = res.tentatives[o.tentative_id];
     if (o.type === 'envoi') {
       const L = lot(o.set_id);
-      if (t || vues.has(o.tentative_id)) return corrompre(`ligne ${l.i + 1} : tentative en double`);
+      if (t || orphelines[o.tentative_id]) return corrompre(`ligne ${l.i + 1} : tentative en double`);
       if (L.etat !== 'libre') return corrompre(`ligne ${l.i + 1} : envoi sur un lot ${L.etat}`);
       if (!attenduCoherent(o.commande, o.workflow, o.avant, o.attendu)) return corrompre(`ligne ${l.i + 1} : envoi incohérent`);
       res.tentatives[o.tentative_id] = { set_id: o.set_id, etat: 'envoi', commande: o.commande, workflow: o.workflow, avant: o.avant, preexistantes: o.preexistantes, attendu: o.attendu };
@@ -251,52 +274,63 @@ function analyser(octets) {
       return;
     }
     if (!t) {
-      // Issue sans son envoi : tolérée seulement si une portion perdue la PRÉCÈDE et la couvre
-      // (tentative_id récupérable identique, ou à défaut set_id) ; le lot est alors bloqué.
-      const couvre = [...pertes].some(([j, p]) => j < l.i && (p.tids.length ? p.tids.includes(o.tentative_id) : (p.setIds === null || p.setIds.includes(o.set_id))));
-      if (!couvre) return corrompre(`ligne ${l.i + 1} : issue d'une tentative inconnue`);
-      vues.add(o.tentative_id);
-      return bloquer(o.set_id, 'perte');
+      // Issue sans son envoi : tolérée seulement si une portion perdue la PRÉCÈDE et que TOUTES les
+      // identités récupérées concordent (tentative_id s'il est récupérable, ET set_id s'ils le sont).
+      let orph = orphelines[o.tentative_id];
+      if (!orph) {
+        const couvre = [...pertes].some(([j, p]) => j < l.i && (p.tids.length === 0 || p.tids.includes(o.tentative_id))
+          && (p.setIds === null || p.setIds.includes(o.set_id)));
+        if (!couvre) return corrompre(`ligne ${l.i + 1} : issue d'une tentative inconnue`);
+        orph = orphelines[o.tentative_id] = { set_id: o.set_id, etat: 'envoi' };
+      }
+      if (orph.set_id !== o.set_id) return corrompre(`ligne ${l.i + 1} : set_id ≠ tentative orpheline`);
+      if (!TRANS[o.type].includes(orph.etat)) return corrompre(`ligne ${l.i + 1} : transition orpheline ${orph.etat} -> ${o.type} interdite`);
+      orph.etat = o.type;
+      return;
     }
     if (t.set_id !== o.set_id) return corrompre(`ligne ${l.i + 1} : set_id ≠ tentative`);
-    const admis = { accepte: ['envoi'], refuse_sans_effet: ['envoi'], indetermine: ['envoi'], resolution: ['envoi', 'indetermine'] }[o.type];
-    if (!admis.includes(t.etat)) return corrompre(`ligne ${l.i + 1} : transition ${t.etat} -> ${o.type} interdite`);
-    if (o.type === 'accepte' && !reponseConforme(t.commande, t.attendu, o.reponse)) return corrompre(`ligne ${l.i + 1} : accepte non conforme à l'issue attendue`);
-    if (o.type === 'resolution' && (t.preexistantes.includes(o.execution_id) || qualifier(t, o.execution_statut, o.apres) !== o.issue)) return corrompre(`ligne ${l.i + 1} : résolution non conforme à ses preuves`);
+    if (!TRANS[o.type].includes(t.etat)) return corrompre(`ligne ${l.i + 1} : transition ${t.etat} -> ${o.type} interdite`);
+    if (o.type === 'resolution' && (t.preexistantes.includes(o.execution_id) || qualifier(t, o.execution_statut, o.sortie, o.apres) !== o.issue)) return corrompre(`ligne ${l.i + 1} : résolution non conforme à ses preuves`);
     const L = lot(o.set_id);
     t.etat = o.type === 'resolution' ? `resolution:${o.issue}` : o.type;
     if (o.type === 'indetermine') return;
-    if (o.type === 'resolution' && o.issue === 'anomalie') return bloquer(o.set_id, 'anomalie');
+    if (o.type === 'resolution' && o.issue === 'anomalie') { L.etat = 'bloque'; L.blocage = 'anomalie'; L.ouverte = null; return; }
     if (L.etat === 'ouverte' && L.ouverte === o.tentative_id) { L.etat = 'libre'; L.ouverte = null; }
   });
-  // Portions perdues : les lots concernés sont BLOQUÉS ; sans set_id (ni attribution), blocage de TOUS.
+  // 2) Portions perdues, À LA FIN : lots concernés BLOQUÉS ; sans set_id (ni attribution), TOUS.
   for (const [i, p] of pertes) {
-    if (p.setIds === null) res.pertesNonAttribuees.push(i);
-    else p.setIds.forEach((s) => bloquer(s, 'perte'));
+    if (p.setIds === null) { res.pertesNonAttribuees.push(i); continue; }
+    for (const s of p.setIds) { const L = lot(s); L.etat = 'bloque'; L.blocage = L.blocage || 'perte'; L.ouverte = null; }
   }
   res.sain = !res.tronque && !res.corrompu;
   if (res.sain) res.raison = null;
   return res;
 }
 
-// --- Projections : seuls les champs du schéma fermé sont lus ; aucune valeur rejetée n'est répétée.
+// --- Projections : seuls les champs du schéma fermé sont lus, chacun PRÉSENT (jamais un null inventé) ;
+// aucune valeur rejetée n'est répétée.
+const possede = (o, c) => Object.prototype.hasOwnProperty.call(o, c);
 function projeterCandidat(c) {
   if (c === null) return null; // ABSENCE établie (listing complet de l'appelant)
-  if (!c || typeof c !== 'object') throw new RefusRelecture('candidat : forme invalide');
-  const p = { fichier_id: c.fichier_id, version: c.version, generation_cle: c.generation_cle, statut: c.statut, clos_le: c.clos_le === undefined ? null : c.clos_le };
-  if (!estCandidat(p)) throw new RefusRelecture('candidat incomplet ou hors schéma (valeur non répétée) : l\'absence s\'écrit null');
+  const cles = ['fichier_id', 'version', 'generation_cle', 'statut', 'clos_le'];
+  if (!c || typeof c !== 'object' || !cles.every((k) => possede(c, k))) throw new RefusRelecture('candidat incomplet (champ absent) : l\'absence du candidat s\'écrit null');
+  const p = Object.fromEntries(cles.map((k) => [k, c[k]]));
+  if (!estCandidat(p)) throw new RefusRelecture('candidat hors schéma (valeur non répétée)');
   return p;
 }
-function projeterReponse(r) {
-  if (!r || typeof r !== 'object') return null;
-  const p = { generation_cle: r.generation_cle ?? null, statut: r.statut ?? null, version: r.version ?? null, deja_clos: r.deja_clos ?? null };
-  return T.reponse(p) ? p : null;
+// Sortie du nœud « FONDA Sortie … » : null si absente (exécution en erreur) ou non conforme au schéma
+// réel du workflow (clé manquante, type faux) — une telle sortie ne prouve rien.
+function projeterSortie(workflow, s) {
+  const d = SORTIES[workflow];
+  if (!s || typeof s !== 'object' || s.schema !== d.schema || !d.presentes.every((k) => possede(s, k))) return null;
+  const p = Object.fromEntries(d.persistees.map((k) => [k, s[k]]));
+  return estSortie(p) ? p : null;
 }
 function projeterExecutions(liste) {
   if (!Array.isArray(liste)) throw new RefusRelecture('exécutions : liste attendue');
   return liste.map((e) => {
     if (!e || typeof e !== 'object' || !T.execution(e.id)) throw new RefusRelecture('exécution : identifiant hors schéma (valeur non répétée)');
-    return { id: e.id, set_id: T.setId(e.set_id) ? e.set_id : null, workflow: T.workflow(e.workflow) ? e.workflow : null, statut: T.statutExecution(e.statut) ? e.statut : null };
+    return { id: e.id, set_id: T.setId(e.set_id) ? e.set_id : null, workflow: T.workflow(e.workflow) ? e.workflow : null, statut: T.statutExecution(e.statut) ? e.statut : null, sortie: e.sortie };
   });
 }
 const exigerSetId = (s) => { if (!T.setId(s)) throw new RefusRelecture('set_id invalide (valeur non répétée)'); };
@@ -404,10 +438,11 @@ function preparerEnvoi(setId, commande, donnees, deps) {
   });
 }
 
-// Issue d'une tentative en `envoi` :
-//   accepte (donnees.reponse) — non conforme ou illisible -> indetermine
-//   refuse_sans_effet (donnees.http 4xx + donnees.motif_refus de la liste) — tout autre code -> indetermine
-//   indetermine (donnees.motif)
+// Issue d'une tentative en `envoi` SANS diagnostic (aucune exécution à lire) :
+//   refuse_sans_effet (donnees.http = 403 authentification | 404 workflow inactif : n8n refuse AVANT de
+//   démarrer le workflow) — tout autre code -> indetermine (erreur_serveur) ; un 200 n'est PAS une
+//   issue (onReceived : « reçu ») : refus, la tentative reste en envoi jusqu'au diagnostic.
+//   indetermine (donnees.motif : délai, transport…)
 function conclure(tentativeId, issue, donnees, deps) {
   if (!T.tentative(tentativeId)) throw new RefusRelecture('tentative_id invalide');
   return sousVerrou(deps, (c) => {
@@ -416,29 +451,24 @@ function conclure(tentativeId, issue, donnees, deps) {
     if (!t) throw new RefusRelecture('tentative inconnue');
     if (t.etat !== 'envoi') throw new RefusRelecture(`tentative déjà conclue (${t.etat})`);
     const base = { le: maintenant(deps), set_id: t.set_id, tentative_id: tentativeId };
-    const indet = (motif) => ['indetermine', { ...base, motif }];
     let type; let champs;
-    if (issue === 'accepte') {
-      const r = projeterReponse(donnees && donnees.reponse);
-      if (r === null) [type, champs] = indet('reponse_illisible');
-      else if (reponseConforme(t.commande, t.attendu, r)) [type, champs] = ['accepte', { ...base, reponse: r }];
-      else [type, champs] = indet('reponse_non_conforme');
-    } else if (issue === 'refuse_sans_effet') {
+    if (issue === 'refuse_sans_effet') {
       const http = donnees ? donnees.http : undefined;
-      if (!T.http4xx(http)) [type, champs] = indet('erreur_serveur');
-      else if (!T.motifRefus(donnees.motif_refus)) throw new RefusRelecture('refus sans effet : motif hors liste — rien n\'est écrit (tentative toujours ouverte)');
-      else [type, champs] = ['refuse_sans_effet', { ...base, http, motif_refus: donnees.motif_refus }];
+      if (Number.isInteger(http) && http >= 200 && http <= 299) throw new RefusRelecture('HTTP 2xx = reçu, jamais exécuté : pas une issue — diagnostic après l\'exécution');
+      if (T.httpRefus(http)) [type, champs] = ['refuse_sans_effet', { ...base, http, motif_refus: REFUS_SANS_EXECUTION[http] }];
+      else [type, champs] = ['indetermine', { ...base, motif: 'erreur_serveur' }];
     } else if (issue === 'indetermine') {
       if (!T.motif(donnees && donnees.motif)) throw new RefusRelecture('motif d\'indétermination inconnu');
-      [type, champs] = indet(donnees.motif);
-    } else throw new RefusRelecture('issue inconnue');
+      [type, champs] = ['indetermine', { ...base, motif: donnees.motif }];
+    } else throw new RefusRelecture('issue inconnue (une exécution ne se conclut que par le diagnostic)');
     ajouterOctets(c.journal, serialiser(type, champs), deps);
     return { issue: type };
   });
 }
 
-// Diagnostic (seule levée d'une tentative ouverte) : rattachement par EXCLUSION, sans horloge.
-// donnees = { executions: [{ id, set_id, workflow, statut }], listingComplet: true, candidat (complet | null) }
+// Diagnostic (SEULE conclusion d'une exécution) : rattachement par EXCLUSION, sans horloge.
+// donnees = { executions: [{ id, set_id, workflow, statut, sortie }], listingComplet: true, candidat (complet | null) }
+// `sortie` = sortie du nœud « FONDA Sortie emission » / « FONDA Sortie cloture » de l'exécution (ou absente).
 function diagnostiquer(tentativeId, donnees, deps) {
   if (!T.tentative(tentativeId)) throw new RefusRelecture('tentative_id invalide');
   return sousVerrou(deps, (c) => {
@@ -448,7 +478,7 @@ function diagnostiquer(tentativeId, donnees, deps) {
     if (t.etat !== 'envoi' && t.etat !== 'indetermine') throw new RefusRelecture(`tentative non ouverte (${t.etat})`);
     const maintenir = (raison) => ({ leve: false, raison });
     if (!donnees || donnees.listingComplet !== true) return maintenir('listing incomplet');
-    if (!Object.prototype.hasOwnProperty.call(donnees, 'candidat')) return maintenir('candidat non relu');
+    if (!possede(donnees, 'candidat')) return maintenir('candidat non relu');
     const pre = new Set(t.preexistantes);
     const nouvelles = projeterExecutions(donnees.executions)
       .filter((e) => (e.workflow === t.workflow || e.workflow === null) && (e.set_id === t.set_id || e.set_id === null) && !pre.has(e.id));
@@ -458,8 +488,9 @@ function diagnostiquer(tentativeId, donnees, deps) {
     if (e.set_id === null || e.workflow === null) return maintenir('exécution nouvelle illisible : ambiguïté');
     if (e.statut === null) return maintenir('exécution nouvelle encore en vol ou de statut inconnu');
     const apres = projeterCandidat(donnees.candidat);
-    const issue = qualifier(t, e.statut, apres);
-    ajouterOctets(c.journal, serialiser('resolution', { le: maintenant(deps), set_id: t.set_id, tentative_id: tentativeId, issue, execution_id: e.id, execution_statut: e.statut, apres }), deps);
+    const sortie = projeterSortie(t.workflow, e.sortie);
+    const issue = qualifier(t, e.statut, sortie, apres);
+    ajouterOctets(c.journal, serialiser('resolution', { le: maintenant(deps), set_id: t.set_id, tentative_id: tentativeId, issue, execution_id: e.id, execution_statut: e.statut, sortie, apres }), deps);
     return { leve: true, issue, execution_id: e.id };
   });
 }
@@ -538,7 +569,7 @@ function attribuerPerte(numeroLigne, setIds, deps) {
 function lireEtat(verrous) { return analyser(lireOctets(chemins(verrous).journal)); }
 
 module.exports = {
-  RefusRelecture, OCCUPE, VERROUS_PAR_DEFAUT, SCHEMA, SCHEMAS, COMMANDES, MOTIFS_REFUS,
-  analyser, ligneValide, attenduPour, reponseConforme, qualifier, chemins, prendreVerrou, exigerQuiescence,
+  RefusRelecture, OCCUPE, VERROUS_PAR_DEFAUT, SCHEMA, SCHEMAS, COMMANDES, SORTIES, REFUS_SANS_EXECUTION,
+  analyser, ligneValide, attenduPour, sortieConforme, qualifier, chemins, prendreVerrou, exigerQuiescence,
   initialiser, preparerEnvoi, conclure, diagnostiquer, decisionSignature, reparer, attribuerPerte, lireEtat, sha256,
 };
