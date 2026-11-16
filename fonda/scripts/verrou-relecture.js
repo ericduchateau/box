@@ -40,9 +40,12 @@
 //
 // RÉPARATION : l'original est copié intact (fichier temporaire puis renommage atomique) avant tout ajout ;
 // les lignes illisibles restent en place et sont DÉSIGNÉES par une ligne `reparation` (index, SHA-256,
-// set_id RECALCULÉS depuis le fragment à chaque relecture). Une portion perdue BLOQUE les lots qu'elle
-// concerne ; sans set_id récupérable, TOUS les lots sont bloqués (incident) jusqu'à une ligne
-// `attribution` (Éric). Une réparation ne prouve jamais qu'aucune tentative n'a eu lieu.
+// set_id RECALCULÉS depuis le fragment à chaque relecture). RÈGLE DES PERTES (arbitrage P5-1) : un lot
+// touché par une portion perdue est BLOQUÉ DÉFINITIVEMENT ; ses lignes ne sont plus vérifiées que pour le
+// schéma fermé, la cohérence interne et l'unicité tentative_id -> set_id (leur enchaînement ne peut plus
+// rien débloquer) ; les lignes de tous les AUTRES lots restent vérifiées intégralement. Sans set_id
+// récupérable, TOUS les lots sont bloqués (incident) jusqu'à une ligne `attribution` (Éric). Une
+// réparation ne prouve jamais qu'aucune tentative n'a eu lieu.
 //
 // PROVENANCE des identifiants (P5-2, P5-3) : `fichier_id`, `version` et ids d'exécution viennent des
 // MÉTADONNÉES Drive / n8n, jamais d'un contenu ; la forme d'une clé (64 hexadécimaux) y est refusée.
@@ -67,7 +70,6 @@ const SCHEMA = 'journal-relecture/v1';
 const RE = Object.freeze({
   setId: /^set_fonda_[a-z0-9-]+_n[IF]_\d{2}$/,
   setIdGlobal: /set_fonda_[a-z0-9-]+_n[IF]_\d{2}/g,
-  tentativeFragment: /"tentative_id":"([0-9a-f]{32})"/g,
   date: /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
   tentative: /^[0-9a-f]{32}$/,
   fichier: /^[A-Za-z0-9_-]{10,128}$/,
@@ -133,7 +135,7 @@ const T = {
   ids: (v) => Array.isArray(v) && v.every((x) => typeof x === 'string' && RE.execution.test(x))
     && v.every((x, i) => i === 0 || BigInt(v[i - 1]) < BigInt(x)), // triés, uniques
   sortieOuNul: (v) => v === null || estSortie(v),
-  httpRefus: (v) => Object.prototype.hasOwnProperty.call(REFUS_SANS_EXECUTION, v),
+  httpRefus: (v) => Number.isInteger(v) && Object.prototype.hasOwnProperty.call(REFUS_SANS_EXECUTION, v), // entier STRICT ([403] refusé)
   motif: (v) => MOTIFS_INDETERMINE.includes(v),
   motifRefus: (v) => Object.values(REFUS_SANS_EXECUTION).includes(v),
   issue: (v) => ISSUES_RESOLUTION.includes(v),
@@ -217,7 +219,6 @@ const setIdsRecuperables = (b) => {
   const vus = [...new Set(b.toString('latin1').match(RE.setIdGlobal) || [])];
   return vus.length ? vus.sort() : null;
 };
-const tentativesRecuperables = (b) => [...new Set([...b.toString('latin1').matchAll(RE.tentativeFragment)].map((m) => m[1]))];
 
 // -> { sain, raison, illisibles, tronque, lots: { set_id: { etat, ouverte, blocage } }, tentatives, pertesNonAttribuees }
 function analyser(octets) {
@@ -234,7 +235,7 @@ function analyser(octets) {
   const corrompre = (raison) => { if (!res.corrompu) res.raison = raison; res.corrompu = true; };
   // Désignations : chaque référence administrative est VÉRIFIÉE (ligne antérieure, illisible, même
   // SHA-256, set_id recalculés depuis le fragment, une seule désignation) ; sinon journal corrompu.
-  const pertes = new Map(); // index -> { setIds, tids, attribuee }
+  const pertes = new Map(); // index -> { setIds, attribuee }
   for (const l of lues) {
     if (!l.o || (l.o.type !== 'reparation' && l.o.type !== 'attribution')) continue;
     const cible = l.o.ligne < l.i ? lues[l.o.ligne] : null;
@@ -243,7 +244,7 @@ function analyser(octets) {
     if (l.o.type === 'reparation') {
       if (p) { corrompre(`ligne ${l.i + 1} : portion désignée deux fois`); continue; }
       if (JSON.stringify(l.o.set_ids) !== JSON.stringify(setIdsRecuperables(cible.b))) { corrompre(`ligne ${l.i + 1} : set_id désignés ≠ fragment`); continue; }
-      pertes.set(cible.i, { setIds: l.o.set_ids, tids: tentativesRecuperables(cible.b), attribuee: false });
+      pertes.set(cible.i, { setIds: l.o.set_ids, attribuee: false });
     } else {
       if (!p || p.setIds !== null || p.attribuee) { corrompre(`ligne ${l.i + 1} : attribution sans portion perdue non attribuée`); continue; }
       pertes.set(cible.i, { ...p, setIds: l.o.set_ids, attribuee: true });
@@ -251,9 +252,14 @@ function analyser(octets) {
   }
   const lot = (s) => (res.lots[s] ||= { etat: 'libre', ouverte: null, blocage: null, tentatives: 0 });
   const TRANS = { refuse_sans_effet: ['envoi'], indetermine: ['envoi'], resolution: ['envoi', 'indetermine'] };
-  const orphelines = {}; // tentative_id -> { set_id, etat } (envoi perdu : transitions encore vérifiées)
-  // 1) Reconstitution CHRONOLOGIQUE des tentatives ; le blocage dû aux pertes est appliqué À LA FIN
-  //    (une opération historique postérieure à la perte reste valide).
+  // Lots touchés par une portion perdue ; une perte sans set_id (ni attribution) les touche TOUS.
+  const perdus = new Set();
+  let tousPerdus = false;
+  for (const [i, p] of pertes) {
+    if (p.setIds === null) { res.pertesNonAttribuees.push(i); tousPerdus = true; } else p.setIds.forEach((s) => perdus.add(s));
+  }
+  const estPerdu = (s) => tousPerdus || perdus.has(s);
+  const proprietaire = new Map(); // tentative_id -> set_id : UNICITÉ GLOBALE (tous les lots)
   lues.forEach((l) => {
     if (!l.o) {
       if (!pertes.has(l.i)) { res.illisibles.push(l.i); corrompre(`ligne ${l.i + 1} illisible ou hors schéma, non réparée`); }
@@ -263,32 +269,24 @@ function analyser(octets) {
     if (l.i === 0 && o.type !== 'init') return corrompre('ligne 1 : en-tête `init` attendu');
     if (o.type === 'init') { if (l.i !== 0) corrompre(`ligne ${l.i + 1} : \`init\` en double`); return; }
     if (o.type === 'reparation' || o.type === 'attribution') return;
+    // Invariants PARTOUT (lots perdus compris) : unicité tentative_id -> set_id, cohérence interne.
+    const s0 = proprietaire.get(o.tentative_id);
+    if (s0 !== undefined && s0 !== o.set_id) return corrompre(`ligne ${l.i + 1} : tentative_id déjà porté par un autre lot`);
+    proprietaire.set(o.tentative_id, o.set_id);
+    if (o.type === 'resolution' && o.sortie !== null && o.sortie.set_id !== o.set_id) return corrompre(`ligne ${l.i + 1} : sortie d'un autre lot`);
+    if (o.type === 'envoi' && !attenduCoherent(o.commande, o.workflow, o.avant, o.attendu)) return corrompre(`ligne ${l.i + 1} : envoi incohérent`);
+    // Lot touché par une perte : bloqué définitivement, enchaînement non vérifié.
+    if (estPerdu(o.set_id)) { lot(o.set_id); return; }
     const t = res.tentatives[o.tentative_id];
     if (o.type === 'envoi') {
       const L = lot(o.set_id);
-      if (t || orphelines[o.tentative_id]) return corrompre(`ligne ${l.i + 1} : tentative en double`);
+      if (t) return corrompre(`ligne ${l.i + 1} : tentative en double`);
       if (L.etat !== 'libre') return corrompre(`ligne ${l.i + 1} : envoi sur un lot ${L.etat}`);
-      if (!attenduCoherent(o.commande, o.workflow, o.avant, o.attendu)) return corrompre(`ligne ${l.i + 1} : envoi incohérent`);
       res.tentatives[o.tentative_id] = { set_id: o.set_id, etat: 'envoi', commande: o.commande, workflow: o.workflow, avant: o.avant, preexistantes: o.preexistantes, attendu: o.attendu };
       L.etat = 'ouverte'; L.ouverte = o.tentative_id; L.tentatives += 1;
       return;
     }
-    if (!t) {
-      // Issue sans son envoi : tolérée seulement si une portion perdue la PRÉCÈDE et que TOUTES les
-      // identités récupérées concordent (tentative_id s'il est récupérable, ET set_id s'ils le sont).
-      let orph = orphelines[o.tentative_id];
-      if (!orph) {
-        const couvre = [...pertes].some(([j, p]) => j < l.i && (p.tids.length === 0 || p.tids.includes(o.tentative_id))
-          && (p.setIds === null || p.setIds.includes(o.set_id)));
-        if (!couvre) return corrompre(`ligne ${l.i + 1} : issue d'une tentative inconnue`);
-        orph = orphelines[o.tentative_id] = { set_id: o.set_id, etat: 'envoi' };
-      }
-      if (orph.set_id !== o.set_id) return corrompre(`ligne ${l.i + 1} : set_id ≠ tentative orpheline`);
-      if (!TRANS[o.type].includes(orph.etat)) return corrompre(`ligne ${l.i + 1} : transition orpheline ${orph.etat} -> ${o.type} interdite`);
-      orph.etat = o.type;
-      return;
-    }
-    if (t.set_id !== o.set_id) return corrompre(`ligne ${l.i + 1} : set_id ≠ tentative`);
+    if (!t) return corrompre(`ligne ${l.i + 1} : issue d'une tentative inconnue (aucune perte ne couvre ce lot)`);
     if (!TRANS[o.type].includes(t.etat)) return corrompre(`ligne ${l.i + 1} : transition ${t.etat} -> ${o.type} interdite`);
     if (o.type === 'resolution' && (t.preexistantes.includes(o.execution_id) || qualifier(t, o.execution_statut, o.sortie, o.apres) !== o.issue)) return corrompre(`ligne ${l.i + 1} : résolution non conforme à ses preuves`);
     const L = lot(o.set_id);
@@ -297,11 +295,9 @@ function analyser(octets) {
     if (o.type === 'resolution' && o.issue === 'anomalie') { L.etat = 'bloque'; L.blocage = 'anomalie'; L.ouverte = null; return; }
     if (L.etat === 'ouverte' && L.ouverte === o.tentative_id) { L.etat = 'libre'; L.ouverte = null; }
   });
-  // 2) Portions perdues, À LA FIN : lots concernés BLOQUÉS ; sans set_id (ni attribution), TOUS.
-  for (const [i, p] of pertes) {
-    if (p.setIds === null) { res.pertesNonAttribuees.push(i); continue; }
-    for (const s of p.setIds) { const L = lot(s); L.etat = 'bloque'; L.blocage = L.blocage || 'perte'; L.ouverte = null; }
-  }
+  // Lots perdus : BLOQUÉS (définitif). Une perte non attribuée bloque tout (decisionSignature : incident).
+  for (const s of perdus) { const L = lot(s); L.etat = 'bloque'; L.blocage = L.blocage === 'anomalie' ? 'anomalie' : 'perte'; L.ouverte = null; }
+  if (tousPerdus) for (const L of Object.values(res.lots)) { L.etat = 'bloque'; L.blocage = L.blocage || 'perte'; L.ouverte = null; }
   res.sain = !res.tronque && !res.corrompu;
   if (res.sain) res.raison = null;
   return res;
@@ -318,11 +314,15 @@ function projeterCandidat(c) {
   if (!estCandidat(p)) throw new RefusRelecture('candidat hors schéma (valeur non répétée)');
   return p;
 }
-// Sortie du nœud « FONDA Sortie … » : null si absente (exécution en erreur) ou non conforme au schéma
-// réel du workflow (clé manquante, type faux) — une telle sortie ne prouve rien.
-function projeterSortie(workflow, s) {
+// Sortie du nœud « FONDA Sortie … » : null si absente (exécution en erreur), d'un autre lot, ou non
+// conforme au schéma réel du workflow (clé manquante, type faux) — une telle sortie ne prouve rien.
+function projeterSortie(workflow, setId, s) {
   const d = SORTIES[workflow];
   if (!s || typeof s !== 'object' || s.schema !== d.schema || !d.presentes.every((k) => possede(s, k))) return null;
+  if (s.set_id !== setId) return null; // sortie d'un AUTRE lot : ne prouve rien pour celui-ci (jamais persistée)
+  // Champs NON persistés, validés EN MÉMOIRE (valeur aberrante -> sortie nulle -> anomalie).
+  if (workflow === 'emettre' && !(typeof s.relecteur_attribue === 'string' && s.relecteur_attribue.length > 0)) return null;
+  if (workflow === 'cloturer' && !(Number.isSafeInteger(s.nb_decisions_listees) && s.nb_decisions_listees >= 0 && typeof s.incomplete_search === 'boolean')) return null;
   const p = Object.fromEntries(d.persistees.map((k) => [k, s[k]]));
   return estSortie(p) ? p : null;
 }
@@ -488,7 +488,7 @@ function diagnostiquer(tentativeId, donnees, deps) {
     if (e.set_id === null || e.workflow === null) return maintenir('exécution nouvelle illisible : ambiguïté');
     if (e.statut === null) return maintenir('exécution nouvelle encore en vol ou de statut inconnu');
     const apres = projeterCandidat(donnees.candidat);
-    const sortie = projeterSortie(t.workflow, e.sortie);
+    const sortie = projeterSortie(t.workflow, t.set_id, e.sortie);
     const issue = qualifier(t, e.statut, sortie, apres);
     ajouterOctets(c.journal, serialiser('resolution', { le: maintenant(deps), set_id: t.set_id, tentative_id: tentativeId, issue, execution_id: e.id, execution_statut: e.statut, sortie, apres }), deps);
     return { leve: true, issue, execution_id: e.id };

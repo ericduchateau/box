@@ -133,7 +133,7 @@ describe('journal d\'abord et machine à états (A) : un 200 ne conclut rien', (
       assert.equal(b.lignes().at(-1).motif_refus, motif);
       assert.equal(etatLot(b, A), 'libre');
     }
-    for (const donnees of [{ http: 500 }, { http: 400 }, { http: 409 }, { http: 302 }, {}, null]) {
+    for (const donnees of [{ http: 500 }, { http: 400 }, { http: 409 }, { http: 302 }, { http: [403] }, { http: '403' }, { http: 403.0001 }, {}, null]) { // Codex 3e/4 : entier strict
       const b = banc();
       assert.equal(V.conclure(envoi(b).tentative_id, 'refuse_sans_effet', donnees, b.deps).issue, 'indetermine', JSON.stringify(donnees));
       assert.equal(b.lignes().at(-1).motif, 'erreur_serveur');
@@ -227,6 +227,11 @@ describe('diagnostic (A) : exclusion, SORTIE réelle du workflow, candidat relu'
       ['cloture_technique', EN_ATTENTE, execC('6'), { ...CLOS, clos_le: '2026-11-16T10:00:00.000Z' }], // candidat relu ≠ sortie
       ['emission', null, exec('6', { sortie: (({ relecteur_attribue: _, ...s }) => s)(sortieE()) }), EN_ATTENTE], // clé réelle absente
       ['emission', null, exec('6', { sortie: undefined }), EN_ATTENTE], // success sans sortie
+      ['emission', null, exec('6', { sortie: sortieE({ relecteur_attribue: null }) }), EN_ATTENTE], // Codex 3e/3 : non persisté mais validé
+      ['emission', null, exec('6', { sortie: sortieE({ relecteur_attribue: '' }) }), EN_ATTENTE],
+      ['cloture_technique', EN_ATTENTE, execC('6', { sortie: sortieC({ nb_decisions_listees: -1 }) }), CLOS],
+      ['cloture_technique', EN_ATTENTE, execC('6', { sortie: sortieC({ nb_decisions_listees: 1.5 }) }), CLOS],
+      ['cloture_technique', EN_ATTENTE, execC('6', { sortie: sortieC({ incomplete_search: 'non' }) }), CLOS],
     ];
     for (const [commande, avant, e, apres] of cas) {
       const { b, id } = ouvrir(commande, avant);
@@ -393,8 +398,8 @@ describe('journal : octets, schéma fermé, réparation', () => {
     assert.ok(fs.readFileSync(path.join(b.deps.verrous, r.copie)).equals(original), 'original conservé intact');
     assert.ok(b.octets().subarray(0, original.length).equals(original), 'rien d\'effacé ni réécrit');
     assert.equal(V.decisionSignature(A, b.deps), 'abandon');
-    diag(b, p.tentative_id, [exec('6')], EN_ATTENTE);
-    assert.equal(etatLot(b, A), 'bloque', 'un diagnostic conforme ne débloque pas un lot touché par une perte');
+    assert.throws(() => diag(b, p.tentative_id, [exec('6')], EN_ATTENTE), /inconnue/, 'lot perdu : plus aucune tentative à diagnostiquer');
+    assert.equal(etatLot(b, A), 'bloque', 'rien ne débloque un lot touché par une perte');
     envoi(b, B);
   });
   test('portion perdue SANS set_id récupérable : TOUS les lots bloqués (incident) jusqu\'à attribution par Éric', () => {
@@ -431,44 +436,80 @@ describe('journal : octets, schéma fermé, réparation', () => {
     ajouterLigne(b2, { type: 'attribution', ligne: 1, sha256: shaXX, set_ids: [A] });
     assert.equal(V.lireEtat(b2.deps.verrous).sain, false, 'attribution sans réparation préalable');
   });
-  test('C6 : issue orpheline AVANT le fragment perdu -> corrompu ; APRÈS, identités concordantes -> tolérée (lot bloqué) ; tid différent -> corrompu', () => {
+  // RÈGLE DES PERTES (arbitrage P5-1) : lot touché = bloqué définitivement, enchaînement non vérifié ;
+  // invariants partout : schéma fermé, cohérence interne, unicité tentative_id -> set_id.
+  test('lot touché par une perte : orpheline avant ou après le fragment, tid quelconque -> journal sain, lot BLOQUÉ, autres lots libres', () => {
     const orph = { type: 'indetermine', set_id: A, tentative_id: t1, motif: 'delai' };
-    const b1 = banc();
-    ajouterLigne(b1, orph); fs.appendFileSync(b1.journal, `${fragment(t1)}\n`); designer(b1, 2, fragment(t1));
-    assert.equal(V.lireEtat(b1.deps.verrous).sain, false, 'perte postérieure');
-    const b2 = banc();
-    fs.appendFileSync(b2.journal, `${fragment(t1)}\n`); ajouterLigne(b2, orph); designer(b2, 1, fragment(t1));
-    assert.equal(V.lireEtat(b2.deps.verrous).sain, true);
-    assert.equal(etatLot(b2, A), 'bloque');
-    const b3 = banc();
-    fs.appendFileSync(b3.journal, `${fragment(t2)}\n`); ajouterLigne(b3, orph); designer(b3, 1, fragment(t2));
-    assert.equal(V.lireEtat(b3.deps.verrous).sain, false, 'tentative_id récupérable discordant');
+    for (const [nom, ecrire] of [
+      ['orpheline AVANT le fragment', (b) => { ajouterLigne(b, orph); fs.appendFileSync(b.journal, `${fragment(t1)}\n`); designer(b, 2, fragment(t1)); }],
+      ['orpheline APRÈS, même tid', (b) => { fs.appendFileSync(b.journal, `${fragment(t1)}\n`); ajouterLigne(b, orph); designer(b, 1, fragment(t1)); }],
+      ['orpheline APRÈS, tid différent', (b) => { fs.appendFileSync(b.journal, `${fragment(t2)}\n`); ajouterLigne(b, orph); designer(b, 1, fragment(t2)); }],
+      ['deux issues orphelines identiques', (b) => { fs.appendFileSync(b.journal, `${fragment(t1)}\n`); ajouterLigne(b, orph); ajouterLigne(b, orph); designer(b, 1, fragment(t1)); }],
+    ]) {
+      const b = banc();
+      ecrire(b);
+      assert.equal(V.lireEtat(b.deps.verrous).sain, true, nom);
+      assert.equal(V.decisionSignature(A, b.deps), 'abandon', nom);
+      assert.throws(() => envoi(b, A), /bloqué définitivement/, nom);
+      assert.equal(V.decisionSignature(B, b.deps), 'poursuivre', nom);
+    }
   });
-  test('R2-3 : tentative_id concordant mais set_id CONTRADICTOIRE -> corrompu ; deux issues orphelines incompatibles -> corrompu', () => {
-    const b1 = banc();
-    fs.appendFileSync(b1.journal, `${fragment(t1, A)}\n`); ajouterLigne(b1, { type: 'indetermine', set_id: B, tentative_id: t1, motif: 'delai' }); designer(b1, 1, fragment(t1, A));
-    assert.equal(V.lireEtat(b1.deps.verrous).sain, false);
-    const ref = { type: 'refuse_sans_effet', set_id: A, tentative_id: t1, http: 403, motif_refus: 'non_autorise' };
-    const b2 = banc();
-    fs.appendFileSync(b2.journal, `${fragment(t1)}\n`); ajouterLigne(b2, ref); designer(b2, 1, fragment(t1));
-    assert.equal(V.lireEtat(b2.deps.verrous).sain, true, 'contrôle : une orpheline admise');
-    ajouterLigne(b2, ref);
-    assert.equal(V.lireEtat(b2.deps.verrous).sain, false, 'deux issues orphelines identiques');
-    const b3 = banc();
-    fs.appendFileSync(b3.journal, `${fragment(t1)}\n`); ajouterLigne(b3, ref); ajouterLigne(b3, { ...ref, set_id: A, type: 'indetermine', motif: 'delai', http: undefined, motif_refus: undefined }); designer(b3, 1, fragment(t1));
-    assert.equal(V.lireEtat(b3.deps.verrous).sain, false, 'refuse puis indetermine : transition interdite');
-  });
-  test('R2-2 : perte ancienne sur A puis opération historique VALIDE sur A -> réparation possible, A bloqué, B utilisable', () => {
+  test('issue d\'une tentative inconnue dans un lot qu\'AUCUNE perte ne couvre -> corrompu (perte de A, orpheline de B)', () => {
     const b = banc();
-    fs.appendFileSync(b.journal, `${fragment(t1)}\n`); // envoi de A endommagé
-    ajouterLigne(b, { type: 'indetermine', set_id: A, tentative_id: t1, motif: 'delai' }); // son issue, orpheline
-    ajouterLigne(b, { type: 'envoi', set_id: A, tentative_id: t2, commande: 'emission', workflow: 'emettre', avant: null, preexistantes: [], attendu: ATT }); // opération historique postérieure
+    fs.appendFileSync(b.journal, `${fragment(t1, A)}\n`); ajouterLigne(b, { type: 'indetermine', set_id: B, tentative_id: t1, motif: 'delai' }); designer(b, 1, fragment(t1, A));
+    assert.equal(V.lireEtat(b.deps.verrous).sain, false);
+  });
+  test('Codex 3e/1 : résolution orpheline de A dont la SORTIE porte B -> corrompu (cohérence interne, partout)', () => {
+    const b = banc();
+    fs.appendFileSync(b.journal, `${fragment(t1)}\n`);
+    ajouterLigne(b, { type: 'resolution', set_id: A, tentative_id: t1, issue: 'effet_conforme', execution_id: '6', execution_statut: 'success', sortie: { schema: 'emission-fonda/v1', set_id: B, candidat_fichier_id: FICHIER, generation_cle: 1, reemission: false }, apres: EN_ATTENTE });
+    designer(b, 1, fragment(t1));
+    assert.equal(V.lireEtat(b.deps.verrous).sain, false);
+    assert.throws(() => V.decisionSignature(B, b.deps), /inutilisable/);
+  });
+  test('unicité GLOBALE tentative_id -> set_id : un tid de A réutilisé par B (même lot perdu) -> corrompu', () => {
+    const b = banc();
+    const p = envoi(b);
+    fs.appendFileSync(b.journal, `${fragment(t2, B)}\n`);
+    ajouterLigne(b, { type: 'indetermine', set_id: B, tentative_id: p.tentative_id, motif: 'delai' });
+    designer(b, 2, fragment(t2, B), [B]);
+    assert.equal(V.lireEtat(b.deps.verrous).sain, false);
+  });
+  test('fragment A/T et fragment B sans tid, orpheline B/T : A et B BLOQUÉS, aucun autre lot touché', () => {
+    const C = 'set_fonda_geometrie-aires_nF_01';
+    const b = banc();
+    const fragB = `{"v":1,"type":"envoi","le":"2026-11-16T10:00:00.000Z","set_id":"${B}"`;
+    fs.appendFileSync(b.journal, `${fragment(t1, A)}\n${fragB}\n`);
+    ajouterLigne(b, { type: 'indetermine', set_id: B, tentative_id: t1, motif: 'delai' });
+    designer(b, 1, fragment(t1, A), [A]); designer(b, 2, fragB, [B]);
+    assert.equal(V.lireEtat(b.deps.verrous).sain, true);
+    assert.deepEqual([V.decisionSignature(A, b.deps), V.decisionSignature(B, b.deps), V.decisionSignature(C, b.deps)], ['abandon', 'abandon', 'poursuivre']);
+  });
+  test('R2-2 : envoi de A perdu puis opération historique VALIDE sur A -> réparation possible, A bloqué, B utilisable', () => {
+    const b = banc();
+    fs.appendFileSync(b.journal, `${fragment(t1)}\n`);
+    ajouterLigne(b, { type: 'indetermine', set_id: A, tentative_id: t1, motif: 'delai' });
+    ajouterLigne(b, { type: 'envoi', set_id: A, tentative_id: t2, commande: 'emission', workflow: 'emettre', avant: null, preexistantes: [], attendu: ATT });
     ajouterLigne(b, { type: 'refuse_sans_effet', set_id: A, tentative_id: t2, http: 404, motif_refus: 'workflow_inactif' });
-    const r = V.reparer(b.deps);
-    assert.equal(r.pertesNonAttribuees.length, 0);
+    assert.equal(V.reparer(b.deps).pertesNonAttribuees.length, 0);
     assert.equal(V.lireEtat(b.deps.verrous).sain, true);
     assert.equal(V.decisionSignature(A, b.deps), 'abandon');
-    assert.equal(V.decisionSignature(B, b.deps), 'poursuivre');
+    envoi(b, B);
+  });
+  test('Codex 3e/2 : RÉSOLUTION de A perdue puis réémission historique de A -> réparation possible, A bloqué, B utilisable', () => {
+    const b = banc();
+    const p1 = envoi(b);
+    diag(b, p1.tentative_id, [exec('6')], EN_ATTENTE);
+    const p2 = envoi(b, A, 'reemission', EN_ATTENTE, ['6']);
+    V.conclure(p2.tentative_id, 'refuse_sans_effet', { http: 403 }, b.deps);
+    const lignes = fs.readFileSync(b.journal, 'utf8').split('\n');
+    lignes[2] = lignes[2].slice(0, 130); // la résolution est endommagée (son set_id reste lisible)
+    assert.ok(lignes[2].includes(A));
+    fs.writeFileSync(b.journal, lignes.join('\n'));
+    assert.equal(V.lireEtat(b.deps.verrous).sain, false);
+    V.reparer(b.deps);
+    assert.equal(V.lireEtat(b.deps.verrous).sain, true);
+    assert.equal(V.decisionSignature(A, b.deps), 'abandon');
     envoi(b, B);
   });
   test('T-c : copie de l\'original INTERROMPUE -> aucun fichier final partiel ; la relance reprend', () => {
@@ -577,12 +618,28 @@ function lancer(conf, { detache = false } = {}) {
 }
 const attendreFichier = async (p, ms = 8000) => { const t0 = Date.now(); while (!fs.existsSync(p)) { if (Date.now() - t0 > ms) throw new Error(`attente ${p}`); await new Promise((r) => setTimeout(r, 20)); } };
 const tuerGroupe = (c) => { try { process.kill(-c.pid, 'SIGKILL'); } catch { /* déjà mort */ } };
-// Webhook simulé en mode onReceived : 200 IMMÉDIAT (« reçu ») ; l'exécution n'apparaît que plus tard.
-function serveur() {
+// Webhook simulé en mode onReceived : 200 IMMÉDIAT (« reçu ») ; c'est le SERVEUR qui crée ensuite,
+// en différé, l'exécution correspondante (running, puis success avec la sortie réelle du workflow),
+// comme n8n après avoir accusé réception. `executions` = ce que verrait le listing de l'API n8n.
+function serveur({ demarrerMs = 150, terminerMs = 450, preexistantes = [] } = {}) {
   const recus = [];
-  const s = http.createServer((req, res) => { let corps = ''; req.on('data', (d) => { corps += d; }); req.on('end', () => { recus.push(JSON.parse(corps)); res.writeHead(200); res.end('{"message":"Workflow was started"}'); }); });
-  return new Promise((r) => s.listen(0, '127.0.0.1', () => r({ url: `http://127.0.0.1:${s.address().port}/webhook/fonda-emettre`, recus, fermer: () => new Promise((f) => s.close(f)) })));
+  const executions = preexistantes.map((id) => exec(id));
+  let prochain = 100;
+  const s = http.createServer((req, res) => {
+    let corps = '';
+    req.on('data', (d) => { corps += d; });
+    req.on('end', () => {
+      const c = JSON.parse(corps);
+      recus.push(c);
+      res.writeHead(200); res.end('{"message":"Workflow was started"}');
+      const id = String(prochain += 1);
+      setTimeout(() => executions.push(exec(id, { set_id: c.set_id, statut: 'running', sortie: undefined })), demarrerMs);
+      setTimeout(() => { const i = executions.findIndex((e) => e.id === id); executions[i] = exec(id, { set_id: c.set_id, sortie: sortieE({ set_id: c.set_id }) }); }, terminerMs);
+    });
+  });
+  return new Promise((r) => s.listen(0, '127.0.0.1', () => r({ url: `http://127.0.0.1:${s.address().port}/webhook/fonda-emettre`, recus, executions, fermer: () => new Promise((f) => s.close(f)) })));
 }
+const attendreQue = async (cond, ms = 8000) => { const t0 = Date.now(); while (!cond()) { if (Date.now() - t0 > ms) throw new Error('attente'); await new Promise((r) => setTimeout(r, 10)); } };
 
 describe('processus réels (lockf + HTTP)', { skip: !lockfDisponible && 'lockf absent (CI Linux) : à rejouer sur le Mac' }, () => {
   const base = async () => {
@@ -633,9 +690,9 @@ describe('processus réels (lockf + HTTP)', { skip: !lockfDisponible && 'lockf a
       await premier.fin;
     } finally { tuerGroupe(premier); }
   });
-  test('T-a : POST REÇU par un vrai serveur (200 immédiat), kill -9 du CLI, exécution en RETARD : même lot refusé, autre lot autorisé, rattachement après arrivée seulement', async () => {
+  test('T-a : POST REÇU par un vrai serveur (200 immédiat), kill -9 du CLI, exécution créée EN RETARD PAR LE SERVEUR : même lot refusé, autre lot autorisé, rattachement à l\'arrivée seulement', async () => {
     const b = await base();
-    const srv = await serveur();
+    const srv = await serveur({ demarrerMs: 400, terminerMs: 900, preexistantes: ['5'] });
     try {
       const premier = lancer({ action: 'envoi', setId: A, preexistantes: ['5'], verrous: b.verrous, url: srv.url, barriere: { pret: b.pret, go: b.go } }, { detache: true });
       await attendreFichier(b.pret);
@@ -644,6 +701,9 @@ describe('processus réels (lockf + HTTP)', { skip: !lockfDisponible && 'lockf a
       await premier.fin;
       const a = V.lireEtat(b.verrous);
       assert.equal(a.lots[A].etat, 'ouverte');
+      const tid = a.lots[A].ouverte;
+      const diagnostiquer = (candidat) => sousVerrou(b.verrous, (deps) => V.diagnostiquer(tid, { executions: srv.executions.filter((e) => e.set_id === A), candidat, listingComplet: true }, deps));
+      assert.equal(diagnostiquer(null).leve, false, 'exécution pas encore créée par le serveur');
       const meme = await lancer({ action: 'envoi', setId: A, verrous: b.verrous, url: srv.url }).fin;
       assert.equal(meme.status, 1);
       assert.match(meme.stderr, /diagnostic requis/);
@@ -651,13 +711,11 @@ describe('processus réels (lockf + HTTP)', { skip: !lockfDisponible && 'lockf a
       const autre = await lancer({ action: 'envoi', setId: B, verrous: b.verrous, url: srv.url }).fin;
       assert.equal(autre.status, 0, autre.stderr);
       assert.deepEqual(srv.recus, [{ set_id: A }, { set_id: B }], 'jamais de second POST de A');
-      const tid = a.lots[A].ouverte;
-      const executions = [exec('5')]; // l'exécution de A n'est pas encore apparue côté n8n
-      sousVerrou(b.verrous, (deps) => assert.equal(V.diagnostiquer(tid, { executions, candidat: null, listingComplet: true }, deps).leve, false));
-      executions.push(exec('6', { statut: 'running', sortie: undefined })); // elle démarre, en retard
-      sousVerrou(b.verrous, (deps) => assert.equal(V.diagnostiquer(tid, { executions, candidat: null, listingComplet: true }, deps).leve, false));
-      executions[1] = exec('6'); // elle se termine
-      sousVerrou(b.verrous, (deps) => assert.equal(V.diagnostiquer(tid, { executions, candidat: EN_ATTENTE, listingComplet: true }, deps).issue, 'effet_conforme'));
+      await attendreQue(() => srv.executions.some((e) => e.set_id === A && e.statut === 'running'));
+      assert.match(diagnostiquer(null).raison, /en vol/, 'exécution démarrée par le serveur, pas terminée');
+      await attendreQue(() => srv.executions.some((e) => e.set_id === A && e.id !== '5' && e.statut === 'success')); // la NOUVELLE exécution
+      const r = diagnostiquer(EN_ATTENTE);
+      assert.equal(r.issue, 'effet_conforme', JSON.stringify([r, srv.executions]));
       assert.equal(V.lireEtat(b.verrous).lots[A].etat, 'libre');
     } finally { await srv.fermer(); }
   });
