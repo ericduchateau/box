@@ -19,8 +19,8 @@ try {
   if (conf.action === 'init') r = V.initialiser(deps);
   else if (conf.action === 'envoi') {
     const p = V.preparerEnvoi(conf.setId, conf.commande || 'emission', { candidat: conf.candidat ?? null, preexistantes: conf.preexistantes || [], listingComplet: true }, deps);
-    barriere(); // « POST en vol » : le journal porte déjà l'envoi
-    if (conf.trace) fs.appendFileSync(conf.trace, 'POST\n');
+    if (conf.trace) fs.appendFileSync(conf.trace, 'POST\n'); // le POST est PARTI (journal d'abord : envoi déjà fsync)
+    barriere(); // réponse attendue : le parent peut tuer ce processus, la requête survit côté récepteur
     r = V.conclure(p.tentative_id, 'accepte', { reponse: { generation_cle: 1, statut: 'en_attente' } }, deps);
   } else if (conf.action === 'signature') r = { decision: V.decisionSignature(conf.setId, deps) };
   else if (conf.action === 'reparer') { barriere(); r = V.reparer(deps); }
