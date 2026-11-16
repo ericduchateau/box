@@ -68,6 +68,10 @@ const LISTE_FERMEE = new Set([
   'fonda/scripts/orchestrer-lots.test.js',
   // P3 (amendement pré-annoncé §21.9, approuvé par Éric) : workflows Emettre et Cloturer.
   'n8n/fonda-relecture-page/construire-relecture.js', 'n8n/fonda-relecture-page/relecture.test.js',
+  // P5 (décision d'Éric, 2026-11-16, CDC §21.12.7) : les SEPT chemins d'un coup (ancre re-tamponnée une fois, P5-1).
+  'fonda/scripts/verrou-relecture.js', 'fonda/scripts/verrou-relecture.test.js', 'fonda/scripts/fixtures/verrou-relecture-enfant.js',
+  'fonda/scripts/ecrire-relecture.js', 'fonda/scripts/ecrire-relecture.test.js',
+  'fonda/scripts/cloturer-page.js', 'fonda/scripts/cloturer-page.test.js',
 ]);
 // orchestrer-lots.test.js (décision d'Éric, P1) : SEULE substitution autorisée = la ligne d'empreinte
 // de signer-cloture.js du tripwire + le commentaire qui l'explique ; comparaison OCTET POUR OCTET.
