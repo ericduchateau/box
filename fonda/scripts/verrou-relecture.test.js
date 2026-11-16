@@ -227,6 +227,7 @@ describe('diagnostic (A) : exclusion, SORTIE réelle du workflow, candidat relu'
       ['cloture_technique', EN_ATTENTE, execC('6'), { ...CLOS, clos_le: '2026-11-16T10:00:00.000Z' }], // candidat relu ≠ sortie
       ['emission', null, exec('6', { sortie: (({ relecteur_attribue: _, ...s }) => s)(sortieE()) }), EN_ATTENTE], // clé réelle absente
       ['emission', null, exec('6', { sortie: undefined }), EN_ATTENTE], // success sans sortie
+      ['emission', null, exec('6', { sortie: Object.assign(Object.create({ relecteur_attribue: 'eric' }), (({ relecteur_attribue: _, ...s }) => s)(sortieE())) }), EN_ATTENTE], // clé HÉRITÉE ≠ présente (champ propre exigé)
       ['emission', null, exec('6', { sortie: sortieE({ relecteur_attribue: null }) }), EN_ATTENTE], // Codex 3e/3 : non persisté mais validé
       ['emission', null, exec('6', { sortie: sortieE({ relecteur_attribue: '' }) }), EN_ATTENTE],
       ['cloture_technique', EN_ATTENTE, execC('6', { sortie: sortieC({ nb_decisions_listees: -1 }) }), CLOS],
@@ -404,17 +405,20 @@ describe('journal : octets, schéma fermé, réparation', () => {
   });
   test('portion perdue SANS set_id récupérable : TOUS les lots bloqués (incident) jusqu\'à attribution par Éric', () => {
     const b = banc();
+    V.conclure(envoi(b).tentative_id, 'refuse_sans_effet', { http: 403 }, b.deps); // A connu et libre
+    assert.equal(etatLot(b, A), 'libre');
     fs.appendFileSync(b.journal, '{"v":1,"type":"env\xff\n');
     V.reparer(b.deps);
-    assert.deepEqual(V.lireEtat(b.deps.verrous).pertesNonAttribuees, [1]);
+    assert.deepEqual(V.lireEtat(b.deps.verrous).pertesNonAttribuees, [3]);
     assert.throws(() => envoi(b, B), /TOUS les lots/);
     assert.equal(V.decisionSignature(B, b.deps), 'incident');
+    assert.equal(etatLot(b, A), 'bloque', 'état exposé : tous les lots connus sont bloqués tant que la perte n\'est pas attribuée');
     assert.throws(() => V.attribuerPerte(1, [A], b.deps), /aucune portion/);
-    V.attribuerPerte(2, [A], b.deps);
+    V.attribuerPerte(4, [A], b.deps);
     assert.equal(V.decisionSignature(A, b.deps), 'abandon');
     assert.equal(V.decisionSignature(B, b.deps), 'poursuivre');
     envoi(b, B);
-    assert.throws(() => V.attribuerPerte(2, [B], b.deps), /aucune portion/, 'une seule attribution');
+    assert.throws(() => V.attribuerPerte(4, [B], b.deps), /aucune portion/, 'une seule attribution');
   });
   test('C4 : réparation désignant B pour un fragment portant A -> corrompu', () => {
     const b = banc();
@@ -618,28 +622,27 @@ function lancer(conf, { detache = false } = {}) {
 }
 const attendreFichier = async (p, ms = 8000) => { const t0 = Date.now(); while (!fs.existsSync(p)) { if (Date.now() - t0 > ms) throw new Error(`attente ${p}`); await new Promise((r) => setTimeout(r, 20)); } };
 const tuerGroupe = (c) => { try { process.kill(-c.pid, 'SIGKILL'); } catch { /* déjà mort */ } };
-// Webhook simulé en mode onReceived : 200 IMMÉDIAT (« reçu ») ; c'est le SERVEUR qui crée ensuite,
-// en différé, l'exécution correspondante (running, puis success avec la sortie réelle du workflow),
-// comme n8n après avoir accusé réception. `executions` = ce que verrait le listing de l'API n8n.
-function serveur({ demarrerMs = 150, terminerMs = 450, preexistantes = [] } = {}) {
+// Webhook simulé en mode onReceived : 200 IMMÉDIAT (« reçu »). Les phases de l'exécution côté n8n sont
+// PILOTÉES par le test (barrières, aucun délai) : `demarrer` la crée en `running` pour la requête reçue,
+// `terminer` la passe en `success` avec la sortie réelle du workflow. `executions` = le listing de l'API.
+function serveur({ preexistantes = [] } = {}) {
   const recus = [];
   const executions = preexistantes.map((id) => exec(id));
   let prochain = 100;
   const s = http.createServer((req, res) => {
     let corps = '';
     req.on('data', (d) => { corps += d; });
-    req.on('end', () => {
-      const c = JSON.parse(corps);
-      recus.push(c);
-      res.writeHead(200); res.end('{"message":"Workflow was started"}');
-      const id = String(prochain += 1);
-      setTimeout(() => executions.push(exec(id, { set_id: c.set_id, statut: 'running', sortie: undefined })), demarrerMs);
-      setTimeout(() => { const i = executions.findIndex((e) => e.id === id); executions[i] = exec(id, { set_id: c.set_id, sortie: sortieE({ set_id: c.set_id }) }); }, terminerMs);
-    });
+    req.on('end', () => { recus.push(JSON.parse(corps)); res.writeHead(200); res.end('{"message":"Workflow was started"}'); });
   });
-  return new Promise((r) => s.listen(0, '127.0.0.1', () => r({ url: `http://127.0.0.1:${s.address().port}/webhook/fonda-emettre`, recus, executions, fermer: () => new Promise((f) => s.close(f)) })));
+  const demarrer = (setId) => {
+    if (!recus.some((c) => c.set_id === setId)) throw new Error('aucune requête reçue pour ce lot');
+    const id = String(prochain += 1);
+    executions.push(exec(id, { set_id: setId, statut: 'running', sortie: undefined }));
+    return id;
+  };
+  const terminer = (id) => { const i = executions.findIndex((e) => e.id === id); executions[i] = exec(id, { set_id: executions[i].set_id, sortie: sortieE({ set_id: executions[i].set_id }) }); };
+  return new Promise((r) => s.listen(0, '127.0.0.1', () => r({ url: `http://127.0.0.1:${s.address().port}/webhook/fonda-emettre`, recus, executions, demarrer, terminer, fermer: () => new Promise((f) => s.close(f)) })));
 }
-const attendreQue = async (cond, ms = 8000) => { const t0 = Date.now(); while (!cond()) { if (Date.now() - t0 > ms) throw new Error('attente'); await new Promise((r) => setTimeout(r, 10)); } };
 
 describe('processus réels (lockf + HTTP)', { skip: !lockfDisponible && 'lockf absent (CI Linux) : à rejouer sur le Mac' }, () => {
   const base = async () => {
@@ -690,20 +693,21 @@ describe('processus réels (lockf + HTTP)', { skip: !lockfDisponible && 'lockf a
       await premier.fin;
     } finally { tuerGroupe(premier); }
   });
-  test('T-a : POST REÇU par un vrai serveur (200 immédiat), kill -9 du CLI, exécution créée EN RETARD PAR LE SERVEUR : même lot refusé, autre lot autorisé, rattachement à l\'arrivée seulement', async () => {
+  test('T-a : POST REÇU par un vrai serveur (200 immédiat), kill -9 du CLI, exécution créée ENSUITE (phases pilotées) : même lot refusé, autre lot autorisé, rattachement à l\'arrivée seulement', async () => {
     const b = await base();
-    const srv = await serveur({ demarrerMs: 400, terminerMs: 900, preexistantes: ['5'] });
+    const srv = await serveur({ preexistantes: ['5'] });
     try {
       const premier = lancer({ action: 'envoi', setId: A, preexistantes: ['5'], verrous: b.verrous, url: srv.url, barriere: { pret: b.pret, go: b.go } }, { detache: true });
       await attendreFichier(b.pret);
-      assert.deepEqual(srv.recus, [{ set_id: A }], 'la requête de A a été reçue par le serveur');
+      assert.deepEqual(srv.recus, [{ set_id: A }], 'la requête de A a été reçue (200) par le serveur');
       process.kill(premier.pid, 'SIGKILL');
       await premier.fin;
+      assert.deepEqual(srv.executions.map((e) => e.id), ['5'], 'barrière : AUCUNE nouvelle exécution n\'existe après le kill');
       const a = V.lireEtat(b.verrous);
       assert.equal(a.lots[A].etat, 'ouverte');
       const tid = a.lots[A].ouverte;
       const diagnostiquer = (candidat) => sousVerrou(b.verrous, (deps) => V.diagnostiquer(tid, { executions: srv.executions.filter((e) => e.set_id === A), candidat, listingComplet: true }, deps));
-      assert.equal(diagnostiquer(null).leve, false, 'exécution pas encore créée par le serveur');
+      assert.match(diagnostiquer(null).raison, /aucune exécution nouvelle/, 'phase 0 : requête reçue, exécution pas encore créée');
       const meme = await lancer({ action: 'envoi', setId: A, verrous: b.verrous, url: srv.url }).fin;
       assert.equal(meme.status, 1);
       assert.match(meme.stderr, /diagnostic requis/);
@@ -711,11 +715,11 @@ describe('processus réels (lockf + HTTP)', { skip: !lockfDisponible && 'lockf a
       const autre = await lancer({ action: 'envoi', setId: B, verrous: b.verrous, url: srv.url }).fin;
       assert.equal(autre.status, 0, autre.stderr);
       assert.deepEqual(srv.recus, [{ set_id: A }, { set_id: B }], 'jamais de second POST de A');
-      await attendreQue(() => srv.executions.some((e) => e.set_id === A && e.statut === 'running'));
-      assert.match(diagnostiquer(null).raison, /en vol/, 'exécution démarrée par le serveur, pas terminée');
-      await attendreQue(() => srv.executions.some((e) => e.set_id === A && e.id !== '5' && e.statut === 'success')); // la NOUVELLE exécution
-      const r = diagnostiquer(EN_ATTENTE);
-      assert.equal(r.issue, 'effet_conforme', JSON.stringify([r, srv.executions]));
+      const id = srv.demarrer(A); // phase 1 : n8n démarre l'exécution (après le kill)
+      assert.match(diagnostiquer(null).raison, /en vol/, 'phase 1 : exécution en cours, jamais levée');
+      assert.equal(V.lireEtat(b.verrous).lots[A].etat, 'ouverte');
+      srv.terminer(id); // phase 2 : exécution terminée avec la sortie réelle
+      assert.equal(diagnostiquer(EN_ATTENTE).issue, 'effet_conforme');
       assert.equal(V.lireEtat(b.verrous).lots[A].etat, 'libre');
     } finally { await srv.fermer(); }
   });
