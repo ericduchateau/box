@@ -46,7 +46,7 @@ function monde({ candidat = null, preexistantes = { emettre: [], cloturer: [] },
     listerExecutions: async ({ workflowId, status }) => {
       const wf = Object.keys(E.WORKFLOWS).find((k) => E.WORKFLOWS[k] === workflowId);
       if (w.panneApi) throw new Error('API indisponible');
-      return w.execs[wf].filter((e) => (status ? e.status === status : !['running', 'waiting'].includes(e.status)))
+      return w.execs[wf].filter((e) => (status ? e.status === status : e.status !== 'running')) // n8n 2.6.3 : sans filtre, seul running est exclu
         .map((e) => ({ id: e.id, workflowId, status: e.status, startedAt: '2026-11-16T10:00:00.000Z', stoppedAt: ['running', 'waiting', 'new'].includes(e.status) ? null : '2026-11-16T10:00:01.000Z' }));
     },
     lireExecution: async (id) => { const [wf, e] = parId(id); return e ? brute(wf, e) : null; },
@@ -87,7 +87,7 @@ function banc(w, sur = {}) {
   const verrous = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ecrire-')));
   const deps = {
     verrous, sousVerrou: path.join(verrous, 'relecture.verrou'), maintenant: () => w.horloge, attendre: w.attendre, pasMs: 1000,
-    api: w.api, candidats: w.candidats, poster: w.poster, deriverGeneration: async () => cloner(GEN), generation: {}, ...sur,
+    api: w.api, candidats: w.candidats, poster: w.poster, deriverGeneration: async () => cloner(GEN), generation: {}, incidents: async () => [], ...sur,
   };
   V.initialiser(deps);
   return { deps, journal: () => fs.readFileSync(path.join(verrous, 'relecture.journal'), 'utf8'), lignes: () => fs.readFileSync(path.join(verrous, 'relecture.journal'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)) };
@@ -221,7 +221,7 @@ describe('lecture du candidat (Drive relecture/, GET seulement)', () => {
     const appels = [];
     const env = contenu || { schema: 'candidat-fonda/v1', lot: { set_id: A }, relecture: { statut: 'en_attente', generation_cle: 1, cle_sha256: S.hmac, clos_le: null, envois: [{ generation_cle: 1, envoye_a: S.adresse, le: 'x' }] } };
     const f = async (url, init) => {
-      appels.push({ url, methode: init.method });
+      appels.push({ url, methode: init.method, redirect: init.redirect });
       const rep = (o) => ({ ok: true, status: 200, json: async () => o, arrayBuffer: async () => Buffer.from(JSON.stringify(o)) });
       if (url.includes('?fields=id,mimeType')) return rep({ id: DOSSIER, mimeType: 'application/vnd.google-apps.folder', trashed: false });
       if (url.includes('alt=media')) return rep(env);
@@ -235,12 +235,13 @@ describe('lecture du candidat (Drive relecture/, GET seulement)', () => {
     assert.deepEqual(c, { fichier_id: FICHIER, version: '7', generation_cle: 1, statut: 'en_attente', clos_le: null });
     assert.deepEqual(fuite(JSON.stringify(c)), []);
     assert.ok(appels.every((a) => a.methode === 'GET'));
+    assert.ok(appels.every((a) => a.redirect === 'error'), 'aucune redirection suivie, même avec un fetch brut');
     assert.ok(appels.some((a) => decodeURIComponent(a.url).includes('files(id,name,version)')));
   });
   test('absence établie (recherche complète, zéro fichier) -> null ; incomplète, doublon, autre lot -> refus', async () => {
     assert.equal(await faux({ fichiers: [] }).lc.lire(A), null);
     await assert.rejects(() => faux({ incomplet: true, fichiers: [] }).lc.lire(A), /incomplète/);
-    await assert.rejects(() => faux({ fichiers: [{ id: 'x1234567890' }, { id: 'y1234567890' }] }).lc.lire(A), /2 fichiers/);
+    await assert.rejects(() => faux({ fichiers: [{ id: 'x1234567890' }, { id: 'y1234567890' }] }).lc.lire(A), /plusieurs fichiers/);
     await assert.rejects(() => faux({ contenu: { schema: 'candidat-fonda/v1', lot: { set_id: B }, relecture: {} } }).lc.lire(A), /autre lot/);
   });
   test('champ ABSENT de la relecture -> transmis absent (undefined), refusé ensuite par le verrou (jamais un null inventé)', async () => {
@@ -310,6 +311,171 @@ describe('confinement : k, adresse, HMAC, jetons, clé d\'API (sentinelles)', ()
   });
 });
 
+
+// --- Corrections de la relecture Codex P5-2 (un test par constat) ----------------------------------
+const http = require('http');
+const serveur = (gestion) => new Promise((ok) => { const sv = http.createServer(gestion); sv.listen(0, '127.0.0.1', () => ok(sv)); });
+const fermer = (sv) => new Promise((ok) => sv.close(ok));
+describe('constat 1 : aucune redirection n\'est suivie (jeton, clé) ; un 3xx -> indetermine', () => {
+  const deuxOrigines = async () => {
+    const recus = [];
+    const B2 = await serveur((q, r) => { recus.push(q.headers); r.writeHead(403); r.end(); }); // « autre origine » : 403
+    const A2 = await serveur((q, r) => { q.resume(); r.writeHead(307, { location: `http://127.0.0.1:${B2.address().port}/vole` }); r.end(); });
+    return { recus, url: `http://127.0.0.1:${A2.address().port}/webhook/fonda-emettre`, fin: async () => { await fermer(A2); await fermer(B2); } };
+  };
+  test('webhook (fetch RÉEL) : 307 rendu tel quel, la seconde origine ne reçoit RIEN (ni jeton, ni 403 qui libérerait le lot)', async () => {
+    const o = await deuxOrigines();
+    try {
+      assert.deepEqual(await E.webhook({ url: o.url, jeton: () => S.jetonEmettre })({ set_id: A }), { http: 307 });
+      assert.equal(o.recus.length, 0);
+    } finally { await o.fin(); }
+  });
+  test('lectures (sansRedirection, fetch RÉEL) : redirection = échec, la seconde origine ne reçoit rien', async () => {
+    const o = await deuxOrigines();
+    try {
+      await assert.rejects(() => E.sansRedirection(globalThis.fetch)(o.url, { headers: { 'X-N8N-API-KEY': S.cleApi } }));
+      assert.equal(o.recus.length, 0);
+    } finally { await o.fin(); }
+  });
+  test('écriture : réponse 3xx -> indetermine (reponse_illisible), lot NON libéré, aucune relance', async () => {
+    for (const code of [301, 302, 307, 308, 0]) {
+      const w = monde({ http: code });
+      const b = banc(w);
+      assert.equal((await E.executer({ commande: 'emettre', setId: A }, b.deps)).issue, 'indetermine', String(code));
+      assert.equal(b.lignes().at(-1).motif, 'reponse_illisible');
+      assert.notEqual(lot(b), 'libre');
+      assert.equal(w.posts.length, 1);
+    }
+  });
+});
+
+describe('constat 2 : incident ouvert = TOUTE écriture suspendue (arbitrage) ; registre illisible -> refus', () => {
+  const refuseAvant = async (incidents, motif) => {
+    for (const [commande, candidat] of [['emettre', null], ['reemettre', EN_ATTENTE], ['clore-technique', EN_ATTENTE]]) {
+      const w = monde({ candidat });
+      const b = banc(w, { incidents });
+      const avant = b.journal();
+      await assert.rejects(() => E.executer({ commande, setId: A }, b.deps), motif, commande);
+      assert.equal(b.journal(), avant);
+      assert.equal(w.posts.length, 0);
+    }
+  };
+  test('incident ouvert -> refus d\'émettre, de réémettre ET de clore-technique', async () => {
+    await refuseAvant(async () => [{ id: 'inc-1', statut: 'resolu' }, { id: 'inc-2', statut: 'ouvert' }], /incident de chaîne ouvert/);
+  });
+  test('registre illisible, absent ou non tableau -> refus (jamais « aucun incident »)', async () => {
+    await refuseAvant(async () => { throw new Error('perdu'); }, /registre des incidents illisible/);
+    await refuseAvant(async () => ({}), /registre des incidents illisible/);
+  });
+  test('incidents tous résolus -> écriture permise', async () => {
+    const w = monde();
+    const b = banc(w, { incidents: async () => [{ id: 'inc-1', statut: 'resolu' }] });
+    assert.equal((await E.executer({ commande: 'emettre', setId: A }, b.deps)).issue, 'effet_conforme');
+  });
+});
+
+describe('constat 3 : détail d\'exécution confronté au listing (id, workflow, statut)', () => {
+  for (const [nom, alterer] of [['id', (x) => ({ ...x, id: '999' })], ['workflow', (x) => ({ ...x, workflowId: E.WORKFLOWS.cloturer })], ['statut', (x) => ({ ...x, status: 'error' })], ['détail absent', () => null]]) {
+    test(`${nom} contradictoire -> refus, AUCUNE résolution (tentative ouverte)`, async () => {
+      const w = monde();
+      const b = banc(w);
+      const lire = w.api.lireExecution;
+      b.deps.api = { ...w.api, lireExecution: async (id) => { const x = await lire(id); return x && x.status === 'success' ? alterer(x) : x; } };
+      await assert.rejects(() => E.executer({ commande: 'emettre', setId: A }, b.deps), /détail contradictoire|illisible/);
+      assert.equal(lot(b), 'ouverte');
+      assert.deepEqual(b.lignes().map((l) => l.type), ['init', 'envoi']);
+    });
+  }
+  test('exécution EN VOL au listing : détail non lu, set_id inconnu (le diagnostic maintient)', async () => {
+    const w = monde();
+    w.execs.emettre.push({ id: '42', status: 'running', corps: { set_id: A }, sortie: null });
+    const lus = [];
+    const api = { ...w.api, lireExecution: async (id) => { lus.push(id); return w.api.lireExecution(id); } };
+    const { nouvelles, enVol } = await E.nouvellesExecutions(api, 'emettre', []);
+    assert.deepEqual(nouvelles, [{ id: '42', set_id: null, workflow: 'emettre', statut: 'running', sortie: undefined }]);
+    assert.equal(enVol, true);
+    assert.deepEqual(lus, []);
+  });
+});
+
+describe('constat 4 : messages publics = codes fixes (aucune valeur lue)', () => {
+  test('refus de lecture d\'exécution, de Drive, de journal : aucun id, aucun code HTTP, aucune raison brute', async () => {
+    const w = monde();
+    w.execs.emettre.push({ id: '4242', status: 'success', corps: { set_id: A }, sortie: null });
+    const api = { ...w.api, lireExecution: async () => { throw new Error(S.adresse); } };
+    await assert.rejects(() => E.nouvellesExecutions(api, 'emettre', []), (e) => e instanceof V.RefusRelecture && !e.message.includes('4242') && fuite(e.message).length === 0);
+    const lc = E.lectureCandidats({ jeton: async () => 'j', dossier: 'd1234567890', fetch: async () => ({ ok: false, status: 418 }) });
+    await assert.rejects(() => lc.lire(A), (e) => !e.message.includes('418'));
+  });
+});
+
+describe('constat 6 : attente RÉELLEMENT bornée (budget global, lectures annulées)', () => {
+  test('lecture n8n suspendue après le 200 -> rend « ouverte » à l\'échéance, signal d\'annulation levé, journal sans résolution', async () => {
+    const w = monde();
+    const borne = {};
+    let signalVu = null;
+    const b = banc(w, { borne, attenteMaxMs: 80 });
+    const lister = w.api.listerExecutions;
+    b.deps.api = { ...w.api, listerExecutions: async (q) => { if (w.posts.length) { signalVu = borne.signal; return new Promise(() => {}); } return lister(q); } };
+    const t0 = Date.now();
+    const r = await E.executer({ commande: 'emettre', setId: A }, b.deps);
+    assert.equal(r.issue, 'ouverte');
+    assert.ok(Date.now() - t0 < 2000, 'borné');
+    assert.ok(signalVu && signalVu.aborted, 'requêtes en cours annulées');
+    assert.equal(borne.signal, null, 'signal retiré après l\'attente');
+    assert.deepEqual(b.lignes().map((l) => l.type), ['init', 'envoi']);
+  });
+  test('pause suspendue (attendre ne rend jamais la main) -> échéance quand même', async () => {
+    const w = monde();
+    const b = banc(w, { attendre: () => new Promise(() => {}), attenteMaxMs: 50 });
+    assert.equal((await E.executer({ commande: 'emettre', setId: A }, b.deps)).issue, 'ouverte');
+  });
+});
+
+describe('constat 7 : fabrique de production (fetch et trousseau injectés)', () => {
+  test('clé de LECTURE en GET seulement ; webhook = seul POST, jeton du webhook seul ; aucune redirection suivie', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ecrire-prod-'));
+    const { privateKey } = require('crypto').generateKeyPairSync('rsa', { modulusLength: 2048 });
+    fs.writeFileSync(path.join(tmp, 'drive-compte-service.json'), JSON.stringify({ type: 'service_account', client_email: 'sa@exemple.invalid', private_key: privateKey.export({ type: 'pkcs8', format: 'pem' }), token_uri: 'https://oauth.exemple.invalid/token' }));
+    const secrets = { 'fonda-prod-n8n-lecture': S.cleApi, 'fonda-prod-emettre-token': S.jetonEmettre, 'fonda-prod-cloturer-token': S.jetonCloturer };
+    const exec = (bin, args) => `${secrets[args[2]]}\n`;
+    const appels = [];
+    const rep = (o, status = 200) => ({ ok: status < 300, status, json: async () => o, arrayBuffer: async () => Buffer.from(JSON.stringify(o)) });
+    const f = async (url, init = {}) => {
+      appels.push({ url: String(url), methode: init.method || 'GET', entetes: { ...(init.headers || {}) }, redirect: init.redirect, signal: init.signal });
+      if (String(url).startsWith('https://oauth.')) return rep({ access_token: 'jeton-oauth', expires_in: 3600 });
+      if (String(url).includes('/api/v1/executions?')) return rep({ data: [] });
+      if (String(url).includes('/api/v1/executions/')) return rep({ id: '1' });
+      if (String(url).includes('/webhook/')) return { status: 200 };
+      if (String(url).includes('fields=id,mimeType')) { const id = decodeURIComponent(String(url).split('/files/')[1].split('?')[0]); return rep({ id, mimeType: 'application/vnd.google-apps.folder', trashed: false }); }
+      return rep({ incompleteSearch: false, files: [] });
+    };
+    const registre = async () => [];
+    const d = E.dependancesProduction({ dossierCles: tmp, fetch: f, exec, locales: { incidents: registre } });
+    assert.equal(d.incidents, registre, 'registre des incidents transmis à l\'écriture');
+    assert.equal(d.generation.incidents, registre, 'et à la génération retenue');
+    const ctl = new AbortController();
+    d.borne.signal = ctl.signal; // pendant l'attente : toute lecture porte le signal d'échéance
+    await d.api.listerExecutions({ workflowId: E.WORKFLOWS.cloturer });
+    assert.equal(appels.at(-1).signal, ctl.signal);
+    d.borne.signal = null;
+    await d.api.listerExecutions({ workflowId: E.WORKFLOWS.emettre });
+    await d.api.lireExecution('1');
+    assert.equal(await d.candidats.lire(A), null);
+    await d.generation.drive.listerCandidats();
+    await d.poster.emettre({ set_id: A });
+    await d.poster.cloturer({ set_id: A });
+    const avecCle = appels.filter((a) => Object.values(a.entetes).includes(S.cleApi));
+    assert.ok(avecCle.length >= 2);
+    assert.ok(avecCle.every((a) => a.methode === 'GET' && a.url.includes('/api/v1/executions')), 'clé de lecture : GET n8n seulement');
+    const posts = appels.filter((a) => a.methode === 'POST' && !a.url.startsWith('https://oauth.'));
+    assert.deepEqual(posts.map((a) => [a.url.split('/webhook/')[1], a.entetes['X-FONDA-Token'], a.redirect]), [['fonda-emettre', S.jetonEmettre, 'manual'], ['fonda-cloturer', S.jetonCloturer, 'manual']]);
+    assert.ok(appels.filter((a) => !posts.includes(a)).every((a) => a.redirect === 'error'), 'toute lecture : redirect error');
+    assert.ok(appels.filter((a) => a.url.includes('googleapis')).every((a) => a.methode === 'GET'), 'Drive : GET seulement');
+    assert.ok(!appels.some((a) => Object.values(a.entetes).includes(S.jetonEmettre) && !a.url.includes('/webhook/fonda-emettre')), 'jeton Emettre confiné');
+  });
+});
+
 // --- A1 : cohérence avec diagnostic-fonda sur la génération SIMULÉE de l'export audité -------------
 const RACINE = path.join(__dirname, '..', '..');
 const FIXTURE = require('./fixtures/execution-generation.json');
@@ -351,16 +517,20 @@ describe('A1 : generationRetenue conclut « généré » EXACTEMENT quand diagno
     t.lot = Buffer.from(contenu, 'utf8');
     t.execution = { id: '901', workflowId: t.A.WORKFLOW_GENERATION, status: 'success', mode: 'webhook', startedAt: '2026-10-20T07:00:00.000Z', stoppedAt: '2026-10-20T07:01:30.000Z', workflowData: { pinData: {} }, data: { resultData: { runData: r.runData } } };
     t.metadonnees = metadonnees;
+    fs.mkdirSync(t.dossier, { recursive: true }); fs.writeFileSync(path.join(t.dossier, '.initialise'), ''); // registre initialisé (incidents injectés par montage)
+    const so = JSON.parse(JSON.stringify(r.runData)); t.sortieGeneration = so; // valeurs attendues lues de la sortie de la génération
     t.git = (a) => (a[0] === 'fetch' ? Buffer.alloc(0) : execFileSync('git', a, { cwd: t.copie, stdio: ['ignore', 'pipe', 'ignore'] }));
   });
   const monter = (v = {}) => {
     const ex = v.execution || t.execution;
     const listes = v.listes || [{ id: '901', workflowId: t.A.WORKFLOW_GENERATION, status: 'success', startedAt: ex.startedAt, stoppedAt: ex.stoppedAt }];
-    const api = { listerExecutions: async ({ status }) => (status ? listes.filter((x) => x.status === status) : listes.filter((x) => !['running', 'waiting'].includes(x.status))), lireExecution: async (id) => (listes.some((x) => x.id === id) ? JSON.parse(JSON.stringify({ ...ex, id })) : null) };
+    const api = { listerExecutions: async ({ status }) => (status ? listes.filter((x) => x.status === status) : listes.filter((x) => x.status !== 'running')), lireExecution: async (id) => (listes.some((x) => x.id === id) ? JSON.parse(JSON.stringify({ ...ex, id })) : null) };
     let n = 0;
     const lotFichier = () => ({ id: 'drv-lot', nom: t.metadonnees.name, modifie_le: '2026-10-20T07:01:00.000Z', octets: (v.lotLu || ((i) => Buffer.from(t.lot)))(n++) });
-    const drive = { verifierDossier: async () => {}, listerCandidats: async () => ({ incompleteSearch: v.incomplet ?? false, fichiers: v.sansFichier ? [] : [{ id: 'drv-lot', nom: t.metadonnees.name, modifie_le: '2026-10-20T07:01:00.000Z', properties: t.metadonnees.properties, proprietesLisibles: true }] }), lireLotGenere: async () => lotFichier(), candidatsDuSetId: async () => 1 };
+    const fichiers = v.sansFichier ? [] : [{ id: 'drv-lot', nom: t.metadonnees.name, modifie_le: '2026-10-20T07:01:00.000Z', properties: t.metadonnees.properties, proprietesLisibles: true }, ...(v.fichiersEnPlus || [])];
+    const drive = { verifierDossier: async () => {}, listerCandidats: async () => ({ incompleteSearch: v.incomplet ?? false, fichiers }), lireLotGenere: async () => lotFichier(), candidatsDuSetId: async () => 1 };
     const s = t.A.sourcesLecture({ racine: t.copie, dossier: t.dossier, dossierCles: t.dossier, api, drive, git: t.git });
+    s.incidents = async () => JSON.parse(JSON.stringify(v.incidents || [])); // MÊME registre des deux côtés
     if (v.referentielFaux) s.referentielArchive = async () => Buffer.from('autre');
     // Appels successifs au référentiel archivé : le 1er sert au contrôle d'empreinte, les suivants au
     // relecteur attribué (même ordre côté diagnostic et côté CLI ; compteur propre à chaque montage).
@@ -368,10 +538,12 @@ describe('A1 : generationRetenue conclut « généré » EXACTEMENT quand diagno
     return s;
   };
   const RAPPROCHE = ['pret_pour_saisie', 'relecteur_non_local'];
+  // Oracle : rapprochement établi ET aucun blocage GLOBAL applicable (diagnostic-fonda).
+  const GLOBAUX = ['non_initialise', 'acces_ko', 'incident_ouvert', 'observation_contradictoire', 'generation_en_cours'];
   const comparer = async (nom, v, attendu) => {
     const s = monter(v);
     const d = await t.D.diagnostiquer(SET, s);
-    const diagnostic = d.applicables.some((x) => RAPPROCHE.includes(x.etat));
+    const diagnostic = d.applicables.some((x) => RAPPROCHE.includes(x.etat)) && !d.applicables.some((x) => GLOBAUX.includes(x.etat));
     let cli; let sortie = null;
     try { sortie = await t.E.generationRetenue(SET, monter(v)); cli = true; } catch (e) { cli = false; sortie = e.message; }
     assert.equal(cli, diagnostic, `${nom} : CLI ${cli} ≠ diagnostic ${diagnostic} (${d.applicables.map((x) => x.etat).join(',')})`);
@@ -381,8 +553,14 @@ describe('A1 : generationRetenue conclut « généré » EXACTEMENT quand diagno
   };
   test('nominal : « généré » des deux côtés ; corps = sortie de la génération (journal_commit, referentiel_version, moteur)', async () => {
     const sortie = await comparer('nominal', {}, true);
-    assert.deepEqual(Object.keys(sortie).sort(), ['journal_commit', 'moteur', 'referentiel_version']);
-    assert.equal(sortie.journal_commit, t.commit);
+    // Comparaison EN VALEUR : journal_commit = commit testé ; referentiel_version = empreinte du
+    // référentiel À CE COMMIT ; moteur = celui de la sortie de la génération (et du registre).
+    const so = t.sortieGeneration[require('./liaison-generation.js').NOEUD_SORTIE];
+    const json = so[0].data.main[0][0].json;
+    const ref = execFileSync('git', ['show', `${t.commit}:fonda/data/referentiel.json`], { cwd: t.copie });
+    assert.deepEqual(sortie, { journal_commit: t.commit, referentiel_version: `sha256:${require('crypto').createHash('sha256').update(ref).digest('hex')}`, moteur: { version: json.moteur.version, sha256: json.moteur.sha256 } });
+    assert.equal(json.referentiel_version, sortie.referentiel_version);
+    assert.equal(json.journal_commit, t.commit);
   });
   test('variantes : non généré des deux côtés (doublon, lot modifié, lot absent du listing, recherche incomplète, référentiel faux, pinData, aucune génération)', async () => {
     const ex2 = { id: '902', workflowId: t.A.WORKFLOW_GENERATION, status: 'success', startedAt: '2026-10-20T07:00:00.000Z', stoppedAt: '2026-10-20T07:01:30.000Z' };
@@ -397,6 +575,17 @@ describe('A1 : generationRetenue conclut « généré » EXACTEMENT quand diagno
     await comparer('relecteur attribué non déterminable (référentiel illisible APRÈS le contrôle)', { referentielParAppel: (i, vrai) => (i === 0 ? vrai() : Promise.reject(new Error('panne'))) }, false);
     await comparer('référentiel faux AU CONTRÔLE seulement (relecteur déterminable)', { referentielParAppel: (i, vrai) => (i === 0 ? Buffer.from('autre') : vrai()) }, false);
   });
+  test('constat 2 / 5 : blocages GLOBAUX — génération en cours, observation contradictoire, incident ouvert : non généré des deux côtés', async () => {
+    const base = { id: '901', workflowId: t.A.WORKFLOW_GENERATION, status: 'success', startedAt: '2026-10-20T07:00:00.000Z', stoppedAt: '2026-10-20T07:01:30.000Z' };
+    await comparer('génération en cours (autre exécution en vol)', { listes: [base, { id: '906', workflowId: t.A.WORKFLOW_GENERATION, status: 'running', startedAt: '2026-10-20T08:00:00.000Z', stoppedAt: null }] }, false);
+    await comparer('observation contradictoire (détail ≠ listing, autre exécution)', { listes: [base, { ...base, id: '905', startedAt: '2026-10-20T06:00:00.000Z' }] }, false);
+    await comparer('observation contradictoire (listing error, détail success : ignorée par le relecteur)', { listes: [base, { ...base, id: '907', status: 'error' }] }, false);
+    await comparer('incident ouvert', { incidents: [{ id: 'inc-1', nature: 'test', detecte_le: '2026-10-19T10:00:00.000Z', statut: 'ouvert', resolu_le: null, preuve_resolution: null, periode: { debut: '2026-10-19T10:00:00.000Z', fin: null } }] }, false);
+  });
+  test('constat 4 : sentinelle d\'adresse dans un NOM de fichier et dans des PROPERTIES -> refus sans écho', async () => {
+    await comparer('adresse dans un nom de fichier', { fichiersEnPlus: [{ id: 'drv-x', nom: `${S.adresse}.lot.json`, modifie_le: '2026-10-20T07:01:00.000Z', properties: null, proprietesLisibles: false }] }, false);
+    await comparer('adresse dans des properties', { fichiersEnPlus: [{ id: 'drv-y', nom: `${SET}.lot.json`, modifie_le: '2026-10-20T07:01:00.000Z', properties: { fonda_set_id: SET, fonda_execution_id: S.adresse }, proprietesLisibles: true }] }, false);
+  });
 });
 
 // --- Processus RÉELS sous /usr/bin/lockf : D1, D2, E1 -------------------------------------------
@@ -408,10 +597,14 @@ const fs = require('fs'); const E = require(${JSON.stringify(path.join(__dirname
 const c = JSON.parse(process.env.CONF); const lireE = () => JSON.parse(fs.readFileSync(c.etat, 'utf8')); const ecrireE = (x) => fs.writeFileSync(c.etat, JSON.stringify(x));
 const attendre = (p) => { const s = new Int32Array(new SharedArrayBuffer(4)); while (!fs.existsSync(p)) Atomics.wait(s, 0, 0, 20); };
 const WF = E.WORKFLOWS;
-const api = { listerExecutions: async ({ workflowId, status }) => { const wf = Object.keys(WF).find((k) => WF[k] === workflowId); return lireE().execs[wf].filter((e) => (status ? e.status === status : !['running','waiting'].includes(e.status))).map((e) => ({ id: e.id, workflowId, status: e.status, startedAt: '2026-11-16T10:00:00.000Z', stoppedAt: e.status === 'running' ? null : '2026-11-16T10:00:01.000Z' })); },
+const api = { listerExecutions: async ({ workflowId, status }) => { const wf = Object.keys(WF).find((k) => WF[k] === workflowId); return lireE().execs[wf].filter((e) => (status ? e.status === status : e.status !== 'running')).map((e) => ({ id: e.id, workflowId, status: e.status, startedAt: '2026-11-16T10:00:00.000Z', stoppedAt: e.status === 'running' ? null : '2026-11-16T10:00:01.000Z' })); },
   lireExecution: async (id) => { for (const wf of Object.keys(WF)) { const e = lireE().execs[wf].find((x) => x.id === id); if (e) return { id, workflowId: WF[wf], status: e.status, data: { resultData: { runData: { [E.NOEUDS[wf].webhook]: [{ data: { main: [[{ json: { body: e.corps } }]] } }], ...(e.sortie ? { [E.NOEUDS[wf].sortie]: [{ data: { main: [[{ json: e.sortie }]] } }] } : {}) } } } }; } return null; } };
-const poster = (wf) => async (corps) => { fs.appendFileSync(c.posts, JSON.stringify({ wf, corps }) + '\\n'); fs.writeFileSync(c.pret, String(process.pid)); attendre(c.go); return { http: 200 }; };
-const fabrique = () => ({ api, candidats: { lire: async () => lireE().candidat }, poster: { emettre: poster('emettre'), cloturer: poster('cloturer') }, deriverGeneration: async () => (${JSON.stringify(GEN)}), generation: {}, attenteMaxMs: 0 });
+// Barrière : PENDANT le POST (D1, D2, témoin) ou APRÈS le 200, à la première lecture qui suit (E1).
+const barriere = () => { fs.writeFileSync(c.pret, String(process.pid)); attendre(c.go); };
+let poste = false;
+const poster = (wf) => async (corps) => { fs.appendFileSync(c.posts, JSON.stringify({ wf, corps }) + '\\n'); poste = true; if (!c.apres200) barriere(); return { http: 200 }; };
+const lister = api.listerExecutions; api.listerExecutions = async (q) => { if (poste && c.apres200) barriere(); return lister(q); };
+const fabrique = () => ({ api, incidents: async () => [], candidats: { lire: async () => lireE().candidat }, poster: { emettre: poster('emettre'), cloturer: poster('cloturer') }, deriverGeneration: async () => (${JSON.stringify(GEN)}), generation: {}, attenteMaxMs: c.apres200 ? 60000 : 0 });
 E.main(c.argv, fabrique, c.verrous);
 `;
 function lancer(conf, { detache = false } = {}) {
@@ -446,10 +639,27 @@ describe('processus réels (lockf) : D1, D2 et E1 refusés par le verrou', { ski
       assert.equal(nbPosts(c), 1);
     });
   }
-  test('E1 : réémission A partie (200) puis CLI tué ; une seconde réémission est refusée (tentative ouverte) ; seule une conclusion la débloque', async () => {
+  test('TÉMOIN D1/D2 : verrou NEUTRALISÉ (un dossier de verrou par commande) -> les DEUX POST partent (le test détecte l\'absence du verrou)', async () => {
     const c = base(CAND);
+    const c2 = base(CAND);
     const premier = lancer({ ...c, argv: ['reemettre', A] }, { detache: true });
-    await attendreFichier(c.pret);
+    let second;
+    try {
+      await attendreFichier(c.pret);
+      second = lancer({ ...c, verrous: c2.verrous, argv: ['clore-technique', A] }, { detache: true }); // même monde, autre verrou
+      const t0 = Date.now();
+      while (nbPosts(c) < 2 && Date.now() - t0 < 8000) await new Promise((r) => setTimeout(r, 20));
+      assert.equal(nbPosts(c), 2, 'sans verrou commun, la concurrence n\'est pas exclue');
+      fs.writeFileSync(c.go, '');
+      await premier.fin; await second.fin;
+    } finally { for (const p of [premier, second]) { try { process.kill(-p.pid, 'SIGKILL'); } catch { /* fini */ } } }
+  });
+  test('E1 : réémission A partie, 200 REÇU, puis CLI tué ; une seconde réémission est refusée (tentative ouverte) ; seule une conclusion la débloque', async () => {
+    const c = base(CAND);
+    const premier = lancer({ ...c, apres200: true, argv: ['reemettre', A] }, { detache: true });
+    await attendreFichier(c.pret); // barrière APRÈS le 200 (première lecture de l'attente)
+    assert.equal(nbPosts(c), 1);
+    assert.equal(V.lireEtat(c.verrous).lots[A].etat, 'ouverte', '200 reçu : tentative ouverte, rien de conclu');
     process.kill(premier.pid, 'SIGKILL');
     await premier.fin;
     const r = await lancer({ ...c, argv: ['reemettre', A] }).fin;
