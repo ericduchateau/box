@@ -375,7 +375,8 @@ describe('constat 2 : incident ouvert = TOUTE écriture suspendue (arbitrage) ; 
 });
 
 describe('constat 3 : détail d\'exécution confronté au listing (id, workflow, statut)', () => {
-  for (const [nom, alterer] of [['id', (x) => ({ ...x, id: '999' })], ['workflow', (x) => ({ ...x, workflowId: E.WORKFLOWS.cloturer })], ['statut', (x) => ({ ...x, status: 'error' })], ['détail absent', () => null]]) {
+  for (const [nom, alterer] of [['id', (x) => ({ ...x, id: '999' })], ['workflow', (x) => ({ ...x, workflowId: E.WORKFLOWS.cloturer })], ['statut', (x) => ({ ...x, status: 'error' })], ['détail absent', () => null],
+    ['startedAt (P2-3)', (x) => ({ ...x, startedAt: '2026-11-16T09:00:00.000Z' })], ['date hors grammaire (P2-3)', (x) => ({ ...x, stoppedAt: 'hier' })]]) {
     test(`${nom} contradictoire -> refus, AUCUNE résolution (tentative ouverte)`, async () => {
       const w = monde();
       const b = banc(w);
@@ -424,6 +425,18 @@ describe('constat 6 : attente RÉELLEMENT bornée (budget global, lectures annul
     assert.ok(signalVu && signalVu.aborted, 'requêtes en cours annulées');
     assert.equal(borne.signal, null, 'signal retiré après l\'attente');
     assert.deepEqual(b.lignes().map((l) => l.type), ['init', 'envoi']);
+  });
+  test('P2-1 frontière : lecture finie APRÈS l\'échéance par un traitement synchrone -> « ouverte », AUCUNE résolution écrite', async () => {
+    const w = monde();
+    const b = banc(w, { attenteMaxMs: 20, pasMs: 1 }); // horloge virtuelle : l'exécution se termine avant l'échéance virtuelle
+    const lire = w.candidats.lire;
+    let apres = false;
+    b.deps.candidats = { lire: async (s) => { if (w.posts.length) { const t = Date.now(); while (Date.now() - t < 60) { /* traitement synchrone */ } apres = true; } return lire(s); } };
+    const r = await E.executer({ commande: 'emettre', setId: A }, b.deps);
+    assert.ok(apres, 'la lecture post-200 a bien eu lieu');
+    assert.equal(r.issue, 'ouverte');
+    assert.deepEqual(b.lignes().map((l) => l.type), ['init', 'envoi']);
+    assert.equal(lot(b), 'ouverte');
   });
   test('pause suspendue (attendre ne rend jamais la main) -> échéance quand même', async () => {
     const w = monde();
@@ -523,14 +536,15 @@ describe('A1 : generationRetenue conclut « généré » EXACTEMENT quand diagno
   });
   const monter = (v = {}) => {
     const ex = v.execution || t.execution;
-    const listes = v.listes || [{ id: '901', workflowId: t.A.WORKFLOW_GENERATION, status: 'success', startedAt: ex.startedAt, stoppedAt: ex.stoppedAt }];
-    const api = { listerExecutions: async ({ status }) => (status ? listes.filter((x) => x.status === status) : listes.filter((x) => x.status !== 'running')), lireExecution: async (id) => (listes.some((x) => x.id === id) ? JSON.parse(JSON.stringify({ ...ex, id })) : null) };
+    const fixes = v.listes || [{ id: '901', workflowId: t.A.WORKFLOW_GENERATION, status: 'success', startedAt: ex.startedAt, stoppedAt: ex.stoppedAt }];
+    let appels = 0; let listes = fixes;
+    const api = { listerExecutions: async ({ status }) => { listes = v.listesParAppel ? v.listesParAppel(appels++) : fixes; return status ? listes.filter((x) => x.status === status) : listes.filter((x) => x.status !== 'running'); }, lireExecution: async (id) => { const l = listes.find((x) => x.id === id); if (!l) return null; return JSON.parse(JSON.stringify(v.detailSelonListing ? { ...ex, id, status: l.status, startedAt: l.startedAt, stoppedAt: l.stoppedAt } : { ...ex, id })); } };
     let n = 0;
     const lotFichier = () => ({ id: 'drv-lot', nom: t.metadonnees.name, modifie_le: '2026-10-20T07:01:00.000Z', octets: (v.lotLu || ((i) => Buffer.from(t.lot)))(n++) });
     const fichiers = v.sansFichier ? [] : [{ id: 'drv-lot', nom: t.metadonnees.name, modifie_le: '2026-10-20T07:01:00.000Z', properties: t.metadonnees.properties, proprietesLisibles: true }, ...(v.fichiersEnPlus || [])];
     const drive = { verifierDossier: async () => {}, listerCandidats: async () => ({ incompleteSearch: v.incomplet ?? false, fichiers }), lireLotGenere: async () => lotFichier(), candidatsDuSetId: async () => 1 };
     const s = t.A.sourcesLecture({ racine: t.copie, dossier: t.dossier, dossierCles: t.dossier, api, drive, git: t.git });
-    s.incidents = async () => JSON.parse(JSON.stringify(v.incidents || [])); // MÊME registre des deux côtés
+    s.incidents = async () => { if (v.incidentsPanne) throw new Error('registre perdu'); return JSON.parse(JSON.stringify(v.incidents || [])); }; // MÊME registre des deux côtés
     if (v.referentielFaux) s.referentielArchive = async () => Buffer.from('autre');
     // Appels successifs au référentiel archivé : le 1er sert au contrôle d'empreinte, les suivants au
     // relecteur attribué (même ordre côté diagnostic et côté CLI ; compteur propre à chaque montage).
@@ -538,12 +552,17 @@ describe('A1 : generationRetenue conclut « généré » EXACTEMENT quand diagno
     return s;
   };
   const RAPPROCHE = ['pret_pour_saisie', 'relecteur_non_local'];
-  // Oracle : rapprochement établi ET aucun blocage GLOBAL applicable (diagnostic-fonda).
-  const GLOBAUX = ['non_initialise', 'acces_ko', 'incident_ouvert', 'observation_contradictoire', 'generation_en_cours'];
-  const comparer = async (nom, v, attendu) => {
-    const s = monter(v);
+  // Oracle (P2-4) : rapprochement établi ET aucun blocage LIÉ À LA GÉNÉRATION. acces_ko ne compte que
+  // pour n8n, les candidats Drive et le registre des incidents (le détail affiché est la PREMIÈRE cause :
+  // les variantes ne combinent jamais deux causes d'acces_ko). Décisions locales et actualisation git
+  // n'y entrent pas : l'émission n'en dépend pas (divergence ASSUMÉE, testée ci-dessous).
+  const GENERATION = ['non_initialise', 'incident_ouvert', 'observation_contradictoire', 'generation_en_cours'];
+  const accesGeneration = (x) => x.etat === 'acces_ko' && /^(n8n|Drive|registre des incidents)\b/.test(String(x.detail));
+  const comparer = async (nom, v, attendu, surDiagnostic = (s) => s) => {
+    const s = surDiagnostic(monter(v));
     const d = await t.D.diagnostiquer(SET, s);
-    const diagnostic = d.applicables.some((x) => RAPPROCHE.includes(x.etat)) && !d.applicables.some((x) => GLOBAUX.includes(x.etat));
+    t.dernierDiagnostic = d;
+    const diagnostic = d.applicables.some((x) => RAPPROCHE.includes(x.etat)) && !d.applicables.some((x) => GENERATION.includes(x.etat) || accesGeneration(x));
     let cli; let sortie = null;
     try { sortie = await t.E.generationRetenue(SET, monter(v)); cli = true; } catch (e) { cli = false; sortie = e.message; }
     assert.equal(cli, diagnostic, `${nom} : CLI ${cli} ≠ diagnostic ${diagnostic} (${d.applicables.map((x) => x.etat).join(',')})`);
@@ -577,10 +596,34 @@ describe('A1 : generationRetenue conclut « généré » EXACTEMENT quand diagno
   });
   test('constat 2 / 5 : blocages GLOBAUX — génération en cours, observation contradictoire, incident ouvert : non généré des deux côtés', async () => {
     const base = { id: '901', workflowId: t.A.WORKFLOW_GENERATION, status: 'success', startedAt: '2026-10-20T07:00:00.000Z', stoppedAt: '2026-10-20T07:01:30.000Z' };
-    await comparer('génération en cours (autre exécution en vol)', { listes: [base, { id: '906', workflowId: t.A.WORKFLOW_GENERATION, status: 'running', startedAt: '2026-10-20T08:00:00.000Z', stoppedAt: null }] }, false);
+    const enCours = await comparer('génération en cours (autre exécution en vol)', { listes: [base, { id: '906', workflowId: t.A.WORKFLOW_GENERATION, status: 'running', startedAt: '2026-10-20T08:00:00.000Z', stoppedAt: null }] }, false);
+    assert.match(enCours, /generation_en_cours/, 'refusé DÈS la première observation, code exact');
     await comparer('observation contradictoire (détail ≠ listing, autre exécution)', { listes: [base, { ...base, id: '905', startedAt: '2026-10-20T06:00:00.000Z' }] }, false);
     await comparer('observation contradictoire (listing error, détail success : ignorée par le relecteur)', { listes: [base, { ...base, id: '907', status: 'error' }] }, false);
     await comparer('incident ouvert', { incidents: [{ id: 'inc-1', nature: 'test', detecte_le: '2026-10-19T10:00:00.000Z', statut: 'ouvert', resolu_le: null, preuve_resolution: null, periode: { debut: '2026-10-19T10:00:00.000Z', fin: null } }] }, false);
+  });
+  test('P2-4 divergences ASSUMÉES : décisions locales illisibles, git non actualisé -> diagnostic acces_ko, CLI « généré » (par conception)', async () => {
+    await comparer('décisions locales illisibles', {}, true, (s) => { s.decisionsLocales = async () => { throw new Error('illisible'); }; return s; });
+    assert.ok(t.dernierDiagnostic.applicables.some((x) => x.etat === 'acces_ko' && /^décisions locales/.test(x.detail)), 'divergence réellement exercée');
+    await comparer('git non actualisé', {}, true, (s) => { s.interim = { ...s.interim, actualiser: async () => { throw new Error('hors ligne'); } }; return s; });
+    assert.ok(t.dernierDiagnostic.applicables.some((x) => x.etat === 'acces_ko' && /^git/.test(x.detail)), 'divergence réellement exercée');
+  });
+  test('P2-4 : acces_ko LIÉ à la génération (n8n, Drive, registre) -> non généré des deux côtés', async () => {
+    const v = { incidentsPanne: true };
+    await comparer('registre des incidents en panne', v, false);
+  });
+  test('P2-2 : DERNIÈRE observation — exécution apparue après la première (en vol, ou terminée ignorée par le relecteur) -> refus', async () => {
+    const base = { id: '901', workflowId: t.A.WORKFLOW_GENERATION, status: 'success', startedAt: '2026-10-20T07:00:00.000Z', stoppedAt: '2026-10-20T07:01:30.000Z' };
+    const autre = (id) => ({ ...base, id, status: 'error' });
+    for (const [nom, avant, apres] of [
+      ['en vol', [base], [base, { id: '908', workflowId: t.A.WORKFLOW_GENERATION, status: 'running', startedAt: '2026-10-20T08:00:00.000Z', stoppedAt: null }]],
+      ['ids différents (error)', [base], [base, autre('909')]],
+      ['même id repassé en vol', [base, autre('912')], [base, { ...autre('912'), status: 'running', stoppedAt: null }]],
+      ['autant d\'ids, mais d\'autres', [base, autre('910')], [base, autre('911')]],
+    ]) {
+      const s = monter({ detailSelonListing: true, listesParAppel: (n) => (n < 3 ? avant : apres) }); // 3 requêtes = la première observation
+      await assert.rejects(() => t.E.generationRetenue(SET, s), (e) => /observation_instable/.test(e.message) && fuite(e.message).length === 0, nom);
+    }
   });
   test('constat 4 : sentinelle d\'adresse dans un NOM de fichier et dans des PROPERTIES -> refus sans écho', async () => {
     await comparer('adresse dans un nom de fichier', { fichiersEnPlus: [{ id: 'drv-x', nom: `${S.adresse}.lot.json`, modifie_le: '2026-10-20T07:01:00.000Z', properties: null, proprietesLisibles: false }] }, false);

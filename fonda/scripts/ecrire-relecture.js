@@ -155,6 +155,12 @@ async function generationRetenue(setId, s) {
   }
   if (c2.liste.length || jc === L.INDISPONIBLE || !sortie) pasGenere('rapprochement_non_etabli');
   try { await SC.relecteurDeLaGeneration(setId, { api: s.api, config: { workflowGeneration: s.workflowGeneration }, referentielArchive: s.referentielArchive }); } catch { pasGenere('relecteur_indeterminable'); }
+  // DERNIÈRE observation (P2-2) : relecteurDeLaGeneration ré-observe n8n mais ne regarde que les
+  // `success` ; une exécution apparue (en vol ou non) depuis la première observation -> refus.
+  // Défaut partagé avec diagnostic-fonda (gelé) : consigné pour P5-3, côté signataire (CDC §21.12).
+  const derniere = await lire(() => SC.observer(s.api, s.workflowGeneration), 'observation n8n');
+  const memes = (a, b) => a.length === b.length && ids(a).sort().join('\n') === ids(b).sort().join('\n');
+  if (derniere.some((x) => EN_VOL.includes(x.status)) || !memes(derniere, execs)) pasGenere('observation_instable');
   return { journal_commit: sortie.journal_commit, referentiel_version: sortie.referentiel_version, moteur: { version: sortie.moteur.version, sha256: sortie.moteur.sha256 } };
 }
 
@@ -229,7 +235,8 @@ async function nouvellesExecutions(api, wf, preexistantes, borner = (p) => p) {
     if (EN_VOL.includes(x.status)) { sorties.push({ id: String(x.id), set_id: null, workflow: wf, statut: x.status, sortie: undefined }); continue; }
     let brute = null;
     try { brute = await borner(api.lireExecution(x.id)); } catch (e) { if (e instanceof Echeance) throw e; return refuser('exécution nouvelle illisible — rien n\'est décidé'); }
-    if (!brute || typeof brute !== 'object' || String(brute.id) !== String(x.id) || brute.workflowId !== WORKFLOWS[wf] || brute.status !== x.status) refuser('exécution nouvelle : détail contradictoire avec le listing — rien n\'est décidé');
+    // Confrontation par L.fusionner (P2-3) : id, workflow, statut ET dates (grammaire, startedAt, fin ≥ début).
+    if (!brute || typeof brute !== 'object' || L.fusionner(x, brute, SC.normaliserDate).contradiction) refuser('exécution nouvelle : détail contradictoire avec le listing — rien n\'est décidé');
     const w = L.itemUnique(brute, NOEUDS[wf].webhook);
     const corps = w.ok && w.json.body && typeof w.json.body === 'object' ? w.json.body : null;
     const so = L.itemUnique(brute, NOEUDS[wf].sortie);
@@ -239,7 +246,7 @@ async function nouvellesExecutions(api, wf, preexistantes, borner = (p) => p) {
 }
 
 // --- Commandes --------------------------------------------------------------------------------------
-async function diagnostiquer(setId, deps, borner = (p) => p) {
+async function diagnostiquer(setId, deps, borner = (p) => p, avantEcriture = () => {}) {
   const a = V.lireEtat(deps.verrous);
   if (!a.sain) refuser('journal de la relecture inutilisable : voir « etat »');
   const L0 = a.lots[setId];
@@ -247,6 +254,7 @@ async function diagnostiquer(setId, deps, borner = (p) => p) {
   const t = a.tentatives[L0.ouverte];
   const { nouvelles } = await nouvellesExecutions(deps.api, t.workflow, t.preexistantes, borner);
   const candidat = await borner(deps.candidats.lire(setId));
+  avantEcriture(); // P2-1 : échéance contrôlée JUSTE AVANT l'écriture d'une résolution
   const r = V.diagnostiquer(L0.ouverte, { executions: nouvelles, listingComplet: true, candidat }, deps);
   return r.leve ? { set_id: setId, issue: r.issue, execution_id: r.execution_id } : { set_id: setId, issue: 'ouverte', raison: r.raison };
 }
@@ -264,11 +272,15 @@ async function attendreEtDiagnostiquer(setId, wf, preexistantes, deps) {
   const minuterie = setTimeout(() => { ctl.abort(); expire(); }, budget);
   if (deps.borne) deps.borne.signal = ctl.signal;
   const borner = (p) => Promise.race([p, echeance]);
+  // Horloge RÉELLE : une lecture terminée par un traitement synchrone plus long que le budget ne
+  // laisse jamais écrire une résolution avant que la minuterie n'ait pu se déclencher.
+  const debut = Date.now();
+  const avantEcriture = () => { if (ctl.signal.aborted || Date.now() - debut >= budget || deps.maintenant() >= fin) throw new Echeance(); };
   try {
     for (;;) {
       const { nouvelles, enVol } = await nouvellesExecutions(deps.api, wf, preexistantes, borner);
       const duLot = nouvelles.filter((e) => e.set_id === setId || e.set_id === null);
-      if (duLot.length && !enVol && duLot.every((e) => TERMINAUX.includes(e.statut))) return await diagnostiquer(setId, deps, borner);
+      if (duLot.length && !enVol && duLot.every((e) => TERMINAUX.includes(e.statut))) return await diagnostiquer(setId, deps, borner, avantEcriture);
       if (deps.maintenant() >= fin) return { set_id: setId, issue: 'ouverte', raison: OUVERTE_ECHEANCE };
       await borner(deps.attendre(deps.pasMs ?? PAS_ATTENTE_MS));
     }
