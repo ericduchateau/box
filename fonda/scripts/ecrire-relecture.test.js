@@ -261,7 +261,9 @@ describe('webhook et trousseau', () => {
     assert.equal(vus[0].method, 'POST');
     assert.equal(vus[0].headers['X-FONDA-Token'], S.jetonEmettre);
     assert.equal(vus[0].body, JSON.stringify({ set_id: A }));
-    const lent = E.webhook({ url: 'http://x', jeton: () => 'j', delaiMs: 20, fetch: (u, i) => new Promise((_, rej) => i.signal.addEventListener('abort', () => rej(i.signal.reason))) });
+    // Faux transport en attente : une minuterie RÉFÉRENCÉE simule la connexion ouverte d'un vrai fetch
+    // (la minuterie d'AbortSignal.timeout n'en est pas une : sans elle, Node 22 vide la boucle et annule).
+    const lent = E.webhook({ url: 'http://x', jeton: () => 'j', delaiMs: 20, fetch: (u, i) => new Promise((_, rej) => { const connexion = setTimeout(() => {}, 10000); i.signal.addEventListener('abort', () => { clearTimeout(connexion); rej(i.signal.reason); }); }) });
     assert.deepEqual(await lent({}), { panne: 'delai' });
     assert.deepEqual(await E.webhook({ url: 'http://x', jeton: () => 'j', fetch: async () => { throw new TypeError('fetch failed'); } })({}), { panne: 'transport' });
   });
