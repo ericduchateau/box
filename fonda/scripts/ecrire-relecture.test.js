@@ -492,7 +492,9 @@ describe('constat 7 : fabrique de production (fetch et trousseau injectés)', ()
 // --- A1 : cohérence avec diagnostic-fonda sur la génération SIMULÉE de l'export audité -------------
 const RACINE = path.join(__dirname, '..', '..');
 const FIXTURE = require('./fixtures/execution-generation.json');
-describe('A1 : generationRetenue conclut « généré » EXACTEMENT quand diagnostic-fonda établit le rapprochement', () => {
+// Limite (P3) : diagnostic-fonda (gelé) n'expose que la PREMIÈRE cause d'acces_ko ; l'oracle ne peut donc
+// juger que des pannes isolées. Cas combiné : test dédié ci-dessous (le CLI, plus strict, refuse).
+describe('A1 : generationRetenue conclut « généré » quand diagnostic-fonda établit le rapprochement sans blocage lié à la génération (pannes isolées)', () => {
   const t = {};
   const SET = FIXTURE.workflow_ia.set_id;
   before(async () => {
@@ -608,6 +610,14 @@ describe('A1 : generationRetenue conclut « généré » EXACTEMENT quand diagno
     await comparer('git non actualisé', {}, true, (s) => { s.interim = { ...s.interim, actualiser: async () => { throw new Error('hors ligne'); } }; return s; });
     assert.ok(t.dernierDiagnostic.applicables.some((x) => x.etat === 'acces_ko' && /^git/.test(x.detail)), 'divergence réellement exercée');
   });
+  test('P3 limite documentée : panne git PUIS panne du registre -> le diagnostic n\'affiche que git ; le CLI refuse (registre)', async () => {
+    const v = { incidentsPanne: true };
+    const s = monter(v);
+    s.interim = { ...s.interim, actualiser: async () => { throw new Error('hors ligne'); } };
+    const d = await t.D.diagnostiquer(SET, s);
+    assert.ok(d.applicables.some((x) => x.etat === 'acces_ko' && /^git/.test(x.detail)), 'première cause affichée : git (la panne du registre est masquée)');
+    await assert.rejects(() => t.E.generationRetenue(SET, monter(v)), /registre des incidents illisible/);
+  });
   test('P2-4 : acces_ko LIÉ à la génération (n8n, Drive, registre) -> non généré des deux côtés', async () => {
     const v = { incidentsPanne: true };
     await comparer('registre des incidents en panne', v, false);
@@ -615,13 +625,16 @@ describe('A1 : generationRetenue conclut « généré » EXACTEMENT quand diagno
   test('P2-2 : DERNIÈRE observation — exécution apparue après la première (en vol, ou terminée ignorée par le relecteur) -> refus', async () => {
     const base = { id: '901', workflowId: t.A.WORKFLOW_GENERATION, status: 'success', startedAt: '2026-10-20T07:00:00.000Z', stoppedAt: '2026-10-20T07:01:30.000Z' };
     const autre = (id) => ({ ...base, id, status: 'error' });
-    for (const [nom, avant, apres] of [
+    for (const [nom, avant, apres, seuil] of [
       ['en vol', [base], [base, { id: '908', workflowId: t.A.WORKFLOW_GENERATION, status: 'running', startedAt: '2026-10-20T08:00:00.000Z', stoppedAt: null }]],
       ['ids différents (error)', [base], [base, autre('909')]],
       ['même id repassé en vol', [base, autre('912')], [base, { ...autre('912'), status: 'running', stoppedAt: null }]],
       ['autant d\'ids, mais d\'autres', [base, autre('910')], [base, autre('911')]],
+      // ids constants : l'exécution RETENUE change APRÈS l'observation du relecteur (requêtes 4 à 6).
+      ['ids constants : retenue success -> error', [base], [{ ...base, status: 'error' }], 6],
+      ['ids constants : date changée', [base, autre('914')], [base, { ...autre('914'), stoppedAt: '2026-10-20T07:02:00.000Z' }]],
     ]) {
-      const s = monter({ detailSelonListing: true, listesParAppel: (n) => (n < 3 ? avant : apres) }); // 3 requêtes = la première observation
+      const s = monter({ detailSelonListing: true, listesParAppel: (n) => (n < (seuil || 3) ? avant : apres) }); // 3 requêtes = une observation
       await assert.rejects(() => t.E.generationRetenue(SET, s), (e) => /observation_instable/.test(e.message) && fuite(e.message).length === 0, nom);
     }
   });

@@ -156,11 +156,14 @@ async function generationRetenue(setId, s) {
   if (c2.liste.length || jc === L.INDISPONIBLE || !sortie) pasGenere('rapprochement_non_etabli');
   try { await SC.relecteurDeLaGeneration(setId, { api: s.api, config: { workflowGeneration: s.workflowGeneration }, referentielArchive: s.referentielArchive }); } catch { pasGenere('relecteur_indeterminable'); }
   // DERNIÈRE observation (P2-2) : relecteurDeLaGeneration ré-observe n8n mais ne regarde que les
-  // `success` ; une exécution apparue (en vol ou non) depuis la première observation -> refus.
+  // `success` ; une exécution apparue (en vol ou non) ou dont l'EMPREINTE (id, statut, startedAt,
+  // stoppedAt) a changé depuis la première observation -> refus.
   // Défaut partagé avec diagnostic-fonda (gelé) : consigné pour P5-3, côté signataire (CDC §21.12).
   const derniere = await lire(() => SC.observer(s.api, s.workflowGeneration), 'observation n8n');
-  const memes = (a, b) => a.length === b.length && ids(a).sort().join('\n') === ids(b).sort().join('\n');
-  if (derniere.some((x) => EN_VOL.includes(x.status)) || !memes(derniere, execs)) pasGenere('observation_instable');
+  const empreinte = (liste) => liste.map((x) => [String(x.id), x.status, x.startedAt ?? null, x.stoppedAt ?? null].join('|')).sort().join('\n');
+  const memes = (a, b) => a.length === b.length && empreinte(a) === empreinte(b);
+  // (Une exécution en vol à la fin change forcément l'empreinte : la première observation n'en a aucune.)
+  if (!memes(derniere, execs)) pasGenere('observation_instable');
   return { journal_commit: sortie.journal_commit, referentiel_version: sortie.referentiel_version, moteur: { version: sortie.moteur.version, sha256: sortie.moteur.sha256 } };
 }
 
