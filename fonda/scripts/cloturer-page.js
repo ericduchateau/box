@@ -67,10 +67,14 @@ const refuser = (m, issue) => { throw new SC.Refus(m, issue); };
 const ADRESSE = /[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g;
 const masquer = (t) => String(t).replace(ADRESSE, '[adresse masquée]');
 // Motifs de SECRETS (filet, refus seulement) : 64 hex nus (k, HMAC, jetons) et JWT ; « sha256:<64 hex> » lisible.
-const HEX64_NU = /(?<![0-9A-Fa-f:])(?<!sha256:)[0-9A-Fa-f]{64}(?![0-9A-Fa-f])/g;
+const HEX64_NU = /(?<![0-9A-Fa-f])(?<!sha256:)[0-9A-Fa-f]{64}(?![0-9A-Fa-f])/g; // seul le préfixe EXACT « sha256: » est exempté
+const HEX64 = /(?<![0-9A-Fa-f])[0-9A-Fa-f]{64}(?![0-9A-Fa-f])/; // registre : TOUTE suite de 64 hex, préfixe compris
 const JWT = /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g;
 const masquerRefus = (t) => masquer(t).replace(JWT, '[secret masqué]').replace(HEX64_NU, '[secret masqué]');
-const porteSecret = (t) => { const x = String(t); ADRESSE.lastIndex = 0; HEX64_NU.lastIndex = 0; JWT.lastIndex = 0; return new RegExp(ADRESSE.source).test(x) || new RegExp(HEX64_NU.source).test(x) || new RegExp(JWT.source).test(x); };
+// porteSecret : adresse, 64 hex NUS (sha256: exempté), JWT — contenu du lot ; porteSecretRegistre : idem,
+// mais TOUTE suite de 64 hex (une preuve d'incident est du texte libre ; un commit = 40 hex).
+const porteSecret = (t) => { const x = String(t); return new RegExp(ADRESSE.source).test(x) || new RegExp(HEX64_NU.source).test(x) || new RegExp(JWT.source).test(x); };
+const porteSecretRegistre = (t) => porteSecret(t) || HEX64.test(String(t));
 
 function analyserArguments(argv) {
   if (!Array.isArray(argv) || argv.length !== 1 || typeof argv[0] !== 'string' || !C.SET_ID_PATTERN.test(argv[0])) refuser('usage : cloturer-page.js <set_id> — Mac d\'Éric seulement (un seul Mac) ; aucune signature page avant la phase B et le go d\'Éric', 'precondition');
@@ -115,7 +119,7 @@ function domaineExecution(brute) {
 }
 // Ids d'exécution n8n : DÉCIMAL CANONIQUE (règle du journal P5-1) — ils entrent dans l'attestation SIGNÉE
 // (provenances, execution_cloture, generation) : hors grammaire -> refus incident, message fixe.
-const ID_EXECUTION = /^(0|[1-9][0-9]*)$/;
+const ID_EXECUTION = /^(0|[1-9][0-9]{0,19})$/; // = verrou-relecture.js (20 chiffres au plus)
 const ID_NON_CONFORME = 'API n8n : identifiant d\'exécution hors grammaire (décimal canonique attendu) : incident';
 const exigerIdExecution = (id) => { if ((typeof id !== 'string' && typeof id !== 'number') || !ID_EXECUTION.test(String(id))) throw new RefusFrontiere(ID_NON_CONFORME, 'incident'); };
 // Ids Drive cités par les sorties (messages seulement) : grammaire Drive, sinon « [valeur non conforme] ».
@@ -123,10 +127,14 @@ const ID_DRIVE = /^[A-Za-z0-9_-]{1,128}$/;
 const idDrive = (o, k) => { if (o && typeof o[k] === 'string' && !ID_DRIVE.test(o[k])) o[k] = NON_CONFORME; };
 const textes = (o, acc = []) => { if (typeof o === 'string') acc.push(o); else if (o && typeof o === 'object') for (const v of Object.values(o)) textes(v, acc); return acc; };
 const REGISTRE_NON_ADMISSIBLE = 'registre des incidents : contenu non admissible, à corriger';
+const LOT_NON_ADMISSIBLE = 'lot généré : contenu non admissible, nouveau set_id';
+const RELECTEUR = /^[a-z][a-z0-9_-]{0,31}$/;
+const RELECTEUR_NON_CONFORME = 'référentiel archivé : relecteur hors grammaire : incident';
+const lireJsonOctets = (o) => { try { return JSON.parse(Buffer.from(o).toString('utf8')); } catch { return undefined; } };
 const avecNom = (x) => (x && typeof x === 'object' && 'nom' in x ? { ...x, nom: nomSur(x.nom) } : x);
 // Enveloppe les adaptateurs injectés : messages contrôlés, noms Drive filtrés. N'altère jamais un nom
 // conforme ni aucune autre donnée : le verdict de cloturer est inchangé.
-function frontiere(d) {
+function frontiere(d, signal = {}) {
   const drive = d.drive || {};
   const page = (f) => async (setId) => {
     const r = await f(setId);
@@ -145,16 +153,33 @@ function frontiere(d) {
     },
     drive: {
       ...drive,
-      lireLotGenere: filtrer('Drive (lot généré)', async (s) => avecNom(await drive.lireLotGenere(s))),
-      listerCandidats: filtrer('Drive (candidats/)', async () => { const r = await drive.listerCandidats(); return r && Array.isArray(r.fichiers) ? { ...r, fichiers: r.fichiers.map(avecNom) } : r; }),
+      // G3 au point de signature : une adresse ou un secret présumé dans une VALEUR du lot -> abandon (jamais masqué).
+      lireLotGenere: filtrer('Drive (lot généré)', async (s) => {
+        const r = avecNom(await drive.lireLotGenere(s));
+        const lot = r && r.octets ? lireJsonOctets(r.octets) : undefined;
+        if (lot !== undefined && textes(lot).some(porteSecret)) throw new RefusFrontiere(LOT_NON_ADMISSIBLE, 'abandon');
+        return r;
+      }),
+      listerCandidats: filtrer('Drive (candidats/)', async () => {
+        const r = await drive.listerCandidats();
+        if (!r || !Array.isArray(r.fichiers)) return r;
+        const prop = (p) => (p && typeof p === 'object' && typeof p.fonda_execution_id === 'string' && !ID_EXECUTION.test(p.fonda_execution_id) ? { ...p, fonda_execution_id: NON_CONFORME } : p);
+        return { ...r, fichiers: r.fichiers.map((x) => (x && typeof x === 'object' ? { ...avecNom(x), properties: prop(x.properties) } : x)) };
+      }),
       // Enveloppe modifiée EN PLACE (l'identité Drive .drive, non énumérable, est conservée).
       ...(drive.lireCandidat ? { lireCandidat: filtrer('Drive (candidat)', async (s) => { const c = await drive.lireCandidat(s); if (c && typeof c === 'object') dansDomaine(c.relecture, 'statut', STATUTS_CANDIDAT); return c; }) } : {}),
       ...(drive.listerDecisions ? { listerDecisions: filtrer('Drive (decisions/)', page(drive.listerDecisions)) } : {}),
     },
     journal: filtrer('historique de confiance (journal)', (c) => d.journal(c)),
     // Contenu SIGNÉ (incidents_connus) : refusé, jamais masqué, s'il porte une adresse ou un secret présumé.
-    incidents: filtrer('registre des incidents', async () => { const r = await d.incidents(); if (textes(r).some(porteSecret)) throw new RefusFrontiere(REGISTRE_NON_ADMISSIBLE, 'incident'); return r; }),
-    referentielArchive: filtrer('référentiel archivé', (v) => d.referentielArchive(v)),
+    incidents: filtrer('registre des incidents', async () => { const r = await d.incidents(); if (textes(r).some(porteSecretRegistre)) throw new RefusFrontiere(REGISTRE_NON_ADMISSIBLE, 'incident'); return r; }),
+    // Relecteur(s) du référentiel archivé (recopiés dans l'attestation) : grammaire stricte, sinon refus.
+    referentielArchive: filtrer('référentiel archivé', async (v) => {
+      const o = await d.referentielArchive(v);
+      const ref = o ? lireJsonOctets(o) : undefined;
+      if (ref && Array.isArray(ref.notions) && ref.notions.some((n) => n && Object.prototype.hasOwnProperty.call(n, 'relecteur') && !(typeof n.relecteur === 'string' && RELECTEUR.test(n.relecteur)))) { signal.relecteur = true; throw new RefusFrontiere(RELECTEUR_NON_CONFORME, 'incident'); }
+      return o;
+    }),
   };
 }
 
@@ -188,7 +213,10 @@ function lireJournal(setId, deps) {
 }
 
 async function observerOuRefuser(api, workflowId, quoi) {
-  try { return await SC.observer(api, workflowId); } catch { return refuser(`observation n8n (${quoi}) impossible ou incomplète : refus temporaire, relancer`, 'temporaire'); }
+  let obs;
+  try { obs = await SC.observer(api, workflowId); } catch { return refuser(`observation n8n (${quoi}) impossible ou incomplète : refus temporaire, relancer`, 'temporaire'); }
+  for (const x of obs) exigerIdExecution(x.id); // quiescence et contrôle final aussi (Emettre n'est vu que là)
+  return obs;
 }
 
 /**
@@ -241,7 +269,8 @@ async function signerPage(setId, base, fabriquer) {
   };
   const afficher = (t) => fab.afficher(masquer(t));
   const brutes = fab.depsCloture({ api: rec.api, signer });
-  const deps = frontiere({ ...brutes, api: rec.api });
+  const signal = {};
+  const deps = frontiere({ ...brutes, api: rec.api }, signal);
   // Diagnostic (§21.2) capté SANS nouvelle lecture : clôtures du lot vues par rattacherPage, décisions
   // conformes du lot lues par listerDecisions.
   const clotures = [];
@@ -261,7 +290,11 @@ async function signerPage(setId, base, fabriquer) {
   }
   Object.assign(deps, { signer, saisir, afficher, rattachement, tableRelecteurs: {}, levees: [] });
   const fermer = fab.cloturer || SC.cloturer;
-  const r = await fermer(setId, deps);
+  let r;
+  try { r = await fermer(setId, deps); } catch (e) {
+    if (signal.relecteur) refuser(RELECTEUR_NON_CONFORME, 'incident'); // cloturer classe ce refus en abandon : l'issue incident prime
+    throw e;
+  }
   if (!controle) refuser('contrôle final non effectué : résultat ignoré', 'local');
   const retenue = clotures.slice().sort((a, b) => (a.obs.stoppedAt < b.obs.stoppedAt ? -1 : a.obs.stoppedAt > b.obs.stoppedAt ? 1 : 0)).pop();
   const diagnostic = { nb_decisions_listees: retenue ? retenue.nb_decisions_listees : null, decompte_signataire: decompte };
@@ -321,6 +354,6 @@ async function main(argv = process.argv.slice(2), fab = fabrique, verrous = V.VE
   }
 }
 
-module.exports = { ID_NON_CONFORME, WORKFLOWS, QUESTION_FIDELITE, NOM_NON_CONFORME, NON_CONFORME, REGISTRE_NON_ADMISSIBLE, masquer, masquerRefus, porteSecret, nomSur, frontiere, analyserArguments, empreinte, enregistreur, signerPage, fabrique, main };
+module.exports = { LOT_NON_ADMISSIBLE, RELECTEUR_NON_CONFORME, porteSecretRegistre, ID_NON_CONFORME, WORKFLOWS, QUESTION_FIDELITE, NOM_NON_CONFORME, NON_CONFORME, REGISTRE_NON_ADMISSIBLE, masquer, masquerRefus, porteSecret, nomSur, frontiere, analyserArguments, empreinte, enregistreur, signerPage, fabrique, main };
 
 if (require.main === module) main();

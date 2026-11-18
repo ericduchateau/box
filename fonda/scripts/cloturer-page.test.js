@@ -63,6 +63,9 @@ async function monde(x = {}) {
   const setId = x.maths ? 'set_fonda_grandeurs-mesures_nI_92' : 'set_fonda_comprendre-consigne_nI_92';
   const lot = copie(require(`../data/lots/${x.maths ? 'set_fonda_grandeurs-mesures_nI_01' : 'set_fonda_comprendre-consigne_nI_01'}.json`));
   lot.set_id = setId; lot.revue_carte_par_carte = false; lot.cartes.forEach((c) => { c.set_id = setId; });
+  if (x.lot) x.lot(lot);
+  const octetsRef = x.referentiel ? Buffer.from(JSON.stringify(x.referentiel(JSON.parse(OCTETS_REF.toString('utf8'))))) : OCTETS_REF;
+  const versionRef = `sha256:${crypto.createHash('sha256').update(octetsRef).digest('hex')}`;
   const ids = lot.cartes.map((c) => c.item_id);
   const empreintes = { pedagogique: await C.calculerEmpreinte(lot, sha), complete: L.empreinteComplete(lot) };
   const garde = new Set(ids.slice(0, -1));
@@ -71,13 +74,13 @@ async function monde(x = {}) {
   const coeur = { action: 'accepter', selection: ids.slice(0, -1), ecartees: ids.slice(-1), empreinte_relue: empreintes.pedagogique, empreinte_publiee: await C.calculerEmpreinte(publie, sha), moteur: { ...MOTEUR } };
   const lotRelu = { set_id: setId, empreinte_complete: empreintes.complete, cartes: ids.map((id) => ({ item_id: id, choix: garde.has(id) ? 'garder' : 'ecarter' })) };
   const ref = `test-2026-10-17:${setId}`;
-  const fx = instancier(FIXTURE, { SET_ID: setId, REF: ref, NOTION_ID: lot.notion_id, PALIER: lot.palier, MOTEUR_SHA256: MOTEUR.sha256, REFERENTIEL_VERSION: REF_VERSION, JOURNAL_COMMIT: COMMIT, EMPREINTE_PEDAGOGIQUE: empreintes.pedagogique, EMPREINTE_COMPLETE: empreintes.complete });
+  const fx = instancier(FIXTURE, { SET_ID: setId, REF: ref, NOTION_ID: lot.notion_id, PALIER: lot.palier, MOTEUR_SHA256: MOTEUR.sha256, REFERENTIEL_VERSION: versionRef, JOURNAL_COMMIT: COMMIT, EMPREINTE_PEDAGOGIQUE: empreintes.pedagogique, EMPREINTE_COMPLETE: empreintes.complete });
   const genDetail = copie(fx.reussie);
   genDetail.data.resultData.runData = { ...genDetail.data.resultData.runData, ...SENTINELLES_RUN };
   const decision = (n) => ({ schema: 'decision-fonda/v1', set_id: setId, generation: 1, nonce: n, recu_le: '2026-10-19T17:00:01.000Z', coeur: copie(coeur), lot_relu: copie(lotRelu), hash_formulaire: 'h' });
   const fichiers = [NA, NB].map((n) => ({ id: `drv-${n.slice(0, 4)}`, nom: `${setId}-${n}.json`, modifie_le: '2026-10-19T17:00:01.500Z', properties: { fonda_set_id: setId, fonda_nonce: n }, contenu: decision(n) }));
   const sortieDecision = (n) => ({ type: 'decision', set_id: setId, nonce: n, generation: 1, decision_fichier_id: `drv-${n.slice(0, 4)}`, decision_sha256: P.empreinteDecision(decision(n)), ecriture: 'creee', motif: null });
-  const candidat = { schema: 'candidat-fonda/v1', lot: copie(lot), relecture: { statut: 'clos', generation_cle: 1, cle_sha256: SEN.hmac, cree_le: '2026-10-18T08:00:00.000Z', expire_le: '2026-11-01T08:00:00.000Z', clos_le: '2026-10-20T07:59:00.000Z', relecteur_attribue: x.maths ? 'eric' : 'justine', referentiel_version: REF_VERSION, moteur: { ...MOTEUR }, envois: [{ generation_cle: 1, envoye_a: SEN.adresse, le: '2026-10-18T08:00:01.000Z' }] } };
+  const candidat = { schema: 'candidat-fonda/v1', lot: copie(lot), relecture: { statut: 'clos', generation_cle: 1, cle_sha256: SEN.hmac, cree_le: '2026-10-18T08:00:00.000Z', expire_le: '2026-11-01T08:00:00.000Z', clos_le: '2026-10-20T07:59:00.000Z', relecteur_attribue: x.relecteur || (x.maths ? 'eric' : 'justine'), referentiel_version: versionRef, moteur: { ...MOTEUR }, envois: [{ generation_cle: 1, envoye_a: SEN.adresse, le: '2026-10-18T08:00:01.000Z' }] } };
   const ex = (id, wf, status, debut, fin) => ({ id, workflowId: wf, status, startedAt: debut, stoppedAt: fin });
   const execs = {
     wfGen: [ex(501, 'wfGen', 'success', '2026-10-18T07:00:00.000Z', '2026-10-18T07:01:00.000Z')],
@@ -125,7 +128,7 @@ async function monde(x = {}) {
     },
     journal: async (c) => (c === COMMIT ? { surPremierParent: true, journal: { schema: 'set-ids-journal/v1', lignes: [{ set_id: setId, transition: 'reserve', le: '2026-10-17', ref }] } } : { surPremierParent: false, journal: null }),
     incidents: async () => [],
-    referentielArchive: async (v) => { if (v !== REF_VERSION) throw new Error('introuvable'); return OCTETS_REF; },
+    referentielArchive: async (v) => { if (v !== versionRef) throw new Error('introuvable'); return octetsRef; },
     tableRelecteurs: { justine: `Relectrice ${SEN.adresse}` }, // ignorée : le CLI impose {} (arbitrage C)
     levees: [{ type: 'recherche_incomplete' }], // ignorées : le CLI impose [] (arbitrage D)
     fs: {
@@ -404,6 +407,74 @@ describe('confinement : sentinelles k, adresse, HMAC, jetons, clé d\'API dans T
     const c2 = await monde({ modifier: ({ specs }) => { specs[20][1].candidat_fichier_id = SEN.adresse; } });
     const e2 = await refusSansSignature(c2, /./);
     assert.deepEqual(fuite(e2.message), []);
+  });
+  // 3e relecture, confirmation : reproductions de Codex.
+  test('1 : registre — « k: » + 64 hex et « sha256: » + 64 hex REFUSÉS ; commit 40 hex admis', async () => {
+    const inc = (preuve) => ({ id: 'inc-1', nature: 'panne', detecte_le: '2026-10-01T08:00:00.000Z', statut: 'resolu', resolu_le: '2026-10-02T08:00:00.000Z', preuve_resolution: preuve, periode: { debut: '2026-10-01T08:00:00.000Z', fin: '2026-10-02T08:00:00.000Z' } });
+    for (const preuve of [`k:${SEN.k}`, `sha256:${SEN.k}`]) {
+      const ctx = await monde({ modifier: ({ depsBase }) => { depsBase.incidents = async () => [inc(preuve)]; } });
+      await refusSansSignature(ctx, /registre des incidents : contenu non admissible/, 'incident');
+      for (const [p, o] of ctx.etat.ecrits) assert.deepEqual(fuite(o.toString('utf8')), [], p);
+    }
+    const ok = await monde({ modifier: ({ depsBase }) => { depsBase.incidents = async () => [inc(`corrigé au commit ${'c'.repeat(40)}`)]; } });
+    await ok.signer();
+    assert.equal(ok.etat.signatures, 1);
+  });
+  test('1 : filet — « k: » + 64 hex masqué ; seul le préfixe EXACT « sha256: » est exempté', () => {
+    const m = CP.masquerRefus(`k:${SEN.k} x:${SEN.hmac} sha256:${'ab'.repeat(32)}`);
+    assert.deepEqual(fuite(m), []);
+    assert.ok(m.includes(`sha256:${'ab'.repeat(32)}`));
+  });
+  test('1 : fonda_execution_id (candidats/) hors grammaire -> « [valeur non conforme] », verdict inchangé, aucune fuite', async () => {
+    const fixer = (v) => ({ depsBase }) => { const l = depsBase.drive.listerCandidats; depsBase.drive.listerCandidats = async () => { const r = await l(); r.fichiers[0].properties.fonda_execution_id = v; return r; }; };
+    const temoin = await monde({ modifier: fixer('9999') });
+    const attendu = await temoin.signer().then(() => null, (e) => e);
+    assert.ok(attendu);
+    for (const v of [`k:${SEN.k}`, SEN.cleApi, SEN.adresse]) {
+      const ctx = await monde({ modifier: fixer(v) });
+      const err = await refusSansSignature(ctx, /./);
+      assert.equal(err.issue, attendu.issue, v.slice(0, 8));
+      assert.deepEqual(fuite(err.message), [], v.slice(0, 8));
+    }
+  });
+  test('2 : contenu du lot — secret dans une question, adresse dans contexte -> refus ABANDON avant toute écriture', async () => {
+    for (const [nom, modif] of [['question', (l) => { l.cartes[0].question = `Recopie ${SEN.k}`; }], ['contexte', (l) => { l.cartes[0].contexte = `écrire à ${SEN.adresse}`; }], ['JWT', (l) => { l.cartes[1].question = SEN.cleApi; }]]) {
+      const ctx = await monde({ lot: modif });
+      await refusSansSignature(ctx, /lot généré : contenu non admissible, nouveau set_id/, 'abandon');
+      assert.equal(ctx.etat.ecrits.size, 0, `${nom} : aucune écriture`);
+      assert.deepEqual(fuite(ctx.etat.affiche), [], nom);
+    }
+  });
+  test('3 : id d\'exécution de 64 chiffres (secret numérique) -> refus ; 20 chiffres au plus admis', async () => {
+    const ctx = await monde({ modifier: ({ execs }) => { execs[T.confirmation].push({ id: '12'.repeat(32), workflowId: T.confirmation, status: 'success', startedAt: '2026-10-19T16:00:00.000Z', stoppedAt: '2026-10-19T16:00:01.000Z' }); } });
+    await refusSansSignature(ctx, /identifiant d'exécution hors grammaire/, 'incident');
+    for (const [p, o] of ctx.etat.ecrits) assert.ok(!o.toString('utf8').includes('12'.repeat(32)), p);
+    const ok = await monde({ modifier: ({ execs }) => { execs[T.emettre][0].id = `1${'0'.repeat(19)}`; } });
+    await ok.signer();
+    assert.equal(ok.etat.signatures, 1);
+  });
+  test('4 : id hors grammaire vu par la QUIESCENCE (Emettre, Cloturer) -> refus incident, phrase jamais demandée', async () => {
+    for (const wf of [T.emettre, T.cloture]) {
+      const ctx = await monde({ modifier: ({ execs }) => { execs[wf][0].id = '010'; } });
+      await refusSansSignature(ctx, /identifiant d'exécution hors grammaire/, 'incident');
+      assert.equal(ctx.etat.preparations, 0);
+    }
+  });
+  test('4 : id hors grammaire apparu au CONTRÔLE FINAL (Emettre) -> refus incident, aucun marqueur', async () => {
+    const ctx = await monde({ avantFinal: ({ execs }) => { execs[T.emettre].push({ id: 'abc', workflowId: T.emettre, status: 'success', startedAt: '2026-10-20T09:00:30.000Z', stoppedAt: '2026-10-20T09:00:31.000Z' }); } });
+    await refusSansSignature(ctx, /identifiant d'exécution hors grammaire/, 'incident');
+  });
+  test('5 : relecteur du référentiel archivé hors grammaire (archive et candidat concordants) -> refus INCIDENT, rien signé', async () => {
+    for (const rel of [SEN.adresse, 'Eric', '', 'e'.repeat(33)]) {
+      const ctx = await monde({ relecteur: rel, referentiel: (r) => { r.notions.find((n) => n.id === 'fr.comprendre-consigne').relecteur = rel; return r; } });
+      await refusSansSignature(ctx, /référentiel archivé : relecteur hors grammaire/, 'incident');
+      for (const [p, o] of ctx.etat.ecrits) assert.deepEqual(fuite(o.toString('utf8')), [], p);
+    }
+  });
+  test('5 : relecteurs conformes (eric, justine) : signés (nominal et lot d\'Éric déjà testés) ; référentiel transformé neutre -> signé', async () => {
+    const ctx = await monde({ referentiel: (r) => r });
+    await ctx.signer();
+    assert.equal(ctx.etat.signatures, 1);
   });
   test('P1 : noms Drive CONFORMES inchangés (lot, candidat, décision) ; un nom hors grammaire remplacé', () => {
     const d = 'set_fonda_comprendre-consigne_nI_92';
