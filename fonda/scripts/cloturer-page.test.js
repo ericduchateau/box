@@ -360,6 +360,51 @@ describe('confinement : sentinelles k, adresse, HMAC, jetons, clé d\'API dans T
       }
     });
   }
+  // 3e relecture (inventaire, point 1) : ids d'exécution, signés dans l'attestation.
+  for (const [nom, fixer] of [
+    ['listing de confirmation', (v) => ({ execs }) => { execs[T.confirmation].push({ id: v, workflowId: T.confirmation, status: 'success', startedAt: '2026-10-19T16:00:00.000Z', stoppedAt: '2026-10-19T16:00:01.000Z' }); }],
+    ['listing de génération', (v) => ({ execs }) => { execs.wfGen[0].id = v; }],
+    ['listing de clôture', (v) => ({ execs }) => { execs[T.cloture][0].id = v; }],
+    ['détail de confirmation', (v) => ({ api }) => { const l = api.lireExecution; api.lireExecution = async (id) => { const d = await l(id); if (String(id) === '10') d.id = v; return d; }; }],
+  ]) {
+    test(`point 1 : secret dans un id d'exécution (${nom}) -> refus incident, message fixe, rien dans attestation.json`, async () => {
+      for (const v of [SEN.k, SEN.cleApi, `${SEN.adresse}`, '010', '-1', '1.5']) {
+        const ctx = await monde({ modifier: fixer(v) });
+        const err = await refusSansSignature(ctx, /identifiant d'exécution hors grammaire/, 'incident');
+        assert.deepEqual(fuite(err.message), [], `${nom} ${v}`);
+        for (const [p, o] of ctx.etat.ecrits) assert.deepEqual(fuite(o.toString('utf8')), [], p);
+      }
+    });
+  }
+  test('point 1 : ids décimaux canoniques (nombre ou chaîne, 0 compris) acceptés -> signé', async () => {
+    const ctx = await monde({ modifier: ({ execs }) => { execs[T.emettre][0].id = '0'; execs.wfGen[0].id = '501'; } });
+    await ctx.signer();
+    assert.equal(ctx.etat.signatures, 1);
+  });
+  test('point 2 : id Drive hors grammaire dans une sortie -> « [valeur non conforme] », verdict inchangé, aucune fuite', async () => {
+    const fixer = (v) => ({ api }) => { const l = api.lireExecution; api.lireExecution = async (id) => { const d = await l(id); if (String(id) === '10') d.data.resultData.runData['FONDA Sortie confirmation'][0].data.main[0][0].json.decision_fichier_id = v; return d; }; };
+    const temoin = await monde({ modifier: fixer('drv avec espace') });
+    const attendu = await temoin.signer().then(() => null, (e) => e);
+    assert.ok(attendu);
+    for (const v of [`${SEN.adresse}`, `${SEN.cleApi}`, `x/${SEN.k}`]) {
+      const ctx = await monde({ modifier: fixer(v) });
+      const err = await refusSansSignature(ctx, /./);
+      assert.equal(err.issue, attendu.issue);
+      assert.deepEqual(fuite(err.message), [], v.slice(0, 10));
+    }
+    // Seul message qui CITE l'id : substitution observée (un fichier de decisions/ porte cet id, autre nonce).
+    const NC = 'c'.repeat(32);
+    const c3 = await monde({ modifier: (ctx3) => {
+      const base = ctx3.depsBase.drive.listerDecisions;
+      ctx3.depsBase.drive.listerDecisions = async () => { const r = await base(); r.fichiers.push({ id: SEN.adresse, nom: `${ctx3.setId}-${NC}.json`, modifie_le: '2026-10-19T17:00:01.500Z', properties: { fonda_set_id: ctx3.setId, fonda_nonce: NC }, contenu: ctx3.decision(NC) }); return r; };
+      fixer(SEN.adresse)(ctx3);
+    } });
+    const e3 = await refusSansSignature(c3, /./);
+    assert.deepEqual(fuite(e3.message), [], 'id Drive cité par le message de substitution');
+    const c2 = await monde({ modifier: ({ specs }) => { specs[20][1].candidat_fichier_id = SEN.adresse; } });
+    const e2 = await refusSansSignature(c2, /./);
+    assert.deepEqual(fuite(e2.message), []);
+  });
   test('P1 : noms Drive CONFORMES inchangés (lot, candidat, décision) ; un nom hors grammaire remplacé', () => {
     const d = 'set_fonda_comprendre-consigne_nI_92';
     for (const n of [`${d}.lot.json`, `${d}.candidat.json`, `${d}-${'0f'.repeat(16)}.json`]) assert.equal(CP.nomSur(n), n);

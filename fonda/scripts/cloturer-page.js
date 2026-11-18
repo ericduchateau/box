@@ -29,7 +29,9 @@
 //       entre deux requêtes peut échapper ; sans effet sur l'intégrité (CDC §21.12.4).
 // FRONTIÈRE (P1) : toute erreur d'un adaptateur injecté (n8n, Drive, journal, incidents, référentiel)
 // repart avec un message CONTRÔLÉ (statut 401/403 conservé) ; tout nom Drive hors grammaire devient
-// « [nom non conforme] » ; tout champ ÉNUMÉRÉ lu par l'évaluation (statut du candidat, mode et statut
+// « [nom non conforme] » ; tout id d'exécution non décimal canonique -> refus incident (les ids entrent
+// dans l'attestation signée) ; tout id Drive cité par une sortie hors grammaire -> « [valeur non
+// conforme] » ; tout champ ÉNUMÉRÉ lu par l'évaluation (statut du candidat, mode et statut
 // d'exécution, type et motif de sortie) hors de son domaine devient « [valeur non conforme] » (il reste
 // hors domaine : verdict inchangé) ; un registre des incidents dont un champ textuel porte une adresse ou
 // un motif de secret est REFUSÉ (issue incident) avant toute signature — jamais masqué en silence.
@@ -103,13 +105,22 @@ function domaineExecution(brute) {
         for (const item of (Array.isArray(sortie) ? sortie : [])) {
           const j = item && item.json;
           if (!j || typeof j !== 'object') continue;
-          if (n === SORTIES[0]) { dansDomaine(j, 'type', TYPES_CONFIRMATION); dansDomaine(j, 'motif', [...MOTIFS_REJET, null]); }
+          if (n === SORTIES[0]) { dansDomaine(j, 'type', TYPES_CONFIRMATION); dansDomaine(j, 'motif', [...MOTIFS_REJET, null]); idDrive(j, 'decision_fichier_id'); }
+          if (n === SORTIES[1]) idDrive(j, 'candidat_fichier_id');
         }
       }
     }
   }
   return brute;
 }
+// Ids d'exécution n8n : DÉCIMAL CANONIQUE (règle du journal P5-1) — ils entrent dans l'attestation SIGNÉE
+// (provenances, execution_cloture, generation) : hors grammaire -> refus incident, message fixe.
+const ID_EXECUTION = /^(0|[1-9][0-9]*)$/;
+const ID_NON_CONFORME = 'API n8n : identifiant d\'exécution hors grammaire (décimal canonique attendu) : incident';
+const exigerIdExecution = (id) => { if ((typeof id !== 'string' && typeof id !== 'number') || !ID_EXECUTION.test(String(id))) throw new RefusFrontiere(ID_NON_CONFORME, 'incident'); };
+// Ids Drive cités par les sorties (messages seulement) : grammaire Drive, sinon « [valeur non conforme] ».
+const ID_DRIVE = /^[A-Za-z0-9_-]{1,128}$/;
+const idDrive = (o, k) => { if (o && typeof o[k] === 'string' && !ID_DRIVE.test(o[k])) o[k] = NON_CONFORME; };
 const textes = (o, acc = []) => { if (typeof o === 'string') acc.push(o); else if (o && typeof o === 'object') for (const v of Object.values(o)) textes(v, acc); return acc; };
 const REGISTRE_NON_ADMISSIBLE = 'registre des incidents : contenu non admissible, à corriger';
 const avecNom = (x) => (x && typeof x === 'object' && 'nom' in x ? { ...x, nom: nomSur(x.nom) } : x);
@@ -129,8 +140,8 @@ function frontiere(d) {
   return {
     ...d,
     api: {
-      listerExecutions: filtrer('API n8n (liste)', async (q) => { const r = await d.api.listerExecutions(q); if (Array.isArray(r)) for (const x of r) dansDomaine(x, 'status', STATUTS_EXECUTION); return r; }),
-      lireExecution: filtrer('API n8n (exécution)', async (id) => domaineExecution(await d.api.lireExecution(id))),
+      listerExecutions: filtrer('API n8n (liste)', async (q) => { const r = await d.api.listerExecutions(q); if (Array.isArray(r)) for (const x of r) { if (x && typeof x === 'object') exigerIdExecution(x.id); dansDomaine(x, 'status', STATUTS_EXECUTION); } return r; }),
+      lireExecution: filtrer('API n8n (exécution)', async (id) => { const b = await d.api.lireExecution(id); if (b && typeof b === 'object') exigerIdExecution(b.id); return domaineExecution(b); }),
     },
     drive: {
       ...drive,
@@ -310,6 +321,6 @@ async function main(argv = process.argv.slice(2), fab = fabrique, verrous = V.VE
   }
 }
 
-module.exports = { WORKFLOWS, QUESTION_FIDELITE, NOM_NON_CONFORME, NON_CONFORME, REGISTRE_NON_ADMISSIBLE, masquer, masquerRefus, porteSecret, nomSur, frontiere, analyserArguments, empreinte, enregistreur, signerPage, fabrique, main };
+module.exports = { ID_NON_CONFORME, WORKFLOWS, QUESTION_FIDELITE, NOM_NON_CONFORME, NON_CONFORME, REGISTRE_NON_ADMISSIBLE, masquer, masquerRefus, porteSecret, nomSur, frontiere, analyserArguments, empreinte, enregistreur, signerPage, fabrique, main };
 
 if (require.main === module) main();
