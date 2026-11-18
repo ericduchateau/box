@@ -60,8 +60,8 @@ function instancier(gabarit, valeurs) {
 
 // --- Monde page synthétique ----------------------------------------------------------------------
 async function monde(x = {}) {
-  const setId = 'set_fonda_comprendre-consigne_nI_92';
-  const lot = copie(require('../data/lots/set_fonda_comprendre-consigne_nI_01.json'));
+  const setId = x.maths ? 'set_fonda_grandeurs-mesures_nI_92' : 'set_fonda_comprendre-consigne_nI_92';
+  const lot = copie(require(`../data/lots/${x.maths ? 'set_fonda_grandeurs-mesures_nI_01' : 'set_fonda_comprendre-consigne_nI_01'}.json`));
   lot.set_id = setId; lot.revue_carte_par_carte = false; lot.cartes.forEach((c) => { c.set_id = setId; });
   const ids = lot.cartes.map((c) => c.item_id);
   const empreintes = { pedagogique: await C.calculerEmpreinte(lot, sha), complete: L.empreinteComplete(lot) };
@@ -77,7 +77,7 @@ async function monde(x = {}) {
   const decision = (n) => ({ schema: 'decision-fonda/v1', set_id: setId, generation: 1, nonce: n, recu_le: '2026-10-19T17:00:01.000Z', coeur: copie(coeur), lot_relu: copie(lotRelu), hash_formulaire: 'h' });
   const fichiers = [NA, NB].map((n) => ({ id: `drv-${n.slice(0, 4)}`, nom: `${setId}-${n}.json`, modifie_le: '2026-10-19T17:00:01.500Z', properties: { fonda_set_id: setId, fonda_nonce: n }, contenu: decision(n) }));
   const sortieDecision = (n) => ({ type: 'decision', set_id: setId, nonce: n, generation: 1, decision_fichier_id: `drv-${n.slice(0, 4)}`, decision_sha256: P.empreinteDecision(decision(n)), ecriture: 'creee', motif: null });
-  const candidat = { schema: 'candidat-fonda/v1', lot: copie(lot), relecture: { statut: 'clos', generation_cle: 1, cle_sha256: SEN.hmac, cree_le: '2026-10-18T08:00:00.000Z', expire_le: '2026-11-01T08:00:00.000Z', clos_le: '2026-10-20T07:59:00.000Z', relecteur_attribue: 'justine', referentiel_version: REF_VERSION, moteur: { ...MOTEUR }, envois: [{ generation_cle: 1, envoye_a: SEN.adresse, le: '2026-10-18T08:00:01.000Z' }] } };
+  const candidat = { schema: 'candidat-fonda/v1', lot: copie(lot), relecture: { statut: 'clos', generation_cle: 1, cle_sha256: SEN.hmac, cree_le: '2026-10-18T08:00:00.000Z', expire_le: '2026-11-01T08:00:00.000Z', clos_le: '2026-10-20T07:59:00.000Z', relecteur_attribue: x.maths ? 'eric' : 'justine', referentiel_version: REF_VERSION, moteur: { ...MOTEUR }, envois: [{ generation_cle: 1, envoye_a: SEN.adresse, le: '2026-10-18T08:00:01.000Z' }] } };
   const ex = (id, wf, status, debut, fin) => ({ id, workflowId: wf, status, startedAt: debut, stoppedAt: fin });
   const execs = {
     wfGen: [ex(501, 'wfGen', 'success', '2026-10-18T07:00:00.000Z', '2026-10-18T07:01:00.000Z')],
@@ -101,7 +101,9 @@ async function monde(x = {}) {
       etat.appels.push(`${workflowId}:${status || '*'}`);
       if (etat.panneApi && etat.panneApi(workflowId)) throw new Error(`API indisponible ${SEN.cleApi}`);
       const t = execs[workflowId] || [];
-      return copie(status ? t.filter((e) => e.status === status) : t.filter((e) => e.status !== 'running')); // n8n 2.6.3
+      const r = copie(status ? t.filter((e) => e.status === status) : t.filter((e) => e.status !== 'running')); // n8n 2.6.3
+      if (etat.apresLister) etat.apresLister({ workflowId, status }); // entrelacements : effet APRÈS cette réponse
+      return r;
     },
     async lireExecution(id) {
       etat.lus.push(String(id));
@@ -156,6 +158,7 @@ async function monde(x = {}) {
   if (x.modifier) await x.modifier(ctx);
   ctx.fabriquer = () => { etat.fabriques += 1; return fab; };
   ctx.signer = () => CP.signerPage(setId, base, ctx.fabriquer);
+  ctx.dossier = dossier;
   ctx.marqueur = () => etat.ecrits.has(path.join(dossier, `${setId}.signature`));
   ctx.attestation = () => [...etat.ecrits.keys()].find((p) => p.endsWith('attestation.json'));
   return ctx;
@@ -210,6 +213,46 @@ describe('signature nominale : vrai cloturer, vrai rattacherPage', () => {
   });
 });
 
+describe('diagnostic de comptage (§21.2) et badge', () => {
+  test('nominal : nb_decisions_listees de la clôture retenue = décompte du signataire (2, 2), sans nouvelle lecture', async () => {
+    const ctx = await monde();
+    const r = await ctx.signer();
+    assert.deepEqual(r.diagnostic, { nb_decisions_listees: 2, decompte_signataire: 2 });
+  });
+  test('décision et clôture d\'un AUTRE lot : ni comptée ni retenue pour le diagnostic', async () => {
+    const autre = 'set_fonda_resolution-problemes_nI_92';
+    const ctx = await monde({ modifier: ({ execs, specs, depsBase, decision }) => {
+      execs[T.cloture].push({ id: 26, workflowId: T.cloture, status: 'success', startedAt: '2026-10-20T08:20:00.000Z', stoppedAt: '2026-10-20T08:21:00.000Z' });
+      specs[26] = ['cloture', { set_id: autre, clos_le: '2026-10-20T08:19:00.000Z', deja_clos: false, candidat_fichier_id: 'drv-autre', nb_decisions_listees: 9, incomplete_search: false }];
+      const base = depsBase.drive.listerDecisions;
+      depsBase.drive.listerDecisions = async () => { const r = await base(); r.fichiers.push({ id: 'drv-autre-d', nom: `${autre}-${'c'.repeat(32)}.json`, modifie_le: '2026-10-19T17:00:01.500Z', properties: { fonda_set_id: autre, fonda_nonce: 'c'.repeat(32) }, contenu: { ...decision('c'.repeat(32)), set_id: autre } }); return r; };
+    } });
+    const r = await ctx.signer();
+    assert.deepEqual(r.diagnostic, { nb_decisions_listees: 2, decompte_signataire: 2 });
+  });
+  test('décomptes différents (Cloturer : 1) -> signé quand même (jamais décisif), diagnostic rendu', async () => {
+    const ctx = await monde({ modifier: ({ specs }) => { specs[20][1].nb_decisions_listees = 1; } });
+    const r = await ctx.signer();
+    assert.equal(ctx.etat.signatures, 1);
+    assert.deepEqual(r.diagnostic, { nb_decisions_listees: 1, decompte_signataire: 2 });
+  });
+  test('clôture répétée : la PLUS RÉCENTE fournit nb_decisions_listees', async () => {
+    const ctx = await monde({ modifier: ({ execs, specs }) => {
+      execs[T.cloture].push({ id: 24, workflowId: T.cloture, status: 'success', startedAt: '2026-10-20T08:10:00.000Z', stoppedAt: '2026-10-20T08:11:00.000Z' });
+      specs[24] = ['cloture', { ...specs[20][1], deja_clos: true, nb_decisions_listees: 3 }];
+    } });
+    assert.equal((await ctx.signer()).diagnostic.nb_decisions_listees, 3);
+  });
+  test('badge : lot d\'Éric en confirmation AUTOMATIQUE -> « Éric Duchateau » (tiers : générique, test nominal)', async () => {
+    const ctx = await monde({ maths: true });
+    await ctx.signer();
+    const env = JSON.parse(ctx.etat.ecrits.get(ctx.attestation()).toString('utf8'));
+    assert.deepEqual(env.charge.badge, { forme: 'relue_par', nom_affiche: 'Éric Duchateau', id: 'eric' });
+    assert.equal(env.charge.confirmation.mode, 'auto');
+    assert.ok(!ctx.etat.questions.some((q) => /Mode/.test(q)), 'aucun mode demandé en auto');
+  });
+});
+
 describe('confinement : sentinelles k, adresse, HMAC, jetons, clé d\'API dans TOUTES les sources', () => {
   test('signature nominale : aucune sentinelle dans les fichiers écrits, l\'affichage, le résultat, le journal', async () => {
     const ctx = await monde();
@@ -241,8 +284,59 @@ describe('confinement : sentinelles k, adresse, HMAC, jetons, clé d\'API dans T
       void fichiers;
     } });
     const err = await refusSansSignature(ctx, /non conforme/);
-    assert.ok(err.message.includes(SEN.adresse), 'le message brut de cloturer porte le nom (sinon le test ne prouve rien)');
-    assert.ok(!CP.masquer(err.message).includes(SEN.adresse));
+    assert.ok(err.message.includes(CP.NOM_NON_CONFORME), 'nom hors grammaire remplacé à la frontière');
+    assert.deepEqual(fuite(err.message), []);
+  });
+  test('P1 (reproduction Codex) : erreur de lecture portant une clé d\'API, encapsulée par cloturer -> message contrôlé', async () => {
+    const ctx = await monde({ modifier: ({ depsBase }) => { depsBase.drive.listerDecisions = async () => { throw new Error(`HTTP 500 ${SEN.cleApi} ${SEN.jetonCloturer}`); }; } });
+    const err = await refusSansSignature(ctx, /decisions\/\) : lecture en échec \(détail non affiché\)/, 'temporaire');
+    assert.deepEqual(fuite(err.message), []);
+  });
+  test('P1 (reproduction Codex) : fichier decisions/ nommé <k>.json -> « [nom non conforme] », k jamais affichée', async () => {
+    const ctx = await monde({ modifier: ({ depsBase }) => {
+      const base = depsBase.drive.listerDecisions;
+      depsBase.drive.listerDecisions = async () => { const r = await base(); r.fichiers.push({ id: 'drv-k', nom: `${SEN.k}.json`, modifie_le: '2026-10-19T17:00:01.500Z', properties: {}, contenu: { illisible: true } }); return r; };
+    } });
+    const err = await refusSansSignature(ctx, /non conforme/);
+    assert.ok(err.message.includes(CP.NOM_NON_CONFORME));
+    assert.deepEqual(fuite(err.message), []);
+  });
+  test('P1 : erreurs de TOUS les adaptateurs injectés contrôlées ; statut 401/403 conservé (incident)', async () => {
+    const pannes = {
+      'API n8n (exécution)': ({ api }) => { api.lireExecution = async () => { throw Object.assign(new Error(`403 ${SEN.cleApi}`), { statut: 403 }); }; },
+      'Drive (lot généré)': ({ depsBase }) => { depsBase.drive.lireLotGenere = async () => { throw new Error(SEN.k); }; },
+      'Drive (candidats/)': ({ depsBase }) => { depsBase.drive.listerCandidats = async () => { throw new Error(SEN.adresse); }; },
+      'Drive (candidat)': ({ depsBase }) => { depsBase.drive.lireCandidat = async () => { throw new Error(SEN.hmac); }; },
+      'historique de confiance (journal)': ({ depsBase }) => { depsBase.journal = async () => { throw new Error(SEN.jetonEmettre); }; },
+      'registre des incidents': ({ depsBase }) => { depsBase.incidents = async () => { throw new Error(SEN.cleApi); }; },
+    };
+    for (const [quoi, panne] of Object.entries(pannes)) {
+      const ctx = await monde({ modifier: panne });
+      const err = await ctx.signer().then(() => null, (e) => e);
+      assert.ok(err, quoi);
+      assert.equal(ctx.etat.signatures, 0, quoi);
+      assert.deepEqual(fuite(err.message), [], quoi);
+      if (quoi === 'API n8n (exécution)') assert.equal(err.issue, 'incident', 'accès insuffisant 403 conservé à travers la frontière');
+    }
+    const ctx = await monde({ modifier: ({ depsBase }) => { depsBase.referentielArchive = async () => { throw new Error(SEN.k); }; } });
+    const err = await ctx.signer().then(() => null, (e) => e);
+    assert.deepEqual(fuite(err.message), [], 'référentiel archivé');
+    const c2 = await monde({ modifier: ({ api }) => { api.lireExecution = async () => { throw new Error(`HTTP 500 ${SEN.cleApi}`); }; } });
+    const e2 = await refusSansSignature(c2, /lecture en échec \(détail non affiché\)/, 'temporaire');
+    assert.deepEqual(fuite(e2.message), [], 'lecture d\'exécution (panne non 403)');
+  });
+  test('P1 : erreurs PARTIELLES de decisions/ (fichier non lu) -> messages contrôlés', async () => {
+    const ctx = await monde({ modifier: ({ depsBase }) => {
+      const base = depsBase.drive.listerDecisions;
+      depsBase.drive.listerDecisions = async () => { const r = await base(); r.fichiers.push({ id: 'drv-e', nom: `${SEN.k}.json`, modifie_le: '2026-10-19T17:00:01.500Z', properties: {}, contenu: null, erreur: { statut: 500, message: SEN.cleApi } }); r.erreurs = [{ quoi: `décision ${SEN.k}.json`, statut: 500, message: `HTTP 500 ${SEN.cleApi}` }]; r.complet = false; return r; };
+    } });
+    const err = await refusSansSignature(ctx, /lecture partielle/, 'temporaire');
+    assert.deepEqual(fuite(err.message), []);
+  });
+  test('P1 : noms Drive CONFORMES inchangés (lot, candidat, décision) ; un nom hors grammaire remplacé', () => {
+    const d = 'set_fonda_comprendre-consigne_nI_92';
+    for (const n of [`${d}.lot.json`, `${d}.candidat.json`, `${d}-${'0f'.repeat(16)}.json`]) assert.equal(CP.nomSur(n), n);
+    for (const n of [`${SEN.k}.json`, `${SEN.adresse}.json`, `${d}-n10.json`, `${d}.lot.json.bak`, null, 42]) assert.equal(CP.nomSur(n), CP.NOM_NON_CONFORME, String(n));
   });
 });
 
@@ -320,6 +414,26 @@ describe('TOCTOU (arbitrage A) : dernière observation après « J\'atteste », 
       assert.equal(ctx.etat.preparations, 1, 'la phrase avait été saisie : rien n\'est consommé');
     });
   }
+  test('P2 (entrelacement Codex) : Confirmer démarre APRÈS la requête running, AVANT waiting, et reste en cours -> balayage final : refus', async () => {
+    const ctx = await monde({ avantFinal: ({ etat, execs }) => {
+      etat.apresLister = ({ workflowId, status }) => {
+        if (workflowId === T.confirmation && status === 'running' && !execs[T.confirmation].some((e) => e.id === 12)) execs[T.confirmation].push({ id: 12, workflowId: T.confirmation, status: 'running', startedAt: '2026-10-20T09:00:40.000Z', stoppedAt: null });
+      };
+    } });
+    await refusSansSignature(ctx, /balayage|en cours apparue/, 'temporaire');
+  });
+  test('P2 (entrelacement Codex) : génération démarrée APRÈS sa dernière observation, pendant celle de Confirmer -> balayage final : refus', async () => {
+    const ctx = await monde({ avantFinal: ({ etat, execs }) => {
+      etat.apresLister = ({ workflowId }) => {
+        if (workflowId === T.confirmation && !execs.wfGen.some((e) => e.id === 503)) execs.wfGen.push({ id: 503, workflowId: 'wfGen', status: 'running', startedAt: '2026-10-20T09:00:40.000Z', stoppedAt: null });
+      };
+    } });
+    await refusSansSignature(ctx, /en cours apparue/, 'temporaire');
+  });
+  test('P2 : balayage final impossible -> refus, aucun marqueur', async () => {
+    const ctx = await monde({ avantFinal: ({ etat }) => { let n = 0; etat.panneApi = () => (n += 1) > 12; } });
+    await refusSansSignature(ctx, /contrôle final/, 'temporaire');
+  });
   test('dernière observation en panne -> refus temporaire, aucun marqueur', async () => {
     const ctx = await monde({ avantFinal: ({ etat }) => { etat.panneApi = () => true; } });
     await refusSansSignature(ctx, /contrôle final/, 'temporaire');
@@ -480,6 +594,21 @@ describe('processus réels (lockf) : signature <-> écriture exclues par le verr
     assert.equal(sortie, 1);
     assert.match(ecrits.join(''), /fichier \[adresse masquée\] non conforme/);
     assert.deepEqual(fuite(ecrits.join('')), []);
+  });
+  test('main : signature réelle -> diagnostic affiché ; avertissement si les décomptes diffèrent', async () => {
+    for (const [nb, avert] of [[2, false], [1, true]]) {
+      const ctx = await monde({ modifier: ({ specs }) => { specs[20][1].nb_decisions_listees = nb; } });
+      const t = V.prendreVerrou(ctx.base.verrous); fs.closeSync(t.fd); // le verrou réel existe (lockf)
+      const ecrits = [];
+      const code = process.exitCode;
+      await CP.main([ctx.setId], () => ctx.fab, ctx.base.verrous, { out: (x) => ecrits.push(x), err: (x) => ecrits.push(x) });
+      process.exitCode = code;
+      const o = ecrits.join('');
+      assert.match(o, /clôturé \(signé\)/, o);
+      assert.match(o, new RegExp(`listées par Cloturer = ${nb} ; décisions conformes du lot vues par le signataire = 2`));
+      assert.equal(/décomptes différents/.test(o), avert);
+      assert.deepEqual(fuite(o), []);
+    }
   });
   test('main : erreur interne jamais affichée (son message peut porter un secret)', async () => {
     const d = dossierVerrou();
