@@ -6,7 +6,7 @@ Tout se passe sur le Mac d'Éric. **La garde maîtresse est levée au lot 7, pou
 - La garde de `cloturer` est **inchangée** : sans fonction `rattachement`, elle refuse.
   - En production, `main()` fournit `RATTACHEMENT_SAISIE_LOCALE`.
   - Cette fonction n'est jamais consommée en saisie locale ; si elle l'était (parcours page), elle refuserait (`precondition`).
-  - Le contrat de rattachement du parcours page n'est toujours pas défini.
+  - Le parcours page passe par **`cloturer-page.js`** (P5-3, section ci-dessous), qui fournit `rattacherPage` ; `signer-cloture.js` le refuse toujours.
 
 ## Secrets (`~/.fonda-cles/`, jamais dans le dépôt ni dans Dropbox)
 
@@ -30,6 +30,24 @@ Dossier de clôture : `~/FONDA-clotures/` (hors dépôt, hors Dropbox).
 | `signer-cloture.js <set_id>` | clôture en **saisie locale** (lot 7) : clé préparée avant, puis `cloturer` ; `--source page_relecture` refusée avant réseau et clé |
 | `signer-cloture.js --extraire-publication <set_id>` | vérifie **toutes** les pièces signées, puis écrit `lot-relu.json`. La commande est relançable : si le fichier existe avec les mêmes octets, elle réussit sans écrire ; s'il diffère, elle refuse |
 | `declencher-generation.js <set_id> <ref>` (et `--etat`, `--liberer`, `--reparer`) | appelant unique de la génération (lot 4) |
+
+## Parcours page : `cloturer-page.js` (P5-3, CDC §21.9, §21.12)
+
+> **AUCUNE SIGNATURE PAGE AVANT LA PHASE B ET LE GO D'ÉRIC.** Le CLI existe ; il ne sert qu'après la phase B (vérification de H3, activation des workflows, bout en bout).
+>
+> **PRÉCONDITION « un seul Mac »** (§21.12.1) : toute écriture (`ecrire-relecture.js`) et toute signature page partent du **seul Mac d'Éric**. Plusieurs ordinateurs : hors périmètre.
+
+`node fonda/scripts/cloturer-page.js <set_id>` — point d'entrée de la signature page. `signer-cloture.js` reste **intact** : son `main()` refuse toujours `--source page_relecture`.
+
+Séquence, sous le **verrou** de la relecture (`~/FONDA-clotures/verrous/`, tenu pendant tout le processus, confirmation comprise ; code **75** si une écriture ou une autre signature le tient) :
+
+1. **Journal d'écriture** (avant toute clé) : tentative ouverte ou indéterminée sur le lot → refus temporaire (`ecrire-relecture.js diagnostiquer`) ; lot bloqué → abandon (nouveau `set_id`) ; portion perdue non attribuée → incident ; journal illisible → refus.
+2. **Quiescence** : aucune exécution en vol sur Emettre ni sur Cloturer (tous lots).
+3. **Phrase de passe** saisie au terminal (jamais affichée) ; clé privée lue par `preparerSignataire` seul.
+4. `cloturer` en `page_relecture` : rattachement `rattacherPage` ; **badge générique** (`tableRelecteurs = {}` : « relue par un professeur », le relecteur n'est pas nommé — arbitrage C) ; **aucune levée** (`recherche_incomplete` toujours refusée — arbitrage D).
+5. **Contrôle final** (TOCTOU, arbitrage A) : après « J'atteste… » et **avant** le marqueur `<set_id>.signature`, dernière observation de la génération, de Confirmer, de Cloturer et d'Emettre ; toute exécution apparue ou modifiée (id, statut, dates) depuis le listing, ou un journal qui ne permet plus de poursuivre → refus temporaire **sans marqueur** : relancer.
+
+Écritures : **uniquement** `~/FONDA-clotures/` (instantané, export, récapitulatif, marqueur, attestation). Aucun webhook, aucune écriture Drive ni n8n. Lectures : n8n avec `n8n-signataire.cle` (GET seulement), Drive en `drive.readonly`, aucune redirection suivie. Affichage : motifs d'adresse **masqués** (arbitrage B).
 
 ## États du diagnostic
 
