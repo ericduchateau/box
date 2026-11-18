@@ -77,6 +77,7 @@ async function monde(x = {}) {
   const fx = instancier(FIXTURE, { SET_ID: setId, REF: ref, NOTION_ID: lot.notion_id, PALIER: lot.palier, MOTEUR_SHA256: MOTEUR.sha256, REFERENTIEL_VERSION: versionRef, JOURNAL_COMMIT: COMMIT, EMPREINTE_PEDAGOGIQUE: empreintes.pedagogique, EMPREINTE_COMPLETE: empreintes.complete });
   const genDetail = copie(fx.reussie);
   genDetail.data.resultData.runData = { ...genDetail.data.resultData.runData, ...SENTINELLES_RUN };
+  if (x.gen) x.gen(genDetail);
   const decision = (n) => ({ schema: 'decision-fonda/v1', set_id: setId, generation: 1, nonce: n, recu_le: '2026-10-19T17:00:01.000Z', coeur: copie(coeur), lot_relu: copie(lotRelu), hash_formulaire: 'h' });
   const fichiers = [NA, NB].map((n) => ({ id: `drv-${n.slice(0, 4)}`, nom: `${setId}-${n}.json`, modifie_le: '2026-10-19T17:00:01.500Z', properties: { fonda_set_id: setId, fonda_nonce: n }, contenu: decision(n) }));
   const sortieDecision = (n) => ({ type: 'decision', set_id: setId, nonce: n, generation: 1, decision_fichier_id: `drv-${n.slice(0, 4)}`, decision_sha256: P.empreinteDecision(decision(n)), ecriture: 'creee', motif: null });
@@ -475,6 +476,47 @@ describe('confinement : sentinelles k, adresse, HMAC, jetons, clé d\'API dans T
     const ctx = await monde({ referentiel: (r) => r });
     await ctx.signer();
     assert.equal(ctx.etat.signatures, 1);
+  });
+  // Dernière confirmation (critère d'arrêt) : corrections 1 à 4.
+  test('c1 : un hex ACCOLÉ (65 hex ou plus) ne contourne plus rien : registre, lot, filet', async () => {
+    const s65 = `0${SEN.k}`;
+    const inc = { id: 'inc-1', nature: 'panne', detecte_le: '2026-10-01T08:00:00.000Z', statut: 'resolu', resolu_le: '2026-10-02T08:00:00.000Z', preuve_resolution: `k=${s65}`, periode: { debut: '2026-10-01T08:00:00.000Z', fin: '2026-10-02T08:00:00.000Z' } };
+    const r1 = await monde({ modifier: ({ depsBase }) => { depsBase.incidents = async () => [inc]; } });
+    await refusSansSignature(r1, /registre des incidents : contenu non admissible/, 'incident');
+    const r2 = await monde({ lot: (l) => { l.cartes[0].question = `Recopie ${s65}`; } });
+    await refusSansSignature(r2, /lot généré : contenu non admissible/, 'abandon');
+    const m = CP.masquerRefus(`${s65} sha256:${s65} sha256:${'ab'.repeat(32)}`);
+    assert.deepEqual(fuite(m), []);
+    assert.ok(m.includes(`sha256:${'ab'.repeat(32)}`), 'empreinte exacte lisible');
+  });
+  test('c2 : modele « sha256:<secret> » (sortie de génération) -> « [valeur non conforme] », abandon, aucune fuite même brute', async () => {
+    for (const v of [`sha256:${SEN.k}`, SEN.cleApi, 42]) {
+      const ctx = await monde({ gen: (g) => { g.data.resultData.runData['FONDA Sortie generation'][0].data.main[0][0].json.modele = v; } });
+      const err = await refusSansSignature(ctx, /modele/, 'abandon');
+      assert.deepEqual(fuite(err.message), [], String(v).slice(0, 8));
+      assert.ok(err.message.includes(CP.NON_CONFORME));
+    }
+  });
+  test('c2 : contenu du lot — « sha256: » + 64 hex dans une question -> refus (aucune exemption dans le lot)', async () => {
+    const ctx = await monde({ lot: (l) => { l.cartes[0].question = `sha256:${SEN.k}`; } });
+    await refusSansSignature(ctx, /lot généré : contenu non admissible/, 'abandon');
+  });
+  test('c3 : relecteur ABSENT du référentiel archivé -> refus incident AVANT toute écriture', async () => {
+    const ctx = await monde({ referentiel: (r) => { delete r.notions.find((n) => n.id === 'fr.comprendre-consigne').relecteur; return r; } });
+    await refusSansSignature(ctx, /référentiel archivé : relecteur hors grammaire/, 'incident');
+    assert.equal(ctx.etat.ecrits.size, 0, 'aucune écriture');
+  });
+  test('c4 : id invalide + date invalide à la quiescence -> incident (pas temporaire)', async () => {
+    const ctx = await monde({ modifier: ({ execs }) => { Object.assign(execs[T.emettre][0], { id: '010', startedAt: 'hier' }); } });
+    await refusSansSignature(ctx, /identifiant d'exécution hors grammaire/, 'incident');
+  });
+  test('c4 : id invalide apparu SEULEMENT au balayage final -> incident, aucun marqueur', async () => {
+    const ctx = await monde({ avantFinal: ({ etat, execs }) => {
+      etat.apresLister = ({ workflowId, status }) => {
+        if (workflowId === T.emettre && !status && !execs[T.emettre].some((e) => e.id === 'abc')) execs[T.emettre].push({ id: 'abc', workflowId: T.emettre, status: 'running', startedAt: '2026-10-20T09:00:40.000Z', stoppedAt: null });
+      };
+    } });
+    await refusSansSignature(ctx, /identifiant d'exécution hors grammaire/, 'incident');
   });
   test('P1 : noms Drive CONFORMES inchangés (lot, candidat, décision) ; un nom hors grammaire remplacé', () => {
     const d = 'set_fonda_comprendre-consigne_nI_92';

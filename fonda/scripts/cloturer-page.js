@@ -67,14 +67,14 @@ const refuser = (m, issue) => { throw new SC.Refus(m, issue); };
 const ADRESSE = /[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g;
 const masquer = (t) => String(t).replace(ADRESSE, '[adresse masquée]');
 // Motifs de SECRETS (filet, refus seulement) : 64 hex nus (k, HMAC, jetons) et JWT ; « sha256:<64 hex> » lisible.
-const HEX64_NU = /(?<![0-9A-Fa-f])(?<!sha256:)[0-9A-Fa-f]{64}(?![0-9A-Fa-f])/g; // seul le préfixe EXACT « sha256: » est exempté
-const HEX64 = /(?<![0-9A-Fa-f])[0-9A-Fa-f]{64}(?![0-9A-Fa-f])/; // registre : TOUTE suite de 64 hex, préfixe compris
+const HEX64_PLUS = /[0-9A-Fa-f]{64,}/g; // suites MAXIMALES de 64 hex ou plus
+// Empreinte légitime (filet d'affichage seulement) : EXACTEMENT 64 hex précédés du préfixe exact « sha256: ».
+const estEmpreinte = (t, i, n) => n === 64 && t.slice(Math.max(0, i - 7), i) === 'sha256:';
 const JWT = /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g;
-const masquerRefus = (t) => masquer(t).replace(JWT, '[secret masqué]').replace(HEX64_NU, '[secret masqué]');
-// porteSecret : adresse, 64 hex NUS (sha256: exempté), JWT — contenu du lot ; porteSecretRegistre : idem,
-// mais TOUTE suite de 64 hex (une preuve d'incident est du texte libre ; un commit = 40 hex).
-const porteSecret = (t) => { const x = String(t); return new RegExp(ADRESSE.source).test(x) || new RegExp(HEX64_NU.source).test(x) || new RegExp(JWT.source).test(x); };
-const porteSecretRegistre = (t) => porteSecret(t) || HEX64.test(String(t));
+const masquerRefus = (t) => masquer(t).replace(JWT, '[secret masqué]').replace(HEX64_PLUS, (m, i, tout) => (estEmpreinte(tout, i, m.length) ? m : '[secret masqué]'));
+// Contenu SIGNÉ (lot, registre) : adresse, TOUTE suite de 64 hex ou plus (aucune exemption : ni lot-fonda/v1
+// ni le registre n'ont de champ d'empreinte ; un commit = 40 hex), JWT.
+const porteSecret = (t) => { const x = String(t); return new RegExp(ADRESSE.source).test(x) || new RegExp(HEX64_PLUS.source).test(x) || new RegExp(JWT.source).test(x); };
 
 function analyserArguments(argv) {
   if (!Array.isArray(argv) || argv.length !== 1 || typeof argv[0] !== 'string' || !C.SET_ID_PATTERN.test(argv[0])) refuser('usage : cloturer-page.js <set_id> — Mac d\'Éric seulement (un seul Mac) ; aucune signature page avant la phase B et le go d\'Éric', 'precondition');
@@ -97,7 +97,8 @@ const STATUTS_CANDIDAT = ['en_attente', 'clos', 'abandonne'];
 const TYPES_CONFIRMATION = ['decision', 'conflit', 'rejet'];
 const MOTIFS_REJET = ['C1', 'C2', 'C3', 'C4', 'C5', 'C5bis'];
 const dansDomaine = (o, k, domaine) => { if (o && typeof o === 'object' && Object.prototype.hasOwnProperty.call(o, k) && !domaine.includes(o[k])) o[k] = NON_CONFORME; };
-const SORTIES = ['FONDA Sortie confirmation', 'FONDA Sortie cloture'];
+const SORTIES = ['FONDA Sortie confirmation', 'FONDA Sortie cloture', 'FONDA Sortie generation'];
+const MODELE = /^[a-z0-9][a-z0-9.-]{0,63}$/;
 function domaineExecution(brute) {
   if (!brute || typeof brute !== 'object') return brute;
   dansDomaine(brute, 'status', STATUTS_EXECUTION);
@@ -111,6 +112,7 @@ function domaineExecution(brute) {
           if (!j || typeof j !== 'object') continue;
           if (n === SORTIES[0]) { dansDomaine(j, 'type', TYPES_CONFIRMATION); dansDomaine(j, 'motif', [...MOTIFS_REJET, null]); idDrive(j, 'decision_fichier_id'); }
           if (n === SORTIES[1]) idDrive(j, 'candidat_fichier_id');
+          if (n === SORTIES[2] && Object.prototype.hasOwnProperty.call(j, 'modele') && !(typeof j.modele === 'string' && MODELE.test(j.modele))) j.modele = NON_CONFORME; // cité par liaison-generation
         }
       }
     }
@@ -172,12 +174,12 @@ function frontiere(d, signal = {}) {
     },
     journal: filtrer('historique de confiance (journal)', (c) => d.journal(c)),
     // Contenu SIGNÉ (incidents_connus) : refusé, jamais masqué, s'il porte une adresse ou un secret présumé.
-    incidents: filtrer('registre des incidents', async () => { const r = await d.incidents(); if (textes(r).some(porteSecretRegistre)) throw new RefusFrontiere(REGISTRE_NON_ADMISSIBLE, 'incident'); return r; }),
+    incidents: filtrer('registre des incidents', async () => { const r = await d.incidents(); if (textes(r).some(porteSecret)) throw new RefusFrontiere(REGISTRE_NON_ADMISSIBLE, 'incident'); return r; }),
     // Relecteur(s) du référentiel archivé (recopiés dans l'attestation) : grammaire stricte, sinon refus.
     referentielArchive: filtrer('référentiel archivé', async (v) => {
       const o = await d.referentielArchive(v);
       const ref = o ? lireJsonOctets(o) : undefined;
-      if (ref && Array.isArray(ref.notions) && ref.notions.some((n) => n && Object.prototype.hasOwnProperty.call(n, 'relecteur') && !(typeof n.relecteur === 'string' && RELECTEUR.test(n.relecteur)))) { signal.relecteur = true; throw new RefusFrontiere(RELECTEUR_NON_CONFORME, 'incident'); }
+      if (ref && Array.isArray(ref.notions) && ref.notions.some((n) => !(n && typeof n.relecteur === 'string' && RELECTEUR.test(n.relecteur)))) { signal.relecteur = true; throw new RefusFrontiere(RELECTEUR_NON_CONFORME, 'incident'); }
       return o;
     }),
   };
@@ -213,11 +215,13 @@ function lireJournal(setId, deps) {
 }
 
 async function observerOuRefuser(api, workflowId, quoi) {
-  let obs;
-  try { obs = await SC.observer(api, workflowId); } catch { return refuser(`observation n8n (${quoi}) impossible ou incomplète : refus temporaire, relancer`, 'temporaire'); }
-  for (const x of obs) exigerIdExecution(x.id); // quiescence et contrôle final aussi (Emettre n'est vu que là)
-  return obs;
+  try { return await SC.observer(api, workflowId); } catch (e) { if (e instanceof RefusFrontiere) throw e; return refuser(`observation n8n (${quoi}) impossible ou incomplète : refus temporaire, relancer`, 'temporaire'); }
 }
+// API des observations HORS cloturer (quiescence, contrôle final, balayage) : ids contrôlés AVANT observer.
+const apiIdsControles = (api) => ({
+  listerExecutions: async (q) => { const r = await api.listerExecutions(q); if (Array.isArray(r)) for (const x of r) exigerIdExecution(x && x.id); return r; },
+  lireExecution: (id) => api.lireExecution(id),
+});
 
 /**
  * Signature page d'un set_id, sous le verrou déjà PRIS par l'appelant.
@@ -232,7 +236,8 @@ async function signerPage(setId, base, fabriquer) {
   lireJournal(setId, base);
   const fab = fabriquer();
   // (2) quiescence : Emettre ET Cloturer, quel que soit le lot (observations ENREGISTRÉES).
-  const rec = enregistreur(fab.api);
+  const apiObs = apiIdsControles(fab.api);
+  const rec = enregistreur(apiObs);
   for (const [wf, quoi] of [[WORKFLOWS.emettre, 'Emettre'], [WORKFLOWS.cloture, 'Cloturer']]) {
     const obs = await observerOuRefuser(rec.api, wf, quoi);
     if (obs.some((x) => EN_VOL.includes(x.status))) refuser(`quiescence : exécution en vol sur ${quoi} : refus temporaire, relancer plus tard`, 'temporaire');
@@ -246,13 +251,13 @@ async function signerPage(setId, base, fabriquer) {
     for (const wf of suivis) {
       let premiere;
       try { premiere = await rec.premiere(wf); } catch { refuser('contrôle final : première observation indisponible — aucune signature, relancer', 'temporaire'); }
-      const derniere = await observerOuRefuser(fab.api, wf, 'contrôle final');
+      const derniere = await observerOuRefuser(apiObs, wf, 'contrôle final');
       if (empreinte(premiere) !== empreinte(derniere)) refuser('contrôle final : exécutions n8n apparues ou modifiées depuis le listing — aucune signature, relancer', 'temporaire');
     }
     // Balayage final (P2-i) : une exécution démarrée pendant les observations et encore en cours.
     for (const wf of suivis) {
       let enCours;
-      try { enCours = await fab.api.listerExecutions({ workflowId: wf, status: 'running' }); } catch { refuser('contrôle final : balayage impossible — aucune signature, relancer', 'temporaire'); }
+      try { enCours = await apiObs.listerExecutions({ workflowId: wf, status: 'running' }); } catch (e) { if (e instanceof RefusFrontiere) throw e; refuser('contrôle final : balayage impossible — aucune signature, relancer', 'temporaire'); }
       if (!Array.isArray(enCours) || enCours.length) refuser('contrôle final : exécution n8n en cours apparue pendant les observations — aucune signature, relancer', 'temporaire');
     }
     lireJournal(setId, base);
@@ -354,6 +359,6 @@ async function main(argv = process.argv.slice(2), fab = fabrique, verrous = V.VE
   }
 }
 
-module.exports = { LOT_NON_ADMISSIBLE, RELECTEUR_NON_CONFORME, porteSecretRegistre, ID_NON_CONFORME, WORKFLOWS, QUESTION_FIDELITE, NOM_NON_CONFORME, NON_CONFORME, REGISTRE_NON_ADMISSIBLE, masquer, masquerRefus, porteSecret, nomSur, frontiere, analyserArguments, empreinte, enregistreur, signerPage, fabrique, main };
+module.exports = { LOT_NON_ADMISSIBLE, RELECTEUR_NON_CONFORME, ID_NON_CONFORME, WORKFLOWS, QUESTION_FIDELITE, NOM_NON_CONFORME, NON_CONFORME, REGISTRE_NON_ADMISSIBLE, masquer, masquerRefus, porteSecret, nomSur, frontiere, analyserArguments, empreinte, enregistreur, signerPage, fabrique, main };
 
 if (require.main === module) main();
