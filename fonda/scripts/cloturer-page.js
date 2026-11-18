@@ -29,7 +29,12 @@
 //       entre deux requêtes peut échapper ; sans effet sur l'intégrité (CDC §21.12.4).
 // FRONTIÈRE (P1) : toute erreur d'un adaptateur injecté (n8n, Drive, journal, incidents, référentiel)
 // repart avec un message CONTRÔLÉ (statut 401/403 conservé) ; tout nom Drive hors grammaire devient
-// « [nom non conforme] ». Affichage (arbitrage B) : MASQUAGE DÉFENSIF des motifs d'adresse en plus.
+// « [nom non conforme] » ; tout champ ÉNUMÉRÉ lu par l'évaluation (statut du candidat, mode et statut
+// d'exécution, type et motif de sortie) hors de son domaine devient « [valeur non conforme] » (il reste
+// hors domaine : verdict inchangé) ; un registre des incidents dont un champ textuel porte une adresse ou
+// un motif de secret est REFUSÉ (issue incident) avant toute signature — jamais masqué en silence.
+// Affichage (arbitrage B) : adresses masquées ; refus affichés avec, EN PLUS, les motifs de secrets
+// (64 hexadécimaux non précédés de « sha256: », jetons JWT) masqués (filet).
 // Diagnostic (§21.2) : nb_decisions_listees de la clôture retenue et décompte du signataire, affichés
 // après la signature, jamais décisifs.
 // Transports : n8n (clé n8n-signataire.cle) et Drive (compte de service drive.readonly) en GET seulement,
@@ -59,6 +64,11 @@ const refuser = (m, issue) => { throw new SC.Refus(m, issue); };
 // Masquage DÉFENSIF des motifs d'adresse (arbitrage B) ; chemins, ids et empreintes restent lisibles.
 const ADRESSE = /[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g;
 const masquer = (t) => String(t).replace(ADRESSE, '[adresse masquée]');
+// Motifs de SECRETS (filet, refus seulement) : 64 hex nus (k, HMAC, jetons) et JWT ; « sha256:<64 hex> » lisible.
+const HEX64_NU = /(?<![0-9A-Fa-f:])(?<!sha256:)[0-9A-Fa-f]{64}(?![0-9A-Fa-f])/g;
+const JWT = /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g;
+const masquerRefus = (t) => masquer(t).replace(JWT, '[secret masqué]').replace(HEX64_NU, '[secret masqué]');
+const porteSecret = (t) => { const x = String(t); ADRESSE.lastIndex = 0; HEX64_NU.lastIndex = 0; JWT.lastIndex = 0; return new RegExp(ADRESSE.source).test(x) || new RegExp(HEX64_NU.source).test(x) || new RegExp(JWT.source).test(x); };
 
 function analyserArguments(argv) {
   if (!Array.isArray(argv) || argv.length !== 1 || typeof argv[0] !== 'string' || !C.SET_ID_PATTERN.test(argv[0])) refuser('usage : cloturer-page.js <set_id> — Mac d\'Éric seulement (un seul Mac) ; aucune signature page avant la phase B et le go d\'Éric', 'precondition');
@@ -71,7 +81,37 @@ const NOMS_CONFORMES = [new RegExp(`^${SID}\\.lot\\.json$`), new RegExp(`^${SID}
 const NOM_NON_CONFORME = '[nom non conforme]';
 const nomSur = (n) => (typeof n === 'string' && NOMS_CONFORMES.some((r) => r.test(n)) ? n : NOM_NON_CONFORME);
 class ErreurFrontiere extends Error { constructor(quoi, e) { super(`${quoi} : lecture en échec (détail non affiché)`); if (e && (e.statut === 401 || e.statut === 403)) this.statut = e.statut; } }
-const filtrer = (quoi, f) => async (...a) => { try { return await f(...a); } catch (e) { throw new ErreurFrontiere(quoi, e); } }; // TOUT est filtré, sans exception
+class RefusFrontiere extends SC.Refus {} // refus DÉCIDÉ par la frontière (message fixe) : seul à passer tel quel
+const filtrer = (quoi, f) => async (...a) => { try { return await f(...a); } catch (e) { if (e instanceof RefusFrontiere) throw e; throw new ErreurFrontiere(quoi, e); } };
+// Domaines (listes blanches) des champs énumérés lus par l'évaluation.
+const NON_CONFORME = '[valeur non conforme]';
+const STATUTS_EXECUTION = ['success', 'error', 'crashed', 'canceled', 'new', 'running', 'waiting'];
+const MODES_N8N = ['webhook', 'manual', 'trigger', 'retry', 'integrated', 'cli', 'internal', 'error', 'evaluation'];
+const STATUTS_CANDIDAT = ['en_attente', 'clos', 'abandonne'];
+const TYPES_CONFIRMATION = ['decision', 'conflit', 'rejet'];
+const MOTIFS_REJET = ['C1', 'C2', 'C3', 'C4', 'C5', 'C5bis'];
+const dansDomaine = (o, k, domaine) => { if (o && typeof o === 'object' && Object.prototype.hasOwnProperty.call(o, k) && !domaine.includes(o[k])) o[k] = NON_CONFORME; };
+const SORTIES = ['FONDA Sortie confirmation', 'FONDA Sortie cloture'];
+function domaineExecution(brute) {
+  if (!brute || typeof brute !== 'object') return brute;
+  dansDomaine(brute, 'status', STATUTS_EXECUTION);
+  dansDomaine(brute, 'mode', MODES_N8N);
+  const rd = brute.data && brute.data.resultData && brute.data.resultData.runData;
+  for (const n of SORTIES) {
+    for (const run of (rd && Array.isArray(rd[n]) ? rd[n] : [])) {
+      for (const sortie of (run && run.data && Array.isArray(run.data.main) ? run.data.main : [])) {
+        for (const item of (Array.isArray(sortie) ? sortie : [])) {
+          const j = item && item.json;
+          if (!j || typeof j !== 'object') continue;
+          if (n === SORTIES[0]) { dansDomaine(j, 'type', TYPES_CONFIRMATION); dansDomaine(j, 'motif', [...MOTIFS_REJET, null]); }
+        }
+      }
+    }
+  }
+  return brute;
+}
+const textes = (o, acc = []) => { if (typeof o === 'string') acc.push(o); else if (o && typeof o === 'object') for (const v of Object.values(o)) textes(v, acc); return acc; };
+const REGISTRE_NON_ADMISSIBLE = 'registre des incidents : contenu non admissible, à corriger';
 const avecNom = (x) => (x && typeof x === 'object' && 'nom' in x ? { ...x, nom: nomSur(x.nom) } : x);
 // Enveloppe les adaptateurs injectés : messages contrôlés, noms Drive filtrés. N'altère jamais un nom
 // conforme ni aucune autre donnée : le verdict de cloturer est inchangé.
@@ -88,16 +128,21 @@ function frontiere(d) {
   };
   return {
     ...d,
-    api: { listerExecutions: filtrer('API n8n (liste)', (q) => d.api.listerExecutions(q)), lireExecution: filtrer('API n8n (exécution)', (id) => d.api.lireExecution(id)) },
+    api: {
+      listerExecutions: filtrer('API n8n (liste)', async (q) => { const r = await d.api.listerExecutions(q); if (Array.isArray(r)) for (const x of r) dansDomaine(x, 'status', STATUTS_EXECUTION); return r; }),
+      lireExecution: filtrer('API n8n (exécution)', async (id) => domaineExecution(await d.api.lireExecution(id))),
+    },
     drive: {
       ...drive,
       lireLotGenere: filtrer('Drive (lot généré)', async (s) => avecNom(await drive.lireLotGenere(s))),
       listerCandidats: filtrer('Drive (candidats/)', async () => { const r = await drive.listerCandidats(); return r && Array.isArray(r.fichiers) ? { ...r, fichiers: r.fichiers.map(avecNom) } : r; }),
-      ...(drive.lireCandidat ? { lireCandidat: filtrer('Drive (candidat)', (s) => drive.lireCandidat(s)) } : {}),
+      // Enveloppe modifiée EN PLACE (l'identité Drive .drive, non énumérable, est conservée).
+      ...(drive.lireCandidat ? { lireCandidat: filtrer('Drive (candidat)', async (s) => { const c = await drive.lireCandidat(s); if (c && typeof c === 'object') dansDomaine(c.relecture, 'statut', STATUTS_CANDIDAT); return c; }) } : {}),
       ...(drive.listerDecisions ? { listerDecisions: filtrer('Drive (decisions/)', page(drive.listerDecisions)) } : {}),
     },
     journal: filtrer('historique de confiance (journal)', (c) => d.journal(c)),
-    incidents: filtrer('registre des incidents', () => d.incidents()),
+    // Contenu SIGNÉ (incidents_connus) : refusé, jamais masqué, s'il porte une adresse ou un secret présumé.
+    incidents: filtrer('registre des incidents', async () => { const r = await d.incidents(); if (textes(r).some(porteSecret)) throw new RefusFrontiere(REGISTRE_NON_ADMISSIBLE, 'incident'); return r; }),
     referentielArchive: filtrer('référentiel archivé', (v) => d.referentielArchive(v)),
   };
 }
@@ -260,11 +305,11 @@ async function main(argv = process.argv.slice(2), fab = fabrique, verrous = V.VE
     sortie.out(`Diagnostic (jamais décisif) : décisions listées par Cloturer = ${dg.nb_decisions_listees ?? 'inconnu'} ; décisions conformes du lot vues par le signataire = ${dg.decompte_signataire ?? 'inconnu'}\n`);
     if (dg.nb_decisions_listees !== dg.decompte_signataire) sortie.out('⚠ décomptes différents : à examiner (decisions/ peut avoir changé depuis la clôture technique) — la signature reste fondée sur ce que le signataire a observé\n');
   } catch (e) {
-    sortie.err(`✗ ${MESSAGES_PUBLICS(e, A) ? masquer(e.message) : 'erreur interne (détail non affiché)'}\n`);
+    sortie.err(`✗ ${MESSAGES_PUBLICS(e, A) ? masquerRefus(e.message) : 'erreur interne (détail non affiché)'}\n`);
     process.exitCode = e && e.code === V.OCCUPE ? V.OCCUPE : 1;
   }
 }
 
-module.exports = { WORKFLOWS, QUESTION_FIDELITE, NOM_NON_CONFORME, masquer, nomSur, frontiere, analyserArguments, empreinte, enregistreur, signerPage, fabrique, main };
+module.exports = { WORKFLOWS, QUESTION_FIDELITE, NOM_NON_CONFORME, NON_CONFORME, REGISTRE_NON_ADMISSIBLE, masquer, masquerRefus, porteSecret, nomSur, frontiere, analyserArguments, empreinte, enregistreur, signerPage, fabrique, main };
 
 if (require.main === module) main();

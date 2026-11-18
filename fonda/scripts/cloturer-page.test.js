@@ -262,6 +262,11 @@ describe('confinement : sentinelles k, adresse, HMAC, jetons, clé d\'API dans T
     assert.deepEqual(fuite(JSON.stringify(r)), []);
     for (const f of fs.readdirSync(ctx.base.verrous)) assert.deepEqual(fuite(fs.readFileSync(path.join(ctx.base.verrous, f), 'latin1')), [], f);
   });
+  test('P1-1 (b) filet : refus affichés avec 64 hex nus et JWT masqués ; « sha256:<64 hex> » lisible', () => {
+    const m = CP.masquerRefus(`k ${SEN.k} hmac ${SEN.hmac} jeton ${SEN.jetonEmettre} cle ${SEN.cleApi} ${SEN.adresse} empreinte sha256:${'ab'.repeat(32)} commit ${'c'.repeat(40)}`);
+    assert.deepEqual(fuite(m), []);
+    assert.ok(m.includes(`sha256:${'ab'.repeat(32)}`) && m.includes('c'.repeat(40)), m);
+  });
   test('masquage défensif (B) : motif d\'adresse masqué ; chemins, ids et empreintes 64-hex intacts', () => {
     const t = `fichier ${SEN.adresse}.json ; exécution 42 ; sha256:${'ab'.repeat(32)} ; ${'cd'.repeat(32)} ; /Users/x/FONDA-clotures/set-1`;
     const m = CP.masquer(t);
@@ -333,10 +338,58 @@ describe('confinement : sentinelles k, adresse, HMAC, jetons, clé d\'API dans T
     const err = await refusSansSignature(ctx, /lecture partielle/, 'temporaire');
     assert.deepEqual(fuite(err.message), []);
   });
+  // 2e relecture (P1-1 a) : reproductions de Codex — secrets placés dans des champs ÉNUMÉRÉS.
+  const ENUMERES = {
+    'statut du candidat': (v) => ({ candidat }) => { candidat.relecture.statut = v; },
+    'mode d\'une exécution de confirmation': (v) => ({ api }) => { const l = api.lireExecution; api.lireExecution = async (id) => { const d = await l(id); if (String(id) === '10') d.mode = v; return d; }; },
+    'type d\'une sortie de confirmation': (v) => ({ api }) => { const l = api.lireExecution; api.lireExecution = async (id) => { const d = await l(id); if (String(id) === '10') d.data.resultData.runData['FONDA Sortie confirmation'][0].data.main[0][0].json.type = v; return d; }; },
+    'motif d\'une sortie de rejet': (v) => ({ api }) => { const l = api.lireExecution; api.lireExecution = async (id) => { const d = await l(id); if (String(id) === '10') Object.assign(d.data.resultData.runData['FONDA Sortie confirmation'][0].data.main[0][0].json, { type: 'rejet', motif: v }); return d; }; },
+    'statut au listing': (v) => ({ execs }) => { execs[T.confirmation].push({ id: 13, workflowId: T.confirmation, status: v, startedAt: '2026-10-19T17:00:00.000Z', stoppedAt: '2026-10-19T17:00:02.000Z' }); },
+    'statut au détail': (v) => ({ api }) => { const l = api.lireExecution; api.lireExecution = async (id) => { const d = await l(id); if (String(id) === '10') d.status = v; return d; }; },
+  };
+  for (const [champ, fixer] of Object.entries(ENUMERES)) {
+    test(`P1-1 (a) : secrets (k, clé d'API, jeton) dans le ${champ} -> « [valeur non conforme] », verdict inchangé`, async () => {
+      const temoin = await monde({ modifier: fixer('valeur-inconnue') });
+      const attendu = await temoin.signer().then(() => null, (e) => e);
+      assert.ok(attendu, 'une valeur hors domaine est refusée');
+      for (const secret of [SEN.k, SEN.cleApi, SEN.jetonEmettre]) {
+        const ctx = await monde({ modifier: fixer(secret) });
+        const err = await refusSansSignature(ctx, /./);
+        assert.equal(err.issue, attendu.issue, `${champ} : issue inchangée`);
+        assert.deepEqual(fuite(err.message), [], `${champ} : ${secret.slice(0, 8)}…`);
+      }
+    });
+  }
   test('P1 : noms Drive CONFORMES inchangés (lot, candidat, décision) ; un nom hors grammaire remplacé', () => {
     const d = 'set_fonda_comprendre-consigne_nI_92';
     for (const n of [`${d}.lot.json`, `${d}.candidat.json`, `${d}-${'0f'.repeat(16)}.json`]) assert.equal(CP.nomSur(n), n);
     for (const n of [`${SEN.k}.json`, `${SEN.adresse}.json`, `${d}-n10.json`, `${d}.lot.json.bak`, null, 42]) assert.equal(CP.nomSur(n), CP.NOM_NON_CONFORME, String(n));
+  });
+});
+
+describe('registre des incidents : contenu SIGNÉ (P1-2)', () => {
+  const incident = (preuve) => ({ id: 'inc-2026-10-01', nature: 'panne Drive', detecte_le: '2026-10-01T08:00:00.000Z', statut: 'resolu', resolu_le: '2026-10-02T08:00:00.000Z', preuve_resolution: preuve, periode: { debut: '2026-10-01T08:00:00.000Z', fin: '2026-10-02T08:00:00.000Z' } });
+  test('preuve propre (incident résolu hors fenêtre) -> signé, incident dans l\'attestation', async () => {
+    const ctx = await monde({ modifier: ({ depsBase }) => { depsBase.incidents = async () => [incident('relance manuelle, journal vérifié')]; } });
+    await ctx.signer();
+    const env = JSON.parse(ctx.etat.ecrits.get(ctx.attestation()).toString('utf8'));
+    assert.equal(env.charge.incidents_connus.length, 1);
+  });
+  for (const [nom, preuve] of [['adresse + clé d\'API (reproduction Codex)', `vu par ${SEN.adresse} avec ${SEN.cleApi}`], ['k (64 hex nus)', `k=${SEN.k}`], ['jeton', SEN.jetonCloturer]]) {
+    test(`preuve portant ${nom} -> REFUS incident, message fixe, rien signé`, async () => {
+      const ctx = await monde({ modifier: ({ depsBase }) => { depsBase.incidents = async () => [incident(preuve)]; } });
+      const err = await refusSansSignature(ctx, /registre des incidents : contenu non admissible, à corriger/, 'incident');
+      assert.deepEqual(fuite(err.message), []);
+      for (const [p, o] of ctx.etat.ecrits) assert.deepEqual(fuite(o.toString('utf8')), [], p);
+    });
+  }
+  test('champ IMBRIQUÉ (periode.debut) portant une adresse -> refus de la frontière (message fixe)', async () => {
+    const ctx = await monde({ modifier: ({ depsBase }) => { depsBase.incidents = async () => [{ ...incident('ok'), periode: { debut: SEN.adresse, fin: '2026-10-02T08:00:00.000Z' } }]; } });
+    await refusSansSignature(ctx, /registre des incidents : contenu non admissible, à corriger/, 'incident');
+  });
+  test('nature portant une adresse -> refus (tous les champs textuels)', async () => {
+    const ctx = await monde({ modifier: ({ depsBase }) => { depsBase.incidents = async () => [{ ...incident('ok'), nature: `appel de ${SEN.adresse}` }]; } });
+    await refusSansSignature(ctx, /contenu non admissible/, 'incident');
   });
 });
 
@@ -589,7 +642,7 @@ describe('processus réels (lockf) : signature <-> écriture exclues par le verr
     const d = dossierVerrou();
     const ecrits = [];
     const code = process.exitCode;
-    await CP.main([SET], () => ({ api: { listerExecutions: async () => [], lireExecution: async () => null }, workflowGeneration: 'wfGen', preparerSignataire: async () => () => Buffer.alloc(0), depsCloture: () => ({}), saisir: async () => '', afficher: () => {}, cloturer: async () => { throw new SC.Refus(`fichier ${SEN.adresse}.json non conforme`, 'incident'); } }), d, { out: (t) => ecrits.push(t), err: (t) => ecrits.push(t) });
+    await CP.main([SET], () => ({ api: { listerExecutions: async () => [], lireExecution: async () => null }, workflowGeneration: 'wfGen', preparerSignataire: async () => () => Buffer.alloc(0), depsCloture: () => ({}), saisir: async () => '', afficher: () => {}, cloturer: async () => { throw new SC.Refus(`fichier ${SEN.adresse}.json non conforme ; ${SEN.k} ; ${SEN.cleApi}`, 'incident'); } }), d, { out: (t) => ecrits.push(t), err: (t) => ecrits.push(t) });
     const sortie = process.exitCode; process.exitCode = code;
     assert.equal(sortie, 1);
     assert.match(ecrits.join(''), /fichier \[adresse masquée\] non conforme/);
