@@ -343,6 +343,21 @@ describe('TOCTOU (arbitrage A) : dernière observation après « J\'atteste », 
     assert.match(err.message, /contrôle final .*non effectué/);
     assert.equal(ctx.etat.signatures, 0);
   });
+  test('Cloturer modifié ENTRE la quiescence et le listing (clôture répétée acceptable) : la référence reste la PREMIÈRE observation -> refus', async () => {
+    const ctx = await monde();
+    const prep = ctx.fab.preparerSignataire;
+    ctx.fab.preparerSignataire = async () => {
+      ctx.execs[T.cloture].push({ id: 24, workflowId: T.cloture, status: 'success', startedAt: '2026-10-20T08:10:00.000Z', stoppedAt: '2026-10-20T08:11:00.000Z' });
+      ctx.specs[24] = ['cloture', { ...ctx.specs[20][1], deja_clos: true }];
+      return prep();
+    };
+    await refusSansSignature(ctx, /contrôle final/, 'temporaire');
+  });
+  test('cloturer qui rendrait un résultat SANS contrôle final ni signature -> résultat ignoré (refus)', async () => {
+    const ctx = await monde();
+    const err = await CP.signerPage(ctx.setId, ctx.base, () => ({ ...ctx.fab, cloturer: async () => ({ dossierLot: '/x' }) })).then(() => null, (e) => e);
+    assert.match(err.message, /résultat ignoré/);
+  });
   test('texte de la question ÉPINGLÉ : présent tel quel, une seule fois, dans signer-cloture.js', () => {
     const src = fs.readFileSync(path.join(__dirname, 'signer-cloture.js'), 'utf8');
     const litteral = `'${CP.QUESTION_FIDELITE.replace(/'/g, "\\'")}'`;
