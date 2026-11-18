@@ -97,3 +97,4 @@ Contexte : dépôt à l'AAP **CARDIE-SEPIA 2026-2027** (échéance **21/10/2026*
 - Normaliser accents / pluriels en profil `orthographe` — **c'est la cible de la mesure**, pas du bruit.
 - Imposer une tolérance de correction **globale** : elle est **par carte**.
 - Casser la compat des anciens liens n8n (validation/rejet).
+- Tester avec un autre Node que la CI : la CI tourne en **Node 22** (`.node-version`). Sur le Mac, lancer les tests FONDA avec `"$(brew --prefix node@22)/bin/node" --test` (node@24 reste le Node par défaut) ; un vert en Node 24 ne suffit pas (P5-2 : minuterie d'`AbortSignal.timeout` non référencée, annulation en Node 22 seulement).
