@@ -6,7 +6,7 @@ Tout se passe sur le Mac d'Éric. **La garde maîtresse est levée au lot 7, pou
 - La garde de `cloturer` est **inchangée** : sans fonction `rattachement`, elle refuse.
   - En production, `main()` fournit `RATTACHEMENT_SAISIE_LOCALE`.
   - Cette fonction n'est jamais consommée en saisie locale ; si elle l'était (parcours page), elle refuserait (`precondition`).
-  - Le contrat de rattachement du parcours page n'est toujours pas défini.
+  - Le parcours page passe par **`cloturer-page.js`** (P5-3, section ci-dessous), qui fournit `rattacherPage` ; `signer-cloture.js` le refuse toujours.
 
 ## Secrets (`~/.fonda-cles/`, jamais dans le dépôt ni dans Dropbox)
 
@@ -30,6 +30,25 @@ Dossier de clôture : `~/FONDA-clotures/` (hors dépôt, hors Dropbox).
 | `signer-cloture.js <set_id>` | clôture en **saisie locale** (lot 7) : clé préparée avant, puis `cloturer` ; `--source page_relecture` refusée avant réseau et clé |
 | `signer-cloture.js --extraire-publication <set_id>` | vérifie **toutes** les pièces signées, puis écrit `lot-relu.json`. La commande est relançable : si le fichier existe avec les mêmes octets, elle réussit sans écrire ; s'il diffère, elle refuse |
 | `declencher-generation.js <set_id> <ref>` (et `--etat`, `--liberer`, `--reparer`) | appelant unique de la génération (lot 4) |
+
+## Parcours page : `cloturer-page.js` (P5-3, CDC §21.9, §21.12)
+
+> **AUCUNE SIGNATURE PAGE AVANT LA PHASE B ET LE GO D'ÉRIC.** Le CLI existe ; il ne sert qu'après la phase B (vérification de H3, activation des workflows, bout en bout).
+>
+> **PRÉCONDITION « un seul Mac »** (§21.12.1) : toute écriture (`ecrire-relecture.js`) et toute signature page partent du **seul Mac d'Éric**. Plusieurs ordinateurs : hors périmètre.
+
+`node fonda/scripts/cloturer-page.js <set_id>` — point d'entrée de la signature page. `signer-cloture.js` reste **intact** : son `main()` refuse toujours `--source page_relecture`.
+
+Séquence, sous le **verrou** de la relecture (`~/FONDA-clotures/verrous/`, tenu pendant tout le processus, confirmation comprise ; code **75** si une écriture ou une autre signature le tient) :
+
+1. **Journal d'écriture** (avant toute clé) : tentative ouverte ou indéterminée sur le lot → refus temporaire (`ecrire-relecture.js diagnostiquer`) ; lot bloqué → abandon (nouveau `set_id`) ; portion perdue non attribuée → incident ; journal illisible → refus.
+2. **Quiescence** : aucune exécution en vol sur Emettre ni sur Cloturer (tous lots).
+3. **Phrase de passe** saisie au terminal (jamais affichée) ; clé privée lue par `preparerSignataire` seul.
+4. `cloturer` en `page_relecture` : rattachement `rattacherPage` ; **badge** (`tableRelecteurs = {}`, arbitrage C) : **générique pour un tiers** (« relue par un professeur », le relecteur n'est pas nommé) ; **« Éric Duchateau »** en confirmation automatique (lot d'Éric), comme avant P5 ; **aucune levée** (`recherche_incomplete` toujours refusée — arbitrage D).
+5. **Contrôle final** (TOCTOU, arbitrage A) — **détection au mieux, pas une exclusion** : après « J'atteste… » et **avant** le marqueur `<set_id>.signature`, dernière observation de la génération, de Confirmer, de Cloturer et d'Emettre, puis balayage des exécutions en cours ; toute exécution apparue, en cours ou modifiée (id, statut, dates) depuis le listing, ou un journal qui ne permet plus de poursuivre → refus temporaire **sans marqueur** : relancer. Fenêtre résiduelle : une exécution qui démarre après le balayage de son workflow et reste en cours, ou qui démarre et finit entre deux lectures (jusqu'à plusieurs appels réseau) — sans effet sur l'intégrité : CDC §21.12.4.
+6. **Diagnostic** affiché après la signature : décisions listées par Cloturer et décisions conformes vues par le signataire ; avertissement s'ils diffèrent (jamais décisif).
+
+Écritures : **uniquement** `~/FONDA-clotures/` (instantané, export, récapitulatif, marqueur, attestation). Aucun webhook, aucune écriture Drive ni n8n. Lectures : n8n avec `n8n-signataire.cle` (GET seulement), Drive en `drive.readonly`, aucune redirection suivie. Messages : erreurs de lecture **contrôlées**, noms Drive hors grammaire remplacés par « [nom non conforme] », champs énumérés et ids Drive hors grammaire par « [valeur non conforme] » ; id d'exécution n8n non décimal canonique (20 chiffres au plus) → refus incident (les ids sont signés) ; adresse ou secret présumé dans une valeur du **lot généré** → refus abandon (G3) ; relecteur du référentiel archivé hors grammaire ou absent → refus incident ; `modele` de génération hors grammaire remplacé. **Limite résiduelle acceptée** (CDC §21.12.4) : Le contenu signé (lot, registre, ids d'exécution, relecteur, `modele`) est contrôlé **avant toute écriture** contre les formats connus (adresse, 64 hexadécimaux ou plus, JWT) et les grammaires des champs structurés (ids, relecteur, `modele`, champs énumérés) : aucune valeur de ces formats n'entre dans l'attestation. Le **SENS** du texte libre (preuve/nature d'incident, contenu pédagogique du lot) ne peut pas être validé par la machine ; sa garantie repose sur la **relecture humaine avant signature** — l'humain garantit : le signataire lit le contenu du lot et rédige lui-même le registre. **Résidu assumé** : un secret de format inconnu peut subsister (a) à l'**affichage** d'un refus cité par un message d'un fichier gelé, et (b) dans un **champ libre signé**. Fermeture complète côté machine = rouvrir les fichiers gelés et définir une grammaire des champs libres : décision séparée, hors P5. adresses **masquées** (arbitrage B), et dans les refus les motifs de secrets (64 hex nus, JWT). **Registre des incidents** : une adresse ou un secret présumé dans un champ → refus « contenu non admissible, à corriger » (le registre est signé dans l'attestation ; la saisie locale ne fait pas ce contrôle).
 
 ## États du diagnostic
 
