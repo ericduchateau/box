@@ -270,6 +270,12 @@
       "transition": "reserve",
       "le": "2026-11-22",
       "ref": "2026-11-22-199bc7e52938"
+    },
+    {
+      "set_id": "set_fonda_proportionnalite_nI_89",
+      "transition": "abandonne",
+      "le": "2026-11-24",
+      "ref": "2026-11-22-199bc7e52938:abandonne"
     }
   ]
 }
