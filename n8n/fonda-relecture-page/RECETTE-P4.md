@@ -553,3 +553,64 @@ Plan validé par l'architecte (AVANCEMENT, point 1 bis) : phase A = prérequis, 
 **Clé d'import révoquée** (Éric) : GET avec l'ancienne clé -> **401** ; témoin avec la clé de lecture -> **200** ; entrée `fonda-prod-n8n-import` **supprimée** du trousseau (vérifiée par les noms de service seuls : restent `fonda-prod-emettre-token`, `fonda-prod-cloturer-token`, `fonda-prod-page-hmac`, `fonda-prod-n8n-lecture`).
 
 **Phase A terminée.** **Phase B à faire APRÈS la livraison de P5** : activation (Page et Confirmer, puis Cloturer, puis Emettre), test de bout en bout (`resolution-problemes_nI_02` @ `ae1ae90`, relecteur `eric`) puis suppression définitive du lot, du candidat et de la décision de test, politique de purge des exécutions (`k`, adresses) à fixer, durée de la clé de lecture à caler.
+
+## Déploiement en PRODUCTION — phase B (activation et bout en bout), 2026-11-22 → 2026-11-24
+
+Après la livraison de P5 (P5-3 `cloturer-page.js`, #108). Chaque geste en écriture a reçu un feu vert explicite de l'architecte. **Écritures : Éric** (clé d'écriture de production `fonda-prod-n8n-ecriture`, courte, révoquée en fin de phase). **Lectures GET et vérifications locales : Claude Code** (clé de lecture). Aucun `k`, jeton, secret ni adresse dans ce document ; aucune valeur transmise à l'IA.
+
+**Lot de test** : `set_fonda_proportionnalite_nI_89`, et non `resolution-problemes_nI_02` comme prévu en phase A. Ce lot est déjà signé, et les CLI exigent une génération réelle retenue. Il faut donc un `set_id` neuf. `_90–_99` est réservé aux fixtures (`fonda/data/catalogue.test.js`). Réservation commitée par #109 (ref `2026-11-22-199bc7e52938`).
+
+**Activation par l'API** : `POST /api/v1/workflows/<id>/activate` avec `{"versionId": …}` épinglé sur la version importée et auditée (désactivation : `…/deactivate`). Preuve d'octet-identité d'un workflow **actif** : `versionId` inchangé et `activeVersionId == versionId`. comparer-live exige un workflow inactif, d'où cette preuve, acceptée par l'architecte.
+
+| Étape | Opérateur | Geste | Preuve |
+|---|---|---|---|
+| H3 (pré-vol) | Claude Code | `curl` POST `/fonda-emettre` **avant** activation | **404**, aucune exécution créée (la CLI classe ce 404 en `indetermine`, code inchangé) |
+| Génération | Éric | portier `MkYrdhgTo52nA3av` et génération `vrqgtS5kQMvP9Ok5` activés (version épinglée) | exécution **281291** : candidat produit. **Correctif #76 prouvé** : `sonde-executions.js vrqgtS5kQMvP9Ok5` voit 281291 **en vol** sur 6 observations successives, puis `success` |
+| Retour à l'état inactif | Éric | portier et génération **désactivés** après le test | GET : `active=false`, `versionId` inchangés (`5a51ef8d…`, `2881d35a…`), identiques aux exports du dépôt |
+| Activation relecture | Éric | Page et Confirmer, puis Cloturer, puis Emettre | GET ×4 : `active=true`, `versionId` inchangé, `activeVersionId == versionId`, un seul homonyme, 0 collision de webhook |
+| Émission | Éric (CLI) | Emettre | **`effet_conforme`**, exécution **281292** ; courriel réel reçu par Éric ; `k` resté privé (jamais transmis à l'IA) |
+| Relecture | Éric | page `/fonda-select` puis Confirmer | ouverture de la page : exécution **281293** (workflow Page `nQjoq0UekNNliaMt`, `webhook`, `success` ; métadonnées GET seules) ; Confirmer : exécution **281294**, décision écrite (`generation 1`, écriture `creee`) |
+| Clôture technique | Éric (CLI) | `cloturer-page.js` | **`effet_conforme`**, exécution **281295** ; Cloturer : `deja_clos=false`, candidat version **2 → 4**, `nb_decisions_listees=1` |
+| Signature (locale) | Éric | signataire | `attestation.json` revérifiée par Claude Code (`verifierPieces`) : type `attestation-signee`, `source_decisions` = `page_relecture`, badge « Éric Duchateau » ; marqueur `set_fonda_proportionnalite_nI_89.signature` → `a3e26dd7409a4304` ; diagnostic **1/1** ; aucun motif interdit dans les pièces. **Rien publié** |
+
+**Décision go-live (architecte)** : les 4 workflows de relecture **restent ACTIFS**. Génération et portier restent **inactifs** hors fenêtre de génération.
+
+**Vérifications finales** (GET, Claude Code, 2026-11-24) :
+
+| Workflow | id | état | versionId (= activeVersionId si actif) |
+|---|---|---|---|
+| FONDA - Emettre relecture | `5iJOTDkaTZq7z0sh` | actif | `dce56ccb-d3c1-4e32-bc08-a1493855b8f3` |
+| FONDA - Cloturer relecture | `QrmJY4gguZEx7YoS` | actif | `12b3789d-a2d6-472a-ab17-da0b68974243` |
+| FONDA - Confirmer relecture | `W1HAOtjAX3ILZBpX` | actif | `337812fd-6eea-4c8d-84c1-7f32f352d517` |
+| FONDA - Page relecture | `nQjoq0UekNNliaMt` | actif | `70c84ddd-4b3b-4e21-9743-4952336d48f5` |
+| BOX - FONDA Generation IA (portier) | `MkYrdhgTo52nA3av` | inactif | `5a51ef8d-01a1-417a-850c-c315ac44bcd9` |
+| BOX - FONDA Generation IA | `vrqgtS5kQMvP9Ok5` | inactif | `2881d35a-04b1-4084-bf1e-c6701916e953` |
+
+Résultats :
+- 57 workflows sur l'instance, dont 25 actifs ;
+- chemins FONDA actifs : chacun une seule fois (`fonda-emettre`, `fonda-cloturer`, `fonda-select`, `fonda-select-confirm`), 0 collision ;
+- **9 BOX identiques** à `~/phase5-recette/photo-apres.json` ;
+- journal `set_ids` valide ;
+- `fonda/data/catalogue-fonda.json` inchangé (SHA-256 `52a7ae599e8d864c0b1f6af1f64b839a70765800f846c33b940e8406dfd4012b`) ;
+- `main` inchangé (`d0ac6ca`).
+
+**Nettoyage** (écritures : Éric ; contrôles : Claude Code) :
+- **Drive** : les 3 fichiers de test (lot, candidat, décision) sont supprimés : GET **404 ×3**. Les dossiers de production `candidats/`, `relecture/` et `decisions/` sont intacts : les 9 lots antérieurs de `candidats/` n'ont pas été touchés, et `relecture/` et `decisions/` sont vides.
+- **Courriel de test** : supprimé par Éric.
+- **`set_id`** : `set_fonda_proportionnalite_nI_89` est passé à **`abandonne`**, avec la ref `2026-11-22-199bc7e52938:abandonne`. Le commit `4cefa62` a été fusionné par #110. Tests 198/198, témoin et ancre 22/22, sous Node 22. Les pièces locales de signature restent dans `~/FONDA-clotures/` (hors dépôt).
+- **Clé d'écriture** : « FONDA PROD activation » (`fonda-prod-n8n-ecriture`) est révoquée. Un GET avec l'ancienne clé rend **401**, et la clé de lecture rend toujours **200**. L'entrée est supprimée du trousseau ; d'après les noms de service seuls, il reste `fonda-prod-emettre-token`, `fonda-prod-cloturer-token`, `fonda-prod-page-hmac` et `fonda-prod-n8n-lecture`.
+
+**Politique de purge des exécutions** (validée par l'architecte). Les exécutions peuvent contenir `k`, des liens ou des adresses. La purge est **manuelle**, car l'auto-purge est désactivée (`EXECUTIONS_DATA_PRUNE=false`).
+
+| Exécutions | Règle de purge |
+|---|---|
+| Page | au-delà de **14 jours** |
+| Emettre, Confirmer, Cloturer et génération | seulement pour les lots **terminaux** (`publie` ou `abandonne`) |
+| Non attribuables à un lot | seulement si **aucun** lot n'est en cours |
+
+Lot de test `nI_89` (abandonné) : exécutions à purger **281291, 281292, 281293, 281294, 281295**, purge **à faire** (Éric). 281293 est l'exécution Page : on la purge **maintenant, sans attendre les 14 jours**, puisque le lot est abandonné (test).
+
+**Phase B terminée.** La relecture par la page est **en production**. Restent :
+- la ligne `justine` de la Data Table, qui pointe encore vers l'adresse de contrôle d'Éric. Contrôle visuel par Éric, puis bascule avec l'accord de la relectrice ;
+- la purge des exécutions 281291, 281292, 281293 (Page, sans attendre 14 jours), 281294 et 281295 ;
+- le durcissement `process.execPath`, reporté parce qu'il exige d'étendre la liste fermée.
