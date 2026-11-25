@@ -565,7 +565,7 @@ Après la livraison de P5 (P5-3 `cloturer-page.js`, #108). Chaque geste en écri
 | Étape | Opérateur | Geste | Preuve |
 |---|---|---|---|
 | H3 (pré-vol) | Claude Code | `curl` POST `/fonda-emettre` **avant** activation | **404**, aucune exécution créée (la CLI classe ce 404 en `indetermine`, code inchangé) |
-| Génération | Éric | portier `MkYrdhgTo52nA3av` et génération `vrqgtS5kQMvP9Ok5` activés (version épinglée) | exécution **281291** : candidat produit. **Correctif #76 prouvé** : `sonde-executions.js vrqgtS5kQMvP9Ok5` voit 281291 **en vol** sur 6 observations successives, puis `success` |
+| Génération | Éric | portier `MkYrdhgTo52nA3av` et génération `vrqgtS5kQMvP9Ok5` activés (version épinglée) | exécutions **281290** (portier) et **281291** (génération) : candidat produit. **Correctif #76 prouvé** : `sonde-executions.js vrqgtS5kQMvP9Ok5` voit 281291 **en vol** sur 6 observations successives, puis `success` |
 | Retour à l'état inactif | Éric | portier et génération **désactivés** après le test | GET : `active=false`, `versionId` inchangés (`5a51ef8d…`, `2881d35a…`), identiques aux exports du dépôt |
 | Activation relecture | Éric | Page et Confirmer, puis Cloturer, puis Emettre | GET ×4 : `active=true`, `versionId` inchangé, `activeVersionId == versionId`, un seul homonyme, 0 collision de webhook |
 | Émission | Éric (CLI) | Emettre | **`effet_conforme`**, exécution **281292** ; courriel réel reçu par Éric ; `k` resté privé (jamais transmis à l'IA) |
@@ -608,9 +608,8 @@ Résultats :
 | Emettre, Confirmer, Cloturer et génération | seulement pour les lots **terminaux** (`publie` ou `abandonne`) |
 | Non attribuables à un lot | seulement si **aucun** lot n'est en cours |
 
-Lot de test `nI_89` (abandonné) : exécutions à purger **281291, 281292, 281293, 281294, 281295**, purge **à faire** (Éric). 281293 est l'exécution Page : on la purge **maintenant, sans attendre les 14 jours**, puisque le lot est abandonné (test).
+Lot de test `nI_89` (abandonné) : **Purge faite (Éric, 2026-11-25) : 281290 (portier), 281291, 281292, 281293, 281294, 281295 ; GET 404 ×6, aucune autre exécution touchée.** 281293 (Page) a été purgée sans attendre les 14 jours, puisque le lot était abandonné (test).
 
 **Phase B terminée.** La relecture par la page est **en production**. Restent :
 - la ligne `justine` de la Data Table, qui pointe encore vers l'adresse de contrôle d'Éric. Contrôle visuel par Éric, puis bascule avec l'accord de la relectrice ;
-- la purge des exécutions 281291, 281292, 281293 (Page, sans attendre 14 jours), 281294 et 281295 ;
 - le durcissement `process.execPath`, reporté parce qu'il exige d'étendre la liste fermée.
