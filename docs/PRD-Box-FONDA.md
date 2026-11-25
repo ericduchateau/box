@@ -79,7 +79,7 @@ notion = {
 ```
 event = {
   ts,                 // horodatage
-  grp,                // ex. "6A" — choisi par le prof au lancement, PAS un élève
+  niveau,             // "6e"|"5e"|"4e"|"3e" — remplace grp (SPEC-moteur-a §6) ; jamais un élève
   defi_id, notion_id, palier ("nI"|"nF"), set_id, item_id,
   result,             // 0/1 (réponse auto-corrigée)
   ctx,                // "df" | "maison" | "classe"
@@ -103,7 +103,7 @@ event = {
 ```
 - Bandes : `c3` = 6e, `c4-milieu` = 5e + 4e, `c4-fin` = 3e. Une semaine porte au plus une fiche de maths et une de français par bande.
 - Une entrée **planifiée** (programme connu, fiche pas encore produite) n'a pas de `set_id` : case grisée, jamais de lien ni de défi.
-- Le `defi_id` n'est pas stocké : il est dérivé à la génération des liens (`defi_{annee}-w{semaine}_{grp}_{slug}`, `fonda/engine/liens.js`). `niveau_cible` (v1) reste lu pour compatibilité.
+- Le `defi_id` n'est pas stocké : il est dérivé à la génération des liens (`fonda/engine/liens.js`). Format cible : `defi_{annee}-w{semaine}_{niveau}_{slug}_{palier}`, année validée à la résolution (`docs/SPEC-moteur-a.md` §6) ; format actuel du code, à migrer : `defi_{annee}-w{semaine}_{grp}_{slug}`. `niveau_cible` (v1) reste lu pour compatibilité.
 - Pages : `?fonda=1` = « Notions de la semaine » (vue principale, atteinte par le switch BOX) ; `?fonda=1&page=calendrier` = affichage par période. L'accès enseignant aux liens par classe passe par « Défis par classe » sur l'accueil (un clic de plus qu'avant, assumé : décision du 2026-10-27).
 
 ### 3.4 `coverage.json` (état par notion)
@@ -218,6 +218,8 @@ Remplace tout bouton manuel « avant/après » : **la phase n'est plus pilotée 
 
 **Acceptation** : A est **déterministe** (mêmes entrées → même menu), ne crée aucun contenu, respecte budget et plancher.
 
+**Contrat détaillé** : [`docs/SPEC-moteur-a.md`](SPEC-moteur-a.md) (2026-11-25) — seuil de bascule, couleur et tendance, promotion nI → nF, rouge persistante, plancher de couverture, passage de `grp` à `niveau`.
+
 ---
 
 ## 9. Moteur B — Élaboration de fiches (proposition seulement)
@@ -227,7 +229,7 @@ Remplace tout bouton manuel « avant/après » : **la phase n'est plus pilotée 
 **Déclenchement = auto, sur ⬛**, avec la règle de trou précisée par Éric :
 - **Trou structurel** : notion due + **zéro fiche** au catalogue → ⬛ immédiat → B propose.
 - **Trou par épuisement** : notion **rouge persistante** *et* dont les fiches existantes ont **réellement été essayées** par les élèves (seuil de tentatives atteint) → ⬛ → B propose.
-  - **Garde-fou** : une fiche **non essayée** ne compte pas comme échouée. On ne déclare pas un épuisement sur du contenu non testé. (Pas de ⬛ « par épuisement » tant que `n_reponses` < seuil.)
+  - **Garde-fou** : une fiche **non essayée** ne compte pas comme échouée. On ne déclare pas un épuisement sur du contenu non testé. (Pas de ⬛ « par épuisement » tant que `n_reponses` < seuil.) Seuil = **25 réponses** ; « rouge persistante » = **moyenne < 50 % sur 3 périodes servies** (SPEC-moteur-a §2 et §5).
 
 Chaîne : A lève ⬛ → B génère des candidates → **dépôt dans la file de relecture** (routée §12) → validation carte par carte → entrée au catalogue → A peut programmer la notion.
 
@@ -332,6 +334,6 @@ Constats retenus (DEPP, début de 6e 2025 ; convergents du CP à la 6e) :
 
 **Restant :**
 5. Position **DPD / DANE** académique (hors code, pour le dossier).
-6. Seuil exact de tentatives déclenchant un ⬛ « épuisement » (§9) — à caler une fois les premiers volumes connus.
-7. **Dette `defi_id` (à traiter avec Moteur A)** : deux lots nI et nF d'une même notion, même semaine, même classe, produisent aujourd'hui le **même** `defi_id`, et l'année du `defi_id` n'est pas vérifiée à la résolution (un lien d'une autre année peut résoudre une semaine de l'année courante). Décider d'une unicité stricte des occurrences ou d'un identifiant d'occurrence discriminant, et valider l'année.
+6. ✅ (2026-11-25) Seuil de tentatives du ⬛ « épuisement » (§9) : **25 réponses**, provisoire (SPEC-moteur-a §2).
+7. ✅ (2026-11-25, tranché ; code à migrer) `defi_id` = `defi_{annee}-w{sem}_{niveau}_{slug}_{palier}` + validation de l'année (SPEC-moteur-a §6). Constat d'origine — **Dette `defi_id` (à traiter avec Moteur A)** : deux lots nI et nF d'une même notion, même semaine, même classe, produisent aujourd'hui le **même** `defi_id`, et l'année du `defi_id` n'est pas vérifiée à la résolution (un lien d'une autre année peut résoudre une semaine de l'année courante). Décider d'une unicité stricte des occurrences ou d'un identifiant d'occurrence discriminant, et valider l'année.
 8. **Collecte d'événements** (`/box-fonda-events`) : workflow livré inactif, non câblé au front — chantier identifié (§2 bis).
