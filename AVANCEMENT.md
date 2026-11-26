@@ -1,6 +1,6 @@
 # BOX / Box-FONDA — État d'avancement
 
-> Historique détaillé (incidents, tickets T1–T6, relectures Codex, preuves) : `AVANCEMENT-archive.md`.
+> Historique détaillé (incidents, tickets T1–T6, relectures Codex, preuves ; parcours page P1–P4a, #86, #87, terminés) : `AVANCEMENT-archive.md`.
 
 ## Objectif
 Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correction par profil, mesure par groupe, fiches générées puis relues par un humain), sans casser BOX. Dépôt AAP CARDIE-SEPIA, échéance **21/10/2026**. Source de vérité : `docs/PRD-Box-FONDA.md` ; règles : `AGENTS.md`.
@@ -11,9 +11,6 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - **Publiés c4-milieu P2** (calendrier à jour) : maths `proportionnalite_nI_02`, `resolution-problemes_nI_02` ; français `phrase-orthographe_nI_01`, `lexique_nI_02`, `inference-implicite_nI_02`, `sens-mot-inconnu_nI_02`.
 - **Exclusions** (#74, n8n redéployé #75) : `fr.changer-representation`, `maths.comprendre-document`, `maths.geometrie`.
 - **CDC relecture sur design** (#77) : r8 + r9 consigné (§20.16, à relire par Éric) + r10.9 (§21, parcours page).
-
-## Fait : parcours page P1–P4a (#78, `b45d441`, #83, #85, #86, #87)
-- Terminé et archivé (détail dans `AVANCEMENT-archive.md`, section du 2026-11-26) : signataire + patch figé et témoin (P1), Emettre/Cloturer (P3), Page/Confirmer (P2), profil recette (P4a), lecture native de la Data Table (#86), relevés VPS (#87), doctrine « Où vit chaque garantie ».
 
 ## Fait : Moteur A — module 1 (agrégation), branche `fonda/moteur-a-agregation` (2026-11-26)
 - **Posé** : `fonda/engine/agregation.js` + **113 tests**, contrat figé puis durci contre mutation (DST, lecture unique de l'événement, tri par unités de code, Map imbriquées, grammaires `notion_id` et `defi_id`, 1b = B : niveau du `defi_id` = métadonnée, `event.niveau` fait foi). SPEC §1-§3, §6-§7 à jour ; témoin amendé (2 chemins, ancre `7343e5ab`). Suite complète Node 22 verte, 3 relectures Codex sans défaut fonctionnel. **En attente** : relecture + merge par Éric (témoin à relire à part).
