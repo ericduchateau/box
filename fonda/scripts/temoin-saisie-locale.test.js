@@ -72,6 +72,8 @@ const LISTE_FERMEE = new Set([
   'fonda/scripts/verrou-relecture.js', 'fonda/scripts/verrou-relecture.test.js', 'fonda/scripts/fixtures/verrou-relecture-enfant.js',
   'fonda/scripts/ecrire-relecture.js', 'fonda/scripts/ecrire-relecture.test.js',
   'fonda/scripts/cloturer-page.js', 'fonda/scripts/cloturer-page.test.js',
+  // Moteur A, module 1 (décision d'Éric, 2026-11-26, CDC §21.8) : agrégation, hors parcours de relecture.
+  'fonda/engine/agregation.js', 'fonda/engine/agregation.test.js',
 ]);
 // orchestrer-lots.test.js (décision d'Éric, P1) : SEULE substitution autorisée = la ligne d'empreinte
 // de signer-cloture.js du tripwire + le commentaire qui l'explique ; comparaison OCTET POUR OCTET.
