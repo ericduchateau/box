@@ -20,6 +20,9 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - **#86** : Emettre lit la Data Table par le **nœud natif** (plus de clé d'API n8n ni de credential), destinataire validé AVANT toute écriture (grammaire stricte) ; seul Emettre a changé en prod. **#87** : relevés VPS — `EXECUTIONS_DATA_PRUNE=false` (pas de fenêtre de signature), sauvegarde succès/erreur = all, payload 16 Mo, n8n 2.6.3.
 - **Doctrine (README « Où vit chaque garantie », §21.5)** : pilier 1 = signataire ; pilier 2 = verrou « un seul écrivain CLI » (P5), contrôle d'intégrité porteur. Les contrôles de version détectent, n'excluent pas. Une exécution observée ne contient que le travail essentiel (son statut porte l'intégrité). `hash_formulaire` = audit rapproché (R1 avant signature), non signé.
 
+## Fait : Moteur A — module 1 (agrégation), branche `fonda/moteur-a-agregation` (2026-11-26)
+- **Posé** : `fonda/engine/agregation.js` + **113 tests**, contrat figé puis durci contre mutation (DST, lecture unique de l'événement, tri par unités de code, Map imbriquées, grammaires `notion_id` et `defi_id`, 1b = B : niveau du `defi_id` = métadonnée, `event.niveau` fait foi). SPEC §1-§3, §6-§7 à jour ; témoin amendé (2 chemins, ancre `7343e5ab`). Suite complète Node 22 verte, 3 relectures Codex sans défaut fonctionnel. **En attente** : relecture + merge par Éric (témoin à relire à part).
+
 ## Prochaines étapes
 1. **P4 recette du parcours page : CLOSE** (phases 1–5). Portes **GO** : G6, G3, G4, G5, G2 (filtre exact #95, rejeu), G1 (+1 prouvé, concurrence détectée), G7 (`running` vu en vol ; angle mort `waiting` de l'API n8n 2.6.3 -> garde-fou liste fermée des nœuds #99 ; workflows créés par API/import, jamais par l'éditeur). **Phase 5** : recette démontée (6 workflows, exécutions, Data Table, 4 credentials, Drive `FONDA-RECETTE/`, 2 clés API -> 401, trousseau) ; production prouvée intacte (51/51 workflows identiques, 9 BOX actifs). Google non touché (client OAuth peut-être partagé). P5 livré et G1 tranché (points 1 bis et 2). Preuves : `RECETTE-P4.md` (PR `docs/phase5`).
 1 bis. **Déploiement PRODUCTION de la relecture : TERMINÉ.** Phase A (2026-11-15) : import INACTIF identique au dépôt (Emettre `5iJOTDkaTZq7z0sh`, Cloturer `QrmJY4gguZEx7YoS`, Confirmer `W1HAOtjAX3ILZBpX`, Page `nQjoq0UekNNliaMt`). **Phase B (2026-11-22 → 24)** : H3 (404 avant activation) ; activation par l'API, version épinglée (preuve : `versionId` inchangé = `activeVersionId`) ; bout en bout sur `set_fonda_proportionnalite_nI_89` (#109) : génération 281291, émission 281292, confirmation 281294, clôture 281295 (`effet_conforme`), signature locale revérifiée, rien publié ; nettoyage : Drive 404 ×3, courriel supprimé, `abandonne` (#110), clé d'écriture révoquée (401). Go-live : les 4 restent ACTIFS. Preuves et politique de purge : `RECETTE-P4.md`. **Restent** : ligne `justine` (contrôle visuel, puis bascule avec l'accord de la relectrice) ; G1 tranché (2026-11-25) : ordre d'Emettre accepté, workflow non édité, purge immédiate d'un échec à « Preparer candidat », durcissement du CLI écarté (redondant, ou dupliquerait la source de vérité).
@@ -28,6 +31,7 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 4. Réglages à confirmer (Éric) : « Allow rebase merging » décoché ; « Do not allow bypassing » ; CODEOWNERS sur `main`. Bloc 3 (prod) : orpheline `box_7e7tcooh`, `feat/box-delete-hardening`, Moteur A + dette `defi_id`, collecte `/box-fonda-events`.
 
 ## 🔖 Check-list AVANT PUBLICATION / usage élève réel
+0. **Verrou n°1 du go-live Moteur A** : migrer `liens.js` vers `defi_{annee}-w{sem}_{niveau}_{slug}_{palier}`. Tant qu'il émet l'ancien format (`_{grp}_`, sans palier), **tous les liens réels sont rejetés** par l'agrégation (SPEC §6/§7).
 1. **Régénérer la clé API Anthropic** (a circulé en clair) : scripts locaux + nœud `Claude API` (HTTP, header en clair) de `BOX - Generation Flashcards` ; idéalement passer par un credential n8n.
 2. **Secrets commités** : retirés des 16 lots par le bloc 1 (`feat/box-fonda-lane`), test anti-retour en CI. FONDA n'a plus de code de suppression (chaîne séparée). Restent dans l'historique Git : sans effet pour FONDA ; pour BOX, seule l'orpheline `box_7e7tcooh` est concernée (bloc 3).
 3. **Adresse réelle de la relectrice de français** : dans n8n uniquement, **jamais** dans `fonda/data/destinataires.json` (dépôt public).
@@ -36,6 +40,7 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 6. **Correcteur tolérant au mot après le nombre** (« 2 bus » noté faux sans `unite` ; avec `unite`, le nombre seul donne « presque, unité oubliée »).
 
 ## Autres dettes (non bloquantes)
+- **Moteur A, dettes de test** (fast-follow, le moteur est correct) : fixture d'adoption à rendre asymétrique (`df ↔ maison`, ex. 4 `maison` / 8 `df`) ; couverture combinatoire de 1b ; échantillon de séparateurs (`#`). Durcissement du générateur `_89`. **Prochains modules** : 2 couleur, 3 fréquence, 4 promotion, 5 composition du menu, 6 ⬛ trou, 7 écriture des sorties.
 - `?action=delete` public (seul le code protège) ; anciens liens Valider/Rejeter en GET, HMAC sans expiration ; QR code, favicon/lockup FONDA absents ; `non-regression.test.js` en quarantaine (comparer à `main`).
 
 ## Décisions clés (pourquoi)
@@ -57,4 +62,4 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - Le classificateur auto-mode bloque les commandes contenant la clé API : Éric lance lui-même les générations.
 - Branches (AGENTS.md) : PR toujours vers `design` (liens `compare/design...<branche>`), fusion en merge commit ; jamais de fast-forward de `design` (casse la chaîne du premier parent).
 
-_Dernière mise à jour : 2026-11-24 — Claude Code (Opus 5.5)._
+_Dernière mise à jour : 2026-11-26 — Claude Code (Opus 5.5)._
