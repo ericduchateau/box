@@ -12,13 +12,8 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - **Exclusions** (#74, n8n redéployé #75) : `fr.changer-representation`, `maths.comprendre-document`, `maths.geometrie`.
 - **CDC relecture sur design** (#77) : r8 + r9 consigné (§20.16, à relire par Éric) + r10.9 (§21, parcours page).
 
-## Fait : parcours page P1 (#78), P3 (`b45d441`), P2 (#83), P4a (#85), #86, #87
-- **P1** : `rattachement-page.js` (E1–E12, R1–R6) + `adaptateurs-page.js` ; `signer-cloture.js` = réf. `9b75507` + patch figé (§21.8) ; témoin `temoin-saisie-locale.test.js` + ancre, empreinte `3253c24d` (protection procédurale, relecture d'Éric).
-- **P3** : Emettre + Cloturer INACTIFS construits depuis le dépôt (`n8n/fonda-relecture-page/`), faux Drive fidèle, réémission fail-closed, contrôles de version Drive (BigInt).
-- **P2** : Page (GET `/fonda-select`, C3 au GET, CSP en meta, SRI sha384 depuis le registre, script sous nonce, profils par version du moteur) + Confirmer (POST `/fonda-select-confirm`, C1–C6 + C5bis ; C7 courriel retiré). Harnais 167 tests : chaîne réelle Emettre → Page → script exécuté (DOM vm) → Confirmer → Cloturer → signataire. Corrige le défaut P3 (recherches par nom exact non paginées). Témoin inchangé.
-- **P4a (#85)** : `--profil recette` (exports `*.recette.json`, production octet-identique), `outils-recette/` (transport GET seul, sonde codes 0/1/2, `comparer-live`), `RECETTE-P4.md` (frontières énumérées, auto-vérifiées, instantanés de surface ; code futur tenu par CODEOWNERS + relecture). 7 tours Codex.
-- **#86** : Emettre lit la Data Table par le **nœud natif** (plus de clé d'API n8n ni de credential), destinataire validé AVANT toute écriture (grammaire stricte) ; seul Emettre a changé en prod. **#87** : relevés VPS — `EXECUTIONS_DATA_PRUNE=false` (pas de fenêtre de signature), sauvegarde succès/erreur = all, payload 16 Mo, n8n 2.6.3.
-- **Doctrine (README « Où vit chaque garantie », §21.5)** : pilier 1 = signataire ; pilier 2 = verrou « un seul écrivain CLI » (P5), contrôle d'intégrité porteur. Les contrôles de version détectent, n'excluent pas. Une exécution observée ne contient que le travail essentiel (son statut porte l'intégrité). `hash_formulaire` = audit rapproché (R1 avant signature), non signé.
+## Fait : parcours page P1–P4a (#78, `b45d441`, #83, #85, #86, #87)
+- Terminé et archivé (détail dans `AVANCEMENT-archive.md`, section du 2026-11-26) : signataire + patch figé et témoin (P1), Emettre/Cloturer (P3), Page/Confirmer (P2), profil recette (P4a), lecture native de la Data Table (#86), relevés VPS (#87), doctrine « Où vit chaque garantie ».
 
 ## Fait : Moteur A — module 1 (agrégation), branche `fonda/moteur-a-agregation` (2026-11-26)
 - **Posé** : `fonda/engine/agregation.js` + **113 tests**, contrat figé puis durci contre mutation (DST, lecture unique de l'événement, tri par unités de code, Map imbriquées, grammaires `notion_id` et `defi_id`, 1b = B : niveau du `defi_id` = métadonnée, `event.niveau` fait foi). SPEC §1-§3, §6-§7 à jour ; témoin amendé (2 chemins, ancre `7343e5ab`). Suite complète Node 22 verte, 3 relectures Codex sans défaut fonctionnel. **En attente** : relecture + merge par Éric (témoin à relire à part).
@@ -40,7 +35,8 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 6. **Correcteur tolérant au mot après le nombre** (« 2 bus » noté faux sans `unite` ; avec `unite`, le nombre seul donne « presque, unité oubliée »).
 
 ## Autres dettes (non bloquantes)
-- **Moteur A, dettes de test** (fast-follow, le moteur est correct) : fixture d'adoption à rendre asymétrique (`df ↔ maison`, ex. 4 `maison` / 8 `df`) ; couverture combinatoire de 1b ; échantillon de séparateurs (`#`). Durcissement du générateur `_89`. **Prochains modules** : 2 couleur, 3 fréquence, 4 promotion, 5 composition du menu, 6 ⬛ trou, 7 écriture des sorties.
+- **Moteur A, dettes de test** (fast-follow, le moteur est correct) : fixture d'adoption à rendre asymétrique (`df ↔ maison`, ex. 4 `maison` / 8 `df`) ; couverture combinatoire de 1b ; échantillon de séparateurs (`#`).
+- **Durcissement du générateur de set_id** : `catalogue.js` ne s'arrête qu'à `_99`, alors que la plage réelle va jusqu'à `_89` et que `_90`–`_99` est réservée aux fixtures de test. Le générateur peut donc fabriquer des sets réels dans la plage réservée (`_90`–`_98`) et entrer en collision avec les tests. À durcir pour qu'il s'arrête à `_89`. **Prochains modules** : 2 couleur, 3 fréquence, 4 promotion, 5 composition du menu, 6 ⬛ trou, 7 écriture des sorties.
 - `?action=delete` public (seul le code protège) ; anciens liens Valider/Rejeter en GET, HMAC sans expiration ; QR code, favicon/lockup FONDA absents ; `non-regression.test.js` en quarantaine (comparer à `main`).
 
 ## Décisions clés (pourquoi)
