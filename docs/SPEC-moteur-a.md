@@ -27,6 +27,20 @@
 - **Cartes rouges** : carte `(set_id, item_id)` de la période en cours, taux < 50 % **et au moins 10 réponses** ; en dessous de 10 réponses, la carte est « **insuffisante** ». Règle exacte : `n_reponses >= SEUIL_CARTE` (10) **et** `taux < SEUIL_ROUGE` (0.5), inégalité stricte : 50 % pile n'est pas rouge.
 - **Adoption** : décompte des réponses par `ctx` (`df`, `maison`, `classe`), période en cours seulement ; invariant `df + maison + classe = n_reponses`.
 
+## 3 bis. Module 2 — couleur par (notion, palier)
+
+> **Note en avant** : la couleur est calculée **par (notion, palier)**. La réduction **par notion** pour `coverage.json` = **pire couleur des paliers** (rouge > ambre > vert > gris) ; elle est faite au **module 7** (écriture des sorties), pas ici.
+
+- **Signature** : `colorer({ agregation, referentiel }) → { periode_id, couleurs, ignores }` ; exports `colorer`, `SEUIL_VERT = 0.75`, `SEUIL_AMBRE = 0.5`. `periode_id` = celui de l'agrégation (passe-plat).
+- **Une couleur par (notion, palier) du référentiel** : `notion.id` (restitué sous le nom `notion_id`) × `notion.paliers`. Chaque élément : `{ notion_id, palier, couleur, source, taux_periode, seuil_atteint }`.
+- **Seuil atteint** (entrée d'agrégation présente et `seuil_atteint`, §2) : couleur depuis `taux_periode` — **vert** si `>= SEUIL_VERT`, **ambre** si `>= SEUIL_AMBRE`, **rouge** sinon ; `source: "stats_cartes"`. Frontières : 0,75 → vert ; 0,5 → ambre.
+- **Sinon** (pas d'entrée, ou seuil non atteint) : couleur = `priorite_initiale` de la notion, ou **gris** si absente ; `source: "priorite_initiale"`. Pas de bascule sous 25 réponses, quel que soit le taux. `taux_periode` = celui de l'entrée (`null` sans entrée) ; `seuil_atteint` = celui de l'entrée (`false` sans entrée).
+- **Domaine** : `couleur` ∈ {`gris`, `vert`, `ambre`, `rouge`} uniquement (le ⬛ « trou » relève du module 6) ; `source` ∈ {`stats_cartes`, `priorite_initiale`}.
+- **Hors référentiel** : une entrée d'agrégation dont (notion_id, palier) n'est aucun (notion, palier) du référentiel est ignorée et comptée dans `ignores.hors_referentiel`.
+- **Tri** : `notion_id` par unités de code (§1), puis **nI avant nF**. Fonction pure, déterministe octet pour octet. Contrat détaillé : `fonda/engine/couleur.test.js`.
+- **Entrées : asymétrie délibérée.** Le module 1 est **tolérant** (événements non fiables : filet, rejets comptés dans `ignores`) ; le module 2 est **fail-fast** (entrées de confiance : sortie du module 1 et `referentiel.json` curé) → `TypeError`. **Référentiel** : `notions` non tableau, notion sans `id`, `id` en double, paliers hors {nI, nF}, vides, creux ou en double, `priorite_initiale` invalide. **Éléments d'agrégation** : `entrees` non tableau ; entrée non objet ; `notion_id` non chaîne ou vide ; `palier` hors {nI, nF} ; `seuil_atteint` non booléen strict ; `taux_periode` ni `null` ni nombre fini de [0, 1] ; `seuil_atteint: true` avec `taux_periode: null` ; (notion_id, palier) en **double** (en choisir un dépendrait de l'ordre). Une entrée **malformée** lève ; seule une entrée **bien formée** absente du référentiel compte dans `ignores.hors_referentiel`. **Règle du gris** : `priorite_initiale` **absente** → gris ; `"gris"` ou `"trou"` **explicites** → `TypeError` (ni l'un ni l'autre n'est une priorité de diagnostic).
+- **Notions exclues de la génération** : colorées comme les autres (priorité initiale) ; l'exclusion relève de la génération, le ⬛ (dont le trou des notions sans fiche) du module 6. Le moteur ne consulte pas la liste d'exclusion.
+
 ## 4. Paliers : promotion et acquisition
 
 - **Promotion nI → nF** : le palier nI est **vert (≥ 75 %) et stable sur 2 passes** consécutives → A programme le palier nF de la notion.
