@@ -13,7 +13,8 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - **CDC relecture sur design** (#77) : r8 + r9 consigné (§20.16, à relire par Éric) + r10.9 (§21, parcours page).
 
 ## Fait : Moteur A — module 1 (agrégation), branche `fonda/moteur-a-agregation` (2026-11-26)
-- **Posé** : `fonda/engine/agregation.js` + **113 tests**, contrat figé puis durci contre mutation (DST, lecture unique de l'événement, tri par unités de code, Map imbriquées, grammaires `notion_id` et `defi_id`, 1b = B : niveau du `defi_id` = métadonnée, `event.niveau` fait foi). SPEC §1-§3, §6-§7 à jour ; témoin amendé (2 chemins, ancre `7343e5ab`). Suite complète Node 22 verte, 3 relectures Codex sans défaut fonctionnel. **En attente** : relecture + merge par Éric (témoin à relire à part).
+- **Posé** : `fonda/engine/agregation.js` + **113 tests**, contrat figé puis durci contre mutation (DST, lecture unique de l'événement, tri par unités de code, Map imbriquées, grammaires `notion_id` et `defi_id`, 1b = B : niveau du `defi_id` = métadonnée, `event.niveau` fait foi). SPEC §1-§3, §6-§7 à jour ; témoin amendé (2 chemins, ancre `7343e5ab`). Suite complète Node 22 verte, 3 relectures Codex sans défaut fonctionnel. **Fusionné** (#116).
+- **Module 2 (couleur)**, branche `fonda/moteur-a-couleur` (2026-11-27) : `couleur.js` + **32 tests** (frontières 0,75/0,5, pas de bascule sous 25, gris si priorité absente, fail-fast sur référentiel ET agrégation, doublons, hors référentiel compté), SPEC §3 bis, témoin re-tamponné (`5fa85a6d`). Réduction par notion (pire couleur) au module 7. **En attente** : relecture + merge par Éric.
 
 ## Prochaines étapes
 1. **P4 recette du parcours page : CLOSE** (phases 1–5). Portes **GO** : G6, G3, G4, G5, G2 (filtre exact #95, rejeu), G1 (+1 prouvé, concurrence détectée), G7 (`running` vu en vol ; angle mort `waiting` de l'API n8n 2.6.3 -> garde-fou liste fermée des nœuds #99 ; workflows créés par API/import, jamais par l'éditeur). **Phase 5** : recette démontée (6 workflows, exécutions, Data Table, 4 credentials, Drive `FONDA-RECETTE/`, 2 clés API -> 401, trousseau) ; production prouvée intacte (51/51 workflows identiques, 9 BOX actifs). Google non touché (client OAuth peut-être partagé). P5 livré et G1 tranché (points 1 bis et 2). Preuves : `RECETTE-P4.md` (PR `docs/phase5`).
@@ -32,8 +33,8 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 6. **Correcteur tolérant au mot après le nombre** (« 2 bus » noté faux sans `unite` ; avec `unite`, le nombre seul donne « presque, unité oubliée »).
 
 ## Autres dettes (non bloquantes)
-- **Moteur A, dettes de test** (fast-follow, le moteur est correct) : fixture d'adoption à rendre asymétrique (`df ↔ maison`, ex. 4 `maison` / 8 `df`) ; couverture combinatoire de 1b ; échantillon de séparateurs (`#`).
-- **Durcissement du générateur de set_id** : `catalogue.js` ne s'arrête qu'à `_99`, alors que la plage réelle va jusqu'à `_89` et que `_90`–`_99` est réservée aux fixtures de test. Le générateur peut donc fabriquer des sets réels dans la plage réservée (`_90`–`_98`) et entrer en collision avec les tests. À durcir pour qu'il s'arrête à `_89`. **Prochains modules** : 2 couleur, 3 fréquence, 4 promotion, 5 composition du menu, 6 ⬛ trou, 7 écriture des sorties.
+- **Moteur A, dettes de test** (fast-follow, le moteur est correct) : fixture d'adoption à rendre asymétrique (`df ↔ maison`, ex. 4 `maison` / 8 `df`) ; couverture combinatoire de 1b ; échantillon de séparateurs (`#`) ; module 2 : horloge capturée au chargement (`const now = Date.now` à l'import) non détectée — exigerait un chargement sous horloge neutralisée en environnement isolé ; mutation invraisemblable, module sans horloge, déterminisme déjà épinglé. Module 2 : frontières exactes en `nF` (0,75 et 0,5) non échantillonnées — une variante `>` pour `nF` seulement passerait ; mutation invraisemblable, moteur correct en `>=`.
+- **Durcissement du générateur de set_id** : `catalogue.js` ne s'arrête qu'à `_99`, alors que la plage réelle va jusqu'à `_89` et que `_90`–`_99` est réservée aux fixtures de test. Le générateur peut donc fabriquer des sets réels dans la plage réservée (`_90`–`_98`) et entrer en collision avec les tests. À durcir pour qu'il s'arrête à `_89`. **Prochains modules** : 2 couleur (à fusionner), 3 fréquence, 4 promotion, 5 composition du menu, 6 ⬛ trou, 7 écriture des sorties.
 - `?action=delete` public (seul le code protège) ; anciens liens Valider/Rejeter en GET, HMAC sans expiration ; QR code, favicon/lockup FONDA absents ; `non-regression.test.js` en quarantaine (comparer à `main`).
 
 ## Décisions clés (pourquoi)
@@ -55,4 +56,4 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - Le classificateur auto-mode bloque les commandes contenant la clé API : Éric lance lui-même les générations.
 - Branches (AGENTS.md) : PR toujours vers `design` (liens `compare/design...<branche>`), fusion en merge commit ; jamais de fast-forward de `design` (casse la chaîne du premier parent).
 
-_Dernière mise à jour : 2026-11-26 — Claude Code (Opus 5.5)._
+_Dernière mise à jour : 2026-11-27 — Claude Code (Opus 5.5)._
