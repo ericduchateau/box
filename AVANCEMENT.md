@@ -1,6 +1,6 @@
 # BOX / Box-FONDA — État d'avancement
 
-> Historique détaillé (incidents, tickets T1–T6, relectures Codex, preuves) : `AVANCEMENT-archive.md`.
+> Historique détaillé (incidents, tickets T1–T6, relectures Codex, preuves ; parcours page P1–P4a, #86, #87, terminés) : `AVANCEMENT-archive.md`.
 
 ## Objectif
 Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correction par profil, mesure par groupe, fiches générées puis relues par un humain), sans casser BOX. Dépôt AAP CARDIE-SEPIA, échéance **21/10/2026**. Source de vérité : `docs/PRD-Box-FONDA.md` ; règles : `AGENTS.md`.
@@ -12,13 +12,8 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - **Exclusions** (#74, n8n redéployé #75) : `fr.changer-representation`, `maths.comprendre-document`, `maths.geometrie`.
 - **CDC relecture sur design** (#77) : r8 + r9 consigné (§20.16, à relire par Éric) + r10.9 (§21, parcours page).
 
-## Fait : parcours page P1 (#78), P3 (`b45d441`), P2 (#83), P4a (#85), #86, #87
-- **P1** : `rattachement-page.js` (E1–E12, R1–R6) + `adaptateurs-page.js` ; `signer-cloture.js` = réf. `9b75507` + patch figé (§21.8) ; témoin `temoin-saisie-locale.test.js` + ancre, empreinte `3253c24d` (protection procédurale, relecture d'Éric).
-- **P3** : Emettre + Cloturer INACTIFS construits depuis le dépôt (`n8n/fonda-relecture-page/`), faux Drive fidèle, réémission fail-closed, contrôles de version Drive (BigInt).
-- **P2** : Page (GET `/fonda-select`, C3 au GET, CSP en meta, SRI sha384 depuis le registre, script sous nonce, profils par version du moteur) + Confirmer (POST `/fonda-select-confirm`, C1–C6 + C5bis ; C7 courriel retiré). Harnais 167 tests : chaîne réelle Emettre → Page → script exécuté (DOM vm) → Confirmer → Cloturer → signataire. Corrige le défaut P3 (recherches par nom exact non paginées). Témoin inchangé.
-- **P4a (#85)** : `--profil recette` (exports `*.recette.json`, production octet-identique), `outils-recette/` (transport GET seul, sonde codes 0/1/2, `comparer-live`), `RECETTE-P4.md` (frontières énumérées, auto-vérifiées, instantanés de surface ; code futur tenu par CODEOWNERS + relecture). 7 tours Codex.
-- **#86** : Emettre lit la Data Table par le **nœud natif** (plus de clé d'API n8n ni de credential), destinataire validé AVANT toute écriture (grammaire stricte) ; seul Emettre a changé en prod. **#87** : relevés VPS — `EXECUTIONS_DATA_PRUNE=false` (pas de fenêtre de signature), sauvegarde succès/erreur = all, payload 16 Mo, n8n 2.6.3.
-- **Doctrine (README « Où vit chaque garantie », §21.5)** : pilier 1 = signataire ; pilier 2 = verrou « un seul écrivain CLI » (P5), contrôle d'intégrité porteur. Les contrôles de version détectent, n'excluent pas. Une exécution observée ne contient que le travail essentiel (son statut porte l'intégrité). `hash_formulaire` = audit rapproché (R1 avant signature), non signé.
+## Fait : Moteur A — module 1 (agrégation), branche `fonda/moteur-a-agregation` (2026-11-26)
+- **Posé** : `fonda/engine/agregation.js` + **113 tests**, contrat figé puis durci contre mutation (DST, lecture unique de l'événement, tri par unités de code, Map imbriquées, grammaires `notion_id` et `defi_id`, 1b = B : niveau du `defi_id` = métadonnée, `event.niveau` fait foi). SPEC §1-§3, §6-§7 à jour ; témoin amendé (2 chemins, ancre `7343e5ab`). Suite complète Node 22 verte, 3 relectures Codex sans défaut fonctionnel. **En attente** : relecture + merge par Éric (témoin à relire à part).
 
 ## Prochaines étapes
 1. **P4 recette du parcours page : CLOSE** (phases 1–5). Portes **GO** : G6, G3, G4, G5, G2 (filtre exact #95, rejeu), G1 (+1 prouvé, concurrence détectée), G7 (`running` vu en vol ; angle mort `waiting` de l'API n8n 2.6.3 -> garde-fou liste fermée des nœuds #99 ; workflows créés par API/import, jamais par l'éditeur). **Phase 5** : recette démontée (6 workflows, exécutions, Data Table, 4 credentials, Drive `FONDA-RECETTE/`, 2 clés API -> 401, trousseau) ; production prouvée intacte (51/51 workflows identiques, 9 BOX actifs). Google non touché (client OAuth peut-être partagé). P5 livré et G1 tranché (points 1 bis et 2). Preuves : `RECETTE-P4.md` (PR `docs/phase5`).
@@ -28,6 +23,7 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 4. Réglages à confirmer (Éric) : « Allow rebase merging » décoché ; « Do not allow bypassing » ; CODEOWNERS sur `main`. Bloc 3 (prod) : orpheline `box_7e7tcooh`, `feat/box-delete-hardening`, Moteur A + dette `defi_id`, collecte `/box-fonda-events`.
 
 ## 🔖 Check-list AVANT PUBLICATION / usage élève réel
+0. **Verrou n°1 du go-live Moteur A** : migrer `liens.js` vers `defi_{annee}-w{sem}_{niveau}_{slug}_{palier}`. Tant qu'il émet l'ancien format (`_{grp}_`, sans palier), **tous les liens réels sont rejetés** par l'agrégation (SPEC §6/§7).
 1. **Régénérer la clé API Anthropic** (a circulé en clair) : scripts locaux + nœud `Claude API` (HTTP, header en clair) de `BOX - Generation Flashcards` ; idéalement passer par un credential n8n.
 2. **Secrets commités** : retirés des 16 lots par le bloc 1 (`feat/box-fonda-lane`), test anti-retour en CI. FONDA n'a plus de code de suppression (chaîne séparée). Restent dans l'historique Git : sans effet pour FONDA ; pour BOX, seule l'orpheline `box_7e7tcooh` est concernée (bloc 3).
 3. **Adresse réelle de la relectrice de français** : dans n8n uniquement, **jamais** dans `fonda/data/destinataires.json` (dépôt public).
@@ -36,6 +32,8 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 6. **Correcteur tolérant au mot après le nombre** (« 2 bus » noté faux sans `unite` ; avec `unite`, le nombre seul donne « presque, unité oubliée »).
 
 ## Autres dettes (non bloquantes)
+- **Moteur A, dettes de test** (fast-follow, le moteur est correct) : fixture d'adoption à rendre asymétrique (`df ↔ maison`, ex. 4 `maison` / 8 `df`) ; couverture combinatoire de 1b ; échantillon de séparateurs (`#`).
+- **Durcissement du générateur de set_id** : `catalogue.js` ne s'arrête qu'à `_99`, alors que la plage réelle va jusqu'à `_89` et que `_90`–`_99` est réservée aux fixtures de test. Le générateur peut donc fabriquer des sets réels dans la plage réservée (`_90`–`_98`) et entrer en collision avec les tests. À durcir pour qu'il s'arrête à `_89`. **Prochains modules** : 2 couleur, 3 fréquence, 4 promotion, 5 composition du menu, 6 ⬛ trou, 7 écriture des sorties.
 - `?action=delete` public (seul le code protège) ; anciens liens Valider/Rejeter en GET, HMAC sans expiration ; QR code, favicon/lockup FONDA absents ; `non-regression.test.js` en quarantaine (comparer à `main`).
 
 ## Décisions clés (pourquoi)
@@ -57,4 +55,4 @@ Box-FONDA : extension « savoirs fondamentaux » de BOX (défis courts, correcti
 - Le classificateur auto-mode bloque les commandes contenant la clé API : Éric lance lui-même les générations.
 - Branches (AGENTS.md) : PR toujours vers `design` (liens `compare/design...<branche>`), fusion en merge commit ; jamais de fast-forward de `design` (casse la chaîne du premier parent).
 
-_Dernière mise à jour : 2026-11-24 — Claude Code (Opus 5.5)._
+_Dernière mise à jour : 2026-11-26 — Claude Code (Opus 5.5)._

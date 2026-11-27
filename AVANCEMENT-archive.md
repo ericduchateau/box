@@ -568,3 +568,14 @@ PR #1 (`feat/box-fonda-theme-switch` → `design`, commit `5ea01ba`) relue par C
 - **B — appel mal formé (Codex r1 #4)** : correctif CÔTÉ WORKFLOW, pas signataire (le signataire a raison) : le nœud d'entrée émet TOUJOURS `{set_id, ref}` pour tout corps valide ; le malformé est rejeté à la frontière du webhook (4xx) sans exécution auditée non attribuable ; test jusqu'au signataire.
 - **C — dépôts concurrents (Codex r1 #5)** : dépôt idempotent ou exclusion mutuelle, reprises réseau incertaines comprises. En l'état : sûr (abandon), atténué par « un appel à la fois par set_id ».
 
+---
+
+## Archivé le 2026-11-26 (Claude Code) — bloc « Fait » P1–P4a retiré d'`AVANCEMENT.md` (règle < 60 lignes), recopié tel quel
+
+## Fait : parcours page P1 (#78), P3 (`b45d441`), P2 (#83), P4a (#85), #86, #87
+- **P1** : `rattachement-page.js` (E1–E12, R1–R6) + `adaptateurs-page.js` ; `signer-cloture.js` = réf. `9b75507` + patch figé (§21.8) ; témoin `temoin-saisie-locale.test.js` + ancre, empreinte `3253c24d` (protection procédurale, relecture d'Éric).
+- **P3** : Emettre + Cloturer INACTIFS construits depuis le dépôt (`n8n/fonda-relecture-page/`), faux Drive fidèle, réémission fail-closed, contrôles de version Drive (BigInt).
+- **P2** : Page (GET `/fonda-select`, C3 au GET, CSP en meta, SRI sha384 depuis le registre, script sous nonce, profils par version du moteur) + Confirmer (POST `/fonda-select-confirm`, C1–C6 + C5bis ; C7 courriel retiré). Harnais 167 tests : chaîne réelle Emettre → Page → script exécuté (DOM vm) → Confirmer → Cloturer → signataire. Corrige le défaut P3 (recherches par nom exact non paginées). Témoin inchangé.
+- **P4a (#85)** : `--profil recette` (exports `*.recette.json`, production octet-identique), `outils-recette/` (transport GET seul, sonde codes 0/1/2, `comparer-live`), `RECETTE-P4.md` (frontières énumérées, auto-vérifiées, instantanés de surface ; code futur tenu par CODEOWNERS + relecture). 7 tours Codex.
+- **#86** : Emettre lit la Data Table par le **nœud natif** (plus de clé d'API n8n ni de credential), destinataire validé AVANT toute écriture (grammaire stricte) ; seul Emettre a changé en prod. **#87** : relevés VPS — `EXECUTIONS_DATA_PRUNE=false` (pas de fenêtre de signature), sauvegarde succès/erreur = all, payload 16 Mo, n8n 2.6.3.
+- **Doctrine (README « Où vit chaque garantie », §21.5)** : pilier 1 = signataire ; pilier 2 = verrou « un seul écrivain CLI » (P5), contrôle d'intégrité porteur. Les contrôles de version détectent, n'excluent pas. Une exécution observée ne contient que le travail essentiel (son statut porte l'intégrité). `hash_formulaire` = audit rapproché (R1 avant signature), non signé.
