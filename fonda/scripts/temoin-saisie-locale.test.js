@@ -74,6 +74,8 @@ const LISTE_FERMEE = new Set([
   'fonda/scripts/cloturer-page.js', 'fonda/scripts/cloturer-page.test.js',
   // Moteur A, module 1 (décision d'Éric, 2026-11-26, CDC §21.8) : agrégation, hors parcours de relecture.
   'fonda/engine/agregation.js', 'fonda/engine/agregation.test.js',
+  // Moteur A, module 2 (décision d'Éric, 2026-11-27, CDC §21.8) : couleur, hors parcours de relecture.
+  'fonda/engine/couleur.js', 'fonda/engine/couleur.test.js',
 ]);
 // orchestrer-lots.test.js (décision d'Éric, P1) : SEULE substitution autorisée = la ligne d'empreinte
 // de signer-cloture.js du tripwire + le commentaire qui l'explique ; comparaison OCTET POUR OCTET.
